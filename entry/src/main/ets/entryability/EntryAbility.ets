@@ -5,13 +5,6 @@ import { window } from '@kit.ArkUI';
 
 const DOMAIN = 0x0000;
 const TAG = 'wPlayer/EntryAbility';
-const SYSTEM_BAR_PROPERTIES: window.SystemBarProperties = {
-  statusBarColor: '#00000000',
-  navigationBarColor: '#00000000',
-  statusBarContentColor: '#FF242633',
-  navigationBarContentColor: '#FF242633'
-};
-
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     try {
@@ -40,14 +33,32 @@ export default class EntryAbility extends UIAbility {
       try {
         const mainWindow: window.Window = windowStage.getMainWindowSync();
         await mainWindow.setWindowLayoutFullScreen(true);
-        mainWindow.setWindowBackgroundColor('#FFF4F4FA');
-        await mainWindow.setWindowSystemBarProperties(SYSTEM_BAR_PROPERTIES);
+        const backgroundColor = this.resourceColor('start_window_background');
+        const foregroundColor = this.context.config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK ?
+          '#FFF5F5F5' : '#FF202020';
+        mainWindow.setWindowBackgroundColor(backgroundColor);
+        await mainWindow.setWindowSystemBarProperties({
+          statusBarColor: '#00000000',
+          navigationBarColor: '#00000000',
+          statusBarContentColor: foregroundColor,
+          navigationBarContentColor: foregroundColor
+        });
       } catch (windowError) {
         const businessError = windowError as BusinessError;
         hilog.error(DOMAIN, TAG, 'Failed to configure main window. Cause: %{public}s', JSON.stringify(businessError));
       }
       hilog.info(DOMAIN, TAG, 'Main content loaded');
     });
+  }
+
+  private resourceColor(name: string): string {
+    try {
+      const color = this.context.resourceManager.getColorByNameSync(name);
+      return `#${color.toString(16).padStart(8, '0').toUpperCase()}`;
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, 'Failed to resolve window background. Cause: %{public}s', JSON.stringify(error));
+      return '#FF000000';
+    }
   }
 
   onWindowStageDestroy(): void {

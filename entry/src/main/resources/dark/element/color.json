@@ -7,6 +7,74 @@
     {
       "name": "float_bar_gradient_mask",
       "value": "#33000000"
+    },
+    {
+      "name": "page_background",
+      "value": "#000000"
+    },
+    {
+      "name": "full_player_gradient_start",
+      "value": "#000000"
+    },
+    {
+      "name": "full_player_gradient_middle",
+      "value": "#000000"
+    },
+    {
+      "name": "full_player_gradient_end",
+      "value": "#000000"
+    },
+    {
+      "name": "text_primary",
+      "value": "#F5F5F5"
+    },
+    {
+      "name": "text_secondary",
+      "value": "#A8A8A8"
+    },
+    {
+      "name": "text_tertiary",
+      "value": "#7A7A7A"
+    },
+    {
+      "name": "glass_surface",
+      "value": "#24FFFFFF"
+    },
+    {
+      "name": "glass_surface_subtle",
+      "value": "#18FFFFFF"
+    },
+    {
+      "name": "glass_surface_strong",
+      "value": "#30FFFFFF"
+    },
+    {
+      "name": "control_foreground",
+      "value": "#F2F2F2"
+    },
+    {
+      "name": "theme_accent",
+      "value": "#5B5CE2"
+    },
+    {
+      "name": "theme_accent_shadow",
+      "value": "#305B5CE2"
+    },
+    {
+      "name": "message_success",
+      "value": "#8DCB99"
+    },
+    {
+      "name": "message_error",
+      "value": "#FF9999"
+    },
+    {
+      "name": "destructive",
+      "value": "#FF8B8B"
+    },
+    {
+      "name": "destructive_surface",
+      "value": "#28D83B3B"
     }
   ]
 }

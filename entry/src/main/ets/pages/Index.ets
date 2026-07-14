@@ -1,13 +1,19 @@
 import {
   HdsBarLayoutMode,
   HdsBarStyle,
+  HdsNavDestination,
+  HdsNavDestinationTitleMode,
+  HdsNavigation,
+  HdsNavigationMenuContentOptions,
+  HdsNavigationTitleMode,
   HdsTabs,
   HdsTabsController,
   hdsMaterial
 } from '@kit.UIDesignKit';
-import { curves, SymbolGlyphModifier, window } from '@kit.ArkUI';
+import { ComponentContent, curves, SymbolGlyphModifier, window } from '@kit.ArkUI';
 import { vibrator } from '@kit.SensorServiceKit';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { common } from '@kit.AbilityKit';
 import {
   PlayerFrame,
   PlayerGestureAxis,
@@ -16,16 +22,46 @@ import {
   PlayerMotionSpec,
   PlayerPoint
 } from '../components/player/PlayerMotion';
+import { AppNavigationStyle } from '../components/navigation/AppNavigationStyle';
+import {
+  AppPrimaryTitleContent,
+  AppPrimaryTitleParams
+} from '../components/navigation/AppPrimaryTitleContent';
+import {
+  LibrarySortMenu,
+  LibrarySortMenuParams
+} from '../components/library/LibrarySortMenu';
+import {
+  AlbumSortField,
+  SortDirection,
+  TrackSortField
+} from '../library/model/LibraryModels';
+import { LibraryStore } from '../library/store/LibraryStore';
+import { AlbumsPage } from './library/AlbumsPage';
+import { LibraryManagementPage } from './library/LibraryManagementPage';
+import { MorePage } from './library/MorePage';
+import { PlaylistsPage } from './library/PlaylistsPage';
+import { SongsPage } from './library/SongsPage';
+import { SettingsRepository } from '../settings/SettingsRepository';
 
 interface NavigationItem {
   label: string;
   icon: SymbolGlyphModifier;
 }
 
+const LIBRARY_MANAGEMENT_DESTINATION: string = 'libraryManagement';
+const TRACK_SORT_LABELS: Array<string> = ['名称', '专辑', '艺术家', '发行日期', '添加时间'];
+const ALBUM_SORT_LABELS: Array<string> = ['名称', '艺术家', '发行日期', '添加时间'];
+const TRACK_SORT_MENU_ID: string = 'track_sort_menu';
+const ALBUM_SORT_MENU_ID: string = 'album_sort_menu';
+
 @Entry
 @Component
 struct Index {
-  @Env(SystemProperties.WINDOW_AVOID_AREA) avoidAreasVp: window.UIEnvWindowAvoidAreaInfoVP;
+  @State statusBarAvoidHeight: number = 0;
+  @State navigationAvoidHeight: number = 0;
+  @State selectedTabIndex: number = 0;
+  @State libraryStore: LibraryStore = new LibraryStore();
   @State isPlaying: boolean = false;
   @State miniBarExpanded: boolean = false;
   @State miniPlayerOffsetX: number = 0;
@@ -58,8 +94,27 @@ struct Index {
   };
   private returnToExpandedMiniBar: boolean = false;
   private morphTransitionEpoch: number = 0;
+  private avoidAreaObserverEpoch: number = 0;
+  private avoidAreaObserverActive: boolean = false;
+  private mainWindow?: window.Window;
+  private readonly avoidAreaChangeCallback = (options: window.AvoidAreaOptions): void => {
+    if (this.avoidAreaObserverActive) {
+      this.applyAvoidArea(options.type, options.area);
+    }
+  };
 
   private readonly tabsController: HdsTabsController = new HdsTabsController();
+  private settingsRepository?: SettingsRepository;
+  private readonly primaryTitleContents: Array<ComponentContent<AppPrimaryTitleParams> | undefined> = [
+    undefined, undefined, undefined, undefined
+  ];
+  private readonly tabPathStacks: Array<NavPathStack> = [
+    new NavPathStack(), new NavPathStack(), new NavPathStack(), new NavPathStack()
+  ];
+  private readonly pageScrollers: Array<Scroller> = [
+    new Scroller(), new Scroller(), new Scroller(), new Scroller()
+  ];
+  private readonly libraryManagementScroller: Scroller = new Scroller();
   private readonly floatingBarBottomMargin: number = 18;
   private readonly floatingCircleRightMargin: number = 16;
   private readonly floatingLargeHorizontalMargin: number = 32;
@@ -71,8 +126,170 @@ struct Index {
     { label: '更多', icon: new SymbolGlyphModifier($r('sys.symbol.square_fill_grid_2x2')) }
   ];
 
+  aboutToAppear(): void {
+    this.initializePrimaryTitleContents();
+    this.avoidAreaObserverActive = true;
+    const observerEpoch = ++this.avoidAreaObserverEpoch;
+    this.initializeWindowAvoidAreas(observerEpoch);
+    const context = this.getUIContext().getHostContext();
+    if (context !== undefined) {
+      const abilityContext = context as common.UIAbilityContext;
+      try {
+        this.settingsRepository = new SettingsRepository(abilityContext);
+        this.selectedTabIndex = this.normalizeTabIndex(this.settingsRepository.getLastTabIndex());
+      } catch (error) {
+        const businessError = error as BusinessError;
+        console.warn(`Unable to initialize settings: ${businessError.code}, ${businessError.message}`);
+      }
+      this.libraryStore.initialize(abilityContext, this.settingsRepository);
+    }
+  }
+
+  aboutToDisappear(): void {
+    this.avoidAreaObserverActive = false;
+    ++this.avoidAreaObserverEpoch;
+    if (this.mainWindow !== undefined) {
+      this.mainWindow.off('avoidAreaChange', this.avoidAreaChangeCallback);
+      this.mainWindow = undefined;
+    }
+    for (let index = 0; index < this.primaryTitleContents.length; index += 1) {
+      this.primaryTitleContents[index]?.dispose();
+      this.primaryTitleContents[index] = undefined;
+    }
+  }
+
+  private initializePrimaryTitleContents(): void {
+    const uiContext = this.getUIContext();
+    for (let index = 0; index < this.navigationItems.length; index += 1) {
+      if (this.primaryTitleContents[index] === undefined) {
+        this.primaryTitleContents[index] = new ComponentContent(
+          uiContext,
+          wrapBuilder(AppPrimaryTitleContent),
+          new AppPrimaryTitleParams(this.navigationItems[index].label)
+        );
+      }
+    }
+  }
+
+  private async initializeWindowAvoidAreas(observerEpoch: number): Promise<void> {
+    const context = this.getUIContext().getHostContext();
+    if (context === undefined) {
+      return;
+    }
+    try {
+      const mainWindow = await window.getLastWindow(context);
+      if (!this.avoidAreaObserverActive || observerEpoch !== this.avoidAreaObserverEpoch) {
+        return;
+      }
+      if (this.mainWindow !== undefined) {
+        this.mainWindow.off('avoidAreaChange', this.avoidAreaChangeCallback);
+      }
+      this.mainWindow = mainWindow;
+      this.applyAvoidArea(
+        window.AvoidAreaType.TYPE_SYSTEM,
+        mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM)
+      );
+      this.applyAvoidArea(
+        window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR,
+        mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR)
+      );
+      mainWindow.on('avoidAreaChange', this.avoidAreaChangeCallback);
+    } catch (error) {
+      const businessError = error as BusinessError;
+      console.warn(`Unable to observe window avoid areas: ${businessError.code}, ${businessError.message}`);
+    }
+  }
+
+  private applyAvoidArea(type: window.AvoidAreaType, area: window.AvoidArea): void {
+    const uiContext = this.getUIContext();
+    if (type === window.AvoidAreaType.TYPE_SYSTEM) {
+      this.statusBarAvoidHeight = uiContext.px2vp(area.topRect.height);
+    } else if (type === window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR) {
+      this.navigationAvoidHeight = uiContext.px2vp(area.bottomRect.height);
+    }
+  }
+
   private clamp(value: number, minimum: number, maximum: number): number {
     return Math.max(minimum, Math.min(maximum, value));
+  }
+
+  private normalizeTabIndex(index: number): number {
+    return Number.isInteger(index) && index >= 0 && index < this.navigationItems.length ? index : 0;
+  }
+
+  private handleTabChange(index: number): void {
+    const normalizedIndex = this.normalizeTabIndex(index);
+    this.selectedTabIndex = normalizedIndex;
+    this.settingsRepository?.setLastTabIndex(normalizedIndex);
+  }
+
+  private handleTabBarClick(index: number): void {
+    if (index === this.selectedTabIndex) {
+      this.tabPathStacks[index].clear(true);
+    }
+  }
+
+  private applyTrackSort(field: TrackSortField, direction: SortDirection): void {
+    this.libraryStore.setTrackSort(field, direction).then(() => {
+      if (this.libraryStore.trackDataSource.totalCount() > 0) {
+        this.pageScrollers[1].scrollToIndex(0, false, ScrollAlign.START);
+      }
+    });
+  }
+
+  private applyAlbumSort(field: AlbumSortField, direction: SortDirection): void {
+    this.libraryStore.setAlbumSort(field, direction).then(() => {
+      if (this.libraryStore.albumDataSource.totalCount() > 0) {
+        this.pageScrollers[2].scrollToIndex(0, false, ScrollAlign.START);
+      }
+    });
+  }
+
+  private openSortMenu(tabIndex: number, targetId: string): void {
+    const isTracks = tabIndex === 1;
+    const params = isTracks ? new LibrarySortMenuParams(
+      TRACK_SORT_LABELS,
+      this.libraryStore.trackSortField,
+      this.libraryStore.trackSortDirection === SortDirection.DESCENDING,
+      (index: number) => this.applyTrackSort(index as TrackSortField, this.libraryStore.trackSortDirection),
+      (descending: boolean) => this.applyTrackSort(this.libraryStore.trackSortField,
+        descending ? SortDirection.DESCENDING : SortDirection.ASCENDING)
+    ) : new LibrarySortMenuParams(
+      ALBUM_SORT_LABELS,
+      this.libraryStore.albumSortField,
+      this.libraryStore.albumSortDirection === SortDirection.DESCENDING,
+      (index: number) => this.applyAlbumSort(index as AlbumSortField, this.libraryStore.albumSortDirection),
+      (descending: boolean) => this.applyAlbumSort(this.libraryStore.albumSortField,
+        descending ? SortDirection.DESCENDING : SortDirection.ASCENDING)
+    );
+    const content = new ComponentContent(
+      this.getUIContext(), wrapBuilder(LibrarySortMenu), params
+    );
+    this.getUIContext().getPromptAction().openMenu(content, { id: targetId }, { enableArrow: true })
+      .catch((error: BusinessError) => {
+        console.warn(`Unable to open sort menu: ${error.code}, ${error.message}`);
+      });
+  }
+
+  private sortTitleMenu(index: number): HdsNavigationMenuContentOptions | undefined {
+    if (index !== 1 && index !== 2) {
+      return undefined;
+    }
+    const targetId = index === 1 ? TRACK_SORT_MENU_ID : ALBUM_SORT_MENU_ID;
+    const descending = index === 1 ?
+      this.libraryStore.trackSortDirection === SortDirection.DESCENDING :
+      this.libraryStore.albumSortDirection === SortDirection.DESCENDING;
+    return {
+      maxCount: 1,
+      value: [{
+        content: {
+          label: '排序',
+          icon: descending ? $r('sys.symbol.arrow_down') : $r('sys.symbol.arrow_up'),
+          componentId: targetId,
+          action: () => this.openSortMenu(index, targetId)
+        }
+      }]
+    };
   }
 
   private lengthToNumber(value: Length | undefined, fallback: number): number {
@@ -328,46 +545,79 @@ struct Index {
   }
 
   @Builder
-  private BackgroundDecoration() {
-    Stack() {
-      Column()
-        .width(270)
-        .height(270)
-        .borderRadius(135)
-        .backgroundColor('#285B5CE2')
-        .blur(52)
-        .position({ x: -110, y: 70 })
-
-      Column()
-        .width(240)
-        .height(240)
-        .borderRadius(120)
-        .backgroundColor('#22F0A66A')
-        .blur(56)
-        .position({ x: '60%', y: '56%' })
-
-      Column()
-        .width(200)
-        .height(200)
-        .borderRadius(100)
-        .backgroundColor('#204CB6D6')
-        .blur(48)
-        .position({ x: '58%', y: -60 })
+  private LibraryPage(index: number) {
+    if (index === 0) {
+      PlaylistsPage({
+        store: this.libraryStore,
+        topInset: this.statusBarAvoidHeight,
+        bottomInset: this.navigationAvoidHeight,
+        scroller: this.pageScrollers[0]
+      })
+    } else if (index === 1) {
+      SongsPage({
+        store: this.libraryStore,
+        topInset: this.statusBarAvoidHeight,
+        bottomInset: this.navigationAvoidHeight,
+        scroller: this.pageScrollers[1]
+      })
+    } else if (index === 2) {
+      AlbumsPage({
+        store: this.libraryStore,
+        topInset: this.statusBarAvoidHeight,
+        bottomInset: this.navigationAvoidHeight,
+        scroller: this.pageScrollers[2]
+      })
+    } else {
+      MorePage({
+        store: this.libraryStore,
+        topInset: this.statusBarAvoidHeight,
+        bottomInset: this.navigationAvoidHeight,
+        scroller: this.pageScrollers[3],
+        openLibraryManagement: () => {
+          this.tabPathStacks[3].pushPath({ name: LIBRARY_MANAGEMENT_DESTINATION });
+        }
+      })
     }
-    .width('100%')
-    .height('100%')
-    .linearGradient({
-      angle: 145,
-      colors: [['#F7F7FC', 0.0], ['#EFF0FA', 0.52], ['#F7F5F3', 1.0]]
-    })
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   @Builder
-  private EmptyPage() {
-    Blank()
+  private DestinationBuilder(name: string, _param: Object) {
+    if (name === LIBRARY_MANAGEMENT_DESTINATION) {
+      HdsNavDestination() {
+        LibraryManagementPage({
+          store: this.libraryStore,
+          topInset: this.statusBarAvoidHeight,
+          bottomInset: this.navigationAvoidHeight,
+          scroller: this.libraryManagementScroller
+        })
+      }
       .width('100%')
       .height('100%')
+      .backgroundColor($r('app.color.page_background'))
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar('音乐库管理'))
+      .bindToScrollable([this.libraryManagementScroller])
+    }
+  }
+
+  @Builder
+  private TabNavigation(index: number) {
+    HdsNavigation(this.tabPathStacks[index]) {
+      this.LibraryPage(index)
+    }
+    .width('100%')
+    .height('100%')
+    .mode(NavigationMode.Stack)
+    .backgroundColor($r('app.color.page_background'))
+    .titleMode(HdsNavigationTitleMode.MINI)
+    .hideBackButton(true)
+    .titleBar(AppNavigationStyle.primaryTitleBar(
+      this.navigationItems[index].label,
+      this.sortTitleMenu(index),
+      this.primaryTitleContents[index]
+    ))
+    .bindToScrollable([this.pageScrollers[index]])
+    .navDestination(this.DestinationBuilder)
   }
 
   @Builder
@@ -391,8 +641,8 @@ struct Index {
     .width(size)
     .height(size)
     .borderRadius(size / 2)
-    .backgroundColor('#5B5CE2')
-    .shadow({ radius: 12, color: '#305B5CE2', offsetY: 5 })
+    .backgroundColor($r('app.color.theme_accent'))
+    .shadow({ radius: 12, color: $r('app.color.theme_accent_shadow'), offsetY: 5 })
     .clickEffect({ level: ClickEffectLevel.MIDDLE })
     .accessibilityText(this.isPlaying ? '暂停' : '播放')
     .onClick(() => {
@@ -420,12 +670,12 @@ struct Index {
           Text('尚未播放')
             .fontSize(15)
             .fontWeight(FontWeight.Medium)
-            .fontColor('#252934')
+            .fontColor($r('app.color.text_primary'))
             .maxLines(1)
 
           Text('选择一首音乐')
             .fontSize(11)
-            .fontColor('#737987')
+            .fontColor($r('app.color.text_secondary'))
             .maxLines(1)
         }
         .alignItems(HorizontalAlign.Start)
@@ -485,10 +735,10 @@ struct Index {
 
   @Builder
   private PlayerTabs() {
-    HdsTabs({ controller: this.tabsController }) {
-      ForEach(this.navigationItems, (item: NavigationItem) => {
+    HdsTabs({ controller: this.tabsController, index: this.selectedTabIndex }) {
+      ForEach(this.navigationItems, (item: NavigationItem, index: number) => {
         TabContent() {
-          this.EmptyPage()
+          this.TabNavigation(index)
         }
         .tabBar(new BottomTabBarStyle({ normal: item.icon }, item.label))
       }, (item: NavigationItem) => item.label)
@@ -499,12 +749,18 @@ struct Index {
     .barPosition(BarPosition.End)
     .vertical(false)
     .scrollable(true)
+    .onChange((index: number) => {
+      this.handleTabChange(index);
+    })
+    .onTabBarClick((index: number) => {
+      this.handleTabBarClick(index);
+    })
     .barFloatingStyle({
       barWidth: { smallWidth: 300, mediumWidth: 320, largeWidth: 328 },
       barBottomMargin: this.floatingBarBottomMargin,
       gradientMask: { maskColor: $r('app.color.float_bar_gradient_mask'), maskHeight: 84 },
       systemMaterialEffect: {
-        materialType: hdsMaterial.MaterialType.IMMERSIVE,
+        materialType: hdsMaterial.MaterialType.ADAPTIVE,
         materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
       },
       miniBar: {
@@ -527,12 +783,12 @@ struct Index {
       Image(icon)
         .width(size * 0.45)
         .height(size * 0.45)
-        .fillColor('#2D303B')
+        .fillColor($r('app.color.control_foreground'))
     }
     .width(size)
     .height(size)
     .borderRadius(size / 2)
-    .backgroundColor('#38FFFFFF')
+    .backgroundColor($r('app.color.glass_surface_subtle'))
     .clickEffect({ level: ClickEffectLevel.MIDDLE })
     .accessibilityText(accessibilityText)
   }
@@ -545,12 +801,12 @@ struct Index {
           Image($r('app.media.control_chevron_down'))
             .width(22)
             .height(22)
-            .fillColor('#252934')
+            .fillColor($r('app.color.text_primary'))
         }
         .width(44)
         .height(44)
         .borderRadius(22)
-        .backgroundColor('#52FFFFFF')
+        .backgroundColor($r('app.color.glass_surface_strong'))
         .backgroundBlurStyle(BlurStyle.Thin)
         .clickEffect({ level: ClickEffectLevel.MIDDLE })
         .accessibilityText('收起播放器')
@@ -561,7 +817,7 @@ struct Index {
         Text('正在播放')
           .fontSize(16)
           .fontWeight(FontWeight.Medium)
-          .fontColor('#252934')
+          .fontColor($r('app.color.text_primary'))
           .layoutWeight(1)
           .textAlign(TextAlign.Center)
 
@@ -601,10 +857,10 @@ struct Index {
         Text('尚未播放')
           .fontSize(26)
           .fontWeight(FontWeight.Bold)
-          .fontColor('#20232C')
+          .fontColor($r('app.color.text_primary'))
         Text('选择一首音乐开始播放')
           .fontSize(15)
-          .fontColor('#747987')
+          .fontColor($r('app.color.text_secondary'))
       }
       .alignItems(HorizontalAlign.Start)
       .width('100%')
@@ -624,8 +880,8 @@ struct Index {
     .padding({
       left: 28,
       right: 28,
-      top: this.avoidAreasVp.statusBar.topRect.height + 18,
-      bottom: this.avoidAreasVp.navigationIndicator.bottomRect.height + 10
+      top: this.statusBarAvoidHeight + 18,
+      bottom: this.navigationAvoidHeight + 10
     })
   }
 
@@ -638,7 +894,11 @@ struct Index {
       .height('100%')
       .linearGradient({
         angle: 180,
-        colors: [['#EDEEFF', 0.0], ['#F8F8FC', 0.55], ['#F2F1F5', 1.0]]
+        colors: [
+          [$r('app.color.full_player_gradient_start'), 0.0],
+          [$r('app.color.full_player_gradient_middle'), 0.55],
+          [$r('app.color.full_player_gradient_end'), 1.0]
+        ]
       })
       .opacity(this.playerMorphBackgroundOpacity)
 
@@ -736,7 +996,6 @@ struct Index {
     Stack() {
       this.FullPlayerGeometryProbe()
 
-      this.BackgroundDecoration()
       this.PlayerTabs()
 
       if (this.isMorphActive()) {
@@ -747,7 +1006,7 @@ struct Index {
     .width('100%')
     .height('100%')
     .id('player_page_root')
-    .backgroundColor('#F4F4FA')
+    .backgroundColor($r('app.color.page_background'))
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     .onAreaChange((_oldValue: Area, newValue: Area) => {
       this.rootFrame = {

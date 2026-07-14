@@ -15,6 +15,9 @@
     "requestPermissions": [
       {
         "name": "ohos.permission.VIBRATE"
+      },
+      {
+        "name": "ohos.permission.FILE_ACCESS_PERSIST"
       }
     ],
     "abilities": [

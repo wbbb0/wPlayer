@@ -1,0 +1,556 @@
+import { relationalStore } from '@kit.ArkData';
+import { common } from '@kit.AbilityKit';
+import { SortKeyNormalizer } from '../metadata/SortKeyNormalizer';
+
+const DATABASE_NAME = 'music_library.db';
+const DATABASE_VERSION = 3;
+const SORT_REBUILD_BATCH_SIZE = 500;
+
+const STORE_CONFIG: relationalStore.StoreConfig = {
+  name: DATABASE_NAME,
+  securityLevel: relationalStore.SecurityLevel.S2,
+  allowRebuild: false
+};
+
+const CURRENT_SCHEMA: Array<string> = [
+  `CREATE TABLE schema_meta (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    version INTEGER NOT NULL,
+    migrated_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE media_file (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uri TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL,
+    file_size INTEGER NOT NULL DEFAULT 0,
+    modified_at INTEGER NOT NULL DEFAULT 0,
+    quick_fingerprint TEXT NOT NULL DEFAULT '',
+    format TEXT NOT NULL,
+    mime_type TEXT NOT NULL DEFAULT '',
+    authorization_persisted INTEGER NOT NULL DEFAULT 0,
+    availability_state INTEGER NOT NULL DEFAULT 0,
+    import_state INTEGER NOT NULL DEFAULT 0,
+    last_checked_at INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE artwork_asset (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    thumbnail_hash TEXT NOT NULL UNIQUE,
+    thumbnail_path TEXT NOT NULL,
+    width INTEGER NOT NULL DEFAULT 0,
+    height INTEGER NOT NULL DEFAULT 0,
+    byte_size INTEGER NOT NULL DEFAULT 0,
+    ref_count INTEGER NOT NULL DEFAULT 0 CHECK (ref_count >= 0),
+    unreferenced_at INTEGER,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE artwork_source (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_hash TEXT NOT NULL UNIQUE,
+    asset_id INTEGER NOT NULL REFERENCES artwork_asset(id) ON DELETE CASCADE,
+    mime_type TEXT NOT NULL DEFAULT '',
+    width INTEGER NOT NULL DEFAULT 0,
+    height INTEGER NOT NULL DEFAULT 0,
+    byte_size INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE album (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    identity_key TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    title_key TEXT NOT NULL,
+    sort_title_key TEXT NOT NULL,
+    title_natural_key TEXT NOT NULL DEFAULT '',
+    title_section TEXT NOT NULL DEFAULT '#',
+    album_artist_display TEXT NOT NULL DEFAULT '',
+    album_artist_key TEXT NOT NULL DEFAULT '',
+    artist_natural_key TEXT NOT NULL DEFAULT '',
+    artist_section TEXT NOT NULL DEFAULT '#',
+    release_date_raw TEXT NOT NULL DEFAULT '',
+    release_year INTEGER,
+    release_month INTEGER,
+    release_day INTEGER,
+    release_date_precision INTEGER NOT NULL DEFAULT 0,
+    release_date_sort INTEGER NOT NULL DEFAULT 0,
+    track_count INTEGER NOT NULL DEFAULT 0,
+    total_duration_ms INTEGER NOT NULL DEFAULT 0,
+    primary_artwork_id INTEGER REFERENCES artwork_asset(id) ON DELETE SET NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE track (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    media_file_id INTEGER NOT NULL UNIQUE REFERENCES media_file(id) ON DELETE CASCADE,
+    album_id INTEGER REFERENCES album(id) ON DELETE SET NULL,
+    title TEXT NOT NULL,
+    sort_title TEXT NOT NULL DEFAULT '',
+    sort_key TEXT NOT NULL,
+    title_natural_key TEXT NOT NULL DEFAULT '',
+    title_section TEXT NOT NULL DEFAULT '#',
+    artist_display TEXT NOT NULL DEFAULT '',
+    artist_natural_key TEXT NOT NULL DEFAULT '',
+    artist_section TEXT NOT NULL DEFAULT '#',
+    album_display TEXT NOT NULL DEFAULT '',
+    album_natural_key TEXT NOT NULL DEFAULT '',
+    album_section TEXT NOT NULL DEFAULT '#',
+    album_artist_display TEXT NOT NULL DEFAULT '',
+    composer_display TEXT NOT NULL DEFAULT '',
+    track_number INTEGER,
+    total_track_count INTEGER,
+    track_number_raw TEXT NOT NULL DEFAULT '',
+    disc_number INTEGER,
+    total_disc_count INTEGER,
+    disc_number_raw TEXT NOT NULL DEFAULT '',
+    release_date_raw TEXT NOT NULL DEFAULT '',
+    release_year INTEGER,
+    release_month INTEGER,
+    release_day INTEGER,
+    release_date_precision INTEGER NOT NULL DEFAULT 0,
+    release_date_sort INTEGER NOT NULL DEFAULT 0,
+    original_release_date_raw TEXT NOT NULL DEFAULT '',
+    original_release_year INTEGER,
+    original_release_month INTEGER,
+    original_release_day INTEGER,
+    original_release_date_precision INTEGER NOT NULL DEFAULT 0,
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    sample_rate INTEGER NOT NULL DEFAULT 0,
+    channel_count INTEGER NOT NULL DEFAULT 0,
+    bits_per_sample INTEGER NOT NULL DEFAULT 0,
+    bit_rate INTEGER NOT NULL DEFAULT 0,
+    primary_artwork_id INTEGER REFERENCES artwork_asset(id) ON DELETE SET NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE person (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    name_key TEXT NOT NULL UNIQUE,
+    sort_name_key TEXT NOT NULL
+  )`,
+  `CREATE TABLE track_credit (
+    track_id INTEGER NOT NULL REFERENCES track(id) ON DELETE CASCADE,
+    person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
+    role INTEGER NOT NULL,
+    ordinal INTEGER NOT NULL,
+    PRIMARY KEY (track_id, role, ordinal)
+  )`,
+  `CREATE TABLE album_credit (
+    album_id INTEGER NOT NULL REFERENCES album(id) ON DELETE CASCADE,
+    person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
+    ordinal INTEGER NOT NULL,
+    PRIMARY KEY (album_id, ordinal)
+  )`,
+  `CREATE TABLE genre (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    name_key TEXT NOT NULL UNIQUE
+  )`,
+  `CREATE TABLE track_genre (
+    track_id INTEGER NOT NULL REFERENCES track(id) ON DELETE CASCADE,
+    genre_id INTEGER NOT NULL REFERENCES genre(id) ON DELETE CASCADE,
+    ordinal INTEGER NOT NULL,
+    PRIMARY KEY (track_id, ordinal)
+  )`,
+  `CREATE TABLE track_tag_extra (
+    track_id INTEGER NOT NULL REFERENCES track(id) ON DELETE CASCADE,
+    tag_key TEXT NOT NULL,
+    ordinal INTEGER NOT NULL,
+    raw_value TEXT NOT NULL,
+    PRIMARY KEY (track_id, tag_key, ordinal)
+  )`,
+  `CREATE TABLE track_artwork (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    track_id INTEGER NOT NULL REFERENCES track(id) ON DELETE CASCADE,
+    source_id INTEGER REFERENCES artwork_source(id) ON DELETE SET NULL,
+    asset_id INTEGER REFERENCES artwork_asset(id) ON DELETE SET NULL,
+    picture_type INTEGER NOT NULL,
+    ordinal INTEGER NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    mime_type TEXT NOT NULL DEFAULT '',
+    width INTEGER NOT NULL DEFAULT 0,
+    height INTEGER NOT NULL DEFAULT 0,
+    color_depth INTEGER NOT NULL DEFAULT 0,
+    byte_offset INTEGER NOT NULL DEFAULT 0,
+    byte_length INTEGER NOT NULL DEFAULT 0,
+    payload_offset INTEGER NOT NULL DEFAULT 0,
+    unsynchronized INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (track_id, ordinal)
+  )`,
+  `CREATE TABLE import_job (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    state INTEGER NOT NULL,
+    total_count INTEGER NOT NULL DEFAULT 0,
+    processed_count INTEGER NOT NULL DEFAULT 0,
+    imported_count INTEGER NOT NULL DEFAULT 0,
+    duplicate_count INTEGER NOT NULL DEFAULT 0,
+    failed_count INTEGER NOT NULL DEFAULT 0,
+    started_at INTEGER NOT NULL,
+    finished_at INTEGER,
+    error_message TEXT NOT NULL DEFAULT ''
+  )`,
+  `CREATE TABLE import_error (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id INTEGER REFERENCES import_job(id) ON DELETE CASCADE,
+    uri TEXT NOT NULL DEFAULT '',
+    stage TEXT NOT NULL,
+    error_code INTEGER NOT NULL DEFAULT 0,
+    message TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`,
+  'CREATE INDEX idx_media_file_fingerprint ON media_file(file_size, quick_fingerprint)',
+  'CREATE INDEX idx_media_file_availability ON media_file(availability_state, id)',
+  'CREATE INDEX idx_track_sort ON track(sort_key, id)',
+  'CREATE INDEX idx_track_title_natural ON track(title_section, title_natural_key, id)',
+  'CREATE INDEX idx_track_album_natural ON track(album_section, album_natural_key, id)',
+  'CREATE INDEX idx_track_artist_natural ON track(artist_section, artist_natural_key, id)',
+  'CREATE INDEX idx_track_release_date ON track(release_date_sort, id)',
+  'CREATE INDEX idx_track_created_at ON track(created_at, id)',
+  'CREATE INDEX idx_track_album_order ON track(album_id, disc_number, track_number, id)',
+  'CREATE INDEX idx_album_sort ON album(sort_title_key, id)',
+  'CREATE INDEX idx_album_title_natural ON album(title_section, title_natural_key, id)',
+  'CREATE INDEX idx_album_artist_natural ON album(artist_section, artist_natural_key, id)',
+  'CREATE INDEX idx_album_release_date ON album(release_date_sort, id)',
+  'CREATE INDEX idx_album_created_at ON album(created_at, id)',
+  'CREATE INDEX idx_track_credit_person_role ON track_credit(person_id, role, track_id)',
+  'CREATE INDEX idx_track_genre_genre ON track_genre(genre_id, track_id)',
+  'CREATE INDEX idx_track_artwork_fallback ON track_artwork(track_id, picture_type, ordinal)',
+  'CREATE INDEX idx_artwork_asset_gc ON artwork_asset(ref_count, unreferenced_at)',
+  'CREATE INDEX idx_import_error_job ON import_error(job_id, id)'
+];
+
+export class LibraryDatabase {
+  private store?: relationalStore.RdbStore;
+  private initializePromise?: Promise<void>;
+  private writeTail: Promise<void> = Promise.resolve();
+
+  initialize(context: common.Context): Promise<void> {
+    if (this.store !== undefined) {
+      return Promise.resolve();
+    }
+    if (this.initializePromise === undefined) {
+      this.initializePromise = this.openAndMigrate(context);
+    }
+    return this.initializePromise;
+  }
+
+  getStore(): relationalStore.RdbStore {
+    if (this.store === undefined) {
+      throw new Error('LibraryDatabase has not been initialized');
+    }
+    return this.store;
+  }
+
+  enqueueWrite<T>(operation: (transaction: relationalStore.Transaction) => Promise<T>): Promise<T> {
+    const pending: Promise<T> = this.writeTail.then(async () => {
+      const transaction = await this.getStore().createTransaction({
+        transactionType: relationalStore.TransactionType.IMMEDIATE
+      });
+      try {
+        const result = await operation(transaction);
+        await transaction.commit();
+        return result;
+      } catch (error) {
+        try {
+          await transaction.rollback();
+        } catch (_) {
+        }
+        const cause = error as Error;
+        throw cause;
+      }
+    });
+    this.writeTail = pending.then(() => undefined, () => undefined);
+    return pending;
+  }
+
+  rebuildSortIndexes(): Promise<void> {
+    return this.enqueueWrite(async (transaction: relationalStore.Transaction) => {
+      await this.rebuildSortKeys(transaction);
+    });
+  }
+
+  async close(): Promise<void> {
+    await this.writeTail;
+    if (this.store !== undefined) {
+      await this.store.close();
+      this.store = undefined;
+      this.initializePromise = undefined;
+    }
+  }
+
+  private async openAndMigrate(context: common.Context): Promise<void> {
+    const store = await relationalStore.getRdbStore(context, STORE_CONFIG);
+    try {
+      await store.execute('PRAGMA foreign_keys = ON');
+      await this.migrate(store);
+      this.store = store;
+    } catch (error) {
+      await store.close();
+      this.initializePromise = undefined;
+      const cause = error as Error;
+      throw cause;
+    }
+  }
+
+  private async migrate(store: relationalStore.RdbStore): Promise<void> {
+    const hasSchemaMeta = await this.tableExists(store, 'schema_meta');
+    if (!hasSchemaMeta) {
+      const transaction = await store.createTransaction({
+        transactionType: relationalStore.TransactionType.IMMEDIATE
+      });
+      try {
+        for (let index = 0; index < CURRENT_SCHEMA.length; index += 1) {
+          await transaction.execute(this.withIfNotExists(CURRENT_SCHEMA[index]));
+        }
+        await transaction.execute(
+          'INSERT INTO schema_meta(singleton, version, migrated_at) VALUES(1, ?, ?)',
+          [DATABASE_VERSION, Date.now()]
+        );
+        await transaction.commit();
+        store.version = DATABASE_VERSION;
+        return;
+      } catch (error) {
+        try {
+          await transaction.rollback();
+        } catch (_) {
+        }
+        const cause = error as Error;
+        throw cause;
+      }
+    }
+
+    const version = await this.readSchemaVersion(store);
+    if (version > DATABASE_VERSION) {
+      throw new Error(`Library database version ${version} is newer than supported version ${DATABASE_VERSION}`);
+    }
+    // Re-assert the current schema on every open. This repairs databases left
+    // partially initialized by an interrupted earlier migration without
+    // deleting any library data.
+    await this.migrateToCurrentSchema(store);
+    if (store.version !== DATABASE_VERSION) {
+      store.version = DATABASE_VERSION;
+    }
+  }
+
+  private async migrateToCurrentSchema(store: relationalStore.RdbStore): Promise<void> {
+    const transaction = await store.createTransaction({
+      transactionType: relationalStore.TransactionType.IMMEDIATE
+    });
+    try {
+      for (let index = 0; index < CURRENT_SCHEMA.length; index += 1) {
+        if (!CURRENT_SCHEMA[index].startsWith('CREATE INDEX ')) {
+          await transaction.execute(this.withIfNotExists(CURRENT_SCHEMA[index]));
+        }
+      }
+      if (!await this.columnExists(transaction, 'track_artwork', 'payload_offset')) {
+        await transaction.execute(
+          'ALTER TABLE track_artwork ADD COLUMN payload_offset INTEGER NOT NULL DEFAULT 0'
+        );
+      }
+      await this.ensureSortColumns(transaction);
+      for (let index = 0; index < CURRENT_SCHEMA.length; index += 1) {
+        if (CURRENT_SCHEMA[index].startsWith('CREATE INDEX ')) {
+          await transaction.execute(this.withIfNotExists(CURRENT_SCHEMA[index]));
+        }
+      }
+      await transaction.execute(
+        'UPDATE schema_meta SET version = ?, migrated_at = ? WHERE singleton = 1',
+        [DATABASE_VERSION, Date.now()]
+      );
+      await transaction.commit();
+      store.version = DATABASE_VERSION;
+    } catch (error) {
+      try {
+        await transaction.rollback();
+      } catch (_) {
+      }
+      throw error as Error;
+    }
+  }
+
+  private async rebuildSortKeys(transaction: relationalStore.Transaction): Promise<void> {
+    await transaction.execute('DROP TABLE IF EXISTS temp_track_sort_rebuild');
+    await transaction.execute(
+      `CREATE TEMP TABLE temp_track_sort_rebuild (
+        id INTEGER PRIMARY KEY,
+        title_key TEXT NOT NULL,
+        title_section TEXT NOT NULL,
+        album_key TEXT NOT NULL,
+        album_section TEXT NOT NULL,
+        artist_key TEXT NOT NULL,
+        artist_section TEXT NOT NULL,
+        release_date_sort INTEGER NOT NULL
+      )`
+    );
+    const trackBuckets: Array<relationalStore.ValuesBucket> = [];
+    const trackResults = await transaction.querySql(
+      `SELECT id, CASE WHEN sort_title = '' THEN title ELSE sort_title END,
+        album_display, artist_display, COALESCE(release_year, 0),
+        COALESCE(release_month, 0), COALESCE(release_day, 0)
+       FROM track`
+    );
+    try {
+      while (trackResults.goToNextRow()) {
+        const title = SortKeyNormalizer.natural(trackResults.getString(1));
+        const album = SortKeyNormalizer.natural(trackResults.getString(2));
+        const artist = SortKeyNormalizer.natural(trackResults.getString(3));
+        trackBuckets.push({
+          id: trackResults.getLong(0),
+          title_key: title.key,
+          title_section: title.section,
+          album_key: album.key,
+          album_section: album.section,
+          artist_key: artist.key,
+          artist_section: artist.section,
+          release_date_sort: SortKeyNormalizer.dateParts(
+            trackResults.getLong(4), trackResults.getLong(5), trackResults.getLong(6)
+          )
+        });
+      }
+    } finally {
+      trackResults.close();
+    }
+    await this.batchInsert(transaction, 'temp_track_sort_rebuild', trackBuckets);
+    await transaction.execute(
+      `UPDATE track SET
+        title_natural_key = (SELECT title_key FROM temp_track_sort_rebuild s WHERE s.id = track.id),
+        title_section = (SELECT title_section FROM temp_track_sort_rebuild s WHERE s.id = track.id),
+        album_natural_key = (SELECT album_key FROM temp_track_sort_rebuild s WHERE s.id = track.id),
+        album_section = (SELECT album_section FROM temp_track_sort_rebuild s WHERE s.id = track.id),
+        artist_natural_key = (SELECT artist_key FROM temp_track_sort_rebuild s WHERE s.id = track.id),
+        artist_section = (SELECT artist_section FROM temp_track_sort_rebuild s WHERE s.id = track.id),
+        release_date_sort = (SELECT release_date_sort FROM temp_track_sort_rebuild s WHERE s.id = track.id)
+       WHERE id IN (SELECT id FROM temp_track_sort_rebuild)`
+    );
+    await transaction.execute('DROP TABLE temp_track_sort_rebuild');
+
+    await transaction.execute('DROP TABLE IF EXISTS temp_album_sort_rebuild');
+    await transaction.execute(
+      `CREATE TEMP TABLE temp_album_sort_rebuild (
+        id INTEGER PRIMARY KEY,
+        title_key TEXT NOT NULL,
+        title_section TEXT NOT NULL,
+        artist_key TEXT NOT NULL,
+        artist_section TEXT NOT NULL,
+        release_date_sort INTEGER NOT NULL
+      )`
+    );
+    const albumBuckets: Array<relationalStore.ValuesBucket> = [];
+    const albumResults = await transaction.querySql(
+      `SELECT id, title, album_artist_display, COALESCE(release_year, 0),
+        COALESCE(release_month, 0), COALESCE(release_day, 0)
+       FROM album`
+    );
+    try {
+      while (albumResults.goToNextRow()) {
+        const title = SortKeyNormalizer.natural(albumResults.getString(1));
+        const artist = SortKeyNormalizer.natural(albumResults.getString(2));
+        albumBuckets.push({
+          id: albumResults.getLong(0),
+          title_key: title.key,
+          title_section: title.section,
+          artist_key: artist.key,
+          artist_section: artist.section,
+          release_date_sort: SortKeyNormalizer.dateParts(
+            albumResults.getLong(3), albumResults.getLong(4), albumResults.getLong(5)
+          )
+        });
+      }
+    } finally {
+      albumResults.close();
+    }
+    await this.batchInsert(transaction, 'temp_album_sort_rebuild', albumBuckets);
+    await transaction.execute(
+      `UPDATE album SET
+        title_natural_key = (SELECT title_key FROM temp_album_sort_rebuild s WHERE s.id = album.id),
+        title_section = (SELECT title_section FROM temp_album_sort_rebuild s WHERE s.id = album.id),
+        artist_natural_key = (SELECT artist_key FROM temp_album_sort_rebuild s WHERE s.id = album.id),
+        artist_section = (SELECT artist_section FROM temp_album_sort_rebuild s WHERE s.id = album.id),
+        release_date_sort = (SELECT release_date_sort FROM temp_album_sort_rebuild s WHERE s.id = album.id)
+       WHERE id IN (SELECT id FROM temp_album_sort_rebuild)`
+    );
+    await transaction.execute('DROP TABLE temp_album_sort_rebuild');
+  }
+
+  private async batchInsert(transaction: relationalStore.Transaction, table: string,
+    buckets: Array<relationalStore.ValuesBucket>): Promise<void> {
+    for (let offset = 0; offset < buckets.length; offset += SORT_REBUILD_BATCH_SIZE) {
+      await transaction.batchInsert(
+        table,
+        buckets.slice(offset, Math.min(offset + SORT_REBUILD_BATCH_SIZE, buckets.length))
+      );
+    }
+  }
+
+  private async ensureSortColumns(transaction: relationalStore.Transaction): Promise<void> {
+    const columns: Array<Array<string>> = [
+      ['track', 'title_natural_key', "TEXT NOT NULL DEFAULT ''"],
+      ['track', 'title_section', "TEXT NOT NULL DEFAULT '#'"],
+      ['track', 'album_natural_key', "TEXT NOT NULL DEFAULT ''"],
+      ['track', 'album_section', "TEXT NOT NULL DEFAULT '#'"],
+      ['track', 'artist_natural_key', "TEXT NOT NULL DEFAULT ''"],
+      ['track', 'artist_section', "TEXT NOT NULL DEFAULT '#'"],
+      ['track', 'release_date_sort', 'INTEGER NOT NULL DEFAULT 0'],
+      ['album', 'title_natural_key', "TEXT NOT NULL DEFAULT ''"],
+      ['album', 'title_section', "TEXT NOT NULL DEFAULT '#'"],
+      ['album', 'artist_natural_key', "TEXT NOT NULL DEFAULT ''"],
+      ['album', 'artist_section', "TEXT NOT NULL DEFAULT '#'"],
+      ['album', 'release_date_sort', 'INTEGER NOT NULL DEFAULT 0']
+    ];
+    for (let index = 0; index < columns.length; index += 1) {
+      const definition = columns[index];
+      if (!await this.columnExists(transaction, definition[0], definition[1])) {
+        await transaction.execute(`ALTER TABLE ${definition[0]} ADD COLUMN ${definition[1]} ${definition[2]}`);
+      }
+    }
+  }
+
+  private async columnExists(transaction: relationalStore.Transaction, tableName: string,
+    columnName: string): Promise<boolean> {
+    const resultSet = await transaction.querySql(`PRAGMA table_info(${tableName})`);
+    try {
+      while (resultSet.goToNextRow()) {
+        if (resultSet.getString(1) === columnName) {
+          return true;
+        }
+      }
+      return false;
+    } finally {
+      resultSet.close();
+    }
+  }
+
+  private withIfNotExists(sql: string): string {
+    if (sql.startsWith('CREATE TABLE ')) {
+      return sql.replace('CREATE TABLE ', 'CREATE TABLE IF NOT EXISTS ');
+    }
+    if (sql.startsWith('CREATE INDEX ')) {
+      return sql.replace('CREATE INDEX ', 'CREATE INDEX IF NOT EXISTS ');
+    }
+    return sql;
+  }
+
+  private async tableExists(store: relationalStore.RdbStore, tableName: string): Promise<boolean> {
+    const resultSet = await store.querySql(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+      [tableName]
+    );
+    try {
+      return resultSet.goToNextRow();
+    } finally {
+      resultSet.close();
+    }
+  }
+
+  private async readSchemaVersion(store: relationalStore.RdbStore): Promise<number> {
+    const resultSet = await store.querySql('SELECT version FROM schema_meta WHERE singleton = 1 LIMIT 1');
+    try {
+      if (!resultSet.goToNextRow()) {
+        throw new Error('Library database schema version is missing');
+      }
+      return resultSet.getLong(0);
+    } finally {
+      resultSet.close();
+    }
+  }
+}

@@ -70,6 +70,23 @@ The full-player transition is a shared-element morph:
 
 ## UI implementation rules
 
+- Use the HDS component family for project-level navigation chrome and material surfaces. Titles, back buttons,
+  scrolling blur and secondary destinations must come from shared HDS navigation templates; do not recreate them
+  independently inside individual pages.
+- Keep navigation hosts at the persistent-tab shell boundary, with one controlled stack per tab and a shared route
+  registry. Feature pages must not create private nested Navigation stacks.
+- Page backgrounds are edge-to-edge solid theme colors. Scrollable viewports should cover the physical page and
+  use shared content start/end offsets to keep initial and final items readable behind floating chrome; do not
+  shrink List or Grid viewports with per-page top or bottom padding.
+- Apply the shared page scroll behavior to Scroll, List and Grid: content may pass beneath HDS title chrome,
+  Spring edge effects are enabled, virtual caches retain items beneath overlays, and short Scroll content is
+  top-aligned instead of vertically centered.
+- Persistent bottom tabs and player controls remain above secondary destinations. Each tab owns one controlled
+  navigation stack so detail pages preserve the selected tab and its floating chrome.
+- Outside the theme accent and semantic status colors, use neutral grayscale tokens. Dark page backgrounds are
+  AMOLED black; do not introduce blue-tinted neutral backgrounds, text or glass surfaces.
+- Use system responsive Grid policies or a shared responsive layout specification. Do not hard-code a fixed column
+  count in feature pages.
 - Model multi-stage UI transitions with an explicit enum phase instead of combinations of loosely related booleans.
 - Sequence animations with documented completion callbacks. Do not coordinate animation stages with unguarded `setTimeout` calls.
 - Invalidate stale animation completions when a newer transition starts, so rapid repeated input cannot clear or overwrite current state.

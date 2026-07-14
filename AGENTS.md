@@ -39,6 +39,46 @@ UI components must not create or directly own AVPlayer instances.
 
 Use one application-level PlaybackEngine instance.
 
+## UI and interaction requirements
+
+The primary navigation uses a floating horizontal HDS tab bar with four pages: playlists, songs, albums and more.
+
+- Prefer system Symbols when an appropriate icon exists. Use proper SVG resources for custom icons; do not use text characters as icons.
+- Keep the navigation and mini player as separate rounded glass surfaces.
+- On compact layouts, expanding one surface collapses the other to its current-page icon or album artwork.
+- On large and unfolded layouts, follow the HDS responsive behavior and allow the full navigation and mini player to remain visible on opposite sides.
+- Preserve system material effects, pressed highlights, depth changes and smooth size transitions. Do not replace system glass with a flat translucent color.
+- Use edge-to-edge immersive layout with transparent system bars. Backgrounds may extend under system UI, but interactive content must dynamically respect status bar, navigation indicator and cutout avoid areas.
+
+The mini player interaction contract is:
+
+- Horizontal dragging moves only the track text. Album artwork and playback controls remain fixed.
+- Clip mini-player content to its rounded parent so translated content never escapes the surface.
+- A horizontal action threshold may provide light haptic feedback, but must not trigger track changes until playback behavior is implemented.
+- Upward dragging expands the player interactively and follows the finger. Releasing below the threshold returns without overshoot; releasing above it completes the expansion.
+- Tapping the expanded mini-player artwork or track text opens the full player. Playback controls keep their own click behavior.
+- Gesture arbitration must preserve taps, horizontal dragging and vertical dragging together. Do not fix one gesture by suppressing the others.
+
+The full-player transition is a shared-element morph:
+
+- Freeze both source and destination geometry when a transition starts.
+- Use one overlay artwork instance and one progress value for position, scale, corner radius and shadow.
+- Keep the final full-player canvas at its final layout size; animate the clipping shell rather than relaying out the full content tree every frame.
+- Opening must respond immediately. The overlay replaces the source surface without a fade-in.
+- When closing or cancelling, finish the geometry animation first, then fade only the replacement background to reveal the real HDS glass. Remove the replacement foreground and reveal the real controls in the same final frame.
+- Preserve the pre-transition HDS mini-bar state when returning from the full player.
+
+## UI implementation rules
+
+- Model multi-stage UI transitions with an explicit enum phase instead of combinations of loosely related booleans.
+- Sequence animations with documented completion callbacks. Do not coordinate animation stages with unguarded `setTimeout` calls.
+- Invalidate stale animation completions when a newer transition starts, so rapid repeated input cannot clear or overwrite current state.
+- Keep motion and layout constants in a dedicated specification type instead of scattering magic numbers through Builders.
+- Aggregate geometry as frame or point objects and isolate HDS geometry adaptation from rendering code.
+- Values that must update reactively inside an ArkUI Builder should be read directly from observable state. Do not pass changing primitive values through Builder parameters that may be captured by framework-owned builders.
+- Prefer render transforms such as translate and scale for interactive movement. Avoid relying on layout-position changes for frame-by-frame animation.
+- Pages and UI components must not become playback state owners. When playback is implemented, bind them to PlayerStore.
+
 ## HarmonyOS API rules
 
 Before using an unfamiliar API, run an official documentation search with DevEco CLI.
@@ -142,6 +182,19 @@ After modifying ArkTS, resources or configuration:
 5. Inspect logs for runtime failures.
 6. Report which audio formats and scenarios were manually tested.
 
+For navigation and player UI changes, also verify when the relevant targets are available:
+
+- compact and unfolded layouts;
+- mini-player artwork and text taps;
+- playback button taps;
+- horizontal dragging in both directions and elastic return;
+- upward drag completion and below-threshold cancellation;
+- full-player close and background material handoff;
+- rapid repeated open and close input;
+- system-bar and bottom-indicator avoidance.
+
+Prefer the local Pura X Max emulator for repeatable wide-fold validation when a physical device is unavailable.
+
 ## Audio test matrix
 
 At minimum, consider:
@@ -169,6 +222,8 @@ Do not discard unrelated user changes.
 Make focused changes.
 
 Do not commit, push, change signing configuration, change the bundle name or update the SDK version unless explicitly requested.
+
+Never commit signing passwords, private keys, certificate stores, provisioning profiles or machine-specific signing paths. Keep local `build-profile.json5` signing material out of commits even when other project changes are being published.
 
 At completion, provide:
 

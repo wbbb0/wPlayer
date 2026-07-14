@@ -3,6 +3,10 @@
     {
       "name": "start_window_background",
       "value": "#FFFFFF"
+    },
+    {
+      "name": "float_bar_gradient_mask",
+      "value": "#33F1F3F5"
     }
   ]
 }

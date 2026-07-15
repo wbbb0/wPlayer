@@ -369,7 +369,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       }
       this.currentPlaybackTrack = track;
       this.playerStore.durationMs = track.durationMs;
-      this.session?.updateMetadata(track, this.playerStore.miniArtworkUri);
+      this.session?.updateMetadata(track, this.playerStore.heroArtworkUri);
       if (!await ensureReadPermission(track.uri)) {
         this.repository.setTrackAvailability(trackId, AvailabilityState.AUTHORIZATION_REVOKED)
           .catch(() => undefined);
@@ -421,6 +421,11 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       this.fullArtwork = artwork;
       this.playerStore.heroArtwork = artwork.pixelMap;
       this.playerStore.heroArtworkPreferPixelMap = true;
+      try {
+        await this.session?.updateMetadata(track, artwork.pixelMap);
+      } catch (error) {
+        console.warn(`Unable to publish full artwork to AVSession: ${PlaybackRuntime.messageOf(error)}`);
+      }
     } catch (error) {
       console.warn(`Unable to load full artwork: ${PlaybackRuntime.messageOf(error)}`);
     }

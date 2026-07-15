@@ -1,6 +1,7 @@
 import { common, wantAgent } from '@kit.AbilityKit';
 import { avSession } from '@kit.AVSessionKit';
 import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
+import { image } from '@kit.ImageKit';
 import { PlaybackTrack, PlayerState, RepeatMode } from '../model/PlaybackModels';
 
 export interface PlaybackSessionCommands {
@@ -21,6 +22,7 @@ export class PlaybackSession {
   private backgroundDesired: boolean = false;
   private backgroundTail: Promise<void> = Promise.resolve();
   private sessionUpdateTail: Promise<void> = Promise.resolve();
+  private metadataUpdateEpoch: number = 0;
   private shuttingDown: boolean = false;
 
   constructor(context: common.UIAbilityContext, commands: PlaybackSessionCommands) {
@@ -38,10 +40,11 @@ export class PlaybackSession {
     return this.initializePromise;
   }
 
-  updateMetadata(track: PlaybackTrack, artworkUri: string): Promise<void> {
+  updateMetadata(track: PlaybackTrack, artwork?: image.PixelMap | string): Promise<void> {
+    const epoch = ++this.metadataUpdateEpoch;
     return this.enqueueSessionUpdate(async () => {
       await this.initialize();
-      if (this.session === undefined) {
+      if (this.session === undefined || epoch !== this.metadataUpdateEpoch) {
         return;
       }
       const metadata: avSession.AVMetadata = {
@@ -53,8 +56,8 @@ export class PlaybackSession {
         avQueueName: '所有音乐',
         avQueueId: 'library.all'
       };
-      if (artworkUri.length > 0) {
-        metadata.mediaImage = artworkUri;
+      if (artwork !== undefined && (typeof artwork !== 'string' || artwork.length > 0)) {
+        metadata.mediaImage = artwork;
       }
       await this.session.setAVMetadata(metadata);
     });

@@ -37,6 +37,22 @@
       "value": "#888888"
     },
     {
+      "name": "navigation_title_primary",
+      "value": "#202020"
+    },
+    {
+      "name": "navigation_title_secondary",
+      "value": "#707070"
+    },
+    {
+      "name": "navigation_action_foreground",
+      "value": "#202020"
+    },
+    {
+      "name": "system_bar_content",
+      "value": "#202020"
+    },
+    {
       "name": "glass_surface",
       "value": "#48FFFFFF"
     },

@@ -1,11 +1,14 @@
-import { AbilityConstant, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
+import { AbilityConstant, Configuration, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
+import { AppAppearancePalette, appAppearanceController } from '../appearance/AppAppearance';
 
 const DOMAIN = 0x0000;
 const TAG = 'wPlayer/EntryAbility';
 export default class EntryAbility extends UIAbility {
+  private mainWindow?: window.Window;
+
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     try {
       this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
@@ -17,6 +20,12 @@ export default class EntryAbility extends UIAbility {
 
   onDestroy(): void {
     hilog.info(DOMAIN, TAG, 'Ability destroyed');
+  }
+
+  onConfigurationUpdate(_newConfig: Configuration): void {
+    appAppearanceController.notifyChanged();
+    this.applyMainWindowAppearance();
+    hilog.info(DOMAIN, TAG, 'Application appearance refreshed');
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
@@ -31,18 +40,9 @@ export default class EntryAbility extends UIAbility {
         return;
       }
       try {
-        const mainWindow: window.Window = windowStage.getMainWindowSync();
-        await mainWindow.setWindowLayoutFullScreen(true);
-        const backgroundColor = this.resourceColor('start_window_background');
-        const foregroundColor = this.context.config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK ?
-          '#FFF5F5F5' : '#FF202020';
-        mainWindow.setWindowBackgroundColor(backgroundColor);
-        await mainWindow.setWindowSystemBarProperties({
-          statusBarColor: '#00000000',
-          navigationBarColor: '#00000000',
-          statusBarContentColor: foregroundColor,
-          navigationBarContentColor: foregroundColor
-        });
+        this.mainWindow = windowStage.getMainWindowSync();
+        await this.mainWindow.setWindowLayoutFullScreen(true);
+        await this.applyMainWindowAppearance();
       } catch (windowError) {
         const businessError = windowError as BusinessError;
         hilog.error(DOMAIN, TAG, 'Failed to configure main window. Cause: %{public}s', JSON.stringify(businessError));
@@ -51,21 +51,32 @@ export default class EntryAbility extends UIAbility {
     });
   }
 
-  private resourceColor(name: string): string {
+  private async applyMainWindowAppearance(): Promise<void> {
+    if (this.mainWindow === undefined) {
+      return;
+    }
     try {
-      const color = this.context.resourceManager.getColorByNameSync(name);
-      return `#${color.toString(16).padStart(8, '0').toUpperCase()}`;
+      const palette = AppAppearancePalette.resolve(this.context);
+      this.mainWindow.setWindowBackgroundColor(palette.windowBackground);
+      await this.mainWindow.setWindowSystemBarProperties({
+        statusBarColor: '#00000000',
+        navigationBarColor: '#00000000',
+        statusBarContentColor: palette.systemBarContent,
+        navigationBarContentColor: palette.systemBarContent
+      });
     } catch (error) {
-      hilog.warn(DOMAIN, TAG, 'Failed to resolve window background. Cause: %{public}s', JSON.stringify(error));
-      return '#FF000000';
+      hilog.error(DOMAIN, TAG, 'Failed to apply window appearance. Cause: %{public}s', JSON.stringify(error));
     }
   }
 
   onWindowStageDestroy(): void {
+    this.mainWindow = undefined;
     hilog.info(DOMAIN, TAG, 'Window stage destroyed');
   }
 
   onForeground(): void {
+    appAppearanceController.notifyChanged();
+    this.applyMainWindowAppearance();
     hilog.info(DOMAIN, TAG, 'Ability entered foreground');
   }
 

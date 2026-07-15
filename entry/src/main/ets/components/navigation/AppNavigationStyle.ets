@@ -8,19 +8,21 @@ import {
   hdsMaterial
 } from '@kit.UIDesignKit';
 import { ComponentContent } from '@kit.ArkUI';
+import { AppAppearancePalette } from '../../appearance/AppAppearance';
 import { AppPrimaryTitleParams } from './AppPrimaryTitleContent';
 
 export class AppNavigationStyle {
-  static primaryTitleBar(title: string, menu?: HdsNavigationMenuContentOptions,
+  static primaryTitleBar(title: string, palette: AppAppearancePalette, menu?: HdsNavigationMenuContentOptions,
     titleContent?: ComponentContent<AppPrimaryTitleParams>): HdsNavigationTitleBarOptions {
-    return AppNavigationStyle.createTitleBar(title, true, true, menu, titleContent);
+    return AppNavigationStyle.createTitleBar(title, palette, true, true, menu, titleContent);
   }
 
-  static secondaryTitleBar(title: string): HdsNavigationTitleBarOptions {
-    return AppNavigationStyle.createTitleBar(title, true, true);
+  static secondaryTitleBar(title: string, palette: AppAppearancePalette): HdsNavigationTitleBarOptions {
+    return AppNavigationStyle.createTitleBar(title, palette, true, true);
   }
 
-  private static createTitleBar(title: string, avoidLayoutSafeArea: boolean, enableComponentSafeArea: boolean,
+  private static createTitleBar(title: string, palette: AppAppearancePalette,
+    avoidLayoutSafeArea: boolean, enableComponentSafeArea: boolean,
     menu?: HdsNavigationMenuContentOptions,
     titleContent?: ComponentContent<AppPrimaryTitleParams>): HdsNavigationTitleBarOptions {
     const content: TitleBarContentOptions = { menu: menu };
@@ -38,8 +40,8 @@ export class AppNavigationStyle {
           enableScrollEffect: true,
           scrollEffectType: ScrollEffectType.IMMERSIVE_GRADIENT_BLUR
         },
-        originalStyle: AppNavigationStyle.foregroundStyle(),
-        scrollEffectStyle: AppNavigationStyle.foregroundStyle(),
+        originalStyle: AppNavigationStyle.foregroundStyle(palette),
+        scrollEffectStyle: AppNavigationStyle.foregroundStyle(palette),
         systemMaterialEffect: {
           materialType: hdsMaterial.MaterialType.ADAPTIVE,
           materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
@@ -48,23 +50,23 @@ export class AppNavigationStyle {
     };
   }
 
-  private static foregroundStyle(): HdsNavigationTitleBarStyle {
+  private static foregroundStyle(palette: AppAppearancePalette): HdsNavigationTitleBarStyle {
     const contentStyle: HdsTitleBarContentStyle = {
       titleStyle: {
-        mainTitleColor: $r('app.color.text_primary'),
-        subTitleColor: $r('app.color.text_secondary')
+        mainTitleColor: palette.titlePrimary,
+        subTitleColor: palette.titleSecondary
       },
       menuStyle: {
-        iconColor: $r('app.color.text_primary'),
-        textColor: $r('app.color.text_primary')
+        iconColor: palette.navigationActionForeground,
+        textColor: palette.navigationActionForeground
       },
       backIconStyle: {
-        iconColor: $r('app.color.text_primary'),
-        textColor: $r('app.color.text_primary')
+        iconColor: palette.navigationActionForeground,
+        textColor: palette.navigationActionForeground
       },
       subIconStyle: {
-        iconColor: $r('app.color.text_primary'),
-        textColor: $r('app.color.text_primary')
+        iconColor: palette.navigationActionForeground,
+        textColor: palette.navigationActionForeground
       }
     };
     return { contentStyle: contentStyle };

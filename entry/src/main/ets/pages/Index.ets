@@ -9,6 +9,7 @@ import {
   HdsTabs,
   HdsTabsController,
   HdsTabsFloatingStyle,
+  TextStyleMode,
   hdsMaterial
 } from '@kit.UIDesignKit';
 import { ComponentContent, curves, SymbolGlyphModifier, window } from '@kit.ArkUI';
@@ -50,6 +51,11 @@ import {
   MoreNavigationItem,
   MoreRoute
 } from '../components/navigation/MoreNavigation';
+import {
+  AppAppearanceListener,
+  AppAppearancePalette,
+  appAppearanceController
+} from '../appearance/AppAppearance';
 
 interface NavigationItem {
   label: string;
@@ -67,6 +73,7 @@ const MORE_TAB_INDEX: number = 3;
 struct Index {
   @State statusBarAvoidHeight: number = 0;
   @State navigationAvoidHeight: number = 0;
+  @State appearancePalette: AppAppearancePalette = AppAppearancePalette.fallback();
   @State selectedTabIndex: number = 0;
   @State selectedMoreRouteId: string = MoreRoute.LIBRARY_MANAGEMENT;
   @State libraryStore: LibraryStore = new LibraryStore();
@@ -105,6 +112,9 @@ struct Index {
   private avoidAreaObserverEpoch: number = 0;
   private avoidAreaObserverActive: boolean = false;
   private mainWindow?: window.Window;
+  private readonly appearanceListener: AppAppearanceListener = (_epoch: number): void => {
+    this.refreshAppearance();
+  };
   private readonly avoidAreaChangeCallback = (options: window.AvoidAreaOptions): void => {
     if (this.avoidAreaObserverActive) {
       this.applyAvoidArea(options.type, options.area);
@@ -136,6 +146,8 @@ struct Index {
   ];
 
   aboutToAppear(): void {
+    appAppearanceController.addListener(this.appearanceListener);
+    this.refreshAppearance();
     this.initializePrimaryTitleContents();
     this.avoidAreaObserverActive = true;
     const observerEpoch = ++this.avoidAreaObserverEpoch;
@@ -155,6 +167,7 @@ struct Index {
   }
 
   aboutToDisappear(): void {
+    appAppearanceController.removeListener(this.appearanceListener);
     this.avoidAreaObserverActive = false;
     ++this.avoidAreaObserverEpoch;
     if (this.mainWindow !== undefined) {
@@ -178,7 +191,7 @@ struct Index {
         this.primaryTitleContents[index] = new ComponentContent(
           uiContext,
           wrapBuilder(AppPrimaryTitleContent),
-          new AppPrimaryTitleParams(this.navigationItems[index].label)
+          new AppPrimaryTitleParams(this.navigationItems[index].label, this.appearancePalette.titlePrimary)
         );
       }
     }
@@ -187,9 +200,28 @@ struct Index {
         this.moreTitleContents[index] = new ComponentContent(
           uiContext,
           wrapBuilder(AppPrimaryTitleContent),
-          new AppPrimaryTitleParams(MORE_NAVIGATION_ITEMS[index].label)
+          new AppPrimaryTitleParams(MORE_NAVIGATION_ITEMS[index].label, this.appearancePalette.titlePrimary)
         );
       }
+    }
+  }
+
+  private refreshAppearance(): void {
+    const context = this.getUIContext().getHostContext();
+    if (context === undefined) {
+      return;
+    }
+    const palette = AppAppearancePalette.resolve(context as common.UIAbilityContext);
+    this.appearancePalette = palette;
+    for (let index = 0; index < this.primaryTitleContents.length; index += 1) {
+      this.primaryTitleContents[index]?.update(
+        new AppPrimaryTitleParams(this.navigationItems[index].label, palette.titlePrimary)
+      );
+    }
+    for (let index = 0; index < this.moreTitleContents.length; index += 1) {
+      this.moreTitleContents[index]?.update(
+        new AppPrimaryTitleParams(MORE_NAVIGATION_ITEMS[index].label, palette.titlePrimary)
+      );
     }
   }
 
@@ -414,20 +446,19 @@ struct Index {
       });
   }
 
-  private sortTitleMenu(index: number): HdsNavigationMenuContentOptions | undefined {
+  private libraryTitleMenu(index: number): HdsNavigationMenuContentOptions | undefined {
     if (index !== 1 && index !== 2) {
       return undefined;
     }
     const targetId = index === 1 ? TRACK_SORT_MENU_ID : ALBUM_SORT_MENU_ID;
-    const descending = index === 1 ?
-      this.libraryStore.trackSortDirection === SortDirection.DESCENDING :
-      this.libraryStore.albumSortDirection === SortDirection.DESCENDING;
+    const countLabel = index === 1 ?
+      `${this.libraryStore.statistics.trackCount} 首` : `${this.libraryStore.statistics.albumCount} 张`;
     return {
       maxCount: 1,
       value: [{
         content: {
-          label: '排序',
-          icon: descending ? $r('sys.symbol.arrow_down') : $r('sys.symbol.arrow_up'),
+          label: countLabel,
+          type: TextStyleMode.NORMAL,
           componentId: targetId,
           action: () => this.openSortMenu(index, targetId)
         }
@@ -780,7 +811,8 @@ struct Index {
       .backgroundColor($r('app.color.page_background'))
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryTitleBar(
-        MORE_NAVIGATION_ITEMS[this.moreNavigationIndex(name)].label
+        MORE_NAVIGATION_ITEMS[this.moreNavigationIndex(name)].label,
+        this.appearancePalette
       ))
       .bindToScrollable([this.libraryManagementScroller])
     }
@@ -799,7 +831,8 @@ struct Index {
     .hideBackButton(true)
     .titleBar(AppNavigationStyle.primaryTitleBar(
       this.navigationItems[index].label,
-      this.sortTitleMenu(index),
+      this.appearancePalette,
+      this.libraryTitleMenu(index),
       this.primaryTitleContents[index]
     ))
     .bindToScrollable([this.pageScrollers[index]])
@@ -819,6 +852,7 @@ struct Index {
     .hideBackButton(true)
     .titleBar(AppNavigationStyle.primaryTitleBar(
       item.label,
+      this.appearancePalette,
       undefined,
       this.moreTitleContents[index]
     ))

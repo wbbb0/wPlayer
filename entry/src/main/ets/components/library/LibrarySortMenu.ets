@@ -1,3 +1,5 @@
+import { SymbolGlyphModifier } from '@kit.ArkUI';
+
 export class LibrarySortMenuParams {
   readonly labels: Array<string>;
   readonly selectedIndex: number;
@@ -21,7 +23,8 @@ export function LibrarySortMenu(params: LibrarySortMenuParams) {
     ForEach(params.labels, (label: string, index: number) => {
       MenuItem({
         content: label,
-        labelInfo: index === params.selectedIndex ? '已选择' : ''
+        symbolEndIcon: index === params.selectedIndex ?
+          new SymbolGlyphModifier($r('sys.symbol.checkmark')) : undefined
       })
         .onClick(() => {
           params.onFieldChange(index);

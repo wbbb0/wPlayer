@@ -32,8 +32,8 @@ export struct PlayerHeroArtwork {
     return ArtworkLayout.containedSize(
       this.playerStore.currentTrack?.artworkWidth ?? 0,
       this.playerStore.currentTrack?.artworkHeight ?? 0,
-      PlayerLayoutSpec.FULL_ARTWORK_SIZE,
-      PlayerLayoutSpec.FULL_ARTWORK_SIZE
+      this.slotSize,
+      this.slotSize
     ).width;
   }
 
@@ -41,8 +41,8 @@ export struct PlayerHeroArtwork {
     return ArtworkLayout.containedSize(
       this.playerStore.currentTrack?.artworkWidth ?? 0,
       this.playerStore.currentTrack?.artworkHeight ?? 0,
-      PlayerLayoutSpec.FULL_ARTWORK_SIZE,
-      PlayerLayoutSpec.FULL_ARTWORK_SIZE
+      this.slotSize,
+      this.slotSize
     ).height;
   }
 

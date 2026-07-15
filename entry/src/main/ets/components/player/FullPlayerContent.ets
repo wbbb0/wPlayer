@@ -35,6 +35,15 @@ export struct FullPlayerContent {
   onClose: () => void = (): void => {};
   onArtworkTarget: (target: PlayerPoint) => void = (_target: PlayerPoint): void => {};
 
+  private artworkSlotSize(): number {
+    return PlayerLayoutSpec.fullArtworkSize(
+      this.rootFrame.width,
+      this.rootFrame.height,
+      this.topInset,
+      this.bottomInset
+    );
+  }
+
   build() {
     Column() {
       Row() {
@@ -54,15 +63,6 @@ export struct FullPlayerContent {
         .onClick(() => {
           this.onClose();
         })
-
-        Text('正在播放')
-          .fontSize(16)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_primary'))
-          .layoutWeight(1)
-          .textAlign(TextAlign.Center)
-
-        Blank().width(44)
       }
       .width('100%')
 
@@ -72,14 +72,14 @@ export struct FullPlayerContent {
         if (this.showArtwork) {
           PlayerHeroArtwork({
             playerStore: this.playerStore,
-            slotSize: PlayerLayoutSpec.FULL_ARTWORK_SIZE,
+            slotSize: this.artworkSlotSize(),
             cornerRadius: PlayerLayoutSpec.FULL_ARTWORK_RADIUS
           })
         }
       }
-      .width(PlayerLayoutSpec.FULL_ARTWORK_SIZE)
-      .height(PlayerLayoutSpec.FULL_ARTWORK_SIZE)
-      .borderRadius(PlayerLayoutSpec.FULL_ARTWORK_SIZE / 2)
+      .width(this.artworkSlotSize())
+      .height(this.artworkSlotSize())
+      .borderRadius(this.artworkSlotSize() / 2)
       .onAreaChange((_oldValue: Area, newValue: Area) => {
         if (!this.measuresArtworkTarget) {
           return;
@@ -98,39 +98,49 @@ export struct FullPlayerContent {
 
       Blank().layoutWeight(1)
 
-      Column({ space: 7 }) {
-        Text(this.playerStore.currentTrack?.title ?? '尚未播放')
-          .fontSize(26)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_primary'))
+      Column({ space: 5 }) {
+        Row({ space: 8 }) {
+          Text(this.playerStore.currentTrack?.title ?? '尚未播放')
+            .fontSize(26)
+            .fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.text_primary'))
+            .maxLines(1)
+            .layoutWeight(1)
+
+          Row({ space: 2 }) {
+            PlayerModeButton({ playerStore: this.playerStore, action: PlayerModeAction.SHUFFLE })
+            PlayerModeButton({ playerStore: this.playerStore, action: PlayerModeAction.REPEAT })
+          }
+          .alignItems(VerticalAlign.Center)
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
+
         Text(this.playerStore.currentTrack?.artistDisplay || '选择一首音乐开始播放')
           .fontSize(15)
           .fontColor($r('app.color.text_secondary'))
+          .maxLines(1)
       }
       .alignItems(HorizontalAlign.Start)
       .width('100%')
 
-      Row() {
-        PlayerTransportButton({ action: PlayerTransportAction.PREVIOUS, buttonSize: 54 })
-        PlayerPlaybackButton({ playerStore: this.playerStore, buttonSize: 74 })
-        PlayerTransportButton({ action: PlayerTransportAction.NEXT, buttonSize: 54 })
+      Row({ space: 16 }) {
+        PlayerTransportButton({ action: PlayerTransportAction.PREVIOUS, buttonSize: 52 })
+        PlayerPlaybackButton({ playerStore: this.playerStore, buttonSize: 64 })
+        PlayerTransportButton({ action: PlayerTransportAction.NEXT, buttonSize: 52 })
       }
-      .justifyContent(FlexAlign.SpaceAround)
+      .justifyContent(FlexAlign.Center)
       .alignItems(VerticalAlign.Center)
       .width('100%')
-      .margin({ top: 24 })
-
-      Row() {
-        PlayerModeButton({ playerStore: this.playerStore, action: PlayerModeAction.SHUFFLE })
-        PlayerModeButton({ playerStore: this.playerStore, action: PlayerModeAction.REPEAT })
-      }
-      .width('100%')
-      .justifyContent(FlexAlign.SpaceBetween)
-      .padding({ left: 18, right: 18 })
-      .margin({ bottom: 16 })
+      .margin({ top: 18, bottom: 12 })
     }
     .width('100%')
     .height('100%')
-    .padding({ left: 28, right: 28, top: this.topInset + 18, bottom: this.bottomInset + 10 })
+    .padding({
+      left: PlayerLayoutSpec.FULL_PLAYER_HORIZONTAL_INSET,
+      right: PlayerLayoutSpec.FULL_PLAYER_HORIZONTAL_INSET,
+      top: this.topInset + 18,
+      bottom: this.bottomInset + 10
+    })
   }
 }

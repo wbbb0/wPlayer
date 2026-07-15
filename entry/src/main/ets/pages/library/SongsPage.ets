@@ -8,14 +8,66 @@ import {
 } from '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
 
+enum SongRowFeedbackPhase {
+  IDLE,
+  HIGHLIGHTING,
+  RETURNING
+}
+
+class SongRowMotionSpec {
+  static readonly HIGHLIGHT_DURATION: number = 55;
+  static readonly RETURN_DURATION: number = 140;
+}
+
 @Component
 export struct SongsPage {
   @ObjectLink store: LibraryStore;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
+  @State rowFeedbackTrackId: number = -1;
+  @State rowFeedbackPhase: SongRowFeedbackPhase = SongRowFeedbackPhase.IDLE;
   onPlayTrack: (item: TrackListItem) => void = (_item: TrackListItem): void => {};
   scroller: Scroller = new Scroller();
   private readonly scrollBehavior: PageListBehavior = new PageListBehavior();
+  private rowFeedbackEpoch: number = 0;
+
+  private beginRowFeedback(trackId: number): void {
+    const epoch = ++this.rowFeedbackEpoch;
+    this.getUIContext().animateTo({
+      duration: SongRowMotionSpec.HIGHLIGHT_DURATION,
+      curve: Curve.EaseOut,
+      onFinish: () => {
+        this.finishRowFeedback(epoch);
+      }
+    }, () => {
+      this.rowFeedbackTrackId = trackId;
+      this.rowFeedbackPhase = SongRowFeedbackPhase.HIGHLIGHTING;
+    });
+  }
+
+  private finishRowFeedback(epoch: number): void {
+    if (epoch !== this.rowFeedbackEpoch) {
+      return;
+    }
+    this.rowFeedbackPhase = SongRowFeedbackPhase.RETURNING;
+    this.getUIContext().animateTo({
+      duration: SongRowMotionSpec.RETURN_DURATION,
+      curve: Curve.EaseOut,
+      onFinish: () => {
+        if (epoch === this.rowFeedbackEpoch) {
+          this.rowFeedbackPhase = SongRowFeedbackPhase.IDLE;
+        }
+      }
+    }, () => {
+      this.rowFeedbackTrackId = -1;
+    });
+  }
+
+  private isRowHighlighted(trackId: number): boolean {
+    return this.rowFeedbackTrackId === trackId &&
+      this.rowFeedbackPhase !== SongRowFeedbackPhase.IDLE;
+  }
+
   @Builder
   private EmptyState() {
     ListItem() {
@@ -75,9 +127,11 @@ export struct SongsPage {
               .width('100%')
               .padding({ left: 16, right: 16, top: 8, bottom: 8 })
               .borderRadius(16)
-              .backgroundColor($r('app.color.glass_surface_subtle'))
-              .clickEffect({ level: ClickEffectLevel.LIGHT })
+              .backgroundColor(this.isRowHighlighted(item.id) ?
+                $r('app.color.glass_surface_strong') : $r('app.color.glass_surface_subtle'))
+              .hoverEffect(HoverEffect.None)
               .onClick(() => {
+                this.beginRowFeedback(item.id);
                 this.onPlayTrack(item);
               })
             }

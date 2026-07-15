@@ -302,8 +302,10 @@ struct Index {
     return fallback;
   }
 
-  private freezeMiniPlayerGeometry(): void {
-    this.returnToExpandedMiniBar = this.miniBarExpanded;
+  private freezeMiniPlayerGeometry(captureReturnStyle: boolean = true): void {
+    if (captureReturnStyle) {
+      this.returnToExpandedMiniBar = this.miniBarExpanded;
+    }
     try {
       const uiContext = this.getUIContext();
       const componentUtils = uiContext.getComponentUtils();
@@ -403,14 +405,23 @@ struct Index {
     return start + (end - start) * progress;
   }
 
+  private fullArtworkSlotSize(): number {
+    return PlayerLayoutSpec.fullArtworkSize(
+      this.frozenRootFrame.width,
+      this.frozenRootFrame.height,
+      this.statusBarAvoidHeight,
+      this.navigationAvoidHeight
+    );
+  }
+
   private containedArtworkWidth(width: number, height: number): number {
     return ArtworkLayout.containedSize(width, height,
-      PlayerLayoutSpec.FULL_ARTWORK_SIZE, PlayerLayoutSpec.FULL_ARTWORK_SIZE).width;
+      this.fullArtworkSlotSize(), this.fullArtworkSlotSize()).width;
   }
 
   private containedArtworkHeight(width: number, height: number): number {
     return ArtworkLayout.containedSize(width, height,
-      PlayerLayoutSpec.FULL_ARTWORK_SIZE, PlayerLayoutSpec.FULL_ARTWORK_SIZE).height;
+      this.fullArtworkSlotSize(), this.fullArtworkSlotSize()).height;
   }
 
   private morphTargetArtworkWidth(): number {
@@ -449,6 +460,20 @@ struct Index {
 
   private isCurrentMorphTransition(epoch: number): boolean {
     return epoch === this.morphTransitionEpoch;
+  }
+
+  private morphVerticalTravelDistance(): number {
+    return Math.max(
+      1,
+      this.frozenMiniPlayerFrame.y - this.frozenRootFrame.y
+    );
+  }
+
+  private morphGestureCompletionProgress(): number {
+    return Math.min(
+      PlayerMotionSpec.GESTURE_COMPLETION_FRACTION,
+      PlayerMotionSpec.GESTURE_COMPLETION_MAX_DISTANCE / this.morphVerticalTravelDistance()
+    );
   }
 
   private beginMorphBackgroundHandoff(epoch: number): void {
@@ -524,7 +549,7 @@ struct Index {
         this.playerMorphBackgroundOpacity = 1;
       }
       this.playerExpandProgress = this.clamp(
-        upwardDistance / PlayerMotionSpec.DRAG_DISTANCE,
+        upwardDistance / this.morphVerticalTravelDistance(),
         0,
         1
       );
@@ -538,14 +563,17 @@ struct Index {
     const shouldChangeTrack = wasHorizontalGesture && Math.abs(swipeOffset) >=
       PlayerMotionSpec.HORIZONTAL_HAPTIC_THRESHOLD;
     const shouldExpand = wasVerticalGesture &&
-      this.playerExpandProgress >= PlayerMotionSpec.EXPAND_THRESHOLD;
+      this.playerExpandProgress >= this.morphGestureCompletionProgress();
     const duration = shouldExpand ? PlayerMotionSpec.OPEN_DURATION : PlayerMotionSpec.CANCEL_DURATION;
     const epoch = wasVerticalGesture ? this.beginMorphPhase(
       shouldExpand ? PlayerMorphPhase.OPENING : PlayerMorphPhase.CLOSING
     ) : this.morphTransitionEpoch;
     this.getUIContext().animateTo({
       duration: duration,
-      curve: shouldExpand ? curves.springMotion(0.5, 0.7) : Curve.EaseOut,
+      curve: shouldExpand ? curves.springMotion(
+        PlayerMotionSpec.OPEN_SPRING_RESPONSE,
+        PlayerMotionSpec.OPEN_SPRING_DAMPING
+      ) : Curve.EaseOut,
       onFinish: () => {
         if (shouldChangeTrack) {
           if (swipeOffset < 0) {
@@ -583,7 +611,10 @@ struct Index {
     this.playerMorphBackgroundOpacity = 1;
     this.getUIContext().animateTo({
       duration: PlayerMotionSpec.OPEN_DURATION,
-      curve: curves.springMotion(0.5, 0.7),
+      curve: curves.springMotion(
+        PlayerMotionSpec.OPEN_SPRING_RESPONSE,
+        PlayerMotionSpec.OPEN_SPRING_DAMPING
+      ),
       onFinish: () => {
         if (this.isCurrentMorphTransition(epoch)) {
           this.playerMorphPhase = PlayerMorphPhase.OPEN;
@@ -601,21 +632,83 @@ struct Index {
       this.playerMorphPhase === PlayerMorphPhase.BACKGROUND_HANDOFF) {
       return;
     }
-    if (this.miniBarExpanded !== this.returnToExpandedMiniBar) {
-      this.compactTabsController.applyMiniBarStyle(
-        this.returnToExpandedMiniBar ? HdsBarStyle.EXPAND : HdsBarStyle.COLLAPSE
-      );
-    }
+    this.restoreReturnMiniBarStyle();
     this.freezeMorphArtworkSource();
+    this.animateFullPlayerClose();
+  }
+
+  private restoreReturnMiniBarStyle(): void {
+    if (this.miniBarExpanded === this.returnToExpandedMiniBar) {
+      return;
+    }
+    this.compactTabsController.applyMiniBarStyle(
+      this.returnToExpandedMiniBar ? HdsBarStyle.EXPAND : HdsBarStyle.COLLAPSE
+    );
+  }
+
+  private animateFullPlayerClose(): void {
     const epoch = this.beginMorphPhase(PlayerMorphPhase.CLOSING);
     this.getUIContext().animateTo({
       duration: PlayerMotionSpec.CLOSE_DURATION,
-      curve: Curve.EaseOut,
+      curve: curves.cubicBezierCurve(
+        PlayerMotionSpec.CLOSE_CURVE_X1,
+        PlayerMotionSpec.CLOSE_CURVE_Y1,
+        PlayerMotionSpec.CLOSE_CURVE_X2,
+        PlayerMotionSpec.CLOSE_CURVE_Y2
+      ),
       onFinish: () => {
         this.beginMorphBackgroundHandoff(epoch);
       }
     }, () => {
       this.playerExpandProgress = 0;
+    });
+  }
+
+  private beginFullPlayerGesture(): void {
+    if (this.playerMorphPhase !== PlayerMorphPhase.OPEN) {
+      return;
+    }
+    this.freezeMiniPlayerGeometry(false);
+    this.freezeMorphArtworkSource();
+    this.beginMorphPhase(PlayerMorphPhase.DRAGGING);
+    this.playerMorphBackgroundOpacity = 1;
+  }
+
+  private updateFullPlayerGesture(event: GestureEvent): void {
+    if (this.playerMorphPhase !== PlayerMorphPhase.DRAGGING) {
+      return;
+    }
+    const downwardDistance = Math.max(0, event.offsetY);
+    this.playerExpandProgress = 1 - this.clamp(
+      downwardDistance / this.morphVerticalTravelDistance(),
+      0,
+      1
+    );
+  }
+
+  private finishFullPlayerGesture(): void {
+    if (this.playerMorphPhase !== PlayerMorphPhase.DRAGGING) {
+      return;
+    }
+    const shouldClose = this.playerExpandProgress <= 1 - this.morphGestureCompletionProgress();
+    if (shouldClose) {
+      this.restoreReturnMiniBarStyle();
+      this.animateFullPlayerClose();
+      return;
+    }
+    const epoch = this.beginMorphPhase(PlayerMorphPhase.OPENING);
+    this.getUIContext().animateTo({
+      duration: PlayerMotionSpec.CLOSE_CANCEL_DURATION,
+      curve: Curve.EaseOut,
+      onFinish: () => {
+        if (!this.isCurrentMorphTransition(epoch)) {
+          return;
+        }
+        this.playerMorphPhase = PlayerMorphPhase.OPEN;
+        this.releaseMorphArtworkSource();
+      }
+    }, () => {
+      this.playerExpandProgress = 1;
     });
   }
 
@@ -750,6 +843,37 @@ struct Index {
   }
 
   @Builder
+  private FullPlayerOverlay() {
+    Stack() {
+      this.MorphPlayer()
+
+      Stack() {
+        this.MorphArtwork()
+      }
+      .width('100%')
+      .height('100%')
+      .hitTestBehavior(HitTestMode.None)
+    }
+    .width('100%')
+    .height('100%')
+    .parallelGesture(
+      PanGesture({ direction: PanDirection.Vertical, distance: 3 })
+        .onActionStart(() => {
+          this.beginFullPlayerGesture();
+        })
+        .onActionUpdate((event: GestureEvent) => {
+          this.updateFullPlayerGesture(event);
+        })
+        .onActionEnd(() => {
+          this.finishFullPlayerGesture();
+        })
+        .onActionCancel(() => {
+          this.finishFullPlayerGesture();
+        })
+    )
+  }
+
+  @Builder
   private MorphArtwork() {
     Stack() {
       Image(this.morphArtworkSource())
@@ -773,12 +897,12 @@ struct Index {
       x: this.morphValue(
         this.frozenMiniPlayerFrame.x + PlayerLayoutSpec.MINI_ARTWORK_INSET,
         this.frozenArtworkTarget.x +
-          (PlayerLayoutSpec.FULL_ARTWORK_SIZE - this.morphTargetArtworkWidth()) / 2
+          (this.fullArtworkSlotSize() - this.morphTargetArtworkWidth()) / 2
       ),
       y: this.morphValue(
         this.frozenMiniPlayerFrame.y + PlayerLayoutSpec.MINI_ARTWORK_INSET,
         this.frozenArtworkTarget.y +
-          (PlayerLayoutSpec.FULL_ARTWORK_SIZE - this.morphTargetArtworkHeight()) / 2
+          (this.fullArtworkSlotSize() - this.morphTargetArtworkHeight()) / 2
       )
     })
   }
@@ -813,16 +937,8 @@ struct Index {
       this.NavigationShell()
 
       if (this.isMorphActive()) {
-        this.MorphPlayer()
+        this.FullPlayerOverlay()
       }
-
-      Stack() {
-        this.MorphArtwork()
-      }
-      .width('100%')
-      .height('100%')
-      .opacity(this.isMorphActive() ? 1 : 0)
-      .hitTestBehavior(HitTestMode.None)
     }
     .width('100%')
     .height('100%')

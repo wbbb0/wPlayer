@@ -26,12 +26,19 @@ export enum PlayerMorphPhase {
 }
 
 export class PlayerMotionSpec {
-  static readonly DRAG_DISTANCE: number = 280;
-  static readonly EXPAND_THRESHOLD: number = 0.28;
+  static readonly GESTURE_COMPLETION_FRACTION: number = 0.28;
+  static readonly GESTURE_COMPLETION_MAX_DISTANCE: number = 120;
   static readonly OPEN_DURATION: number = 420;
   static readonly CLOSE_DURATION: number = 340;
   static readonly CANCEL_DURATION: number = 280;
+  static readonly CLOSE_CANCEL_DURATION: number = 240;
   static readonly BACKGROUND_HANDOFF_DURATION: number = 140;
+  static readonly OPEN_SPRING_RESPONSE: number = 0.48;
+  static readonly OPEN_SPRING_DAMPING: number = 0.88;
+  static readonly CLOSE_CURVE_X1: number = 0.2;
+  static readonly CLOSE_CURVE_Y1: number = 0;
+  static readonly CLOSE_CURVE_X2: number = 0.1;
+  static readonly CLOSE_CURVE_Y2: number = 1;
   static readonly GESTURE_AXIS_LOCK_DISTANCE: number = 4;
   static readonly HORIZONTAL_SWIPE_RESISTANCE: number = 120;
   static readonly HORIZONTAL_HAPTIC_THRESHOLD: number = 48;
@@ -53,4 +60,17 @@ export class PlayerLayoutSpec {
   static readonly FULL_ARTWORK_SIZE: number = 286;
   static readonly FULL_ARTWORK_RADIUS: number = 10;
   static readonly MINI_ARTWORK_INSET: number = 4;
+  static readonly FULL_PLAYER_HORIZONTAL_INSET: number = 28;
+  static readonly FULL_PLAYER_NON_ARTWORK_HEIGHT: number = 256;
+
+  static fullArtworkSize(rootWidth: number, rootHeight: number,
+    topInset: number, bottomInset: number): number {
+    if (rootWidth <= 0 || rootHeight <= 0) {
+      return PlayerLayoutSpec.FULL_ARTWORK_SIZE;
+    }
+    const widthLimit = rootWidth - PlayerLayoutSpec.FULL_PLAYER_HORIZONTAL_INSET * 2;
+    const heightLimit = rootHeight - topInset - bottomInset -
+      PlayerLayoutSpec.FULL_PLAYER_NON_ARTWORK_HEIGHT;
+    return Math.max(1, Math.min(widthLimit, heightLimit));
+  }
 }

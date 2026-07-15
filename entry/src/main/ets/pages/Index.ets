@@ -6,8 +6,6 @@ import {
   HdsNavigation,
   HdsNavigationMenuContentOptions,
   HdsNavigationTitleMode,
-  HdsSideMenu,
-  HdsSideMenuMainItem,
   HdsTabs,
   HdsTabsController,
   HdsTabsFloatingStyle,
@@ -47,17 +45,22 @@ import { PlaylistsPage } from './library/PlaylistsPage';
 import { SongsPage } from './library/SongsPage';
 import { SettingsRepository } from '../settings/SettingsRepository';
 import { AppShellLayoutSpec } from '../components/layout/AppShellLayoutSpec';
+import {
+  MORE_NAVIGATION_ITEMS,
+  MoreNavigationItem,
+  MoreRoute
+} from '../components/navigation/MoreNavigation';
 
 interface NavigationItem {
   label: string;
   symbol: Resource;
 }
 
-const LIBRARY_MANAGEMENT_DESTINATION: string = 'libraryManagement';
 const TRACK_SORT_LABELS: Array<string> = ['名称', '专辑', '艺术家', '发行日期', '添加时间'];
 const ALBUM_SORT_LABELS: Array<string> = ['名称', '艺术家', '发行日期', '添加时间'];
 const TRACK_SORT_MENU_ID: string = 'track_sort_menu';
 const ALBUM_SORT_MENU_ID: string = 'album_sort_menu';
+const MORE_TAB_INDEX: number = 3;
 
 @Entry
 @Component
@@ -65,6 +68,7 @@ struct Index {
   @State statusBarAvoidHeight: number = 0;
   @State navigationAvoidHeight: number = 0;
   @State selectedTabIndex: number = 0;
+  @State selectedMoreRouteId: string = MoreRoute.LIBRARY_MANAGEMENT;
   @State libraryStore: LibraryStore = new LibraryStore();
   @State isPlaying: boolean = false;
   @State miniBarExpanded: boolean = false;
@@ -107,14 +111,19 @@ struct Index {
     }
   };
 
-  private readonly tabsController: HdsTabsController = new HdsTabsController();
+  private readonly compactTabsController: HdsTabsController = new HdsTabsController();
+  private readonly expandedTabsController: HdsTabsController = new HdsTabsController();
   private settingsRepository?: SettingsRepository;
   private readonly primaryTitleContents: Array<ComponentContent<AppPrimaryTitleParams> | undefined> = [
     undefined, undefined, undefined, undefined
   ];
+  private readonly moreTitleContents: Array<ComponentContent<AppPrimaryTitleParams> | undefined> =
+    new Array<ComponentContent<AppPrimaryTitleParams> | undefined>(MORE_NAVIGATION_ITEMS.length);
   private readonly tabPathStacks: Array<NavPathStack> = [
     new NavPathStack(), new NavPathStack(), new NavPathStack(), new NavPathStack()
   ];
+  private readonly expandedMorePathStacks: Array<NavPathStack> =
+    MORE_NAVIGATION_ITEMS.map(() => new NavPathStack());
   private readonly pageScrollers: Array<Scroller> = [
     new Scroller(), new Scroller(), new Scroller(), new Scroller()
   ];
@@ -124,24 +133,6 @@ struct Index {
     { label: '音乐', symbol: $r('sys.symbol.music_fill') },
     { label: '专辑', symbol: $r('sys.symbol.opticaldisc') },
     { label: '更多', symbol: $r('sys.symbol.square_fill_grid_2x2') }
-  ];
-  private readonly sideMenuItems: HdsSideMenuMainItem[] = [
-    new HdsSideMenuMainItem({
-      label: '播放列表',
-      symbol: new SymbolGlyphModifier($r('sys.symbol.music_note_list_fill'))
-    }),
-    new HdsSideMenuMainItem({
-      label: '音乐',
-      symbol: new SymbolGlyphModifier($r('sys.symbol.music_fill'))
-    }),
-    new HdsSideMenuMainItem({
-      label: '专辑',
-      symbol: new SymbolGlyphModifier($r('sys.symbol.opticaldisc'))
-    }),
-    new HdsSideMenuMainItem({
-      label: '更多',
-      symbol: new SymbolGlyphModifier($r('sys.symbol.square_fill_grid_2x2'))
-    })
   ];
 
   aboutToAppear(): void {
@@ -174,6 +165,10 @@ struct Index {
       this.primaryTitleContents[index]?.dispose();
       this.primaryTitleContents[index] = undefined;
     }
+    for (let index = 0; index < this.moreTitleContents.length; index += 1) {
+      this.moreTitleContents[index]?.dispose();
+      this.moreTitleContents[index] = undefined;
+    }
   }
 
   private initializePrimaryTitleContents(): void {
@@ -184,6 +179,15 @@ struct Index {
           uiContext,
           wrapBuilder(AppPrimaryTitleContent),
           new AppPrimaryTitleParams(this.navigationItems[index].label)
+        );
+      }
+    }
+    for (let index = 0; index < MORE_NAVIGATION_ITEMS.length; index += 1) {
+      if (this.moreTitleContents[index] === undefined) {
+        this.moreTitleContents[index] = new ComponentContent(
+          uiContext,
+          wrapBuilder(AppPrimaryTitleContent),
+          new AppPrimaryTitleParams(MORE_NAVIGATION_ITEMS[index].label)
         );
       }
     }
@@ -247,6 +251,12 @@ struct Index {
       AppShellLayoutSpec.MINI_PLAYER_MEDIUM_WIDTH : AppShellLayoutSpec.MINI_PLAYER_LARGE_WIDTH;
   }
 
+  private expandedTabBarWidth(): number {
+    return this.usesPortraitSideNavigation() ?
+      AppShellLayoutSpec.EXPANDED_TAB_BAR_PORTRAIT_WIDTH :
+      AppShellLayoutSpec.EXPANDED_TAB_BAR_LANDSCAPE_WIDTH;
+  }
+
   private compactTabsFloatingStyle(): HdsTabsFloatingStyle {
     return {
       barWidth: {
@@ -275,24 +285,6 @@ struct Index {
         enableMiniBarBackground: true,
         enableMiniBarClip: true
       }
-    };
-  }
-
-  private wideTabsFloatingStyle(): HdsTabsFloatingStyle {
-    return {
-      barWidth: {
-        smallWidth: AppShellLayoutSpec.HIDDEN_TAB_BAR_WIDTH,
-        mediumWidth: AppShellLayoutSpec.HIDDEN_TAB_BAR_WIDTH,
-        largeWidth: AppShellLayoutSpec.HIDDEN_TAB_BAR_WIDTH
-      },
-      barSideMargin: AppShellLayoutSpec.WIDE_SIDE_MARGIN,
-      barBottomMargin: AppShellLayoutSpec.FLOATING_BAR_BOTTOM_MARGIN,
-      gradientMask: { maskColor: $r('app.color.float_bar_gradient_mask'), maskHeight: 84 },
-      systemMaterialEffect: {
-        materialType: hdsMaterial.MaterialType.ADAPTIVE,
-        materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
-      },
-      barOpacity: 0
     };
   }
 
@@ -333,16 +325,51 @@ struct Index {
     return Number.isInteger(index) && index >= 0 && index < this.navigationItems.length ? index : 0;
   }
 
-  private handleTabChange(index: number): void {
+  private handleCompactTabChange(index: number): void {
     const normalizedIndex = this.normalizeTabIndex(index);
     this.selectedTabIndex = normalizedIndex;
     this.settingsRepository?.setLastTabIndex(normalizedIndex);
   }
 
-  private handleTabBarClick(index: number): void {
+  private handleCompactTabBarClick(index: number): void {
     if (index === this.selectedTabIndex) {
       this.tabPathStacks[index].clear(true);
     }
+  }
+
+  private expandedTabIndex(): number {
+    if (this.selectedTabIndex < MORE_TAB_INDEX) {
+      return this.selectedTabIndex;
+    }
+    return MORE_TAB_INDEX + this.moreNavigationIndex();
+  }
+
+  private handleExpandedTabChange(index: number): void {
+    if (index < MORE_TAB_INDEX) {
+      const normalizedIndex = this.normalizeTabIndex(index);
+      this.selectedTabIndex = normalizedIndex;
+      this.settingsRepository?.setLastTabIndex(normalizedIndex);
+      return;
+    }
+    const moreIndex = index - MORE_TAB_INDEX;
+    if (moreIndex < 0 || moreIndex >= MORE_NAVIGATION_ITEMS.length) {
+      return;
+    }
+    this.selectedMoreRouteId = MORE_NAVIGATION_ITEMS[moreIndex].routeId;
+    this.selectedTabIndex = MORE_TAB_INDEX;
+    this.tabPathStacks[MORE_TAB_INDEX].clear(false);
+    this.settingsRepository?.setLastTabIndex(MORE_TAB_INDEX);
+  }
+
+  private handleExpandedTabBarClick(index: number): void {
+    if (index !== this.expandedTabIndex()) {
+      return;
+    }
+    if (index < MORE_TAB_INDEX) {
+      this.tabPathStacks[index].clear(true);
+      return;
+    }
+    this.expandedMorePathStacks[index - MORE_TAB_INDEX].clear(true);
   }
 
   private applyTrackSort(field: TrackSortField, direction: SortDirection): void {
@@ -408,12 +435,33 @@ struct Index {
     };
   }
 
-  private selectTabFromSideMenu(index: number): void {
-    if (index === this.selectedTabIndex) {
-      this.handleTabBarClick(index);
+  private moreNavigationIndex(routeId: string = this.selectedMoreRouteId): number {
+    for (let index = 0; index < MORE_NAVIGATION_ITEMS.length; index += 1) {
+      if (MORE_NAVIGATION_ITEMS[index].routeId === routeId) {
+        return index;
+      }
+    }
+    return 0;
+  }
+
+  private openMoreDestination(routeId: string): void {
+    const routeIndex = this.moreNavigationIndex(routeId);
+    const item = MORE_NAVIGATION_ITEMS[routeIndex];
+    if (item.routeId !== routeId) {
       return;
     }
-    this.tabsController.changeIndex(index);
+    this.selectedMoreRouteId = routeId;
+    this.tabPathStacks[MORE_TAB_INDEX].pushPath({ name: routeId });
+  }
+
+  private reconcileResponsiveNavigation(previousWideLayout: boolean, nextWideLayout: boolean): void {
+    if (previousWideLayout === nextWideLayout || this.selectedTabIndex !== MORE_TAB_INDEX) {
+      return;
+    }
+    this.tabPathStacks[MORE_TAB_INDEX].clear(false);
+    if (!nextWideLayout) {
+      this.tabPathStacks[MORE_TAB_INDEX].pushPath({ name: this.selectedMoreRouteId }, false);
+    }
   }
 
   private lengthToNumber(value: Length | undefined, fallback: number): number {
@@ -627,7 +675,7 @@ struct Index {
 
   private showFullPlayer(): void {
     if (!this.miniBarExpanded) {
-      this.tabsController.applyMiniBarStyle(HdsBarStyle.EXPAND);
+      this.compactTabsController.applyMiniBarStyle(HdsBarStyle.EXPAND);
       return;
     }
     this.freezeMiniPlayerGeometry();
@@ -653,7 +701,7 @@ struct Index {
       return;
     }
     if (this.miniBarExpanded !== this.returnToExpandedMiniBar) {
-      this.tabsController.applyMiniBarStyle(
+      this.compactTabsController.applyMiniBarStyle(
         this.returnToExpandedMiniBar ? HdsBarStyle.EXPAND : HdsBarStyle.COLLAPSE
       );
     }
@@ -694,33 +742,46 @@ struct Index {
       })
     } else {
       MorePage({
-        store: this.libraryStore,
         topInset: this.statusBarAvoidHeight,
         bottomInset: this.navigationAvoidHeight,
-        scroller: this.pageScrollers[3],
-        openLibraryManagement: () => {
-          this.tabPathStacks[3].pushPath({ name: LIBRARY_MANAGEMENT_DESTINATION });
+        scroller: this.pageScrollers[MORE_TAB_INDEX],
+        openDestination: (routeId: string) => {
+          this.openMoreDestination(routeId);
         }
       })
     }
   }
 
   @Builder
+  private LibraryManagementContent() {
+    LibraryManagementPage({
+      store: this.libraryStore,
+      topInset: this.statusBarAvoidHeight,
+      bottomInset: this.navigationAvoidHeight,
+      scroller: this.libraryManagementScroller
+    })
+  }
+
+  @Builder
+  private MoreRootPage(routeId: string) {
+    if (routeId === MoreRoute.LIBRARY_MANAGEMENT) {
+      this.LibraryManagementContent()
+    }
+  }
+
+  @Builder
   private DestinationBuilder(name: string, _param: Object) {
-    if (name === LIBRARY_MANAGEMENT_DESTINATION) {
+    if (name === MoreRoute.LIBRARY_MANAGEMENT) {
       HdsNavDestination() {
-        LibraryManagementPage({
-          store: this.libraryStore,
-          topInset: this.statusBarAvoidHeight,
-          bottomInset: this.navigationAvoidHeight,
-          scroller: this.libraryManagementScroller
-        })
+        this.LibraryManagementContent()
       }
       .width('100%')
       .height('100%')
       .backgroundColor($r('app.color.page_background'))
       .titleMode(HdsNavDestinationTitleMode.MINI)
-      .titleBar(AppNavigationStyle.secondaryTitleBar('音乐库管理'))
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        MORE_NAVIGATION_ITEMS[this.moreNavigationIndex(name)].label
+      ))
       .bindToScrollable([this.libraryManagementScroller])
     }
   }
@@ -742,6 +803,26 @@ struct Index {
       this.primaryTitleContents[index]
     ))
     .bindToScrollable([this.pageScrollers[index]])
+    .navDestination(this.DestinationBuilder)
+  }
+
+  @Builder
+  private ExpandedMoreNavigation(item: MoreNavigationItem, index: number) {
+    HdsNavigation(this.expandedMorePathStacks[index]) {
+      this.MoreRootPage(item.routeId)
+    }
+    .width('100%')
+    .height('100%')
+    .mode(NavigationMode.Stack)
+    .backgroundColor($r('app.color.page_background'))
+    .titleMode(HdsNavigationTitleMode.MINI)
+    .hideBackButton(true)
+    .titleBar(AppNavigationStyle.primaryTitleBar(
+      item.label,
+      undefined,
+      this.moreTitleContents[index]
+    ))
+    .bindToScrollable([this.libraryManagementScroller])
     .navDestination(this.DestinationBuilder)
   }
 
@@ -859,22 +940,56 @@ struct Index {
   }
 
   @Builder
-  private SideNavigation() {
-    HdsSideMenu({
-      items: this.sideMenuItems,
-      selectedIndex: this.selectedTabIndex,
-      $selectedIndex: (index: number) => {
-        this.selectTabFromSideMenu(index);
-      },
-      maxItemTextLines: 1
-    })
+  private ExpandedTabBar(item: NavigationItem | MoreNavigationItem, tabIndex: number) {
+    if (this.usesPortraitSideNavigation()) {
+      Column({ space: AppShellLayoutSpec.EXPANDED_TAB_ITEM_VERTICAL_GAP }) {
+        SymbolGlyph(item.symbol)
+          .fontSize(AppShellLayoutSpec.EXPANDED_TAB_ITEM_ICON_SIZE)
+          .fontColor([
+            this.expandedTabIndex() === tabIndex ?
+              $r('app.color.theme_accent') : $r('app.color.text_tertiary')
+          ])
+        Text(item.label)
+          .fontSize(AppShellLayoutSpec.EXPANDED_TAB_ITEM_LABEL_SIZE)
+          .fontWeight(this.expandedTabIndex() === tabIndex ? FontWeight.Medium : FontWeight.Normal)
+          .fontColor(
+            this.expandedTabIndex() === tabIndex ?
+              $r('app.color.theme_accent') : $r('app.color.text_secondary')
+          )
+          .maxLines(1)
+      }
       .width('100%')
-      .height('100%')
+      .height(AppShellLayoutSpec.EXPANDED_TAB_ITEM_PORTRAIT_HEIGHT)
+      .alignItems(HorizontalAlign.Center)
+      .justifyContent(FlexAlign.Center)
+    } else {
+      Row({ space: AppShellLayoutSpec.EXPANDED_TAB_ITEM_HORIZONTAL_GAP }) {
+        SymbolGlyph(item.symbol)
+          .fontSize(AppShellLayoutSpec.EXPANDED_TAB_ITEM_ICON_SIZE)
+          .fontColor([
+            this.expandedTabIndex() === tabIndex ?
+              $r('app.color.theme_accent') : $r('app.color.text_tertiary')
+          ])
+        Text(item.label)
+          .fontSize(AppShellLayoutSpec.EXPANDED_TAB_ITEM_LABEL_SIZE)
+          .fontWeight(this.expandedTabIndex() === tabIndex ? FontWeight.Medium : FontWeight.Normal)
+          .fontColor(
+            this.expandedTabIndex() === tabIndex ?
+              $r('app.color.theme_accent') : $r('app.color.text_secondary')
+          )
+          .maxLines(1)
+      }
+      .width('100%')
+      .height(AppShellLayoutSpec.EXPANDED_TAB_ITEM_LANDSCAPE_HEIGHT)
+      .padding({ left: AppShellLayoutSpec.EXPANDED_TAB_ITEM_LEADING_PADDING })
+      .alignItems(VerticalAlign.Center)
+      .justifyContent(FlexAlign.Start)
+    }
   }
 
   @Builder
-  private TabsContent() {
-    HdsTabs({ controller: this.tabsController, index: this.selectedTabIndex }) {
+  private CompactTabsContent() {
+    HdsTabs({ controller: this.compactTabsController, index: this.selectedTabIndex }) {
       ForEach(this.navigationItems, (item: NavigationItem, index: number) => {
         TabContent() {
           this.TabNavigation(index)
@@ -892,15 +1007,45 @@ struct Index {
     .barMode(BarMode.Fixed)
     .scrollable(false)
     .onChange((index: number) => {
-      this.handleTabChange(index);
+      this.handleCompactTabChange(index);
     })
     .onTabBarClick((index: number) => {
-      if (!this.usesWideLayout()) {
-        this.handleTabBarClick(index);
-      }
+      this.handleCompactTabBarClick(index);
     })
-    .barFloatingStyle(this.usesWideLayout() ?
-      this.wideTabsFloatingStyle() : this.compactTabsFloatingStyle())
+    .barFloatingStyle(this.compactTabsFloatingStyle())
+  }
+
+  @Builder
+  private ExpandedTabsContent() {
+    HdsTabs({ controller: this.expandedTabsController, index: this.expandedTabIndex() }) {
+      ForEach(this.navigationItems.slice(0, MORE_TAB_INDEX), (item: NavigationItem, index: number) => {
+        TabContent() {
+          this.TabNavigation(index)
+        }
+        .tabBar(this.ExpandedTabBar(item, index))
+      }, (item: NavigationItem) => item.label)
+
+      ForEach(MORE_NAVIGATION_ITEMS, (item: MoreNavigationItem, index: number) => {
+        TabContent() {
+          this.ExpandedMoreNavigation(item, index)
+        }
+        .tabBar(this.ExpandedTabBar(item, MORE_TAB_INDEX + index))
+      }, (item: MoreNavigationItem) => item.routeId)
+    }
+    .width('100%')
+    .height('100%')
+    .barPosition(BarPosition.Start)
+    .barWidth(this.expandedTabBarWidth())
+    .vertical(true)
+    .barMode(BarMode.Scrollable)
+    .scrollable(false)
+    .animationDuration(0)
+    .onChange((index: number) => {
+      this.handleExpandedTabChange(index);
+    })
+    .onTabBarClick((index: number) => {
+      this.handleExpandedTabBarClick(index);
+    })
   }
 
   @Builder
@@ -931,28 +1076,16 @@ struct Index {
   @Builder
   private PlayerTabs() {
     if (this.usesWideLayout()) {
-      Row() {
-        Stack() {
-          this.SideNavigation()
-        }
-        .width(AppShellLayoutSpec.WIDE_SIDE_MENU_WIDTH)
-        .height('100%')
-        .backgroundColor(Color.Transparent)
-        .clip(true)
-
-        Stack({ alignContent: Alignment.BottomEnd }) {
-          this.TabsContent()
-          this.WideMiniPlayerHost()
-        }
-        .id('player_tabs_wide_content_host')
-        .layoutWeight(1)
-        .height('100%')
+      Stack({ alignContent: Alignment.BottomEnd }) {
+        this.ExpandedTabsContent()
+        this.WideMiniPlayerHost()
       }
+      .id('player_tabs_wide_content_host')
       .width('100%')
       .height('100%')
     } else {
       Stack() {
-        this.TabsContent()
+        this.CompactTabsContent()
       }
       .id('player_tabs_compact_content_host')
       .width('100%')
@@ -1204,6 +1337,7 @@ struct Index {
       const nextWideLayout = this.usesWideLayout(nextWidth);
       if (previousWideLayout !== nextWideLayout) {
         this.miniBarExpanded = nextWideLayout;
+        this.reconcileResponsiveNavigation(previousWideLayout, nextWideLayout);
       }
     })
   }

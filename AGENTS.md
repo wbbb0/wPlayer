@@ -41,7 +41,9 @@ Use one application-level PlaybackEngine instance.
 
 ## UI and interaction requirements
 
-The primary navigation uses a floating horizontal HDS tab bar with four pages: playlists, songs, albums and more.
+On compact layouts, the primary navigation uses a floating horizontal HDS tab bar with four pages: playlists,
+songs, albums and more. On large and unfolded layouts, use a separate vertical HDS tab instance, omit the more tab
+and page, expose the destinations from more directly as tabs and present them as root pages without back buttons.
 
 - Prefer system Symbols when an appropriate icon exists. Use proper SVG resources for custom icons; do not use text characters as icons.
 - Keep the navigation and mini player as separate rounded glass surfaces.
@@ -75,6 +77,20 @@ The full-player transition is a shared-element morph:
   independently inside individual pages.
 - Keep navigation hosts at the persistent-tab shell boundary, with one controlled stack per tab and a shared route
   registry. Feature pages must not create private nested Navigation stacks.
+- Use separate HdsTabs instances and controllers for compact and expanded navigation; an HdsTabsController must not
+  control both instances. Keep each instance's TabContent collection structurally stable while it is active, and
+  keep selection, route IDs, controlled stacks and durable page state outside the responsive hosts.
+- Define destinations exposed by the compact more page and expanded side navigation in one shared registry. When
+  crossing a responsive breakpoint, promote the active compact destination to an expanded root page or demote the
+  expanded root back onto the more-tab stack so page identity and back behavior remain coherent.
+- The expanded vertical HdsTabs owns its side frame and divider. Do not add wrapper margins, borders or replacement
+  backgrounds around it; configure its built-in bar width and layout properties directly.
+- Keep expanded side-tab content switching immediate: disable both swipe navigation and the HdsTabs page transition
+  animation. Compact bottom-tab motion remains governed by its own HdsTabs instance.
+- Size the expanded HdsTabs bar responsively: use a compact icon-over-label bar in portrait unfolded layouts and a
+  wider icon-beside-label bar in landscape layouts. Keep portrait items centered; when landscape side-tab contents
+  must share a leading edge, keep the custom tab builder inside HdsTabs and let HdsTabs continue to own the side
+  frame and divider.
 - Page backgrounds are edge-to-edge solid theme colors. Scrollable viewports should cover the physical page and
   use shared content start/end offsets to keep initial and final items readable behind floating chrome; do not
   shrink List or Grid viewports with per-page top or bottom padding.

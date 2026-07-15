@@ -4,7 +4,15 @@ export class AppShellLayoutSpec {
   static readonly FLOATING_BAR_BOTTOM_MARGIN: number = 18;
   static readonly COMPACT_SIDE_MARGIN: number = 16;
   static readonly WIDE_SIDE_MARGIN: number = 32;
-  static readonly WIDE_SIDE_MENU_WIDTH: number = 160;
+  static readonly EXPANDED_TAB_BAR_PORTRAIT_WIDTH: number = 88;
+  static readonly EXPANDED_TAB_BAR_LANDSCAPE_WIDTH: number = 128;
+  static readonly EXPANDED_TAB_ITEM_LEADING_PADDING: number = 20;
+  static readonly EXPANDED_TAB_ITEM_ICON_SIZE: number = 24;
+  static readonly EXPANDED_TAB_ITEM_LABEL_SIZE: number = 12;
+  static readonly EXPANDED_TAB_ITEM_HORIZONTAL_GAP: number = 8;
+  static readonly EXPANDED_TAB_ITEM_VERTICAL_GAP: number = 2;
+  static readonly EXPANDED_TAB_ITEM_PORTRAIT_HEIGHT: number = 56;
+  static readonly EXPANDED_TAB_ITEM_LANDSCAPE_HEIGHT: number = 48;
   static readonly HIDDEN_TAB_BAR_WIDTH: number = 56;
 
   static readonly COMPACT_TAB_SMALL_WIDTH: number = 280;

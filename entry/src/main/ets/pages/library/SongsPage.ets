@@ -45,7 +45,7 @@ export struct SongsPage {
             .fontSize(18)
             .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.text_primary'))
-          Text('可在“更多 → 音乐库管理”中添加 MP3 或 FLAC')
+          Text('可在“更多 → 音乐库”中添加 MP3 或 FLAC')
             .fontSize(13)
             .fontColor($r('app.color.text_secondary'))
             .textAlign(TextAlign.Center)

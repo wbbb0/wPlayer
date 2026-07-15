@@ -41,6 +41,7 @@ import {
   AppAppearancePalette,
   appAppearanceController
 } from '../appearance/AppAppearance';
+import { PaletteMotionSpec } from '../appearance/PaletteMotionSpec';
 
 const MORE_TAB_INDEX: number = 3;
 
@@ -403,6 +404,10 @@ struct Index {
   private morphValue(start: number, end: number): number {
     const progress = this.clamp(this.playerExpandProgress, 0, 1);
     return start + (end - start) * progress;
+  }
+
+  private pageThemeTintOpacity(): number {
+    return this.appearancePalette.windowBackground.toUpperCase() === '#FF000000' ? 0.14 : 0.08;
   }
 
   private fullPlayerFrame(): PlayerFrame {
@@ -785,15 +790,9 @@ struct Index {
       }
       .width('100%')
       .height('100%')
-      .linearGradient({
-        angle: 180,
-        colors: [
-          [$r('app.color.full_player_gradient_start'), 0.0],
-          [$r('app.color.full_player_gradient_middle'), 0.55],
-          [$r('app.color.full_player_gradient_end'), 1.0]
-        ]
-      })
+      .backgroundColor(this.playerStore.palettePrimary)
       .opacity(this.playerMorphBackgroundOpacity)
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
 
       Stack() {
         Stack() {
@@ -937,6 +936,22 @@ struct Index {
 
   build() {
     Stack() {
+      Stack()
+        .width('100%')
+        .height('100%')
+        .backgroundColor($r('app.color.page_background'))
+        .hitTestBehavior(HitTestMode.None)
+
+      if (this.playerStore.hasCurrentTrack()) {
+        Stack()
+          .width('100%')
+          .height('100%')
+          .backgroundColor(this.playerStore.palettePrimary)
+          .opacity(this.pageThemeTintOpacity())
+          .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+          .hitTestBehavior(HitTestMode.None)
+      }
+
       this.FullPlayerGeometryProbe()
 
       this.NavigationShell()

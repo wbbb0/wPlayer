@@ -4,6 +4,8 @@ import { image } from '@kit.ImageKit';
 import { flattenArtworkPixels } from '../metadata/MediaFileTasks';
 import { ImportPerformanceTrace } from '../importer/ImportPerformanceTrace';
 import { ArtworkEncodingPolicy } from './ArtworkEncodingPolicy';
+import { ArtworkPalette, ArtworkPaletteExtractor } from './ArtworkPaletteExtractor';
+import { extractArtworkPaletteAsync } from './ArtworkPaletteTasks';
 
 const ARTWORK_DIRECTORY = 'artwork';
 const SMALL_MAX_EDGE = 256;
@@ -28,6 +30,7 @@ export interface ArtworkCacheResult {
   sourceHash: string;
   small: ArtworkCacheVariantResult;
   large: ArtworkCacheVariantResult;
+  palette: ArtworkPalette;
 }
 
 export class ArtworkCache {
@@ -55,6 +58,8 @@ export class ArtworkCache {
       ImportPerformanceTrace.mark('artwork_info', imageInfoStartedAt, traceFileId,
         `source_bytes=${sourceBytes.byteLength} width=${imageInfo.size.width} height=${imageInfo.size.height}`);
       ArtworkCache.validateSourceDimensions(imageInfo.size.width, imageInfo.size.height);
+      const palettePixels = await ArtworkPaletteExtractor.readPixelBuffer(imageSource, imageInfo.size);
+      const palette = await extractArtworkPaletteAsync(palettePixels);
       if (!ArtworkCache.supportsFormat(imagePacker.supportedFormats, 'jpeg')) {
         throw new Error('JPEG encoding is not supported on this device');
       }
@@ -68,7 +73,7 @@ export class ArtworkCache {
         ArtworkEncodingPolicy.MIME_TYPE, ArtworkEncodingPolicy.QUALITY,
         ArtworkEncodingPolicy.EXTENSION, 'large', traceFileId
       );
-      return { sourceHash: sourceHash, small: small, large: large };
+      return { sourceHash: sourceHash, small: small, large: large, palette: palette };
     } finally {
       try {
         await imagePacker.release();

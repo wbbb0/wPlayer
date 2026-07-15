@@ -153,6 +153,9 @@ export interface TrackListItem {
   artworkPath: string;
   artworkWidth: number;
   artworkHeight: number;
+  palettePrimary: string;
+  paletteSecondary: string;
+  paletteAccent: string;
   sectionKey: string;
 }
 
@@ -165,6 +168,9 @@ export interface AlbumListItem {
   artworkPath: string;
   artworkWidth: number;
   artworkHeight: number;
+  palettePrimary: string;
+  paletteSecondary: string;
+  paletteAccent: string;
   sectionKey: string;
 }
 

@@ -67,7 +67,9 @@ export class MusicLibraryQueries {
         COALESCE(t.track_number, 0), COALESCE(t.disc_number, 0),
         COALESCE(a.small_hash, ''), COALESCE(a.small_path, ''),
         COALESCE(a.large_hash, ''), COALESCE(a.large_path, ''),
-        COALESCE(a.large_width, 0), COALESCE(a.large_height, 0), ${sectionColumn}
+        COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
+        COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
+        COALESCE(a.palette_accent, '#FFFFB347'), ${sectionColumn}
        FROM track t LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
        ORDER BY ${orderClause}`
     );
@@ -88,7 +90,10 @@ export class MusicLibraryQueries {
           artworkPath: resultSet.getString(10),
           artworkWidth: resultSet.getLong(11),
           artworkHeight: resultSet.getLong(12),
-          sectionKey: resultSet.getString(13)
+          palettePrimary: resultSet.getString(13),
+          paletteSecondary: resultSet.getString(14),
+          paletteAccent: resultSet.getString(15),
+          sectionKey: resultSet.getString(16)
         });
       }
     } finally {
@@ -108,6 +113,8 @@ export class MusicLibraryQueries {
         m.authorization_persisted, COALESCE(a.small_hash, ''), COALESCE(a.small_path, ''),
         COALESCE(a.large_hash, ''), COALESCE(a.large_path, ''),
         COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
+        COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
+        COALESCE(a.palette_accent, '#FFFFB347'),
         COALESCE(ta.picture_type, 0), COALESCE(ta.mime_type, ''), COALESCE(ta.description, ''),
         COALESCE(ta.width, 0), COALESCE(ta.height, 0), COALESCE(ta.color_depth, 0),
         COALESCE(ta.byte_offset, 0), COALESCE(ta.byte_length, 0), COALESCE(ta.payload_offset, 0),
@@ -127,7 +134,7 @@ export class MusicLibraryQueries {
       if (!resultSet.goToNextRow()) {
         return undefined;
       }
-      const byteLength = resultSet.getLong(24);
+      const byteLength = resultSet.getLong(27);
       const track: PlaybackTrack = {
         id: resultSet.getLong(0),
         title: resultSet.getString(1),
@@ -145,21 +152,24 @@ export class MusicLibraryQueries {
         largeArtworkHash: resultSet.getString(13),
         largeArtworkPath: resultSet.getString(14),
         artworkWidth: resultSet.getLong(15),
-        artworkHeight: resultSet.getLong(16)
+        artworkHeight: resultSet.getLong(16),
+        palettePrimary: resultSet.getString(17),
+        paletteSecondary: resultSet.getString(18),
+        paletteAccent: resultSet.getString(19)
       };
       if (byteLength > 0) {
         track.artwork = {
-          pictureType: resultSet.getLong(17) as ArtworkPictureType,
-          mimeType: resultSet.getString(18),
-          description: resultSet.getString(19),
-          width: resultSet.getLong(20),
-          height: resultSet.getLong(21),
-          colorDepth: resultSet.getLong(22),
-          byteOffset: resultSet.getLong(23),
+          pictureType: resultSet.getLong(20) as ArtworkPictureType,
+          mimeType: resultSet.getString(21),
+          description: resultSet.getString(22),
+          width: resultSet.getLong(23),
+          height: resultSet.getLong(24),
+          colorDepth: resultSet.getLong(25),
+          byteOffset: resultSet.getLong(26),
           byteLength: byteLength,
-          payloadOffset: resultSet.getLong(25),
-          ordinal: resultSet.getLong(26),
-          unsynchronized: resultSet.getLong(27) === 1
+          payloadOffset: resultSet.getLong(28),
+          ordinal: resultSet.getLong(29),
+          unsynchronized: resultSet.getLong(30) === 1
         };
       }
       return track;
@@ -224,7 +234,9 @@ export class MusicLibraryQueries {
     const resultSet = await this.database.getStore().querySql(
       `SELECT al.id, al.title, al.album_artist_display, al.track_count,
         al.total_duration_ms, COALESCE(a.large_path, ''),
-        COALESCE(a.large_width, 0), COALESCE(a.large_height, 0), ${sectionColumn}
+        COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
+        COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
+        COALESCE(a.palette_accent, '#FFFFB347'), ${sectionColumn}
        FROM album al LEFT JOIN artwork_asset a ON a.id = al.primary_artwork_id
        ORDER BY ${orderClause}`
     );
@@ -240,7 +252,10 @@ export class MusicLibraryQueries {
           artworkPath: resultSet.getString(5),
           artworkWidth: resultSet.getLong(6),
           artworkHeight: resultSet.getLong(7),
-          sectionKey: resultSet.getString(8)
+          palettePrimary: resultSet.getString(8),
+          paletteSecondary: resultSet.getString(9),
+          paletteAccent: resultSet.getString(10),
+          sectionKey: resultSet.getString(11)
         });
       }
     } finally {
@@ -257,7 +272,9 @@ export class MusicLibraryQueries {
     const albumResult = await this.database.getStore().querySql(
       `SELECT al.id, al.title, al.album_artist_display, al.track_count,
         al.total_duration_ms, COALESCE(a.large_path, ''),
-        COALESCE(a.large_width, 0), COALESCE(a.large_height, 0), '#',
+        COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
+        COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
+        COALESCE(a.palette_accent, '#FFFFB347'), '#',
         COALESCE(al.release_year, 0),
         COALESCE((SELECT GROUP_CONCAT(g.name) FROM genre g WHERE g.id IN (
           SELECT tg.genre_id FROM track_genre tg JOIN track grouped_track ON grouped_track.id = tg.track_id
@@ -281,10 +298,13 @@ export class MusicLibraryQueries {
           artworkPath: albumResult.getString(5),
           artworkWidth: albumResult.getLong(6),
           artworkHeight: albumResult.getLong(7),
-          sectionKey: albumResult.getString(8)
+          palettePrimary: albumResult.getString(8),
+          paletteSecondary: albumResult.getString(9),
+          paletteAccent: albumResult.getString(10),
+          sectionKey: albumResult.getString(11)
         };
-        releaseYear = albumResult.getLong(9);
-        genreDisplay = albumResult.getString(10);
+        releaseYear = albumResult.getLong(12);
+        genreDisplay = albumResult.getString(13);
       }
     } finally {
       albumResult.close();
@@ -297,7 +317,9 @@ export class MusicLibraryQueries {
         COALESCE(t.track_number, 0), COALESCE(t.disc_number, 0),
         COALESCE(a.small_hash, ''), COALESCE(a.small_path, ''),
         COALESCE(a.large_hash, ''), COALESCE(a.large_path, ''),
-        COALESCE(a.large_width, 0), COALESCE(a.large_height, 0), '#'
+        COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
+        COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
+        COALESCE(a.palette_accent, '#FFFFB347'), '#'
        FROM track t LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
        WHERE t.album_id = ?
        ORDER BY CASE WHEN t.disc_number IS NULL OR t.disc_number <= 0 THEN 1 ELSE 0 END,
@@ -316,7 +338,9 @@ export class MusicLibraryQueries {
           discNumber: trackResult.getLong(6), smallArtworkHash: trackResult.getString(7),
           smallArtworkPath: trackResult.getString(8), artworkHash: trackResult.getString(9),
           artworkPath: trackResult.getString(10), artworkWidth: trackResult.getLong(11),
-          artworkHeight: trackResult.getLong(12), sectionKey: trackResult.getString(13)
+          artworkHeight: trackResult.getLong(12), palettePrimary: trackResult.getString(13),
+          paletteSecondary: trackResult.getString(14), paletteAccent: trackResult.getString(15),
+          sectionKey: trackResult.getString(16)
         });
       }
     } finally {
@@ -400,7 +424,8 @@ export class MusicLibraryQueries {
   async findArtworkBySourceHash(sourceHash: string): Promise<ArtworkAssetLookup | undefined> {
     const resultSet = await this.database.getStore().querySql(
       `SELECT a.small_hash, a.small_path, a.small_format, a.small_width, a.small_height, a.small_byte_size,
-        a.large_hash, a.large_path, a.large_format, a.large_width, a.large_height, a.large_byte_size
+        a.large_hash, a.large_path, a.large_format, a.large_width, a.large_height, a.large_byte_size,
+        a.palette_primary, a.palette_secondary, a.palette_accent
        FROM artwork_source s JOIN artwork_asset a ON a.id = s.asset_id
        WHERE s.source_hash = ? LIMIT 1`,
       [sourceHash]
@@ -421,7 +446,10 @@ export class MusicLibraryQueries {
         largeFormat: resultSet.getString(8),
         largeWidth: resultSet.getLong(9),
         largeHeight: resultSet.getLong(10),
-        largeByteSize: resultSet.getLong(11)
+        largeByteSize: resultSet.getLong(11),
+        palettePrimary: resultSet.getString(12),
+        paletteSecondary: resultSet.getString(13),
+        paletteAccent: resultSet.getString(14)
       };
     } finally {
       resultSet.close();

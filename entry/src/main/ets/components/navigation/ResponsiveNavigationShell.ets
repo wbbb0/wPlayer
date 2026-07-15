@@ -17,6 +17,7 @@ import {
 import { ComponentContent, SymbolGlyphModifier } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { AppAppearancePalette } from '../../appearance/AppAppearance';
+import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import { AppShellLayoutSpec } from '../layout/AppShellLayoutSpec';
 import { AppNavigationStyle } from './AppNavigationStyle';
 import { AppPrimaryTitleParams } from './AppPrimaryTitleContent';
@@ -55,10 +56,12 @@ const ALBUM_DETAIL_ROUTE: string = 'album_detail';
 class AlbumDetailRouteParams {
   albumId: number;
   title: string;
+  palettePrimary: string;
 
-  constructor(albumId: number, title: string) {
+  constructor(albumId: number, title: string, palettePrimary: string) {
     this.albumId = albumId;
     this.title = title;
+    this.palettePrimary = palettePrimary;
   }
 }
 
@@ -285,6 +288,25 @@ export struct ResponsiveNavigationShell {
     return { maxCount: values.length, value: values };
   }
 
+  private albumDetailBackground(params: AlbumDetailRouteParams): string {
+    return this.blendOpaque(this.appearancePalette.windowBackground, params.palettePrimary, 0.12);
+  }
+
+  private blendOpaque(base: string, tint: string, opacity: number): string {
+    if (base.length !== 9 || tint.length !== 9 || !base.startsWith('#') || !tint.startsWith('#')) {
+      return base;
+    }
+    let result = '#FF';
+    for (let channel = 0; channel < 3; channel += 1) {
+      const offset = 3 + channel * 2;
+      const baseValue = Number.parseInt(base.substring(offset, offset + 2), 16);
+      const tintValue = Number.parseInt(tint.substring(offset, offset + 2), 16);
+      const mixed = Math.round(baseValue * (1 - opacity) + tintValue * opacity);
+      result += mixed.toString(16).padStart(2, '0').toUpperCase();
+    }
+    return result;
+  }
+
   private albumDetailTitleMenu(albumId: number): HdsNavigationMenuContentOptions {
     const targetId = `album_detail_more_${albumId}`;
     return {
@@ -340,7 +362,7 @@ export struct ResponsiveNavigationShell {
         onOpenAlbum: (item) => {
           this.tabPathStacks[2].pushPath({
             name: ALBUM_DETAIL_ROUTE,
-            param: new AlbumDetailRouteParams(item.id, item.title)
+            param: new AlbumDetailRouteParams(item.id, item.title, item.palettePrimary)
           });
         }
       })
@@ -374,12 +396,14 @@ export struct ResponsiveNavigationShell {
           topInset: this.topInset,
           bottomInset: this.bottomInset,
           rootWidth: this.rootWidth,
+          themeBackground: this.albumDetailBackground(_param as AlbumDetailRouteParams),
           scroller: this.albumDetailScroller
         })
       }
       .width('100%')
       .height('100%')
-      .backgroundColor($r('app.color.page_background'))
+      .backgroundColor(this.albumDetailBackground(_param as AlbumDetailRouteParams))
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryBackOnlyTitleBar(
         this.appearancePalette,
@@ -391,7 +415,7 @@ export struct ResponsiveNavigationShell {
       }
       .width('100%')
       .height('100%')
-      .backgroundColor($r('app.color.page_background'))
+      .backgroundColor(Color.Transparent)
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryTitleBar(
         MORE_NAVIGATION_ITEMS[this.moreNavigationIndex(name)].label,
@@ -409,7 +433,7 @@ export struct ResponsiveNavigationShell {
     .width('100%')
     .height('100%')
     .mode(NavigationMode.Stack)
-    .backgroundColor($r('app.color.page_background'))
+    .backgroundColor(Color.Transparent)
     .titleMode(HdsNavigationTitleMode.MINI)
     .hideBackButton(true)
     .titleBar(AppNavigationStyle.primaryTitleBar(
@@ -432,7 +456,7 @@ export struct ResponsiveNavigationShell {
     .width('100%')
     .height('100%')
     .mode(NavigationMode.Stack)
-    .backgroundColor($r('app.color.page_background'))
+    .backgroundColor(Color.Transparent)
     .titleMode(HdsNavigationTitleMode.MINI)
     .hideBackButton(true)
     .titleBar(AppNavigationStyle.primaryTitleBar(
@@ -469,13 +493,15 @@ export struct ResponsiveNavigationShell {
           .fontSize(AppShellLayoutSpec.EXPANDED_TAB_ITEM_ICON_SIZE)
           .fontColor([
             this.expandedTabIndex() === tabIndex ?
-              $r('app.color.theme_accent') : $r('app.color.text_tertiary')
+              this.playerStore.paletteAccent : $r('app.color.text_tertiary')
           ])
+          .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
         Text(item.label)
           .fontSize(AppShellLayoutSpec.EXPANDED_TAB_ITEM_LABEL_SIZE)
           .fontWeight(this.expandedTabIndex() === tabIndex ? FontWeight.Medium : FontWeight.Normal)
           .fontColor(this.expandedTabIndex() === tabIndex ?
-            $r('app.color.theme_accent') : $r('app.color.text_secondary'))
+            this.playerStore.paletteAccent : $r('app.color.text_secondary'))
+          .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
           .maxLines(1)
       }
       .width('100%')
@@ -488,13 +514,15 @@ export struct ResponsiveNavigationShell {
           .fontSize(AppShellLayoutSpec.EXPANDED_TAB_ITEM_ICON_SIZE)
           .fontColor([
             this.expandedTabIndex() === tabIndex ?
-              $r('app.color.theme_accent') : $r('app.color.text_tertiary')
+              this.playerStore.paletteAccent : $r('app.color.text_tertiary')
           ])
+          .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
         Text(item.label)
           .fontSize(AppShellLayoutSpec.EXPANDED_TAB_ITEM_LABEL_SIZE)
           .fontWeight(this.expandedTabIndex() === tabIndex ? FontWeight.Medium : FontWeight.Normal)
           .fontColor(this.expandedTabIndex() === tabIndex ?
-            $r('app.color.theme_accent') : $r('app.color.text_secondary'))
+            this.playerStore.paletteAccent : $r('app.color.text_secondary'))
+          .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
           .maxLines(1)
       }
       .width('100%')

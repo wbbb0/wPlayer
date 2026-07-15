@@ -63,6 +63,7 @@ export struct FullPlayerContent {
         .onClick(() => {
           this.onClose();
         })
+
       }
       .width('100%')
 

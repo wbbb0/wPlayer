@@ -356,6 +356,10 @@ export class MusicLibraryImporter {
         large_width: artwork.largeWidth === undefined ? 0 : artwork.largeWidth,
         large_height: artwork.largeHeight === undefined ? 0 : artwork.largeHeight,
         large_byte_size: artwork.largeByteSize === undefined ? 0 : artwork.largeByteSize,
+        palette_primary: artwork.palettePrimary ?? '#FF7C4DFF',
+        palette_secondary: artwork.paletteSecondary ?? '#FFFF4D8D',
+        palette_accent: artwork.paletteAccent ?? '#FFFFB347',
+        palette_version: 4,
         ref_count: 0,
         unreferenced_at: now,
         created_at: now

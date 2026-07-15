@@ -1,5 +1,6 @@
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { PlayerStore, RepeatMode } from '../../playback/model/PlaybackModels';
+import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 
 export enum PlayerTransportAction {
   PREVIOUS,
@@ -26,8 +27,9 @@ export struct PlayerPlaybackButton {
     .width(this.buttonSize)
     .height(this.buttonSize)
     .borderRadius(this.buttonSize / 2)
-    .backgroundColor($r('app.color.theme_accent'))
-    .shadow({ radius: 12, color: $r('app.color.theme_accent_shadow'), offsetY: 5 })
+    .backgroundColor(this.playerStore.paletteSecondary)
+    .shadow({ radius: 12, color: this.playerStore.paletteSecondary, offsetY: 5 })
+    .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
     .clickEffect({ level: ClickEffectLevel.MIDDLE })
     .accessibilityText(this.playerStore.isPlaying() ? '暂停' : '播放')
     .onClick(() => {
@@ -102,7 +104,8 @@ export struct PlayerModeButton {
     Stack() {
       SymbolGlyph(this.symbol())
         .fontSize(22)
-        .fontColor([this.active() ? $r('app.color.theme_accent') : $r('app.color.text_secondary')])
+        .fontColor([this.active() ? this.playerStore.paletteAccent : $r('app.color.text_secondary')])
+        .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
     }
     .width(44)
     .height(44)

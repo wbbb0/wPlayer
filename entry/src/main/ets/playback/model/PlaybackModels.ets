@@ -36,6 +36,9 @@ export interface QueueTrack {
   largeArtworkPath: string;
   artworkWidth: number;
   artworkHeight: number;
+  palettePrimary: string;
+  paletteSecondary: string;
+  paletteAccent: string;
 }
 
 export interface PlaybackTrack extends QueueTrack {
@@ -69,6 +72,9 @@ export class PlayerStore {
   repeatMode: RepeatMode = RepeatMode.ALL;
   queuePhase: QueueBuildPhase = QueueBuildPhase.EMPTY;
   queueSize: number = 0;
+  palettePrimary: string = '#FF7C4DFF';
+  paletteSecondary: string = '#FFFF4D8D';
+  paletteAccent: string = '#FFFFB347';
 
   isPlaying(): boolean {
     return this.state === PlayerState.PLAYING;

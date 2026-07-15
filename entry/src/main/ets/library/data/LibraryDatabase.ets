@@ -3,7 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { SortKeyNormalizer } from '../metadata/SortKeyNormalizer';
 
 const DATABASE_NAME = 'music_library.db';
-const DATABASE_VERSION = 6;
+const DATABASE_VERSION = 10;
 const SORT_REBUILD_BATCH_SIZE = 500;
 
 const STORE_CONFIG: relationalStore.StoreConfig = {
@@ -49,6 +49,10 @@ const CURRENT_SCHEMA: Array<string> = [
     large_width INTEGER NOT NULL DEFAULT 0,
     large_height INTEGER NOT NULL DEFAULT 0,
     large_byte_size INTEGER NOT NULL DEFAULT 0,
+    palette_primary TEXT NOT NULL DEFAULT '#FF7C4DFF',
+    palette_secondary TEXT NOT NULL DEFAULT '#FFFF4D8D',
+    palette_accent TEXT NOT NULL DEFAULT '#FFFFB347',
+    palette_version INTEGER NOT NULL DEFAULT 4,
     ref_count INTEGER NOT NULL DEFAULT 0 CHECK (ref_count >= 0),
     unreferenced_at INTEGER,
     created_at INTEGER NOT NULL,

@@ -597,6 +597,9 @@ export class MediaImporter {
       largeWidth: cached.large.width,
       largeHeight: cached.large.height,
       largeByteSize: cached.large.byteSize,
+      palettePrimary: cached.palette.primary,
+      paletteSecondary: cached.palette.secondary,
+      paletteAccent: cached.palette.accent,
       primary: true
     };
     return inputs;
@@ -637,6 +640,11 @@ export class MediaImporter {
           width: existing.largeWidth,
           height: existing.largeHeight,
           byteSize: existing.largeByteSize
+        },
+        palette: {
+          primary: existing.palettePrimary,
+          secondary: existing.paletteSecondary,
+          accent: existing.paletteAccent
         }
       };
     }

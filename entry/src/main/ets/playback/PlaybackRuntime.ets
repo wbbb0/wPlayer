@@ -336,6 +336,9 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.currentTrack = track;
     this.playerStore.positionMs = 0;
     this.playerStore.durationMs = track.durationMs;
+    this.playerStore.palettePrimary = track.palettePrimary;
+    this.playerStore.paletteSecondary = track.paletteSecondary;
+    this.playerStore.paletteAccent = track.paletteAccent;
     this.playerStore.state = PlayerState.LOADING;
     this.playerStore.errorMessage = '';
     this.artworkCache?.pinCurrent(track);
@@ -532,7 +535,10 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       largeArtworkHash: item.artworkHash,
       largeArtworkPath: item.artworkPath,
       artworkWidth: item.artworkWidth,
-      artworkHeight: item.artworkHeight
+      artworkHeight: item.artworkHeight,
+      palettePrimary: item.palettePrimary,
+      paletteSecondary: item.paletteSecondary,
+      paletteAccent: item.paletteAccent
     };
   }
 

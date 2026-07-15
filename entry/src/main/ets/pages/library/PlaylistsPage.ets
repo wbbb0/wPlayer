@@ -42,7 +42,7 @@ export struct PlaylistsPage {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.page_background'))
+    .backgroundColor(Color.Transparent)
     .attributeModifier(this.scrollBehavior)
   }
 }

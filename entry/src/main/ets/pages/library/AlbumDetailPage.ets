@@ -6,6 +6,7 @@ import { LibraryStore } from '../../library/store/LibraryStore';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { AppShellLayoutSpec } from '../../components/layout/AppShellLayoutSpec';
 import { QueueActionMenu } from '../../components/library/QueueActionMenu';
+import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 
 @Component
 export struct AlbumDetailPage {
@@ -15,6 +16,7 @@ export struct AlbumDetailPage {
   @Prop bottomInset: number = 0;
   @Prop rootWidth: number = 0;
   @Prop showArtwork: boolean = true;
+  @Prop themeBackground: string = '#FF000000';
   scroller: Scroller = new Scroller();
   private readonly scrollBehavior: PageListBehavior = new PageListBehavior();
 
@@ -79,6 +81,10 @@ export struct AlbumDetailPage {
 
   private usesWideHeader(): boolean {
     return this.rootWidth >= AppShellLayoutSpec.SIDE_NAVIGATION_BREAKPOINT;
+  }
+
+  private withAlpha(color: string, alpha: string): string {
+    return color.length === 9 && color.startsWith('#') ? `#${alpha}${color.substring(3)}` : color;
   }
 
   @Builder
@@ -151,6 +157,8 @@ export struct AlbumDetailPage {
         this.HeaderActionIcon($r('sys.symbol.shuffle'))
       }
       .width(44).height(44).borderRadius(22)
+      .backgroundColor(this.withAlpha(detail.album.paletteAccent, '38'))
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .enabled(detail.tracks.length > 0)
       .accessibilityText('随机播放此专辑')
       .onClick(() => playbackRuntime.shuffleAll(detail.tracks))
@@ -164,7 +172,8 @@ export struct AlbumDetailPage {
         }
       }
       .width(this.usesWideHeader() ? 220 : Math.min(220, Math.max(128, this.rootWidth - 164)))
-      .height(44).backgroundColor($r('app.color.theme_accent'))
+      .height(44).backgroundColor(detail.album.paletteSecondary)
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .enabled(detail.tracks.length > 0)
       .onClick(() => this.playFirst(detail))
 
@@ -172,6 +181,8 @@ export struct AlbumDetailPage {
         this.HeaderActionIcon($r('sys.symbol.plus'))
       }
       .width(44).height(44).borderRadius(22)
+      .backgroundColor(this.withAlpha(detail.album.paletteAccent, '38'))
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .enabled(detail.tracks.length > 0)
       .accessibilityText('添加到队列')
       .onClick(() => playbackRuntime.appendToQueue(detail.tracks))
@@ -301,6 +312,7 @@ export struct AlbumDetailPage {
     .contentStartOffset(PageLayoutSpec.primaryContentStart(this.topInset))
     .contentEndOffset(PageLayoutSpec.contentEnd(this.bottomInset))
     .attributeModifier(this.scrollBehavior)
-    .backgroundColor($r('app.color.page_background'))
+    .backgroundColor(this.themeBackground)
+    .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
   }
 }

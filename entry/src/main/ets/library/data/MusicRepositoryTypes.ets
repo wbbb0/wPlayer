@@ -15,6 +15,9 @@ export interface ArtworkImportInput {
   largeWidth?: number;
   largeHeight?: number;
   largeByteSize?: number;
+  palettePrimary?: string;
+  paletteSecondary?: string;
+  paletteAccent?: string;
   primary?: boolean;
 }
 
@@ -55,6 +58,9 @@ export interface ArtworkAssetLookup {
   largeWidth: number;
   largeHeight: number;
   largeByteSize: number;
+  palettePrimary: string;
+  paletteSecondary: string;
+  paletteAccent: string;
 }
 
 export interface ArtworkCleanupCandidate {

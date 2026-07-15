@@ -284,6 +284,41 @@ Never commit signing passwords, private keys, certificate stores, provisioning p
   `$env:WPLAYER_DISABLE_LOCAL_SIGNING='1'; devecocli build` for the unsigned path, clear the variable, build a signed
   HAP, install it with `hdc install -r`, launch the main ability, and inspect startup logs.
 
+### New-machine environment initialization
+
+Use this checklist after cloning the repository onto a new Windows development machine:
+
+1. Install a DevEco Studio version that provides the SDK required by `build-profile.json5`. Set
+   `DEVECO_SDK_HOME` to the SDK parent directory, for example
+   `C:\Program Files\Huawei\DevEco Studio\sdk`; do not point it at `sdk\default`, `hms`, or `openharmony`. Confirm the
+   selected SDK contains the configured API level before changing any project SDK version.
+2. Install the project CLI with `npm install -g @deveco/deveco-cli`, open a new terminal, and verify it with
+   `devecocli --version`. If PowerShell selects `devecocli.ps1` and rejects it because of the execution policy, fix
+   the local-script policy and open a new terminal, or invoke the generated `devecocli.cmd` shim. Do not weaken a
+   managed machine policy from project automation.
+3. Run `git status` before making changes. If Git reports dubious ownership after copying the repository from a
+   different Windows account, verify the directory is trusted and then add this exact repository path to Git's
+   global `safe.directory` list. Never use a wildcard safe-directory exception.
+4. Run `$env:WPLAYER_DISABLE_LOCAL_SIGNING='1'; devecocli build`, then
+   `Remove-Item Env:WPLAYER_DISABLE_LOCAL_SIGNING`. This validates dependency installation, Hvigor sync, SDK
+   discovery, ArkTS compilation, resources, and the portable unsigned build before local credentials are involved.
+5. In DevEco Studio, create or select the machine's debug signing configuration once. If the IDE writes
+   `app.signingConfigs` or a product-level `signingConfig` into `build-profile.json5`, immediately migrate the exact
+   generated signing object into the ignored `signing.local.json` using `signing.local.example.json` as the schema:
+   set `product` to the target product name and `signingConfig` to the IDE-generated signing object. Then remove
+   `app.signingConfigs` and every product-level `signingConfig` reference from `build-profile.json5`. Do not copy
+   passwords, certificate paths, profiles, keystores, or private keys into any tracked file. If the IDE later writes
+   signing material back into `build-profile.json5`, repeat this migration before committing or pushing.
+6. Confirm `signing.local.json` exists, is ignored by Git, and is not tracked. Confirm `build-profile.json5` contains
+   no signing block, password, or machine-local material. Run a normal `devecocli build`; the root `hvigorfile.ts`
+   should inject the local configuration and produce `entry-default-signed.hap`, while the disabled-signing path
+   should continue to produce `entry-default-unsigned.hap`.
+7. Verify the target with `hdc list targets -v`, install with
+   `hdc install -r entry/build/default/outputs/default/entry-default-signed.hap`, unlock the device, launch with
+   `hdc shell aa start -a EntryAbility -b com.wabebabo.wplayer`, and inspect `hilog` for startup failures. A package
+   already installed with a different signing identity may need an intentional uninstall, which deletes its local
+   application data; do not uninstall it without user approval.
+
 At completion, provide:
 
 - changed files;

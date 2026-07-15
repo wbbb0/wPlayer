@@ -242,6 +242,21 @@ Do not commit, push, change signing configuration, change the bundle name or upd
 
 Never commit signing passwords, private keys, certificate stores, provisioning profiles or machine-specific signing paths. Keep local `build-profile.json5` signing material out of commits even when other project changes are being published.
 
+### Local signing workflow
+
+- Keep the tracked `build-profile.json5` portable and unsigned. It must not contain `signingConfigs`, a product-level
+  `signingConfig`, signing passwords, or machine-specific certificate, profile, and keystore paths.
+- Put developer-machine signing configuration in the ignored root file `signing.local.json`, using
+  `signing.local.example.json` as its schema. The root `hvigorfile.ts` injects this file through the documented
+  `afterNodeEvaluate` build-profile hook when it exists; builds remain unsigned when it does not exist.
+- Do not use Git `assume-unchanged` or `skip-worktree` to hide signing changes. Hidden tracked changes are too easy to
+  publish accidentally.
+- Before committing or pushing, verify that `git diff --cached -- build-profile.json5 hvigorfile.ts
+  signing.local.example.json` contains no local material and that `git ls-files signing.local.json` prints nothing.
+- After changing the signing workflow, validate both paths: run
+  `$env:WPLAYER_DISABLE_LOCAL_SIGNING='1'; devecocli build` for the unsigned path, clear the variable, build a signed
+  HAP, install it with `hdc install -r`, launch the main ability, and inspect startup logs.
+
 At completion, provide:
 
 - changed files;

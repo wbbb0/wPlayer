@@ -41,18 +41,14 @@ export class MediaImporter {
   private importing: boolean = false;
   private readonly artworkPreparations: Map<string, Promise<ArtworkCacheResult>> = new Map();
 
-  constructor(context: common.UIAbilityContext, repository: MusicRepository) {
+  constructor(context: common.UIAbilityContext, repository: MusicRepository, artworkCache: ArtworkCache) {
     this.context = context;
     this.repository = repository;
-    this.artworkCache = new ArtworkCache(context);
+    this.artworkCache = artworkCache;
   }
 
   isImporting(): boolean {
     return this.importing;
-  }
-
-  resolveArtworkPath(relativePath: string): string {
-    return this.artworkCache.resolvePath(relativePath);
   }
 
   cancel(): void {

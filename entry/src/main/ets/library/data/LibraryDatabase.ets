@@ -3,7 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { SortKeyNormalizer } from '../metadata/SortKeyNormalizer';
 
 const DATABASE_NAME = 'music_library.db';
-const DATABASE_VERSION = 3;
+const DATABASE_VERSION = 1;
 const SORT_REBUILD_BATCH_SIZE = 500;
 
 const STORE_CONFIG: relationalStore.StoreConfig = {
@@ -320,51 +320,13 @@ export class LibraryDatabase {
     }
 
     const version = await this.readSchemaVersion(store);
-    if (version > DATABASE_VERSION) {
-      throw new Error(`Library database version ${version} is newer than supported version ${DATABASE_VERSION}`);
+    if (version !== DATABASE_VERSION) {
+      throw new Error(
+        `Unsupported library database version ${version}; clear application data before the first public release`
+      );
     }
-    // Re-assert the current schema on every open. This repairs databases left
-    // partially initialized by an interrupted earlier migration without
-    // deleting any library data.
-    await this.migrateToCurrentSchema(store);
     if (store.version !== DATABASE_VERSION) {
       store.version = DATABASE_VERSION;
-    }
-  }
-
-  private async migrateToCurrentSchema(store: relationalStore.RdbStore): Promise<void> {
-    const transaction = await store.createTransaction({
-      transactionType: relationalStore.TransactionType.IMMEDIATE
-    });
-    try {
-      for (let index = 0; index < CURRENT_SCHEMA.length; index += 1) {
-        if (!CURRENT_SCHEMA[index].startsWith('CREATE INDEX ')) {
-          await transaction.execute(this.withIfNotExists(CURRENT_SCHEMA[index]));
-        }
-      }
-      if (!await this.columnExists(transaction, 'track_artwork', 'payload_offset')) {
-        await transaction.execute(
-          'ALTER TABLE track_artwork ADD COLUMN payload_offset INTEGER NOT NULL DEFAULT 0'
-        );
-      }
-      await this.ensureSortColumns(transaction);
-      for (let index = 0; index < CURRENT_SCHEMA.length; index += 1) {
-        if (CURRENT_SCHEMA[index].startsWith('CREATE INDEX ')) {
-          await transaction.execute(this.withIfNotExists(CURRENT_SCHEMA[index]));
-        }
-      }
-      await transaction.execute(
-        'UPDATE schema_meta SET version = ?, migrated_at = ? WHERE singleton = 1',
-        [DATABASE_VERSION, Date.now()]
-      );
-      await transaction.commit();
-      store.version = DATABASE_VERSION;
-    } catch (error) {
-      try {
-        await transaction.rollback();
-      } catch (_) {
-      }
-      throw error as Error;
     }
   }
 
@@ -479,44 +441,6 @@ export class LibraryDatabase {
         table,
         buckets.slice(offset, Math.min(offset + SORT_REBUILD_BATCH_SIZE, buckets.length))
       );
-    }
-  }
-
-  private async ensureSortColumns(transaction: relationalStore.Transaction): Promise<void> {
-    const columns: Array<Array<string>> = [
-      ['track', 'title_natural_key', "TEXT NOT NULL DEFAULT ''"],
-      ['track', 'title_section', "TEXT NOT NULL DEFAULT '#'"],
-      ['track', 'album_natural_key', "TEXT NOT NULL DEFAULT ''"],
-      ['track', 'album_section', "TEXT NOT NULL DEFAULT '#'"],
-      ['track', 'artist_natural_key', "TEXT NOT NULL DEFAULT ''"],
-      ['track', 'artist_section', "TEXT NOT NULL DEFAULT '#'"],
-      ['track', 'release_date_sort', 'INTEGER NOT NULL DEFAULT 0'],
-      ['album', 'title_natural_key', "TEXT NOT NULL DEFAULT ''"],
-      ['album', 'title_section', "TEXT NOT NULL DEFAULT '#'"],
-      ['album', 'artist_natural_key', "TEXT NOT NULL DEFAULT ''"],
-      ['album', 'artist_section', "TEXT NOT NULL DEFAULT '#'"],
-      ['album', 'release_date_sort', 'INTEGER NOT NULL DEFAULT 0']
-    ];
-    for (let index = 0; index < columns.length; index += 1) {
-      const definition = columns[index];
-      if (!await this.columnExists(transaction, definition[0], definition[1])) {
-        await transaction.execute(`ALTER TABLE ${definition[0]} ADD COLUMN ${definition[1]} ${definition[2]}`);
-      }
-    }
-  }
-
-  private async columnExists(transaction: relationalStore.Transaction, tableName: string,
-    columnName: string): Promise<boolean> {
-    const resultSet = await transaction.querySql(`PRAGMA table_info(${tableName})`);
-    try {
-      while (resultSet.goToNextRow()) {
-        if (resultSet.getString(1) === columnName) {
-          return true;
-        }
-      }
-      return false;
-    } finally {
-      resultSet.close();
     }
   }
 

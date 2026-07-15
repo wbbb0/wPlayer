@@ -9,6 +9,11 @@ const SONG_SORT_DESCENDING_KEY: string = 'library.songs.sort_descending';
 const ALBUM_SORT_FIELD_KEY: string = 'library.albums.sort_field';
 const ALBUM_SORT_DESCENDING_KEY: string = 'library.albums.sort_descending';
 
+interface SettingUpdate {
+  key: string;
+  value: preferences.ValueType;
+}
+
 export class SettingsRepository {
   private readonly store: preferences.Preferences;
 
@@ -28,32 +33,30 @@ export class SettingsRepository {
     return this.getNumber(SONG_SORT_FIELD_KEY, defaultValue);
   }
 
-  setSongSortField(value: number): void {
-    this.setValue(SONG_SORT_FIELD_KEY, value);
-  }
-
   getSongSortDescending(defaultValue: boolean = false): boolean {
     return this.getBoolean(SONG_SORT_DESCENDING_KEY, defaultValue);
   }
 
-  setSongSortDescending(value: boolean): void {
-    this.setValue(SONG_SORT_DESCENDING_KEY, value);
+  setSongSort(field: number, descending: boolean): void {
+    this.setValues([
+      { key: SONG_SORT_FIELD_KEY, value: field },
+      { key: SONG_SORT_DESCENDING_KEY, value: descending }
+    ]);
   }
 
   getAlbumSortField(defaultValue: number = 0): number {
     return this.getNumber(ALBUM_SORT_FIELD_KEY, defaultValue);
   }
 
-  setAlbumSortField(value: number): void {
-    this.setValue(ALBUM_SORT_FIELD_KEY, value);
-  }
-
   getAlbumSortDescending(defaultValue: boolean = false): boolean {
     return this.getBoolean(ALBUM_SORT_DESCENDING_KEY, defaultValue);
   }
 
-  setAlbumSortDescending(value: boolean): void {
-    this.setValue(ALBUM_SORT_DESCENDING_KEY, value);
+  setAlbumSort(field: number, descending: boolean): void {
+    this.setValues([
+      { key: ALBUM_SORT_FIELD_KEY, value: field },
+      { key: ALBUM_SORT_DESCENDING_KEY, value: descending }
+    ]);
   }
 
   private getNumber(key: string, defaultValue: number): number {
@@ -79,14 +82,20 @@ export class SettingsRepository {
   }
 
   private setValue(key: string, value: preferences.ValueType): void {
+    this.setValues([{ key: key, value: value }]);
+  }
+
+  private setValues(updates: Array<SettingUpdate>): void {
     try {
-      this.store.putSync(key, value);
+      for (let index = 0; index < updates.length; index += 1) {
+        this.store.putSync(updates[index].key, updates[index].value);
+      }
       this.store.flush().catch((error: BusinessError) => {
-        console.warn(`Unable to persist setting ${key}: ${error.code}, ${error.message}`);
+        console.warn(`Unable to persist settings: ${error.code}, ${error.message}`);
       });
     } catch (error) {
       const businessError = error as BusinessError;
-      console.warn(`Unable to update setting ${key}: ${businessError.code}, ${businessError.message}`);
+      console.warn(`Unable to update settings: ${businessError.code}, ${businessError.message}`);
     }
   }
 }

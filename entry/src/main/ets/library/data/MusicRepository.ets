@@ -311,6 +311,12 @@ export class MusicRepository {
         const duplicateResult: ImportTrackResult = { imported: false, trackId: existingTrackId };
         return duplicateResult;
       }
+      const duplicateTrackId = await this.findTrackIdByFingerprint(
+        transaction, input.fileSize, input.quickFingerprint
+      );
+      if (duplicateTrackId !== undefined) {
+        return { imported: false, trackId: duplicateTrackId };
+      }
       const now = Date.now();
       const metadata = input.metadata;
       const mediaFileId = await transaction.insert('media_file', {
@@ -654,6 +660,27 @@ export class MusicRepository {
        INNER JOIN media_file f ON f.id = t.media_file_id
        WHERE f.uri = ? LIMIT 1`,
       [uri]
+    );
+    try {
+      return resultSet.goToNextRow() ? resultSet.getLong(0) : undefined;
+    } finally {
+      resultSet.close();
+    }
+  }
+
+  private async findTrackIdByFingerprint(
+    transaction: relationalStore.Transaction,
+    fileSize: number,
+    quickFingerprint: string
+  ): Promise<number | undefined> {
+    if (fileSize <= 0 || quickFingerprint.length === 0) {
+      return undefined;
+    }
+    const resultSet = await transaction.querySql(
+      `SELECT t.id FROM track t
+       INNER JOIN media_file f ON f.id = t.media_file_id
+       WHERE f.file_size = ? AND f.quick_fingerprint = ? LIMIT 1`,
+      [fileSize, quickFingerprint]
     );
     try {
       return resultSet.goToNextRow() ? resultSet.getLong(0) : undefined;

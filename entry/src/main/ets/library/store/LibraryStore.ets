@@ -1,6 +1,7 @@
 import { common } from '@kit.AbilityKit';
 import { MusicRepository } from '../data/MusicRepository';
 import { MediaImporter } from '../importer/MediaImporter';
+import { ArtworkCache } from '../artwork/ArtworkCache';
 import {
   AlbumListItem,
   AlbumSortField,
@@ -46,22 +47,38 @@ export class LibraryStore {
 
   private readonly repository: MusicRepository = new MusicRepository();
   private importer?: MediaImporter;
+  private artworkCache?: ArtworkCache;
   private settings?: SettingsRepository;
+  private initializePromise?: Promise<void>;
   private refreshGeneration: number = 0;
   private trackSortGeneration: number = 0;
   private albumSortGeneration: number = 0;
 
   async initialize(context: common.UIAbilityContext, settings?: SettingsRepository): Promise<void> {
-    if (this.initialized || this.loading) {
+    if (this.initialized) {
       return;
     }
+    if (this.initializePromise !== undefined) {
+      return this.initializePromise;
+    }
+    this.initializePromise = this.initializeInternal(context, settings);
+    try {
+      await this.initializePromise;
+    } finally {
+      this.initializePromise = undefined;
+    }
+  }
+
+  private async initializeInternal(context: common.UIAbilityContext,
+    settings?: SettingsRepository): Promise<void> {
     this.loading = true;
     this.errorMessage = '';
     try {
       this.settings = settings === undefined ? new SettingsRepository(context) : settings;
       this.restoreSortSettings();
       await this.repository.initialize(context);
-      this.importer = new MediaImporter(context, this.repository);
+      this.artworkCache = new ArtworkCache(context);
+      this.importer = new MediaImporter(context, this.repository, this.artworkCache);
       await this.refresh();
       this.initialized = true;
     } catch (error) {
@@ -72,30 +89,39 @@ export class LibraryStore {
   }
 
   async refresh(): Promise<void> {
-    const generation = ++this.refreshGeneration;
-    const trackSnapshot = await this.repository.getTracks(this.trackSortField, this.trackSortDirection);
-    if (generation !== this.refreshGeneration) {
+    const refreshGeneration = ++this.refreshGeneration;
+    const trackGeneration = ++this.trackSortGeneration;
+    const albumGeneration = ++this.albumSortGeneration;
+    const trackField = this.trackSortField;
+    const trackDirection = this.trackSortDirection;
+    const albumField = this.albumSortField;
+    const albumDirection = this.albumSortDirection;
+    const snapshots = await Promise.all([
+      this.repository.getTracks(trackField, trackDirection),
+      this.repository.getAlbums(albumField, albumDirection),
+      this.repository.getStatistics()
+    ]);
+    if (refreshGeneration !== this.refreshGeneration || trackGeneration !== this.trackSortGeneration ||
+      albumGeneration !== this.albumSortGeneration) {
       return;
     }
-    const albumSnapshot = await this.repository.getAlbums(this.albumSortField, this.albumSortDirection);
-    if (generation !== this.refreshGeneration) {
-      return;
-    }
+    const trackSnapshot = snapshots[0];
+    const albumSnapshot = snapshots[1];
     this.trackDataSource.replace(trackSnapshot.items);
     this.trackSections = trackSnapshot.sections;
     this.trackIndexPresentation = trackSnapshot.indexPresentation;
     this.albumDataSource.replace(albumSnapshot.items);
     this.albumSections = albumSnapshot.sections;
     this.albumIndexPresentation = albumSnapshot.indexPresentation;
-    this.statistics = await this.repository.getStatistics();
+    this.statistics = snapshots[2];
   }
 
   async setTrackSort(field: TrackSortField, direction: SortDirection): Promise<void> {
+    ++this.refreshGeneration;
     const generation = ++this.trackSortGeneration;
     this.trackSortField = field;
     this.trackSortDirection = direction;
-    this.settings?.setSongSortField(field);
-    this.settings?.setSongSortDescending(direction === SortDirection.DESCENDING);
+    this.settings?.setSongSort(field, direction === SortDirection.DESCENDING);
     try {
       const snapshot = await this.repository.getTracks(field, direction);
       if (generation === this.trackSortGeneration) {
@@ -109,11 +135,11 @@ export class LibraryStore {
   }
 
   async setAlbumSort(field: AlbumSortField, direction: SortDirection): Promise<void> {
+    ++this.refreshGeneration;
     const generation = ++this.albumSortGeneration;
     this.albumSortField = field;
     this.albumSortDirection = direction;
-    this.settings?.setAlbumSortField(field);
-    this.settings?.setAlbumSortDescending(direction === SortDirection.DESCENDING);
+    this.settings?.setAlbumSort(field, direction === SortDirection.DESCENDING);
     try {
       const snapshot = await this.repository.getAlbums(field, direction);
       if (generation === this.albumSortGeneration) {
@@ -186,10 +212,10 @@ export class LibraryStore {
   }
 
   resolveArtworkPath(relativePath: string): string {
-    if (relativePath.length === 0 || this.importer === undefined) {
+    if (relativePath.length === 0 || this.artworkCache === undefined) {
       return '';
     }
-    return `file://${this.importer.resolveArtworkPath(relativePath)}`;
+    return `file://${this.artworkCache.resolvePath(relativePath)}`;
   }
 
   private restoreSortSettings(): void {

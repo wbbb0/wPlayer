@@ -7,6 +7,7 @@ import { ImportConcurrencyPolicy } from '../main/ets/library/importer/ImportConc
 import { ArtworkEncodingPolicy } from '../main/ets/library/artwork/ArtworkEncodingPolicy';
 import { ImportPreparationPolicy, PreparedItemState } from
   '../main/ets/library/importer/ImportPreparationPolicy';
+import { PlayerMotionSpec } from '../main/ets/components/player/PlayerMotion';
 
 class FakeResource {
   released: number = 0;
@@ -21,6 +22,14 @@ export default function riskRegressionTest() {
       expect(Math.round(landscape.height)).assertEqual(161);
       expect(Math.round(portrait.width)).assertEqual(201);
       expect(portrait.height).assertEqual(286);
+    });
+
+    it('fades full-player controls between 20 and 80 percent collapse', 0, () => {
+      expect(PlayerMotionSpec.fullContentOpacity(1)).assertEqual(1);
+      expect(PlayerMotionSpec.fullContentOpacity(0.8)).assertEqual(1);
+      expect(PlayerMotionSpec.fullContentOpacity(0.5)).assertEqual(0.5);
+      expect(PlayerMotionSpec.fullContentOpacity(0.2)).assertEqual(0);
+      expect(PlayerMotionSpec.fullContentOpacity(0)).assertEqual(0);
     });
 
     it('does not release an artwork while a transition lease is active', 0, () => {

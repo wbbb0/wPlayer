@@ -405,10 +405,19 @@ struct Index {
     return start + (end - start) * progress;
   }
 
+  private fullPlayerFrame(): PlayerFrame {
+    return this.playerMorphPhase === PlayerMorphPhase.OPEN ? this.rootFrame : this.frozenRootFrame;
+  }
+
+  private fullPlayerArtworkTarget(): PlayerPoint {
+    return this.playerMorphPhase === PlayerMorphPhase.OPEN ? this.artworkTarget : this.frozenArtworkTarget;
+  }
+
   private fullArtworkSlotSize(): number {
+    const fullPlayerFrame = this.fullPlayerFrame();
     return PlayerLayoutSpec.fullArtworkSize(
-      this.frozenRootFrame.width,
-      this.frozenRootFrame.height,
+      fullPlayerFrame.width,
+      fullPlayerFrame.height,
       this.statusBarAvoidHeight,
       this.navigationAvoidHeight
     );
@@ -633,6 +642,7 @@ struct Index {
       return;
     }
     this.restoreReturnMiniBarStyle();
+    this.freezeMiniPlayerGeometry(false);
     this.freezeMorphArtworkSource();
     this.animateFullPlayerClose();
   }
@@ -792,20 +802,15 @@ struct Index {
             topInset: this.statusBarAvoidHeight,
             bottomInset: this.navigationAvoidHeight,
             showArtwork: false,
-            rootFrame: this.frozenRootFrame,
+            rootFrame: this.fullPlayerFrame(),
             previousArtworkTarget: this.artworkTarget,
             onClose: () => this.hideFullPlayer()
           })
         }
-        .width(this.frozenRootFrame.width)
-        .height(this.frozenRootFrame.height)
+        .width(this.fullPlayerFrame().width)
+        .height(this.fullPlayerFrame().height)
         .position({ x: 0, y: 0 })
-        .opacity(this.clamp(
-          (this.playerExpandProgress - PlayerMotionSpec.FULL_CONTENT_FADE_START) *
-            PlayerMotionSpec.FULL_CONTENT_FADE_RATE,
-          0,
-          1
-        ))
+        .opacity(PlayerMotionSpec.fullContentOpacity(this.playerExpandProgress))
 
         if (this.playerExpandProgress < PlayerMotionSpec.MINI_CONTENT_VISIBLE_LIMIT) {
           Stack() {
@@ -831,12 +836,12 @@ struct Index {
       .width('100%')
       .height('100%')
     }
-    .width(this.morphValue(this.frozenMiniPlayerFrame.width, this.frozenRootFrame.width))
-    .height(this.morphValue(this.frozenMiniPlayerFrame.height, this.frozenRootFrame.height))
+    .width(this.morphValue(this.frozenMiniPlayerFrame.width, this.fullPlayerFrame().width))
+    .height(this.morphValue(this.frozenMiniPlayerFrame.height, this.fullPlayerFrame().height))
     .position({ x: 0, y: 0 })
     .translate({
-      x: this.morphValue(this.frozenMiniPlayerFrame.x, this.frozenRootFrame.x),
-      y: this.morphValue(this.frozenMiniPlayerFrame.y, this.frozenRootFrame.y)
+      x: this.morphValue(this.frozenMiniPlayerFrame.x, this.fullPlayerFrame().x),
+      y: this.morphValue(this.frozenMiniPlayerFrame.y, this.fullPlayerFrame().y)
     })
     .borderRadius(28 * (1 - this.clamp(this.playerExpandProgress, 0, 1)))
     .clip(true)
@@ -896,12 +901,12 @@ struct Index {
     .translate({
       x: this.morphValue(
         this.frozenMiniPlayerFrame.x + PlayerLayoutSpec.MINI_ARTWORK_INSET,
-        this.frozenArtworkTarget.x +
+        this.fullPlayerArtworkTarget().x +
           (this.fullArtworkSlotSize() - this.morphTargetArtworkWidth()) / 2
       ),
       y: this.morphValue(
         this.frozenMiniPlayerFrame.y + PlayerLayoutSpec.MINI_ARTWORK_INSET,
-        this.frozenArtworkTarget.y +
+        this.fullPlayerArtworkTarget().y +
           (this.fullArtworkSlotSize() - this.morphTargetArtworkHeight()) / 2
       )
     })

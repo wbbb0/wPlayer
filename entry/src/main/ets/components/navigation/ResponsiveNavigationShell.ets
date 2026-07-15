@@ -120,7 +120,10 @@ export struct ResponsiveNavigationShell {
         largeWidth: AppShellLayoutSpec.COMPACT_TAB_LARGE_WIDTH
       },
       barBottomMargin: AppShellLayoutSpec.FLOATING_BAR_BOTTOM_MARGIN,
-      gradientMask: { maskColor: $r('app.color.float_bar_gradient_mask'), maskHeight: 84 },
+      gradientMask: {
+        maskColor: $r('app.color.float_bar_gradient_mask'),
+        maskHeight: AppShellLayoutSpec.FLOATING_BAR_GRADIENT_MASK_HEIGHT
+      },
       systemMaterialEffect: {
         materialType: hdsMaterial.MaterialType.ADAPTIVE,
         materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
@@ -153,6 +156,10 @@ export struct ResponsiveNavigationShell {
       },
       barSideMargin: AppShellLayoutSpec.WIDE_SIDE_MARGIN,
       barBottomMargin: AppShellLayoutSpec.FLOATING_BAR_BOTTOM_MARGIN,
+      gradientMask: {
+        maskColor: $r('app.color.float_bar_gradient_mask'),
+        maskHeight: AppShellLayoutSpec.FLOATING_BAR_GRADIENT_MASK_HEIGHT
+      },
       systemMaterialEffect: {
         materialType: hdsMaterial.MaterialType.ADAPTIVE,
         materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
@@ -503,7 +510,7 @@ export struct ResponsiveNavigationShell {
     }
     .id('wide_mini_player_hds_host')
     .width(this.wideMiniPlayerWidth() + AppShellLayoutSpec.WIDE_SIDE_MARGIN * 2)
-    .height(AppShellLayoutSpec.MINI_PLAYER_HEIGHT + AppShellLayoutSpec.FLOATING_BAR_BOTTOM_MARGIN)
+    .height(AppShellLayoutSpec.WIDE_MINI_PLAYER_HOST_HEIGHT)
   }
 
   build() {

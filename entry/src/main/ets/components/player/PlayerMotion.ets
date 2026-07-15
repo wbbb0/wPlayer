@@ -42,13 +42,22 @@ export class PlayerMotionSpec {
   static readonly GESTURE_AXIS_LOCK_DISTANCE: number = 4;
   static readonly HORIZONTAL_SWIPE_RESISTANCE: number = 120;
   static readonly HORIZONTAL_HAPTIC_THRESHOLD: number = 48;
-  static readonly FULL_CONTENT_FADE_START: number = 0.06;
-  static readonly FULL_CONTENT_FADE_RATE: number = 3.2;
+  static readonly FULL_CONTENT_COLLAPSE_FADE_START: number = 0.2;
+  static readonly FULL_CONTENT_COLLAPSE_FADE_END: number = 0.8;
   static readonly MINI_CONTENT_FADE_START: number = 0.08;
   static readonly MINI_CONTENT_FADE_RATE: number = 4.2;
   static readonly MINI_CONTENT_VISIBLE_LIMIT: number = 0.32;
   static readonly FULL_ARTWORK_SHADOW_RADIUS: number = 38;
   static readonly FULL_ARTWORK_SHADOW_OFFSET_Y: number = 20;
+
+  static fullContentOpacity(expandProgress: number): number {
+    const normalizedExpandProgress = Math.max(0, Math.min(1, expandProgress));
+    const collapseProgress = 1 - normalizedExpandProgress;
+    const fadeProgress = (collapseProgress - PlayerMotionSpec.FULL_CONTENT_COLLAPSE_FADE_START) /
+      (PlayerMotionSpec.FULL_CONTENT_COLLAPSE_FADE_END -
+        PlayerMotionSpec.FULL_CONTENT_COLLAPSE_FADE_START);
+    return 1 - Math.max(0, Math.min(1, fadeProgress));
+  }
 }
 
 export class PlayerLayoutSpec {

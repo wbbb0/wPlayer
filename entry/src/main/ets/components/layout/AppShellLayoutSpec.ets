@@ -2,6 +2,10 @@ export class AppShellLayoutSpec {
   static readonly SIDE_NAVIGATION_BREAKPOINT: number = 600;
 
   static readonly FLOATING_BAR_BOTTOM_MARGIN: number = 18;
+  static readonly FLOATING_BAR_GRADIENT_MASK_HEIGHT: number = 84;
+  static readonly WIDE_MINI_PLAYER_HOST_HEIGHT: number =
+    AppShellLayoutSpec.FLOATING_BAR_GRADIENT_MASK_HEIGHT +
+      AppShellLayoutSpec.FLOATING_BAR_BOTTOM_MARGIN;
   static readonly COMPACT_SIDE_MARGIN: number = 16;
   static readonly WIDE_SIDE_MARGIN: number = 32;
   static readonly EXPANDED_TAB_BAR_PORTRAIT_WIDTH: number = 88;

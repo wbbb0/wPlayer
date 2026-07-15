@@ -14,7 +14,9 @@ export struct AlbumsPage {
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   scroller: Scroller = new Scroller();
+  onOpenAlbum: (item: AlbumListItem) => void = (_item: AlbumListItem): void => {};
   private readonly scrollBehavior: PageGridBehavior = new PageGridBehavior();
+
   build() {
     Column() {
       Stack({ alignContent: Alignment.End }) {
@@ -43,6 +45,7 @@ export struct AlbumsPage {
                   .width('100%')
               }
               .alignItems(HorizontalAlign.Start)
+              .onClick(() => this.onOpenAlbum(item))
             }
           }, (item: AlbumListItem) => `${item.id}`)
         }

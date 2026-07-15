@@ -23,6 +23,7 @@ import { AppPrimaryTitleParams } from './AppPrimaryTitleContent';
 import { MORE_NAVIGATION_ITEMS, MoreNavigationItem, MoreRoute } from './MoreNavigation';
 import { LibrarySortMenu, LibrarySortMenuParams } from '../library/LibrarySortMenu';
 import { MiniPlayerSurface } from '../player/MiniPlayerSurface';
+import { QueueActionMenu } from '../library/QueueActionMenu';
 import { PlayerFrame } from '../player/PlayerMotion';
 import {
   AlbumSortField,
@@ -33,6 +34,7 @@ import { LibraryStore } from '../../library/store/LibraryStore';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { AlbumsPage } from '../../pages/library/AlbumsPage';
+import { AlbumDetailPage } from '../../pages/library/AlbumDetailPage';
 import { LibraryManagementPage } from '../../pages/library/LibraryManagementPage';
 import { MorePage } from '../../pages/library/MorePage';
 import { PlaylistsPage } from '../../pages/library/PlaylistsPage';
@@ -48,6 +50,17 @@ const ALBUM_SORT_LABELS: Array<string> = ['名称', '艺术家', '发行日期',
 const TRACK_SORT_MENU_ID: string = 'track_sort_menu';
 const ALBUM_SORT_MENU_ID: string = 'album_sort_menu';
 const MORE_TAB_INDEX: number = 3;
+const ALBUM_DETAIL_ROUTE: string = 'album_detail';
+
+class AlbumDetailRouteParams {
+  albumId: number;
+  title: string;
+
+  constructor(albumId: number, title: string) {
+    this.albumId = albumId;
+    this.title = title;
+  }
+}
 
 @Component
 export struct ResponsiveNavigationShell {
@@ -73,6 +86,7 @@ export struct ResponsiveNavigationShell {
   expandedMorePathStacks: Array<NavPathStack> = [];
   pageScrollers: Array<Scroller> = [];
   libraryManagementScroller: Scroller = new Scroller();
+  albumDetailScroller: Scroller = new Scroller();
 
   onCompactTabChange: (index: number) => void = (_index: number): void => {};
   onCompactTabClick: (index: number) => void = (_index: number): void => {};
@@ -271,6 +285,35 @@ export struct ResponsiveNavigationShell {
     return { maxCount: values.length, value: values };
   }
 
+  private albumDetailTitleMenu(albumId: number): HdsNavigationMenuContentOptions {
+    const targetId = `album_detail_more_${albumId}`;
+    return {
+      maxCount: 1,
+      value: [{
+        content: {
+          icon: $r('app.media.control_more'),
+          label: '更多',
+          type: IconStyleMode.NORMAL,
+          componentId: targetId,
+          action: () => {
+            const detail = this.libraryStore.albumDetail;
+            if (detail === undefined || detail.album.id !== albumId) {
+              return;
+            }
+            const content = new ComponentContent(
+              this.getUIContext(), wrapBuilder(QueueActionMenu), detail.tracks
+            );
+            this.getUIContext().getPromptAction().openMenu(
+              content, { id: targetId }, { enableArrow: true }
+            ).catch((error: BusinessError) => {
+              console.warn(`Unable to open album queue menu: ${error.code}, ${error.message}`);
+            });
+          }
+        }
+      }]
+    };
+  }
+
   @Builder
   private LibraryPage(index: number) {
     if (index === 0) {
@@ -293,7 +336,13 @@ export struct ResponsiveNavigationShell {
         store: this.libraryStore,
         topInset: this.topInset,
         bottomInset: this.bottomInset,
-        scroller: this.pageScrollers[2]
+        scroller: this.pageScrollers[2],
+        onOpenAlbum: (item) => {
+          this.tabPathStacks[2].pushPath({
+            name: ALBUM_DETAIL_ROUTE,
+            param: new AlbumDetailRouteParams(item.id, item.title)
+          });
+        }
       })
     } else {
       MorePage({
@@ -317,7 +366,26 @@ export struct ResponsiveNavigationShell {
 
   @Builder
   private DestinationBuilder(name: string, _param: Object) {
-    if (name === MoreRoute.LIBRARY_MANAGEMENT) {
+    if (name === ALBUM_DETAIL_ROUTE) {
+      HdsNavDestination() {
+        AlbumDetailPage({
+          store: this.libraryStore,
+          albumId: (_param as AlbumDetailRouteParams).albumId,
+          topInset: this.topInset,
+          bottomInset: this.bottomInset,
+          rootWidth: this.rootWidth,
+          scroller: this.albumDetailScroller
+        })
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor($r('app.color.page_background'))
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryBackOnlyTitleBar(
+        this.appearancePalette,
+        this.albumDetailTitleMenu((_param as AlbumDetailRouteParams).albumId)
+      ))
+    } else if (name === MoreRoute.LIBRARY_MANAGEMENT) {
       HdsNavDestination() {
         this.LibraryManagementContent()
       }

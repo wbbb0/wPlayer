@@ -4,6 +4,7 @@ import { MediaImporter } from '../importer/MediaImporter';
 import { ArtworkCache } from '../artwork/ArtworkCache';
 import {
   AlbumListItem,
+  AlbumDetail,
   AlbumSortField,
   ImportProgress,
   ImportResult,
@@ -52,6 +53,9 @@ export class LibraryStore {
   importDetailItems: Array<ImportItemResult> = [];
   sortIndexResult: string = '';
   sortIndexError: string = '';
+  albumDetail?: AlbumDetail;
+  albumDetailLoading: boolean = false;
+  albumDetailError: string = '';
 
   private readonly repository: MusicRepository;
   private importer?: MediaImporter;
@@ -61,6 +65,32 @@ export class LibraryStore {
   private refreshGeneration: number = 0;
   private trackSortGeneration: number = 0;
   private albumSortGeneration: number = 0;
+  private albumDetailGeneration: number = 0;
+
+  async loadAlbumDetail(albumId: number): Promise<void> {
+    const generation = ++this.albumDetailGeneration;
+    this.albumDetailLoading = true;
+    this.albumDetailError = '';
+    this.albumDetail = undefined;
+    try {
+      const detail = await this.repository.getAlbumDetail(albumId);
+      if (generation !== this.albumDetailGeneration) {
+        return;
+      }
+      this.albumDetail = detail;
+      if (detail === undefined) {
+        this.albumDetailError = '专辑不存在或已从音乐库移除';
+      }
+    } catch (error) {
+      if (generation === this.albumDetailGeneration) {
+        this.albumDetailError = LibraryStore.errorMessageOf(error);
+      }
+    } finally {
+      if (generation === this.albumDetailGeneration) {
+        this.albumDetailLoading = false;
+      }
+    }
+  }
 
   constructor(repository?: MusicRepository) {
     this.repository = repository === undefined ? new MusicRepository() : repository;

@@ -72,6 +72,25 @@ export class PlaybackQueue {
     return this.items.length;
   }
 
+  insertNext(items: Array<QueueTrack>): void {
+    if (items.length === 0 || this.cursor < 0) {
+      return;
+    }
+    const insertedOrder: Array<number> = [];
+    items.forEach((item: QueueTrack) => {
+      insertedOrder.push(this.items.length);
+      this.items.push(item);
+    });
+    this.order.splice(this.cursor + 1, 0, ...insertedOrder);
+  }
+
+  append(items: Array<QueueTrack>): void {
+    items.forEach((item: QueueTrack) => {
+      this.order.push(this.items.length);
+      this.items.push(item);
+    });
+  }
+
   playbackWindow(radius: number, repeatMode: RepeatMode): PlaybackQueueWindow {
     const result: Array<QueueTrack> = [];
     if (this.cursor < 0 || this.order.length === 0) {

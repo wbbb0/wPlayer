@@ -13,7 +13,7 @@ export struct LibraryAlphabetIndex {
   build() {
     AlphabetIndexer({ arrayValue: this.labels(), selected: this.selectedIndex })
       .width(28)
-      .height('72%')
+      .height('80%')
       .usingPopup(true)
       .alignStyle(IndexerAlign.END)
       .autoCollapse(true)

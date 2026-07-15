@@ -168,6 +168,13 @@ export interface AlbumListItem {
   sectionKey: string;
 }
 
+export interface AlbumDetail {
+  album: AlbumListItem;
+  releaseYear: number;
+  genreDisplay: string;
+  tracks: Array<TrackListItem>;
+}
+
 export interface LibraryStatistics {
   trackCount: number;
   albumCount: number;

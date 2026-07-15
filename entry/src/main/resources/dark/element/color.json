@@ -73,6 +73,10 @@
       "value": "#5B5CE2"
     },
     {
+      "name": "control_on_accent",
+      "value": "#FFFFFF"
+    },
+    {
       "name": "theme_accent_shadow",
       "value": "#305B5CE2"
     },

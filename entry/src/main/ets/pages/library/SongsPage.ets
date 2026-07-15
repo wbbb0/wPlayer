@@ -7,67 +7,23 @@ import {
   TrackListItem
 } from '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
-
-enum SongRowFeedbackPhase {
-  IDLE,
-  HIGHLIGHTING,
-  RETURNING
-}
-
-class SongRowMotionSpec {
-  static readonly HIGHLIGHT_DURATION: number = 55;
-  static readonly RETURN_DURATION: number = 140;
-}
+import { QueueActionMenu } from '../../components/library/QueueActionMenu';
 
 @Component
 export struct SongsPage {
   @ObjectLink store: LibraryStore;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
-  @State rowFeedbackTrackId: number = -1;
-  @State rowFeedbackPhase: SongRowFeedbackPhase = SongRowFeedbackPhase.IDLE;
   onPlayTrack: (item: TrackListItem) => void = (_item: TrackListItem): void => {};
   scroller: Scroller = new Scroller();
   private readonly scrollBehavior: PageListBehavior = new PageListBehavior();
-  private rowFeedbackEpoch: number = 0;
 
-  private beginRowFeedback(trackId: number): void {
-    const epoch = ++this.rowFeedbackEpoch;
-    this.getUIContext().animateTo({
-      duration: SongRowMotionSpec.HIGHLIGHT_DURATION,
-      curve: Curve.EaseOut,
-      onFinish: () => {
-        this.finishRowFeedback(epoch);
-      }
-    }, () => {
-      this.rowFeedbackTrackId = trackId;
-      this.rowFeedbackPhase = SongRowFeedbackPhase.HIGHLIGHTING;
-    });
+  private durationLabel(durationMs: number): string {
+    const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
   }
-
-  private finishRowFeedback(epoch: number): void {
-    if (epoch !== this.rowFeedbackEpoch) {
-      return;
-    }
-    this.rowFeedbackPhase = SongRowFeedbackPhase.RETURNING;
-    this.getUIContext().animateTo({
-      duration: SongRowMotionSpec.RETURN_DURATION,
-      curve: Curve.EaseOut,
-      onFinish: () => {
-        if (epoch === this.rowFeedbackEpoch) {
-          this.rowFeedbackPhase = SongRowFeedbackPhase.IDLE;
-        }
-      }
-    }, () => {
-      this.rowFeedbackTrackId = -1;
-    });
-  }
-
-  private isRowHighlighted(trackId: number): boolean {
-    return this.rowFeedbackTrackId === trackId &&
-      this.rowFeedbackPhase !== SongRowFeedbackPhase.IDLE;
-  }
-
   @Builder
   private EmptyState() {
     ListItem() {
@@ -95,13 +51,18 @@ export struct SongsPage {
 
   build() {
     Stack({ alignContent: Alignment.End }) {
-      List({ space: 4, scroller: this.scroller }) {
+      List({ space: 0, scroller: this.scroller }) {
         if (this.store.statistics.trackCount === 0) {
           this.EmptyState()
         } else {
-          LazyForEach(this.store.trackDataSource, (item: TrackListItem) => {
+          LazyForEach(this.store.trackDataSource, (item: TrackListItem, index: number) => {
             ListItem() {
-              Row({ space: 12 }) {
+              Column() {
+                if (index > 0) {
+                  Divider().color($r('app.color.text_tertiary')).opacity(0.3)
+                    .margin({ left: 80, right: PageLayoutSpec.HORIZONTAL_INSET })
+                }
+                Row({ space: 12 }) {
                 ArtworkView({
                   sourcePath: item.artworkPath.length > 0 ? this.store.resolveArtworkPath(item.artworkPath) : '',
                   sourceWidth: item.artworkWidth,
@@ -123,19 +84,25 @@ export struct SongsPage {
                 }
                 .alignItems(HorizontalAlign.Start)
                 .layoutWeight(1)
+                Text(this.durationLabel(item.durationMs))
+                  .fontSize(12)
+                  .fontColor($r('app.color.text_tertiary'))
+                Button() { Image($r('app.media.control_more')).width(18).height(18)
+                  .fillColor($r('app.color.text_primary')) }
+                  .width(38).height(38).borderRadius(19)
+                  .backgroundColor(Color.Transparent)
+                  .accessibilityText('更多歌曲操作')
+                  .bindMenu(QueueActionMenu([item]), { placement: Placement.BottomRight })
+                }
+                .width('100%')
+                .padding({ left: 16, right: 16, top: 8, bottom: 8 })
+                .hoverEffect(HoverEffect.None)
+                .onClick(() => {
+                  this.onPlayTrack(item);
+                })
               }
               .width('100%')
-              .padding({ left: 16, right: 16, top: 8, bottom: 8 })
-              .borderRadius(16)
-              .backgroundColor(this.isRowHighlighted(item.id) ?
-                $r('app.color.glass_surface_strong') : $r('app.color.glass_surface_subtle'))
-              .hoverEffect(HoverEffect.None)
-              .onClick(() => {
-                this.beginRowFeedback(item.id);
-                this.onPlayTrack(item);
-              })
             }
-            .padding({ left: 12, right: 12 })
           }, (item: TrackListItem) => `${item.id}`)
         }
       }

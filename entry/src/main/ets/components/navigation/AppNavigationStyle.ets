@@ -21,6 +21,27 @@ export class AppNavigationStyle {
     return AppNavigationStyle.createTitleBar(title, palette, true, true);
   }
 
+  static secondaryBackOnlyTitleBar(palette: AppAppearancePalette,
+    menu?: HdsNavigationMenuContentOptions): HdsNavigationTitleBarOptions {
+    return {
+      avoidLayoutSafeArea: true,
+      enableComponentSafeArea: true,
+      content: { menu: menu },
+      style: {
+        scrollEffectOpts: {
+          enableScrollEffect: true,
+          scrollEffectType: ScrollEffectType.IMMERSIVE_GRADIENT_BLUR
+        },
+        originalStyle: AppNavigationStyle.foregroundStyle(palette),
+        scrollEffectStyle: AppNavigationStyle.foregroundStyle(palette),
+        systemMaterialEffect: {
+          materialType: hdsMaterial.MaterialType.ADAPTIVE,
+          materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+        }
+      }
+    };
+  }
+
   private static createTitleBar(title: string, palette: AppAppearancePalette,
     avoidLayoutSafeArea: boolean, enableComponentSafeArea: boolean,
     menu?: HdsNavigationMenuContentOptions,

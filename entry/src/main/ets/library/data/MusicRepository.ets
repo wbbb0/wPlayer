@@ -2,6 +2,7 @@ import { relationalStore } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import {
   AlbumSortField,
+  AlbumDetail,
   AvailabilityState,
   AlbumListItem,
   LibrarySnapshot,
@@ -110,6 +111,10 @@ export class MusicRepository {
     direction: SortDirection
   ): Promise<LibrarySnapshot<AlbumListItem>> {
     return this.queries.getAlbums(field, direction);
+  }
+
+  getAlbumDetail(albumId: number): Promise<AlbumDetail | undefined> {
+    return this.queries.getAlbumDetail(albumId);
   }
 
   hasUri(uri: string): Promise<boolean> {

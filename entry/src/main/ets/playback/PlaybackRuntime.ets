@@ -79,6 +79,11 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     });
   }
 
+  playInOrder(selected: TrackListItem, libraryItems: Array<TrackListItem>): void {
+    this.setShuffleEnabled(false);
+    this.playFromLibrary(selected, libraryItems);
+  }
+
   shuffleAll(libraryItems: Array<TrackListItem>): void {
     if (libraryItems.length === 0) {
       return;
@@ -86,6 +91,14 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.setShuffleEnabled(true);
     const selected = libraryItems[Math.floor(Math.random() * libraryItems.length)];
     this.playFromLibrary(selected, libraryItems);
+  }
+
+  insertNext(items: Array<TrackListItem>): void {
+    this.enqueueLibraryItems(items, true);
+  }
+
+  appendToQueue(items: Array<TrackListItem>): void {
+    this.enqueueLibraryItems(items, false);
   }
 
   togglePlayback(): void {
@@ -277,6 +290,24 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.artworkCache = new ArtworkMemoryCache(context);
     this.session = new PlaybackSession(context, this);
     await this.session.initialize();
+  }
+
+  private enqueueLibraryItems(items: Array<TrackListItem>, insertNext: boolean): void {
+    if (items.length === 0) {
+      return;
+    }
+    if (!this.playerStore.hasCurrentTrack() || this.playerStore.queuePhase !== QueueBuildPhase.READY) {
+      this.playInOrder(items[0], items);
+      return;
+    }
+    const queueItems = items.map((item: TrackListItem) => PlaybackRuntime.queueTrackOf(item));
+    if (insertNext) {
+      this.queue.insertNext(queueItems);
+    } else {
+      this.queue.append(queueItems);
+    }
+    this.playerStore.queueSize = this.queue.size();
+    this.prefetchCurrentWindow();
   }
 
   private async resetFailedInitialization(): Promise<void> {

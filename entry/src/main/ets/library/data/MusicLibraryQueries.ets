@@ -1,6 +1,7 @@
 import { relationalStore } from '@kit.ArkData';
 import {
   AlbumListItem,
+  AlbumDetail,
   AlbumSortField,
   AvailabilityState,
   ArtworkPictureType,
@@ -250,6 +251,78 @@ export class MusicLibraryQueries {
       sections: alphabetic ? this.buildSections(items) : [],
       indexPresentation: alphabetic ? LibraryIndexPresentation.ALPHABET : LibraryIndexPresentation.SCROLLBAR
     };
+  }
+
+  async getAlbumDetail(albumId: number): Promise<AlbumDetail | undefined> {
+    const albumResult = await this.database.getStore().querySql(
+      `SELECT al.id, al.title, al.album_artist_display, al.track_count,
+        al.total_duration_ms, COALESCE(a.large_path, ''),
+        COALESCE(a.large_width, 0), COALESCE(a.large_height, 0), '#',
+        COALESCE(al.release_year, 0),
+        COALESCE((SELECT GROUP_CONCAT(g.name) FROM genre g WHERE g.id IN (
+          SELECT tg.genre_id FROM track_genre tg JOIN track grouped_track ON grouped_track.id = tg.track_id
+          WHERE grouped_track.album_id = al.id
+        )), '')
+       FROM album al LEFT JOIN artwork_asset a ON a.id = al.primary_artwork_id
+       WHERE al.id = ? LIMIT 1`,
+      [albumId]
+    );
+    let album: AlbumListItem | undefined;
+    let releaseYear: number = 0;
+    let genreDisplay: string = '';
+    try {
+      if (albumResult.goToNextRow()) {
+        album = {
+          id: albumResult.getLong(0),
+          title: albumResult.getString(1),
+          albumArtistDisplay: albumResult.getString(2),
+          trackCount: albumResult.getLong(3),
+          totalDurationMs: albumResult.getLong(4),
+          artworkPath: albumResult.getString(5),
+          artworkWidth: albumResult.getLong(6),
+          artworkHeight: albumResult.getLong(7),
+          sectionKey: albumResult.getString(8)
+        };
+        releaseYear = albumResult.getLong(9);
+        genreDisplay = albumResult.getString(10);
+      }
+    } finally {
+      albumResult.close();
+    }
+    if (album === undefined) {
+      return undefined;
+    }
+    const trackResult = await this.database.getStore().querySql(
+      `SELECT t.id, t.title, t.artist_display, t.album_display, t.duration_ms,
+        COALESCE(t.track_number, 0), COALESCE(t.disc_number, 0),
+        COALESCE(a.small_hash, ''), COALESCE(a.small_path, ''),
+        COALESCE(a.large_hash, ''), COALESCE(a.large_path, ''),
+        COALESCE(a.large_width, 0), COALESCE(a.large_height, 0), '#'
+       FROM track t LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
+       WHERE t.album_id = ?
+       ORDER BY CASE WHEN t.disc_number IS NULL OR t.disc_number <= 0 THEN 1 ELSE 0 END,
+        t.disc_number ASC,
+        CASE WHEN t.track_number IS NULL OR t.track_number <= 0 THEN 1 ELSE 0 END,
+        t.track_number ASC, t.id ASC`,
+      [albumId]
+    );
+    const tracks: Array<TrackListItem> = [];
+    try {
+      while (trackResult.goToNextRow()) {
+        tracks.push({
+          id: trackResult.getLong(0), title: trackResult.getString(1),
+          artistDisplay: trackResult.getString(2), albumDisplay: trackResult.getString(3),
+          durationMs: trackResult.getLong(4), trackNumber: trackResult.getLong(5),
+          discNumber: trackResult.getLong(6), smallArtworkHash: trackResult.getString(7),
+          smallArtworkPath: trackResult.getString(8), artworkHash: trackResult.getString(9),
+          artworkPath: trackResult.getString(10), artworkWidth: trackResult.getLong(11),
+          artworkHeight: trackResult.getLong(12), sectionKey: trackResult.getString(13)
+        });
+      }
+    } finally {
+      trackResult.close();
+    }
+    return { album: album, releaseYear: releaseYear, genreDisplay: genreDisplay, tracks: tracks };
   }
 
   async hasUri(uri: string): Promise<boolean> {

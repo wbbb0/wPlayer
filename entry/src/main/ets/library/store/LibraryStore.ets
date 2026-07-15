@@ -7,6 +7,8 @@ import {
   AlbumSortField,
   ImportProgress,
   ImportResult,
+  ImportItemResult,
+  ImportItemOutcome,
   LibraryStatistics,
   LibraryIndexPresentation,
   LibrarySection,
@@ -17,6 +19,7 @@ import {
 import { SettingsRepository } from '../../settings/SettingsRepository';
 import { LibraryListDataSource } from './LibraryListDataSource';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
+import { ImportPerformanceTrace } from '../importer/ImportPerformanceTrace';
 
 @Observed
 export class LibraryStore {
@@ -46,6 +49,9 @@ export class LibraryStore {
   lastMessage: string = '';
   errorMessage: string = '';
   lastImportResult?: ImportResult;
+  importDetailItems: Array<ImportItemResult> = [];
+  sortIndexResult: string = '';
+  sortIndexError: string = '';
 
   private readonly repository: MusicRepository;
   private importer?: MediaImporter;
@@ -162,20 +168,30 @@ export class LibraryStore {
     }
   }
 
-  async selectAndImport(): Promise<void> {
+  async selectAndImport(onStarted?: () => void): Promise<void> {
     if (this.importer === undefined || this.importing) {
       return;
     }
     this.importing = true;
     this.errorMessage = '';
     this.lastMessage = '';
+    this.lastImportResult = undefined;
+    this.importDetailItems = [];
     try {
       const result = await this.importer.selectAndImport((progress: ImportProgress) => {
         this.importProgress = progress;
+      }, onStarted, (item: ImportItemResult) => {
+        if (item.outcome !== ImportItemOutcome.IMPORTED) {
+          this.importDetailItems = this.importDetailItems.concat([item]);
+        }
       });
       this.lastImportResult = result;
+      this.importDetailItems = result.items.filter((item: ImportItemResult) =>
+        item.outcome !== ImportItemOutcome.IMPORTED);
       this.lastMessage = LibraryStore.importSummary(result);
+      const refreshStartedAt = Date.now();
       await this.refresh();
+      ImportPerformanceTrace.mark('post_import_refresh', refreshStartedAt);
     } catch (error) {
       this.errorMessage = LibraryStore.errorMessageOf(error);
     } finally {
@@ -212,12 +228,16 @@ export class LibraryStore {
     this.rebuildingSortIndexes = true;
     this.errorMessage = '';
     this.lastMessage = '';
+    this.sortIndexResult = '';
+    this.sortIndexError = '';
     try {
       await this.repository.rebuildSortIndexes();
       await this.refresh();
       this.lastMessage = '排序索引已根据音乐库元数据重建';
+      this.sortIndexResult = this.lastMessage;
     } catch (error) {
       this.errorMessage = LibraryStore.errorMessageOf(error);
+      this.sortIndexError = this.errorMessage;
     } finally {
       this.rebuildingSortIndexes = false;
     }

@@ -1,11 +1,13 @@
 import { fileIo as fs, hash } from '@kit.CoreFileKit';
 import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import { image } from '@kit.ImageKit';
+import { flattenArtworkPixels } from '../metadata/MediaFileTasks';
+import { ImportPerformanceTrace } from '../importer/ImportPerformanceTrace';
+import { ArtworkEncodingPolicy } from './ArtworkEncodingPolicy';
 
 const ARTWORK_DIRECTORY = 'artwork';
 const SMALL_MAX_EDGE = 256;
 const LARGE_MAX_EDGE = 768;
-const HEIF_QUALITY = 92;
 const TEMP_FILE_SUFFIX = '.tmp';
 const MAX_SOURCE_BYTES = 32 * 1024 * 1024;
 const MAX_SOURCE_EDGE = 32768;
@@ -35,7 +37,7 @@ export class ArtworkCache {
     this.context = context;
   }
 
-  async cache(sourceBytes: Uint8Array, knownSourceHash?: string): Promise<ArtworkCacheResult> {
+  async cache(sourceBytes: Uint8Array, knownSourceHash?: string, traceFileId: number = 0): Promise<ArtworkCacheResult> {
     if (sourceBytes.byteLength === 0) {
       throw new Error('Artwork source is empty');
     }
@@ -48,18 +50,23 @@ export class ArtworkCache {
     const imageSource = image.createImageSource(sourceBuffer);
     const imagePacker = image.createImagePacker();
     try {
+      const imageInfoStartedAt = Date.now();
       const imageInfo = await imageSource.getImageInfo();
+      ImportPerformanceTrace.mark('artwork_info', imageInfoStartedAt, traceFileId,
+        `source_bytes=${sourceBytes.byteLength} width=${imageInfo.size.width} height=${imageInfo.size.height}`);
       ArtworkCache.validateSourceDimensions(imageInfo.size.width, imageInfo.size.height);
-      if (!ArtworkCache.supportsFormat(imagePacker.supportedFormats, 'heif')) {
-        throw new Error('HEIF encoding is not supported on this device');
+      if (!ArtworkCache.supportsFormat(imagePacker.supportedFormats, 'jpeg')) {
+        throw new Error('JPEG encoding is not supported on this device');
       }
       const small = await this.encodeVariant(
         imageSource, imagePacker, sourceHash, imageInfo.size, SMALL_MAX_EDGE,
-        'image/heif', HEIF_QUALITY, 'heif', 'small'
+        ArtworkEncodingPolicy.MIME_TYPE, ArtworkEncodingPolicy.QUALITY,
+        ArtworkEncodingPolicy.EXTENSION, 'small', traceFileId
       );
       const large = await this.encodeVariant(
         imageSource, imagePacker, sourceHash, imageInfo.size, LARGE_MAX_EDGE,
-        'image/heif', HEIF_QUALITY, 'heif', 'large'
+        ArtworkEncodingPolicy.MIME_TYPE, ArtworkEncodingPolicy.QUALITY,
+        ArtworkEncodingPolicy.EXTENSION, 'large', traceFileId
       );
       return { sourceHash: sourceHash, small: small, large: large };
     } finally {
@@ -173,8 +180,10 @@ export class ArtworkCache {
     format: string,
     quality: number,
     extension: string,
-    variantName: string
+    variantName: string,
+    traceFileId: number
   ): Promise<ArtworkCacheVariantResult> {
+    const variantStartedAt = Date.now();
     const targetSize = ArtworkCache.calculateTargetSize(sourceSize.width, sourceSize.height, maxEdge);
     const pixelMap = await imageSource.createPixelMap({
       desiredSize: targetSize,
@@ -219,7 +228,7 @@ export class ArtworkCache {
           temporaryPath = '';
         }
       }
-      return {
+      const result: ArtworkCacheVariantResult = {
         hash: contentHash,
         relativePath: relativePath,
         format: format,
@@ -227,6 +236,9 @@ export class ArtworkCache {
         height: actualInfo.size.height,
         byteSize: fs.statSync(finalPath).size
       };
+      ImportPerformanceTrace.mark(`artwork_${variantName}`, variantStartedAt, traceFileId,
+        `width=${result.width} height=${result.height} bytes=${result.byteSize}`);
+      return result;
     } finally {
       try {
         if (temporaryPath.length > 0) {
@@ -257,26 +269,11 @@ export class ArtworkCache {
       stride: packedStride,
       region: { x: 0, y: 0, size: info.size }
     });
-    const source = new Uint8Array(sourceBuffer);
-    const opaque = new Uint8Array(info.size.width * info.size.height * 4);
     const premultiplied = info.alphaType === image.AlphaType.PREMUL;
-    for (let y = 0; y < info.size.height; y++) {
-      for (let x = 0; x < info.size.width; x++) {
-        const sourceOffset = y * packedStride + x * 4;
-        const targetOffset = (y * info.size.width + x) * 4;
-        const alpha = source[sourceOffset + 3];
-        const white = 255 - alpha;
-        for (let channel = 0; channel < 3; channel++) {
-          // readPixels(PositionArea) returns BGRA; write an RGBA buffer for ImagePacker.
-          const sourceChannel = channel === 0 ? 2 : channel === 2 ? 0 : 1;
-          const color = source[sourceOffset + sourceChannel];
-          opaque[targetOffset + channel] = premultiplied ?
-            Math.min(255, color + white) : Math.round((color * alpha) / 255 + white);
-        }
-        opaque[targetOffset + 3] = 255;
-      }
-    }
-    return image.createPixelMap(opaque.buffer, {
+    const opaqueBuffer = await flattenArtworkPixels(
+      sourceBuffer, info.size.width, info.size.height, premultiplied
+    );
+    return image.createPixelMap(opaqueBuffer, {
       size: info.size,
       srcPixelFormat: image.PixelMapFormat.RGBA_8888,
       pixelFormat: image.PixelMapFormat.RGBA_8888,
@@ -326,6 +323,9 @@ export class ArtworkCache {
       const normalized = format.toLowerCase().replace('image/', '');
       if (expected === 'heif') {
         return normalized === 'heif' || normalized === 'heic';
+      }
+      if (expected === 'jpeg') {
+        return normalized === 'jpeg' || normalized === 'jpg';
       }
       return normalized === expected;
     });

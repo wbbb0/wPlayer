@@ -1,5 +1,4 @@
 import { fileIo as fs } from '@kit.CoreFileKit';
-import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import { media } from '@kit.MediaKit';
 import {
   MediaFormat,
@@ -8,49 +7,35 @@ import {
   ParsedMetadata
 } from '../model/LibraryModels';
 import { BinaryFileReader } from './BinaryFileReader';
-import { FlacTagReader } from './FlacTagReader';
 import { Id3TagReader } from './Id3TagReader';
 import { MetadataNormalizer } from './MetadataNormalizer';
-import { calculateFullFingerprint } from './MediaFileTasks';
+import { probeMediaFile } from './MediaFileTasks';
+import { ImportPerformanceTrace } from '../importer/ImportPerformanceTrace';
 
 export class MetadataReader {
   static async read(uri: string): Promise<MetadataReadResult> {
-    const reader = new BinaryFileReader(uri);
-    let metadata: ParsedMetadata;
-    let fileName = reader.name;
-    const fileSize = reader.size;
-    const modifiedAt = reader.modifiedAt;
-    let quickFingerprint = '';
-    try {
-      quickFingerprint = MetadataReader.quickFingerprint(reader);
-      const signature = reader.read(0, Math.min(4, reader.size));
-      if (signature.length >= 4 && signature[0] === 0x66 && signature[1] === 0x4C &&
-        signature[2] === 0x61 && signature[3] === 0x43) {
-        metadata = FlacTagReader.read(reader);
-      } else if ((signature.length >= 3 && signature[0] === 0x49 && signature[1] === 0x44 && signature[2] === 0x33) ||
-        MetadataReader.looksLikeMp3(signature)) {
-        metadata = Id3TagReader.read(reader);
-      } else {
-        throw new Error('Only MP3 and FLAC files are supported');
-      }
-    } finally {
-      reader.close();
-    }
-    const fullFingerprintPromise = calculateFullFingerprint(uri);
-    metadata = await MetadataReader.mergeSystemMetadata(uri, fileSize, metadata);
+    const fileId = ImportPerformanceTrace.fileId(uri);
+    const probeStartedAt = Date.now();
+    const probe = await probeMediaFile(uri);
+    ImportPerformanceTrace.mark('probe_total', probeStartedAt, fileId,
+      `worker_ms=${probe.workerDurationMs} queue_ms=${Math.max(0, Date.now() - probeStartedAt - probe.workerDurationMs)}` +
+      ` bytes=${probe.fileSize}`);
+    const systemMetadataStartedAt = Date.now();
+    let metadata = await MetadataReader.mergeSystemMetadata(uri, probe.fileSize, probe.metadata);
+    ImportPerformanceTrace.mark('system_metadata', systemMetadataStartedAt, fileId);
     if (metadata.title.length === 0) {
-      metadata.title = MetadataReader.fileStem(fileName);
+      metadata.title = MetadataReader.fileStem(probe.fileName);
     }
     if (metadata.sortTitle.length === 0) {
       metadata.sortTitle = metadata.title;
     }
     return {
       metadata: metadata,
-      fileName: fileName,
-      fileSize: fileSize,
-      modifiedAt: modifiedAt,
-      quickFingerprint: quickFingerprint,
-      fullFingerprint: await fullFingerprintPromise
+      fileName: probe.fileName,
+      fileSize: probe.fileSize,
+      modifiedAt: probe.modifiedAt,
+      quickFingerprint: probe.quickFingerprint,
+      fullFingerprint: ''
     };
   }
 
@@ -123,32 +108,6 @@ export class MetadataReader {
       fs.closeSync(file);
     }
     return parsed;
-  }
-
-  private static looksLikeMp3(signature: Uint8Array): boolean {
-    return signature.length >= 2 && signature[0] === 0xFF && (signature[1] & 0xE0) === 0xE0;
-  }
-
-  private static quickFingerprint(reader: BinaryFileReader): string {
-    const chunkSize = Math.min(64 * 1024, reader.size);
-    const digest = cryptoFramework.createMd('SHA256');
-    digest.updateSync({ data: reader.read(0, chunkSize) });
-    if (reader.size > chunkSize) {
-      digest.updateSync({ data: reader.read(reader.size - chunkSize, chunkSize) });
-    }
-    const sizeBytes = new Uint8Array(8);
-    let remainingSize = reader.size;
-    for (let index = 7; index >= 0; index -= 1) {
-      sizeBytes[index] = remainingSize & 0xFF;
-      remainingSize = Math.floor(remainingSize / 256);
-    }
-    digest.updateSync({ data: sizeBytes });
-    const result = digest.digestSync();
-    let hexadecimal = '';
-    result.data.forEach((value: number) => {
-      hexadecimal += value.toString(16).padStart(2, '0');
-    });
-    return hexadecimal;
   }
 
   private static fileStem(fileName: string): string {

@@ -17,7 +17,8 @@ import { PlaybackTrack, ResumeState } from '../../playback/model/PlaybackModels'
 import { LibraryDatabase } from './LibraryDatabase';
 import {
   ArtworkAssetLookup,
-  ArtworkCleanupCandidate
+  ArtworkCleanupCandidate,
+  DuplicateCandidate
 } from './MusicRepositoryTypes';
 
 const URI_QUERY_BATCH_SIZE = 128;
@@ -283,6 +284,44 @@ export class MusicLibraryQueries {
       }
     }
     return existingUris;
+  }
+
+  async findDuplicateCandidates(fileSize: number, quickFingerprint: string): Promise<Array<DuplicateCandidate>> {
+    if (fileSize <= 0 || quickFingerprint.length === 0) {
+      return [];
+    }
+    const resultSet = await this.database.getStore().querySql(
+      `SELECT t.id, f.uri, f.content_fingerprint FROM media_file f
+       JOIN track t ON t.media_file_id = f.id
+       WHERE f.file_size = ? AND f.quick_fingerprint = ?`,
+      [fileSize, quickFingerprint]
+    );
+    const candidates: Array<DuplicateCandidate> = [];
+    try {
+      while (resultSet.goToNextRow()) {
+        candidates.push({
+          trackId: resultSet.getLong(0),
+          uri: resultSet.getString(1),
+          fullFingerprint: resultSet.getString(2)
+        });
+      }
+    } finally {
+      resultSet.close();
+    }
+    return candidates;
+  }
+
+  updateFullFingerprint(trackId: number, fullFingerprint: string): Promise<void> {
+    if (fullFingerprint.length === 0) {
+      return Promise.resolve();
+    }
+    return this.database.enqueueWrite(async (transaction: relationalStore.Transaction) => {
+      await transaction.execute(
+        `UPDATE media_file SET content_fingerprint = ?, updated_at = ?
+         WHERE id = (SELECT media_file_id FROM track WHERE id = ?) AND content_fingerprint = ''`,
+        [fullFingerprint, Date.now(), trackId]
+      );
+    });
   }
 
   async findArtworkBySourceHash(sourceHash: string): Promise<ArtworkAssetLookup | undefined> {

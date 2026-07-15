@@ -3,6 +3,10 @@ import { ArtworkLayout } from '../main/ets/components/artwork/ArtworkLayout';
 import { ResourceLeaseRegistry } from '../main/ets/playback/artwork/ResourceLeaseRegistry';
 import { RequestEpoch } from '../main/ets/playback/support/RequestEpoch';
 import { DuplicatePolicy } from '../main/ets/library/importer/DuplicatePolicy';
+import { ImportConcurrencyPolicy } from '../main/ets/library/importer/ImportConcurrencyPolicy';
+import { ArtworkEncodingPolicy } from '../main/ets/library/artwork/ArtworkEncodingPolicy';
+import { ImportPreparationPolicy, PreparedItemState } from
+  '../main/ets/library/importer/ImportPreparationPolicy';
 
 class FakeResource {
   released: number = 0;
@@ -44,6 +48,25 @@ export default function riskRegressionTest() {
       expect(DuplicatePolicy.isConfirmedDuplicate('quick', 'quick', 'full-a', 'full-b')).assertFalse();
       expect(DuplicatePolicy.isConfirmedDuplicate('quick', 'quick', 'full-a', 'full-a')).assertTrue();
       expect(DuplicatePolicy.isConfirmedDuplicate('quick-a', 'quick-b', 'full-a', 'full-a')).assertTrue();
+    });
+
+    it('calculates a full fingerprint only when duplicate proof is needed', 0, () => {
+      expect(ImportConcurrencyPolicy.needsFullFingerprint(0, 1)).assertFalse();
+      expect(ImportConcurrencyPolicy.needsFullFingerprint(1, 1)).assertTrue();
+      expect(ImportConcurrencyPolicy.needsFullFingerprint(0, 2)).assertTrue();
+      expect(ImportConcurrencyPolicy.FILE_PROBE_CONCURRENCY).assertEqual(3);
+    });
+
+    it('uses broadly supported JPEG files for persistent artwork variants', 0, () => {
+      expect(ArtworkEncodingPolicy.MIME_TYPE).assertEqual('image/jpeg');
+      expect(ArtworkEncodingPolicy.EXTENSION).assertEqual('jpg');
+      expect(ArtworkEncodingPolicy.QUALITY).assertLarger(0);
+      expect(ArtworkEncodingPolicy.QUALITY).assertLess(101);
+    });
+
+    it('classifies an early duplicate without an import input as duplicate', 0, () => {
+      expect(ImportPreparationPolicy.classify(false, true, false))
+        .assertEqual(PreparedItemState.DUPLICATE);
     });
   });
 }

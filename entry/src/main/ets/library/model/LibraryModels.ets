@@ -202,6 +202,7 @@ export interface ImportItemResult {
   outcome: ImportItemOutcome;
   reason: string;
   duplicateTrackId?: number;
+  duplicateSourceUri?: string;
 }
 
 export interface MetadataReadResult {

@@ -17,6 +17,7 @@ import { MusicLibraryQueries } from './MusicLibraryQueries';
 import {
   ArtworkAssetLookup,
   ArtworkCleanupCandidate,
+  DuplicateCandidate,
   ImportTrackResult,
   TrackImportInput
 } from './MusicRepositoryTypes';
@@ -24,6 +25,7 @@ import {
 export {
   ArtworkAssetLookup,
   ArtworkCleanupCandidate,
+  DuplicateCandidate,
   ArtworkImportInput,
   ImportTrackResult,
   TrackImportInput
@@ -116,6 +118,14 @@ export class MusicRepository {
 
   hasUris(uris: Array<string>): Promise<Array<string>> {
     return this.queries.hasUris(uris);
+  }
+
+  findDuplicateCandidates(fileSize: number, quickFingerprint: string): Promise<Array<DuplicateCandidate>> {
+    return this.queries.findDuplicateCandidates(fileSize, quickFingerprint);
+  }
+
+  updateFullFingerprint(trackId: number, fullFingerprint: string): Promise<void> {
+    return this.queries.updateFullFingerprint(trackId, fullFingerprint);
   }
 
   findArtworkBySourceHash(sourceHash: string): Promise<ArtworkAssetLookup | undefined> {

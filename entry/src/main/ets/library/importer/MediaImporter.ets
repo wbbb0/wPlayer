@@ -2,10 +2,19 @@ import { common } from '@kit.AbilityKit';
 import { ArtworkCache, ArtworkCacheResult } from '../artwork/ArtworkCache';
 import {
   ArtworkImportInput,
+  DuplicateCandidate,
   MusicRepository,
   TrackImportInput
 } from '../data/MusicRepository';
 import { MetadataReader } from '../metadata/MetadataReader';
+import {
+  calculateFullFingerprint,
+  readArtworkBytesAsync
+} from '../metadata/MediaFileTasks';
+import { ImportConcurrencyPolicy } from './ImportConcurrencyPolicy';
+import { ImportPerformanceTrace } from './ImportPerformanceTrace';
+import { DuplicatePolicy } from './DuplicatePolicy';
+import { ImportPreparationPolicy, PreparedItemState } from './ImportPreparationPolicy';
 import {
   ArtworkPictureType,
   ImportProgress,
@@ -13,7 +22,8 @@ import {
   ImportItemOutcome,
   ImportItemResult,
   MetadataReadResult,
-  ParsedArtwork
+  ParsedArtwork,
+  ParsedMetadata
 } from '../model/LibraryModels';
 import {
   persistReadPermissions,
@@ -22,6 +32,8 @@ import {
 } from './MediaPickerService';
 
 export type ImportProgressCallback = (progress: ImportProgress) => void;
+export type ImportStartedCallback = () => void;
+export type ImportItemCallback = (item: ImportItemResult) => void;
 
 interface PreparedImport {
   uri: string;
@@ -29,6 +41,9 @@ interface PreparedImport {
   errorMessage: string;
   input?: TrackImportInput;
   failed: boolean;
+  duplicate: boolean;
+  duplicateTrackId?: number;
+  duplicateSourceUri?: string;
 }
 
 interface CommitOutcome {
@@ -36,11 +51,11 @@ interface CommitOutcome {
   failed: boolean;
   trackId?: number;
   duplicateSource?: string;
+  duplicateSourceUri?: string;
   errorMessage: string;
 }
 
 const IMPORT_BATCH_SIZE = 16;
-const PREPARATION_PARALLELISM = 3;
 
 export class MediaImporter {
   private readonly context: common.UIAbilityContext;
@@ -64,24 +79,40 @@ export class MediaImporter {
     this.cancelRequested = true;
   }
 
-  async selectAndImport(onProgress?: ImportProgressCallback): Promise<ImportResult> {
+  async selectAndImport(onProgress?: ImportProgressCallback,
+    onStarted?: ImportStartedCallback, onItem?: ImportItemCallback): Promise<ImportResult> {
     if (this.importing) {
       throw new Error('An import is already running');
     }
     this.importing = true;
     this.cancelRequested = false;
     this.artworkPreparations.clear();
+    let completedResult: ImportResult | undefined;
+    let traceStarted = false;
     try {
       const uris = await selectAudioFiles(this.context);
       if (uris.length === 0) {
         return { imported: 0, duplicates: 0, failed: 0, items: [] };
       }
-      return await this.importUris(uris, onProgress);
+      onStarted?.();
+      ImportPerformanceTrace.start(uris.length);
+      traceStarted = true;
+      completedResult = await this.importUris(uris, onProgress, onItem);
+      return completedResult;
     } finally {
+      const cleanupStartedAt = Date.now();
       try {
         await this.cleanupArtworkFiles();
       } catch (error) {
         console.warn(`Artwork orphan cleanup failed: ${MediaImporter.errorMessage(error)}`);
+      }
+      if (traceStarted) {
+        ImportPerformanceTrace.mark('cleanup', cleanupStartedAt);
+        ImportPerformanceTrace.finish(
+          completedResult?.imported ?? 0,
+          completedResult?.duplicates ?? 0,
+          completedResult?.failed ?? 0
+        );
       }
       this.importing = false;
       this.cancelRequested = false;
@@ -113,7 +144,8 @@ export class MediaImporter {
     return this.cleanupArtworkFiles();
   }
 
-  private async importUris(uris: Array<string>, onProgress?: ImportProgressCallback): Promise<ImportResult> {
+  private async importUris(uris: Array<string>, onProgress?: ImportProgressCallback,
+    onItem?: ImportItemCallback): Promise<ImportResult> {
     const itemResults: Array<ImportItemResult> = [];
     const progress: ImportProgress = {
       total: uris.length,
@@ -135,19 +167,23 @@ export class MediaImporter {
       progress.currentName = '正在检查重复文件';
       this.notify(onProgress, progress);
 
+      const uriCheckStartedAt = Date.now();
       const existingUris = await this.repository.hasUris(uriBatch);
+      ImportPerformanceTrace.mark('uri_check', uriCheckStartedAt, 0,
+        `batch=${batchOffset / IMPORT_BATCH_SIZE + 1} count=${uriBatch.length}`);
       const pendingUris: Array<string> = [];
       for (let index = 0; index < uriBatch.length; index += 1) {
         const uri = uriBatch[index];
         if (existingUris.indexOf(uri) >= 0) {
           progress.duplicates += 1;
           progress.processed += 1;
-          itemResults.push({
+          this.recordItem(itemResults, {
             uri: uri,
             displayName: uri,
             outcome: ImportItemOutcome.DUPLICATE,
-            reason: '同一文件 URI 已在音乐库中'
-          });
+            reason: '同一文件 URI 已在音乐库中',
+            duplicateSourceUri: uri
+          }, onItem);
         } else {
           pendingUris.push(uri);
         }
@@ -157,95 +193,129 @@ export class MediaImporter {
       if (pendingUris.length === 0) {
         continue;
       }
+      const permissionStartedAt = Date.now();
       const permissionResult = await persistReadPermissions(pendingUris);
+      ImportPerformanceTrace.mark('permission_persist', permissionStartedAt, 0,
+        `count=${pendingUris.length} failed=${permissionResult.failedUris.length}`);
       progress.failed += permissionResult.failedUris.length;
       progress.processed += permissionResult.failedUris.length;
       permissionResult.failedUris.forEach((uri: string) => {
-        itemResults.push({
+        this.recordItem(itemResults, {
           uri: uri,
           displayName: uri,
           outcome: ImportItemOutcome.FAILED,
           reason: '无法持久化文件读取授权'
-        });
+        }, onItem);
       });
       this.notify(onProgress, progress);
 
       const preparedInputs: Array<TrackImportInput> = [];
       const revokeAfterBatch: Array<string> = [];
-      for (let prepareOffset = 0; prepareOffset < permissionResult.successfulUris.length;
-        prepareOffset += PREPARATION_PARALLELISM) {
-        if (this.cancelRequested) {
-          break;
-        }
-        const preparationWindow = permissionResult.successfulUris.slice(
-          prepareOffset, Math.min(prepareOffset + PREPARATION_PARALLELISM, permissionResult.successfulUris.length)
+      progress.currentName = `正在并行读取音乐文件`;
+      this.notify(onProgress, progress);
+      const prepareStartedAt = Date.now();
+      const prepared = await this.prepareImports(permissionResult.successfulUris);
+      ImportPerformanceTrace.mark('prepare_batch', prepareStartedAt, 0,
+        `count=${permissionResult.successfulUris.length}`);
+      for (let index = 0; index < prepared.length; index += 1) {
+        const item = prepared[index];
+        const state = ImportPreparationPolicy.classify(
+          item.failed, item.duplicate, item.input !== undefined
         );
-        progress.currentName = `正在并行读取 ${preparationWindow.length} 个音乐文件`;
-        this.notify(onProgress, progress);
-        const prepared = await Promise.all(preparationWindow.map((uri: string) => this.prepareImport(uri)));
-        for (let index = 0; index < prepared.length; index += 1) {
-          const item = prepared[index];
-          if (item.failed || item.input === undefined) {
-            progress.failed += 1;
-            progress.processed += 1;
-            revokeAfterBatch.push(item.uri);
-            itemResults.push({
-              uri: item.uri,
-              displayName: item.displayName,
-              outcome: ImportItemOutcome.FAILED,
-              reason: item.errorMessage
-            });
-          } else {
-            preparedInputs.push(item.input);
-          }
+        if (state === PreparedItemState.FAILED) {
+          progress.failed += 1;
+          progress.processed += 1;
+          revokeAfterBatch.push(item.uri);
+          this.recordItem(itemResults, {
+            uri: item.uri,
+            displayName: item.displayName,
+            outcome: ImportItemOutcome.FAILED,
+            reason: item.errorMessage.length > 0 ? item.errorMessage : '导入准备结果不完整'
+          }, onItem);
+        } else if (state === PreparedItemState.DUPLICATE) {
+          progress.duplicates += 1;
+          progress.processed += 1;
+          revokeAfterBatch.push(item.uri);
+          this.recordItem(itemResults, {
+            uri: item.uri,
+            displayName: item.displayName,
+            outcome: ImportItemOutcome.DUPLICATE,
+            reason: '完整文件内容与已有歌曲相同',
+            duplicateTrackId: item.duplicateTrackId,
+            duplicateSourceUri: item.duplicateSourceUri
+          }, onItem);
+        } else {
+          preparedInputs.push(item.input as TrackImportInput);
         }
-        this.notify(onProgress, progress);
       }
+      this.notify(onProgress, progress);
 
       if (this.cancelRequested) {
         await revokeReadPermissions(permissionResult.successfulUris);
         break;
       }
       if (preparedInputs.length > 0) {
-        progress.currentName = `正在写入 ${preparedInputs.length} 首音乐`;
+        progress.currentName = '正在确认批次内重复文件';
         this.notify(onProgress, progress);
-        const results = await this.commitPreparedInputs(preparedInputs);
+        const batchProofStartedAt = Date.now();
+        await this.ensureBatchFingerprintProofs(preparedInputs);
+        ImportPerformanceTrace.mark('batch_duplicate_proof', batchProofStartedAt, 0,
+          `count=${preparedInputs.length}`);
+        const uniqueInputs = this.removeBatchDuplicates(
+          preparedInputs, itemResults, progress, revokeAfterBatch, onItem
+        );
+        progress.currentName = `正在生成 ${uniqueInputs.length} 首音乐的封面`;
+        this.notify(onProgress, progress);
+        const artworkBatchStartedAt = Date.now();
+        await this.prepareArtworkInputs(uniqueInputs);
+        ImportPerformanceTrace.mark('artwork_batch', artworkBatchStartedAt, 0,
+          `count=${uniqueInputs.length}`);
+        progress.currentName = `正在写入 ${uniqueInputs.length} 首音乐`;
+        this.notify(onProgress, progress);
+        const databaseStartedAt = Date.now();
+        const results = await this.commitPreparedInputs(uniqueInputs);
+        ImportPerformanceTrace.mark('database_commit', databaseStartedAt, 0,
+          `count=${uniqueInputs.length}`);
         for (let index = 0; index < results.length; index += 1) {
           if (results[index].failed) {
             progress.failed += 1;
-            itemResults.push({
-              uri: preparedInputs[index].uri,
-              displayName: preparedInputs[index].displayName,
+            this.recordItem(itemResults, {
+              uri: uniqueInputs[index].uri,
+              displayName: uniqueInputs[index].displayName,
               outcome: ImportItemOutcome.FAILED,
               reason: results[index].errorMessage
-            });
+            }, onItem);
           } else if (results[index].imported) {
             progress.imported += 1;
-            itemResults.push({
-              uri: preparedInputs[index].uri,
-              displayName: preparedInputs[index].displayName,
+            this.recordItem(itemResults, {
+              uri: uniqueInputs[index].uri,
+              displayName: uniqueInputs[index].displayName,
               outcome: ImportItemOutcome.IMPORTED,
               reason: '导入成功'
-            });
+            }, onItem);
           } else {
             progress.duplicates += 1;
-            revokeAfterBatch.push(preparedInputs[index].uri);
-            itemResults.push({
-              uri: preparedInputs[index].uri,
-              displayName: preparedInputs[index].displayName,
+            revokeAfterBatch.push(uniqueInputs[index].uri);
+            this.recordItem(itemResults, {
+              uri: uniqueInputs[index].uri,
+              displayName: uniqueInputs[index].displayName,
               outcome: ImportItemOutcome.DUPLICATE,
               reason: results[index].duplicateSource === 'content' ? '文件完整内容与已有歌曲相同' : '文件已存在',
-              duplicateTrackId: results[index].trackId
-            });
+              duplicateTrackId: results[index].trackId,
+              duplicateSourceUri: results[index].duplicateSourceUri
+            }, onItem);
           }
           if (results[index].failed) {
-            revokeAfterBatch.push(preparedInputs[index].uri);
+            revokeAfterBatch.push(uniqueInputs[index].uri);
           }
           progress.processed += 1;
         }
         this.notify(onProgress, progress);
       }
+      const revokeStartedAt = Date.now();
       await revokeReadPermissions(revokeAfterBatch);
+      ImportPerformanceTrace.mark('permission_revoke', revokeStartedAt, 0,
+        `count=${revokeAfterBatch.length}`);
       this.artworkPreparations.clear();
     }
     progress.currentName = '';
@@ -258,21 +328,70 @@ export class MediaImporter {
     };
   }
 
+  private async prepareImports(uris: Array<string>): Promise<Array<PreparedImport>> {
+    const prepared: Array<PreparedImport | undefined> = new Array(uris.length);
+    let nextIndex = 0;
+    const consume = async (): Promise<void> => {
+      while (!this.cancelRequested) {
+        const index = nextIndex;
+        nextIndex += 1;
+        if (index >= uris.length) {
+          return;
+        }
+        prepared[index] = await this.prepareImport(uris[index]);
+      }
+    };
+    const workers: Array<Promise<void>> = [];
+    const workerCount = Math.min(ImportConcurrencyPolicy.FILE_PROBE_CONCURRENCY, uris.length);
+    for (let index = 0; index < workerCount; index += 1) {
+      workers.push(consume());
+    }
+    await Promise.all(workers);
+    return prepared.filter((item: PreparedImport | undefined): boolean => item !== undefined)
+      .map((item: PreparedImport | undefined) => item as PreparedImport);
+  }
+
   private async prepareImport(uri: string): Promise<PreparedImport> {
+    const fileId = ImportPerformanceTrace.fileId(uri);
+    const totalStartedAt = Date.now();
     try {
       const readResult = await MetadataReader.read(uri);
-      let artworks: Array<ArtworkImportInput>;
-      try {
-        artworks = await this.prepareArtworks(uri, readResult);
-      } catch (error) {
-        console.warn(`Artwork preparation failed: ${MediaImporter.errorMessage(error)}`);
-        artworks = MediaImporter.artworkMetadataOnly(readResult.metadata.artworks);
+      const candidateStartedAt = Date.now();
+      const candidates = await this.repository.findDuplicateCandidates(
+        readResult.fileSize, readResult.quickFingerprint
+      );
+      ImportPerformanceTrace.mark('candidate_query', candidateStartedAt, fileId,
+        `count=${candidates.length}`);
+      if (ImportConcurrencyPolicy.needsFullFingerprint(candidates.length, 1)) {
+        const fingerprintStartedAt = Date.now();
+        readResult.fullFingerprint = await calculateFullFingerprint(uri);
+        ImportPerformanceTrace.mark('foreground_hash', fingerprintStartedAt, fileId,
+          MediaImporter.throughputDetails(readResult.fileSize, fingerprintStartedAt));
+        await this.ensureCandidateFingerprints(candidates);
       }
-      return {
+      const duplicateCandidate = candidates.find((candidate: DuplicateCandidate) =>
+        DuplicatePolicy.isConfirmedDuplicate(
+          '', '',
+          candidate.fullFingerprint, readResult.fullFingerprint
+        ));
+      if (duplicateCandidate !== undefined) {
+        ImportPerformanceTrace.mark('file_prepare_total', totalStartedAt, fileId, 'duplicate=1');
+        return {
+          uri: uri,
+          displayName: readResult.fileName,
+          errorMessage: '',
+          failed: false,
+          duplicate: true,
+          duplicateTrackId: duplicateCandidate.trackId,
+          duplicateSourceUri: duplicateCandidate.uri
+        };
+      }
+      const prepared: PreparedImport = {
         uri: uri,
         displayName: readResult.fileName,
         errorMessage: '',
         failed: false,
+        duplicate: false,
         input: {
           uri: uri,
           displayName: readResult.fileName,
@@ -282,14 +401,120 @@ export class MediaImporter {
           fullFingerprint: readResult.fullFingerprint,
           authorizationPersisted: true,
           metadata: readResult.metadata,
-          artworks: artworks
+          artworks: MediaImporter.artworkMetadataOnly(readResult.metadata.artworks)
         }
       };
+      ImportPerformanceTrace.mark('file_prepare_total', totalStartedAt, fileId,
+        `bytes=${readResult.fileSize} artworks=${readResult.metadata.artworks.length}`);
+      return prepared;
     } catch (error) {
       const message = MediaImporter.errorMessage(error);
       console.warn(`Music import failed: ${message}`);
-      return { uri: uri, displayName: uri, errorMessage: message, failed: true };
+      ImportPerformanceTrace.mark('file_prepare_failed', totalStartedAt, fileId);
+      return { uri: uri, displayName: uri, errorMessage: message, failed: true, duplicate: false };
     }
+  }
+
+  private async ensureCandidateFingerprints(candidates: Array<DuplicateCandidate>): Promise<void> {
+    for (let index = 0; index < candidates.length; index += 1) {
+      const candidate = candidates[index];
+      if (candidate.fullFingerprint.length > 0) {
+        continue;
+      }
+      const fileId = ImportPerformanceTrace.fileId(candidate.uri);
+      const startedAt = Date.now();
+      const fingerprint = await calculateFullFingerprint(candidate.uri);
+      ImportPerformanceTrace.mark('candidate_hash', startedAt, fileId);
+      await this.repository.updateFullFingerprint(candidate.trackId, fingerprint);
+      candidate.fullFingerprint = fingerprint;
+    }
+  }
+
+  private async ensureBatchFingerprintProofs(inputs: Array<TrackImportInput>): Promise<void> {
+    const groups: Map<string, Array<TrackImportInput>> = new Map();
+    for (let index = 0; index < inputs.length; index += 1) {
+      const input = inputs[index];
+      const key = `${input.fileSize}:${input.quickFingerprint}`;
+      const group = groups.get(key) ?? [];
+      group.push(input);
+      groups.set(key, group);
+    }
+    const pending: Array<Promise<void>> = [];
+    groups.forEach((group: Array<TrackImportInput>) => {
+      if (!ImportConcurrencyPolicy.needsFullFingerprint(0, group.length)) {
+        return;
+      }
+      group.forEach((input: TrackImportInput) => {
+        if (input.fullFingerprint.length === 0) {
+          const fileId = ImportPerformanceTrace.fileId(input.uri);
+          const startedAt = Date.now();
+          pending.push(calculateFullFingerprint(input.uri).then((fingerprint: string) => {
+            input.fullFingerprint = fingerprint;
+            ImportPerformanceTrace.mark('batch_hash', startedAt, fileId,
+              MediaImporter.throughputDetails(input.fileSize, startedAt));
+          }));
+        }
+      });
+    });
+    await Promise.all(pending);
+  }
+
+  private removeBatchDuplicates(inputs: Array<TrackImportInput>, itemResults: Array<ImportItemResult>,
+    progress: ImportProgress, revokeAfterBatch: Array<string>,
+    onItem?: ImportItemCallback): Array<TrackImportInput> {
+    const unique: Array<TrackImportInput> = [];
+    for (let index = 0; index < inputs.length; index += 1) {
+      const input = inputs[index];
+      const source = unique.find((existing: TrackImportInput) =>
+        DuplicatePolicy.isConfirmedDuplicate(
+          existing.quickFingerprint, input.quickFingerprint,
+          existing.fullFingerprint, input.fullFingerprint
+        ));
+      if (source === undefined) {
+        unique.push(input);
+        continue;
+      }
+      progress.duplicates += 1;
+      progress.processed += 1;
+      revokeAfterBatch.push(input.uri);
+      this.recordItem(itemResults, {
+        uri: input.uri,
+        displayName: input.displayName,
+        outcome: ImportItemOutcome.DUPLICATE,
+        reason: '本批次中存在完整内容相同的文件',
+        duplicateSourceUri: source.uri
+      }, onItem);
+    }
+    return unique;
+  }
+
+  private async prepareArtworkInputs(inputs: Array<TrackImportInput>): Promise<void> {
+    let nextIndex = 0;
+    const consume = async (): Promise<void> => {
+      while (!this.cancelRequested) {
+        const index = nextIndex++;
+        if (index >= inputs.length) {
+          return;
+        }
+        const input = inputs[index];
+        const fileId = ImportPerformanceTrace.fileId(input.uri);
+        const startedAt = Date.now();
+        try {
+          input.artworks = await this.prepareArtworks(input.uri, input.metadata);
+        } catch (error) {
+          console.warn(`Artwork preparation failed: ${MediaImporter.errorMessage(error)}`);
+          input.artworks = MediaImporter.artworkMetadataOnly(input.metadata.artworks);
+        }
+        ImportPerformanceTrace.mark('artwork_total', startedAt, fileId,
+          `count=${input.metadata.artworks.length}`);
+      }
+    };
+    const workers: Array<Promise<void>> = [];
+    const workerCount = Math.min(ImportConcurrencyPolicy.FILE_PROBE_CONCURRENCY, inputs.length);
+    for (let index = 0; index < workerCount; index += 1) {
+      workers.push(consume());
+    }
+    await Promise.all(workers);
   }
 
   private async commitPreparedInputs(inputs: Array<TrackImportInput>): Promise<Array<CommitOutcome>> {
@@ -329,8 +554,8 @@ export class MediaImporter {
     }
   }
 
-  private async prepareArtworks(uri: string, readResult: MetadataReadResult): Promise<Array<ArtworkImportInput>> {
-    const parsedArtworks = readResult.metadata.artworks;
+  private async prepareArtworks(uri: string, metadata: ParsedMetadata): Promise<Array<ArtworkImportInput>> {
+    const parsedArtworks = metadata.artworks;
     const inputs: Array<ArtworkImportInput> = parsedArtworks.map((metadata: ParsedArtwork) => {
       const input: ArtworkImportInput = { metadata: metadata };
       return input;
@@ -339,9 +564,24 @@ export class MediaImporter {
     if (primaryIndex < 0) {
       return inputs;
     }
-    const sourceBytes = MetadataReader.readArtworkBytes(uri, readResult.metadata, primaryIndex);
+    const primaryArtwork = parsedArtworks[primaryIndex];
+    const fileId = ImportPerformanceTrace.fileId(uri);
+    const readStartedAt = Date.now();
+    const sourceBuffer = await readArtworkBytesAsync(
+      uri,
+      primaryArtwork.byteOffset,
+      primaryArtwork.byteLength,
+      primaryArtwork.payloadOffset,
+      primaryArtwork.unsynchronized
+    );
+    ImportPerformanceTrace.mark('artwork_read', readStartedAt, fileId,
+      `bytes=${sourceBuffer.byteLength}`);
+    const sourceBytes = new Uint8Array(sourceBuffer);
+    const hashStartedAt = Date.now();
     const sourceHash = await ArtworkCache.hashSource(sourceBytes);
-    const cached = await this.loadOrCacheArtwork(sourceHash, sourceBytes);
+    ImportPerformanceTrace.mark('artwork_hash', hashStartedAt, fileId,
+      `bytes=${sourceBytes.byteLength}`);
+    const cached = await this.loadOrCacheArtwork(sourceHash, sourceBytes, fileId);
     inputs[primaryIndex] = {
       metadata: parsedArtworks[primaryIndex],
       sourceHash: cached.sourceHash,
@@ -362,20 +602,24 @@ export class MediaImporter {
     return inputs;
   }
 
-  private async loadOrCacheArtwork(sourceHash: string, sourceBytes: Uint8Array): Promise<ArtworkCacheResult> {
+  private async loadOrCacheArtwork(sourceHash: string, sourceBytes: Uint8Array,
+    traceFileId: number): Promise<ArtworkCacheResult> {
     const activePreparation = this.artworkPreparations.get(sourceHash);
     if (activePreparation !== undefined) {
       return activePreparation;
     }
-    const preparation = this.resolveArtwork(sourceHash, sourceBytes);
+    const preparation = this.resolveArtwork(sourceHash, sourceBytes, traceFileId);
     this.artworkPreparations.set(sourceHash, preparation);
     return preparation;
   }
 
-  private async resolveArtwork(sourceHash: string, sourceBytes: Uint8Array): Promise<ArtworkCacheResult> {
+  private async resolveArtwork(sourceHash: string, sourceBytes: Uint8Array,
+    traceFileId: number): Promise<ArtworkCacheResult> {
+    const lookupStartedAt = Date.now();
     const existing = await this.repository.findArtworkBySourceHash(sourceHash);
     if (existing !== undefined && this.artworkCache.exists(existing.smallPath) &&
       this.artworkCache.exists(existing.largePath)) {
+      ImportPerformanceTrace.mark('artwork_cache_lookup', lookupStartedAt, traceFileId, 'hit=1');
       return {
         sourceHash: sourceHash,
         small: {
@@ -396,7 +640,8 @@ export class MediaImporter {
         }
       };
     }
-    return this.artworkCache.cache(sourceBytes, sourceHash);
+    ImportPerformanceTrace.mark('artwork_cache_lookup', lookupStartedAt, traceFileId, 'hit=0');
+    return this.artworkCache.cache(sourceBytes, sourceHash, traceFileId);
   }
 
   private async cleanupArtworkFiles(): Promise<void> {
@@ -465,7 +710,19 @@ export class MediaImporter {
     });
   }
 
+  private recordItem(items: Array<ImportItemResult>, item: ImportItemResult,
+    callback?: ImportItemCallback): void {
+    items.push(item);
+    callback?.(item);
+  }
+
   private static errorMessage(error: Object): string {
     return error instanceof Error ? error.message : `${error}`;
+  }
+
+  private static throughputDetails(byteSize: number, startedAt: number): string {
+    const elapsed = Math.max(1, Date.now() - startedAt);
+    const megabytesPerSecond = Math.round(byteSize * 1000 / elapsed / 1024 / 1024);
+    return `bytes=${byteSize} mbps=${megabytesPerSecond}`;
   }
 }

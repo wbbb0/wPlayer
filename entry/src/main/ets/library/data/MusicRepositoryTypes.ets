@@ -36,6 +36,12 @@ export interface ImportTrackResult {
   duplicateSource?: string;
 }
 
+export interface DuplicateCandidate {
+  trackId: number;
+  uri: string;
+  fullFingerprint: string;
+}
+
 export interface ArtworkAssetLookup {
   smallHash: string;
   smallPath: string;

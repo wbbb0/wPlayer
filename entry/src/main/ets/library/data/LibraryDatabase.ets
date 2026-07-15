@@ -3,7 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { SortKeyNormalizer } from '../metadata/SortKeyNormalizer';
 
 const DATABASE_NAME = 'music_library.db';
-const DATABASE_VERSION = 5;
+const DATABASE_VERSION = 6;
 const SORT_REBUILD_BATCH_SIZE = 500;
 
 const STORE_CONFIG: relationalStore.StoreConfig = {
@@ -195,7 +195,8 @@ const CURRENT_SCHEMA: Array<string> = [
     updated_at INTEGER NOT NULL
   )`,
   'CREATE INDEX idx_media_file_fingerprint ON media_file(file_size, quick_fingerprint)',
-  'CREATE UNIQUE INDEX idx_media_file_content_fingerprint ON media_file(file_size, content_fingerprint)',
+  `CREATE UNIQUE INDEX idx_media_file_content_fingerprint ON media_file(file_size, content_fingerprint)
+   WHERE content_fingerprint <> ''`,
   'CREATE INDEX idx_media_file_availability ON media_file(availability_state, id)',
   'CREATE INDEX idx_track_sort ON track(sort_key, id)',
   'CREATE INDEX idx_track_title_natural ON track(title_section, title_natural_key, id)',

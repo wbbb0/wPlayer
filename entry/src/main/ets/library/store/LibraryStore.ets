@@ -16,6 +16,7 @@ import {
 } from '../model/LibraryModels';
 import { SettingsRepository } from '../../settings/SettingsRepository';
 import { LibraryListDataSource } from './LibraryListDataSource';
+import { playbackRuntime } from '../../playback/PlaybackRuntime';
 
 @Observed
 export class LibraryStore {
@@ -44,8 +45,9 @@ export class LibraryStore {
   rebuildingSortIndexes: boolean = false;
   lastMessage: string = '';
   errorMessage: string = '';
+  lastImportResult?: ImportResult;
 
-  private readonly repository: MusicRepository = new MusicRepository();
+  private readonly repository: MusicRepository;
   private importer?: MediaImporter;
   private artworkCache?: ArtworkCache;
   private settings?: SettingsRepository;
@@ -53,6 +55,10 @@ export class LibraryStore {
   private refreshGeneration: number = 0;
   private trackSortGeneration: number = 0;
   private albumSortGeneration: number = 0;
+
+  constructor(repository?: MusicRepository) {
+    this.repository = repository === undefined ? new MusicRepository() : repository;
+  }
 
   async initialize(context: common.UIAbilityContext, settings?: SettingsRepository): Promise<void> {
     if (this.initialized) {
@@ -82,6 +88,7 @@ export class LibraryStore {
         this.artworkCache.clearAll();
       }
       this.importer = new MediaImporter(context, this.repository, this.artworkCache);
+      await this.importer.cleanupArtworkStorage();
       await this.refresh();
       this.initialized = true;
     } catch (error) {
@@ -166,6 +173,7 @@ export class LibraryStore {
       const result = await this.importer.selectAndImport((progress: ImportProgress) => {
         this.importProgress = progress;
       });
+      this.lastImportResult = result;
       this.lastMessage = LibraryStore.importSummary(result);
       await this.refresh();
     } catch (error) {
@@ -186,6 +194,7 @@ export class LibraryStore {
     this.loading = true;
     this.errorMessage = '';
     try {
+      await playbackRuntime.prepareForLibraryClear();
       await this.importer.clearLibrary();
       this.lastMessage = '音乐库已清空，原始音乐文件没有被删除';
       await this.refresh();
@@ -219,6 +228,10 @@ export class LibraryStore {
       return '';
     }
     return `file://${this.artworkCache.resolvePath(relativePath)}`;
+  }
+
+  trackSnapshot(): Array<TrackListItem> {
+    return this.trackDataSource.snapshot();
   }
 
   private restoreSortSettings(): void {

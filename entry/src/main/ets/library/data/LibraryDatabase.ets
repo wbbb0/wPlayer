@@ -3,7 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { SortKeyNormalizer } from '../metadata/SortKeyNormalizer';
 
 const DATABASE_NAME = 'music_library.db';
-const DATABASE_VERSION = 3;
+const DATABASE_VERSION = 5;
 const SORT_REBUILD_BATCH_SIZE = 500;
 
 const STORE_CONFIG: relationalStore.StoreConfig = {
@@ -25,6 +25,7 @@ const CURRENT_SCHEMA: Array<string> = [
     file_size INTEGER NOT NULL DEFAULT 0,
     modified_at INTEGER NOT NULL DEFAULT 0,
     quick_fingerprint TEXT NOT NULL DEFAULT '',
+    content_fingerprint TEXT NOT NULL DEFAULT '',
     format TEXT NOT NULL,
     mime_type TEXT NOT NULL DEFAULT '',
     authorization_persisted INTEGER NOT NULL DEFAULT 0,
@@ -185,28 +186,16 @@ const CURRENT_SCHEMA: Array<string> = [
     unsynchronized INTEGER NOT NULL DEFAULT 0,
     UNIQUE (track_id, ordinal)
   )`,
-  `CREATE TABLE import_job (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    state INTEGER NOT NULL,
-    total_count INTEGER NOT NULL DEFAULT 0,
-    processed_count INTEGER NOT NULL DEFAULT 0,
-    imported_count INTEGER NOT NULL DEFAULT 0,
-    duplicate_count INTEGER NOT NULL DEFAULT 0,
-    failed_count INTEGER NOT NULL DEFAULT 0,
-    started_at INTEGER NOT NULL,
-    finished_at INTEGER,
-    error_message TEXT NOT NULL DEFAULT ''
-  )`,
-  `CREATE TABLE import_error (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_id INTEGER REFERENCES import_job(id) ON DELETE CASCADE,
-    uri TEXT NOT NULL DEFAULT '',
-    stage TEXT NOT NULL,
-    error_code INTEGER NOT NULL DEFAULT 0,
-    message TEXT NOT NULL,
-    created_at INTEGER NOT NULL
+  `CREATE TABLE track_playback_state (
+    track_id INTEGER PRIMARY KEY REFERENCES track(id) ON DELETE CASCADE,
+    resume_position_ms INTEGER NOT NULL DEFAULT 0,
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    completed INTEGER NOT NULL DEFAULT 0,
+    last_played_at INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL
   )`,
   'CREATE INDEX idx_media_file_fingerprint ON media_file(file_size, quick_fingerprint)',
+  'CREATE UNIQUE INDEX idx_media_file_content_fingerprint ON media_file(file_size, content_fingerprint)',
   'CREATE INDEX idx_media_file_availability ON media_file(availability_state, id)',
   'CREATE INDEX idx_track_sort ON track(sort_key, id)',
   'CREATE INDEX idx_track_title_natural ON track(title_section, title_natural_key, id)',
@@ -223,8 +212,7 @@ const CURRENT_SCHEMA: Array<string> = [
   'CREATE INDEX idx_track_credit_person_role ON track_credit(person_id, role, track_id)',
   'CREATE INDEX idx_track_genre_genre ON track_genre(genre_id, track_id)',
   'CREATE INDEX idx_track_artwork_fallback ON track_artwork(track_id, picture_type, ordinal)',
-  'CREATE INDEX idx_artwork_asset_gc ON artwork_asset(ref_count, unreferenced_at)',
-  'CREATE INDEX idx_import_error_job ON import_error(job_id, id)'
+  'CREATE INDEX idx_artwork_asset_gc ON artwork_asset(ref_count, unreferenced_at)'
 ];
 
 export class LibraryDatabase {
@@ -344,7 +332,7 @@ export class LibraryDatabase {
       transactionType: relationalStore.TransactionType.IMMEDIATE
     });
     const tables = [
-      'import_error', 'import_job', 'track_artwork', 'track_tag_extra', 'track_genre',
+      'import_error', 'import_job', 'track_playback_state', 'track_artwork', 'track_tag_extra', 'track_genre',
       'album_credit', 'track_credit', 'genre', 'person', 'track', 'media_file', 'album',
       'artwork_source', 'artwork_asset', 'schema_meta'
     ];

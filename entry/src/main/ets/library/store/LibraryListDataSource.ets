@@ -10,6 +10,10 @@ export class LibraryListDataSource<T> implements IDataSource {
     return this.items[index];
   }
 
+  snapshot(): Array<T> {
+    return this.items.slice();
+  }
+
   registerDataChangeListener(listener: DataChangeListener): void {
     if (this.listeners.indexOf(listener) < 0) {
       this.listeners.push(listener);

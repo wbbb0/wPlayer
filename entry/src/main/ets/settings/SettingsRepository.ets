@@ -8,6 +8,9 @@ const SONG_SORT_FIELD_KEY: string = 'library.songs.sort_field';
 const SONG_SORT_DESCENDING_KEY: string = 'library.songs.sort_descending';
 const ALBUM_SORT_FIELD_KEY: string = 'library.albums.sort_field';
 const ALBUM_SORT_DESCENDING_KEY: string = 'library.albums.sort_descending';
+const PLAYBACK_SHUFFLE_KEY: string = 'playback.shuffle_enabled';
+const PLAYBACK_REPEAT_MODE_KEY: string = 'playback.repeat_mode';
+const PLAYBACK_ARTWORK_WINDOW_KEY: string = 'playback.artwork_window_radius';
 
 interface SettingUpdate {
   key: string;
@@ -57,6 +60,26 @@ export class SettingsRepository {
       { key: ALBUM_SORT_FIELD_KEY, value: field },
       { key: ALBUM_SORT_DESCENDING_KEY, value: descending }
     ]);
+  }
+
+  getPlaybackShuffleEnabled(defaultValue: boolean = false): boolean {
+    return this.getBoolean(PLAYBACK_SHUFFLE_KEY, defaultValue);
+  }
+
+  setPlaybackShuffleEnabled(value: boolean): void {
+    this.setValue(PLAYBACK_SHUFFLE_KEY, value);
+  }
+
+  getPlaybackRepeatMode(defaultValue: number = 1): number {
+    return this.getNumber(PLAYBACK_REPEAT_MODE_KEY, defaultValue);
+  }
+
+  setPlaybackRepeatMode(value: number): void {
+    this.setValue(PLAYBACK_REPEAT_MODE_KEY, value);
+  }
+
+  getPlaybackArtworkWindowRadius(defaultValue: number = 2): number {
+    return this.getNumber(PLAYBACK_ARTWORK_WINDOW_KEY, defaultValue);
   }
 
   private getNumber(key: string, defaultValue: number): number {

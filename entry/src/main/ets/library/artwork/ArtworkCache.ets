@@ -91,6 +91,40 @@ export class ArtworkCache {
     ArtworkCache.deleteIfPresent(this.resolvePath(relativePath));
   }
 
+  exists(relativePath: string): boolean {
+    if (relativePath.length === 0) {
+      return false;
+    }
+    try {
+      return fs.accessSync(this.resolvePath(relativePath));
+    } catch (_) {
+      return false;
+    }
+  }
+
+  cleanupOrphans(referencedPaths: Array<string>): number {
+    const artworkRoot = ArtworkCache.resolvePath(this.context, ARTWORK_DIRECTORY);
+    if (!fs.accessSync(artworkRoot)) {
+      return 0;
+    }
+    const referenced = new Set<string>(referencedPaths);
+    let deletedCount = 0;
+    const entries = fs.listFileSync(artworkRoot, { recursion: true });
+    entries.forEach((entry: string) => {
+      const relativeEntry = entry.startsWith('/') ? entry.substring(1) : entry;
+      const fullPath = `${artworkRoot}/${relativeEntry}`;
+      if (!fs.statSync(fullPath).isFile() || relativeEntry.endsWith(TEMP_FILE_SUFFIX)) {
+        return;
+      }
+      const relativePath = `${ARTWORK_DIRECTORY}/${relativeEntry}`;
+      if (!referenced.has(relativePath)) {
+        ArtworkCache.deleteIfPresent(fullPath);
+        deletedCount += 1;
+      }
+    });
+    return deletedCount;
+  }
+
   clearAll(): number {
     const artworkRoot = ArtworkCache.resolvePath(this.context, ARTWORK_DIRECTORY);
     if (!fs.accessSync(artworkRoot)) {

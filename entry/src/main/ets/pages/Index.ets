@@ -5,10 +5,12 @@ import {
   HdsNavDestinationTitleMode,
   HdsNavigation,
   HdsNavigationMenuContentOptions,
+  HdsNavigationMenuItemOptions,
   HdsNavigationTitleMode,
   HdsTabs,
   HdsTabsController,
   HdsTabsFloatingStyle,
+  IconStyleMode,
   TextStyleMode,
   hdsMaterial
 } from '@kit.UIDesignKit';
@@ -16,6 +18,7 @@ import { ComponentContent, curves, SymbolGlyphModifier, window } from '@kit.ArkU
 import { vibrator } from '@kit.SensorServiceKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { common } from '@kit.AbilityKit';
+import { image } from '@kit.ImageKit';
 import {
   PlayerFrame,
   PlayerGestureAxis,
@@ -39,6 +42,8 @@ import {
   TrackSortField
 } from '../library/model/LibraryModels';
 import { LibraryStore } from '../library/store/LibraryStore';
+import { playbackRuntime } from '../playback/PlaybackRuntime';
+import { PlayerStore, RepeatMode } from '../playback/model/PlaybackModels';
 import { AlbumsPage } from './library/AlbumsPage';
 import { LibraryManagementPage } from './library/LibraryManagementPage';
 import { MorePage } from './library/MorePage';
@@ -46,6 +51,8 @@ import { PlaylistsPage } from './library/PlaylistsPage';
 import { SongsPage } from './library/SongsPage';
 import { SettingsRepository } from '../settings/SettingsRepository';
 import { AppShellLayoutSpec } from '../components/layout/AppShellLayoutSpec';
+import { ArtworkFitMode, ArtworkView } from '../components/artwork/ArtworkView';
+import { ArtworkLayout } from '../components/artwork/ArtworkLayout';
 import {
   MORE_NAVIGATION_ITEMS,
   MoreNavigationItem,
@@ -76,8 +83,8 @@ struct Index {
   @State appearancePalette: AppAppearancePalette = AppAppearancePalette.fallback();
   @State selectedTabIndex: number = 0;
   @State selectedMoreRouteId: string = MoreRoute.LIBRARY_MANAGEMENT;
-  @State libraryStore: LibraryStore = new LibraryStore();
-  @State isPlaying: boolean = false;
+  @State libraryStore: LibraryStore = new LibraryStore(playbackRuntime.repository);
+  @State playerStore: PlayerStore = playbackRuntime.playerStore;
   @State miniBarExpanded: boolean = false;
   @State miniPlayerOffsetX: number = 0;
   @State playerExpandProgress: number = 0;
@@ -85,6 +92,12 @@ struct Index {
   @State swipeHapticTriggered: boolean = false;
   @State playerMorphPhase: PlayerMorphPhase = PlayerMorphPhase.IDLE;
   @State playerMorphBackgroundOpacity: number = 1;
+  @State frozenMorphArtwork: image.PixelMap | undefined = undefined;
+  @State frozenMorphArtworkUri: string = '';
+  @State frozenMorphArtworkPreferPixelMap: boolean = false;
+  @State frozenMorphArtworkWidth: number = 0;
+  @State frozenMorphArtworkHeight: number = 0;
+  @State morphArtworkSourceFrozen: boolean = false;
   @State rootFrame: PlayerFrame = { x: 0, y: 0, width: 0, height: 0 };
   @State measuredMiniPlayerFrame: PlayerFrame = {
     x: 0,
@@ -163,6 +176,9 @@ struct Index {
         console.warn(`Unable to initialize settings: ${businessError.code}, ${businessError.message}`);
       }
       this.libraryStore.initialize(abilityContext, this.settingsRepository);
+      playbackRuntime.initialize(abilityContext, this.settingsRepository).catch((error: Object) => {
+        console.warn(`Unable to initialize playback: ${error instanceof Error ? error.message : error}`);
+      });
     }
   }
 
@@ -453,16 +469,37 @@ struct Index {
     const targetId = index === 1 ? TRACK_SORT_MENU_ID : ALBUM_SORT_MENU_ID;
     const countLabel = index === 1 ?
       `${this.libraryStore.statistics.trackCount} 首` : `${this.libraryStore.statistics.albumCount} 张`;
-    return {
-      maxCount: 1,
-      value: [{
+    let values: Array<HdsNavigationMenuItemOptions>;
+    if (index === 1) {
+      values = [{
+        content: {
+          icon: $r('sys.symbol.shuffle'),
+          label: '随机播放全部音乐',
+          type: IconStyleMode.NORMAL,
+          isEnabled: this.libraryStore.statistics.trackCount > 0,
+          action: () => playbackRuntime.shuffleAll(this.libraryStore.trackSnapshot())
+        }
+      }, {
         content: {
           label: countLabel,
           type: TextStyleMode.NORMAL,
           componentId: targetId,
           action: () => this.openSortMenu(index, targetId)
         }
-      }]
+      }];
+    } else {
+      values = [{
+        content: {
+          label: countLabel,
+          type: TextStyleMode.NORMAL,
+          componentId: targetId,
+          action: () => this.openSortMenu(index, targetId)
+        }
+      }];
+    }
+    return {
+      maxCount: values.length,
+      value: values
     };
   }
 
@@ -558,29 +595,101 @@ struct Index {
     }
   }
 
+  private freezeMorphArtworkSource(): void {
+    this.releaseMorphArtworkSource();
+    this.frozenMorphArtwork = this.playerStore.heroArtwork;
+    this.frozenMorphArtworkUri = this.playerStore.heroArtworkUri;
+    this.frozenMorphArtworkPreferPixelMap = this.playerStore.heroArtworkPreferPixelMap;
+    this.frozenMorphArtworkWidth = this.playerStore.currentTrack?.artworkWidth ?? 0;
+    this.frozenMorphArtworkHeight = this.playerStore.currentTrack?.artworkHeight ?? 0;
+    this.morphArtworkSourceFrozen = true;
+    if (this.frozenMorphArtworkPreferPixelMap) {
+      playbackRuntime.retainArtwork(this.frozenMorphArtwork);
+    }
+  }
+
+  private releaseMorphArtworkSource(): void {
+    if (this.morphArtworkSourceFrozen && this.frozenMorphArtworkPreferPixelMap) {
+      playbackRuntime.releaseArtwork(this.frozenMorphArtwork);
+    }
+    this.morphArtworkSourceFrozen = false;
+    this.frozenMorphArtwork = undefined;
+    this.frozenMorphArtworkUri = '';
+    this.frozenMorphArtworkPreferPixelMap = false;
+    this.frozenMorphArtworkWidth = 0;
+    this.frozenMorphArtworkHeight = 0;
+  }
+
+  private morphArtworkSource(): image.PixelMap | ResourceStr {
+    if (this.morphArtworkSourceFrozen) {
+      if (this.frozenMorphArtworkPreferPixelMap && this.frozenMorphArtwork !== undefined) {
+        return this.frozenMorphArtwork;
+      }
+      if (this.frozenMorphArtworkUri.length > 0) {
+        return this.frozenMorphArtworkUri;
+      }
+    } else {
+      if (this.playerStore.heroArtworkPreferPixelMap && this.playerStore.heroArtwork !== undefined) {
+        return this.playerStore.heroArtwork;
+      }
+      if (this.playerStore.heroArtworkUri.length > 0) {
+        return this.playerStore.heroArtworkUri;
+      }
+    }
+    return $r('app.media.default_album_cover');
+  }
+
   private morphValue(start: number, end: number): number {
     const progress = this.clamp(this.playerExpandProgress, 0, 1);
     return start + (end - start) * progress;
   }
 
-  private morphArtworkShadowColor(): string {
-    const progress = this.clamp(this.playerExpandProgress, 0, 1);
-    const alpha = Math.round(0x3A * progress).toString(16).padStart(2, '0').toUpperCase();
-    return `#${alpha}30319B`;
+  private containedArtworkWidth(width: number, height: number): number {
+    return ArtworkLayout.containedSize(width, height,
+      PlayerLayoutSpec.FULL_ARTWORK_SIZE, PlayerLayoutSpec.FULL_ARTWORK_SIZE).width;
   }
 
-  private morphArtworkScale(): number {
-    return this.morphValue(
-      PlayerLayoutSpec.MINI_ARTWORK_SIZE,
-      PlayerLayoutSpec.FULL_ARTWORK_SIZE
-    ) / PlayerLayoutSpec.FULL_ARTWORK_SIZE;
+  private containedArtworkHeight(width: number, height: number): number {
+    return ArtworkLayout.containedSize(width, height,
+      PlayerLayoutSpec.FULL_ARTWORK_SIZE, PlayerLayoutSpec.FULL_ARTWORK_SIZE).height;
   }
 
-  private morphArtworkSourceRadius(): number {
-    return this.morphValue(
-      PlayerLayoutSpec.MINI_ARTWORK_RADIUS,
-      PlayerLayoutSpec.FULL_ARTWORK_RADIUS
-    ) / this.morphArtworkScale();
+  private currentArtworkWidth(): number {
+    return this.containedArtworkWidth(
+      this.playerStore.currentTrack?.artworkWidth ?? 0,
+      this.playerStore.currentTrack?.artworkHeight ?? 0
+    );
+  }
+
+  private currentArtworkHeight(): number {
+    return this.containedArtworkHeight(
+      this.playerStore.currentTrack?.artworkWidth ?? 0,
+      this.playerStore.currentTrack?.artworkHeight ?? 0
+    );
+  }
+
+  private morphTargetArtworkWidth(): number {
+    const width = this.morphArtworkSourceFrozen ? this.frozenMorphArtworkWidth :
+      (this.playerStore.currentTrack?.artworkWidth ?? 0);
+    const height = this.morphArtworkSourceFrozen ? this.frozenMorphArtworkHeight :
+      (this.playerStore.currentTrack?.artworkHeight ?? 0);
+    return this.containedArtworkWidth(width, height);
+  }
+
+  private morphTargetArtworkHeight(): number {
+    const width = this.morphArtworkSourceFrozen ? this.frozenMorphArtworkWidth :
+      (this.playerStore.currentTrack?.artworkWidth ?? 0);
+    const height = this.morphArtworkSourceFrozen ? this.frozenMorphArtworkHeight :
+      (this.playerStore.currentTrack?.artworkHeight ?? 0);
+    return this.containedArtworkHeight(width, height);
+  }
+
+  private morphArtworkWidth(): number {
+    return this.morphValue(PlayerLayoutSpec.MINI_ARTWORK_SIZE, this.morphTargetArtworkWidth());
+  }
+
+  private morphArtworkHeight(): number {
+    return this.morphValue(PlayerLayoutSpec.MINI_ARTWORK_SIZE, this.morphTargetArtworkHeight());
   }
 
   private isMorphActive(): boolean {
@@ -611,6 +720,7 @@ struct Index {
         }
         this.playerMorphPhase = PlayerMorphPhase.IDLE;
         this.playerMorphBackgroundOpacity = 1;
+        this.releaseMorphArtworkSource();
       }
     }, () => {
       this.playerMorphBackgroundOpacity = 0;
@@ -664,6 +774,7 @@ struct Index {
 
     if (this.playerGestureAxis === PlayerGestureAxis.VERTICAL) {
       if (!this.isMorphActive()) {
+        this.freezeMorphArtworkSource();
         this.beginMorphPhase(PlayerMorphPhase.DRAGGING);
         this.playerMorphBackgroundOpacity = 1;
       }
@@ -677,6 +788,10 @@ struct Index {
 
   private finishMiniPlayerGesture(): void {
     const wasVerticalGesture = this.playerGestureAxis === PlayerGestureAxis.VERTICAL;
+    const wasHorizontalGesture = this.playerGestureAxis === PlayerGestureAxis.HORIZONTAL;
+    const swipeOffset = this.miniPlayerOffsetX;
+    const shouldChangeTrack = wasHorizontalGesture && Math.abs(swipeOffset) >=
+      PlayerMotionSpec.HORIZONTAL_HAPTIC_THRESHOLD;
     const shouldExpand = wasVerticalGesture &&
       this.playerExpandProgress >= PlayerMotionSpec.EXPAND_THRESHOLD;
     const duration = shouldExpand ? PlayerMotionSpec.OPEN_DURATION : PlayerMotionSpec.CANCEL_DURATION;
@@ -687,11 +802,19 @@ struct Index {
       duration: duration,
       curve: shouldExpand ? curves.springMotion(0.5, 0.7) : Curve.EaseOut,
       onFinish: () => {
+        if (shouldChangeTrack) {
+          if (swipeOffset < 0) {
+            playbackRuntime.next();
+          } else {
+            playbackRuntime.previous();
+          }
+        }
         if (!wasVerticalGesture || !this.isCurrentMorphTransition(epoch)) {
           return;
         }
         if (shouldExpand) {
           this.playerMorphPhase = PlayerMorphPhase.OPEN;
+          this.releaseMorphArtworkSource();
         } else {
           this.beginMorphBackgroundHandoff(epoch);
         }
@@ -710,6 +833,7 @@ struct Index {
       return;
     }
     this.freezeMiniPlayerGeometry();
+    this.freezeMorphArtworkSource();
     const epoch = this.beginMorphPhase(PlayerMorphPhase.OPENING);
     this.playerMorphBackgroundOpacity = 1;
     this.getUIContext().animateTo({
@@ -718,6 +842,7 @@ struct Index {
       onFinish: () => {
         if (this.isCurrentMorphTransition(epoch)) {
           this.playerMorphPhase = PlayerMorphPhase.OPEN;
+          this.releaseMorphArtworkSource();
         }
       }
     }, () => {
@@ -736,6 +861,7 @@ struct Index {
         this.returnToExpandedMiniBar ? HdsBarStyle.EXPAND : HdsBarStyle.COLLAPSE
       );
     }
+    this.freezeMorphArtworkSource();
     const epoch = this.beginMorphPhase(PlayerMorphPhase.CLOSING);
     this.getUIContext().animateTo({
       duration: PlayerMotionSpec.CLOSE_DURATION,
@@ -762,7 +888,10 @@ struct Index {
         store: this.libraryStore,
         topInset: this.statusBarAvoidHeight,
         bottomInset: this.navigationAvoidHeight,
-        scroller: this.pageScrollers[1]
+        scroller: this.pageScrollers[1],
+        onPlayTrack: (item) => {
+          playbackRuntime.playFromLibrary(item, this.libraryStore.trackSnapshot());
+        }
       })
     } else if (index === 2) {
       AlbumsPage({
@@ -861,19 +990,70 @@ struct Index {
   }
 
   @Builder
-  private AlbumCover(size: number, radius: number) {
-    Image($r('app.media.default_album_cover'))
-      .width(size)
-      .height(size)
-      .objectFit(ImageFit.Cover)
-      .borderRadius(radius)
+  private MiniAlbumCover() {
+    ArtworkView({
+      sourcePixelMap: this.playerStore.miniArtwork,
+      sourcePath: this.playerStore.miniArtworkUri,
+      slotWidth: PlayerLayoutSpec.MINI_ARTWORK_SIZE,
+      fitMode: ArtworkFitMode.COVER,
+      cornerRadius: PlayerLayoutSpec.FULL_ARTWORK_RADIUS,
+      circularProgress: 1,
+      shadowEnabled: false,
+      shadowRadius: 0,
+      shadowOffsetY: 0
+    })
+  }
+
+  private morphArtworkSourceRadius(): number {
+    const fullRadius = Math.min(
+      PlayerLayoutSpec.FULL_ARTWORK_RADIUS,
+      Math.min(this.morphTargetArtworkWidth(), this.morphTargetArtworkHeight()) / 2
+    );
+    return this.morphValue(
+      PlayerLayoutSpec.MINI_ARTWORK_RADIUS,
+      fullRadius
+    );
+  }
+
+  @Builder
+  private HeroAlbumCover(size: number, radius: number) {
+    Stack() {
+      Stack() {
+        if (this.playerStore.heroArtworkPreferPixelMap && this.playerStore.heroArtwork !== undefined) {
+          Image(this.playerStore.heroArtwork)
+            .width('100%')
+            .height('100%')
+            .objectFit(ImageFit.Cover)
+        } else if (this.playerStore.heroArtworkUri.length > 0) {
+          Image(this.playerStore.heroArtworkUri)
+            .width('100%')
+            .height('100%')
+            .objectFit(ImageFit.Cover)
+        } else {
+          Image($r('app.media.default_album_cover'))
+            .width('100%')
+            .height('100%')
+            .objectFit(ImageFit.Cover)
+        }
+      }
+      .width(this.currentArtworkWidth())
+      .height(this.currentArtworkHeight())
+      .borderRadius(Math.min(radius, Math.min(this.currentArtworkWidth(), this.currentArtworkHeight()) / 2))
       .clip(true)
+      .shadow({
+        radius: PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS,
+        color: $r('app.color.artwork_shadow'),
+        offsetY: PlayerMotionSpec.FULL_ARTWORK_SHADOW_OFFSET_Y
+      })
+    }
+    .width(size)
+    .height(size)
   }
 
   @Builder
   private PlaybackButton(size: number) {
     Stack() {
-      SymbolGlyph(this.isPlaying ? $r('sys.symbol.pause') : $r('sys.symbol.play_fill'))
+      SymbolGlyph(this.playerStore.isPlaying() ? $r('sys.symbol.pause') : $r('sys.symbol.play_fill'))
         .fontSize(size * 0.42)
         .fontColor(['#FFFFFF'])
         .renderingStrategy(SymbolRenderingStrategy.MULTIPLE_OPACITY)
@@ -884,9 +1064,9 @@ struct Index {
     .backgroundColor($r('app.color.theme_accent'))
     .shadow({ radius: 12, color: $r('app.color.theme_accent_shadow'), offsetY: 5 })
     .clickEffect({ level: ClickEffectLevel.MIDDLE })
-    .accessibilityText(this.isPlaying ? '暂停' : '播放')
+    .accessibilityText(this.playerStore.isPlaying() ? '暂停' : '播放')
     .onClick(() => {
-      this.isPlaying = !this.isPlaying;
+      playbackRuntime.togglePlayback();
     })
   }
 
@@ -895,7 +1075,7 @@ struct Index {
     Row({ space: 10 }) {
       Stack() {
         if (showArtwork) {
-          this.AlbumCover(PlayerLayoutSpec.MINI_ARTWORK_SIZE, PlayerLayoutSpec.MINI_ARTWORK_RADIUS)
+          this.MiniAlbumCover()
         }
       }
       .width(48)
@@ -907,13 +1087,13 @@ struct Index {
 
       if (this.miniBarExpanded) {
         Column({ space: 2 }) {
-          Text('尚未播放')
+          Text(this.playerStore.currentTrack?.title ?? '尚未播放')
             .fontSize(15)
             .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.text_primary'))
             .maxLines(1)
 
-          Text('选择一首音乐')
+          Text(this.playerStore.currentTrack?.artistDisplay || '选择一首音乐')
             .fontSize(11)
             .fontColor($r('app.color.text_secondary'))
             .maxLines(1)
@@ -1128,7 +1308,7 @@ struct Index {
   }
 
   @Builder
-  private FullPlayerControl(icon: Resource, accessibilityText: string, size: number) {
+  private FullPlayerControl(icon: Resource, accessibilityText: string, size: number, action: () => void) {
     Stack() {
       Image(icon)
         .width(size * 0.45)
@@ -1141,6 +1321,22 @@ struct Index {
     .backgroundColor($r('app.color.glass_surface_subtle'))
     .clickEffect({ level: ClickEffectLevel.MIDDLE })
     .accessibilityText(accessibilityText)
+    .onClick(action)
+  }
+
+  @Builder
+  private PlaybackModeButton(symbol: Resource, active: boolean, accessibilityText: string, action: () => void) {
+    Stack() {
+      SymbolGlyph(symbol)
+        .fontSize(22)
+        .fontColor([active ? $r('app.color.theme_accent') : $r('app.color.text_secondary')])
+    }
+    .width(44)
+    .height(44)
+    .borderRadius(22)
+    .clickEffect({ level: ClickEffectLevel.LIGHT })
+    .accessibilityText(accessibilityText)
+    .onClick(action)
   }
 
   @Builder
@@ -1179,7 +1375,7 @@ struct Index {
 
       Stack() {
         if (showArtwork) {
-          this.AlbumCover(PlayerLayoutSpec.FULL_ARTWORK_SIZE, PlayerLayoutSpec.FULL_ARTWORK_RADIUS)
+          this.HeroAlbumCover(PlayerLayoutSpec.FULL_ARTWORK_SIZE, PlayerLayoutSpec.FULL_ARTWORK_RADIUS)
         }
       }
       .width(PlayerLayoutSpec.FULL_ARTWORK_SIZE)
@@ -1204,11 +1400,11 @@ struct Index {
       Blank().layoutWeight(1)
 
       Column({ space: 7 }) {
-        Text('尚未播放')
+        Text(this.playerStore.currentTrack?.title ?? '尚未播放')
           .fontSize(26)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.text_primary'))
-        Text('选择一首音乐开始播放')
+        Text(this.playerStore.currentTrack?.artistDisplay || '选择一首音乐开始播放')
           .fontSize(15)
           .fontColor($r('app.color.text_secondary'))
       }
@@ -1216,14 +1412,36 @@ struct Index {
       .width('100%')
 
       Row() {
-        this.FullPlayerControl($r('app.media.control_previous'), '上一首', 54)
+        this.FullPlayerControl($r('app.media.control_previous'), '上一首', 54, () => {
+          playbackRuntime.previous();
+        })
         this.PlaybackButton(74)
-        this.FullPlayerControl($r('app.media.control_next'), '下一首', 54)
+        this.FullPlayerControl($r('app.media.control_next'), '下一首', 54, () => {
+          playbackRuntime.next();
+        })
       }
       .justifyContent(FlexAlign.SpaceAround)
       .alignItems(VerticalAlign.Center)
       .width('100%')
-      .margin({ top: 30, bottom: 24 })
+      .margin({ top: 24 })
+
+      Row() {
+        this.PlaybackModeButton($r('sys.symbol.shuffle'), this.playerStore.shuffleEnabled,
+          this.playerStore.shuffleEnabled ? '关闭随机播放' : '开启随机播放', () => {
+            playbackRuntime.toggleShuffle();
+          })
+        this.PlaybackModeButton(
+          this.playerStore.repeatMode === RepeatMode.ONE ?
+            $r('sys.symbol.repeat_1') : $r('sys.symbol.repeat'),
+          this.playerStore.repeatMode !== RepeatMode.OFF,
+          '切换循环模式', () => {
+            playbackRuntime.cycleRepeatMode();
+          })
+      }
+      .width('100%')
+      .justifyContent(FlexAlign.SpaceBetween)
+      .padding({ left: 18, right: 18 })
+      .margin({ bottom: 16 })
     }
     .width('100%')
     .height('100%')
@@ -1297,37 +1515,34 @@ struct Index {
   @Builder
   private MorphArtwork() {
     Stack() {
-      Image($r('app.media.default_album_cover'))
+      Image(this.morphArtworkSource())
         .width('100%')
         .height('100%')
         .objectFit(ImageFit.Cover)
-        .borderRadius(this.morphArtworkSourceRadius())
-        .clip(true)
     }
-    .width(PlayerLayoutSpec.FULL_ARTWORK_SIZE)
-    .height(PlayerLayoutSpec.FULL_ARTWORK_SIZE)
+    .width(this.morphArtworkWidth())
+    .height(this.morphArtworkHeight())
     .borderRadius(this.morphArtworkSourceRadius())
+    .clip(true)
+    .shadow({
+      radius: PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS *
+        this.clamp(this.playerExpandProgress, 0, 1),
+      color: $r('app.color.artwork_shadow'),
+      offsetY: PlayerMotionSpec.FULL_ARTWORK_SHADOW_OFFSET_Y *
+        this.clamp(this.playerExpandProgress, 0, 1)
+    })
     .position({ x: 0, y: 0 })
     .translate({
       x: this.morphValue(
         this.frozenMiniPlayerFrame.x + PlayerLayoutSpec.MINI_ARTWORK_INSET,
-        this.frozenArtworkTarget.x
+        this.frozenArtworkTarget.x +
+          (PlayerLayoutSpec.FULL_ARTWORK_SIZE - this.morphTargetArtworkWidth()) / 2
       ),
       y: this.morphValue(
         this.frozenMiniPlayerFrame.y + PlayerLayoutSpec.MINI_ARTWORK_INSET,
-        this.frozenArtworkTarget.y
+        this.frozenArtworkTarget.y +
+          (PlayerLayoutSpec.FULL_ARTWORK_SIZE - this.morphTargetArtworkHeight()) / 2
       )
-    })
-    .scale({
-      x: this.morphArtworkScale(),
-      y: this.morphArtworkScale(),
-      centerX: 0,
-      centerY: 0
-    })
-    .shadow({
-      radius: 38,
-      color: this.morphArtworkShadowColor(),
-      offsetY: 20
     })
   }
 
@@ -1350,8 +1565,15 @@ struct Index {
 
       if (this.isMorphActive()) {
         this.MorphPlayer()
+      }
+
+      Stack() {
         this.MorphArtwork()
       }
+      .width('100%')
+      .height('100%')
+      .opacity(this.isMorphActive() ? 1 : 0)
+      .hitTestBehavior(HitTestMode.None)
     }
     .width('100%')
     .height('100%')

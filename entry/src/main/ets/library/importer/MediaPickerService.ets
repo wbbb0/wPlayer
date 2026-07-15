@@ -69,6 +69,24 @@ export async function ensureReadPermission(uri: string): Promise<boolean> {
   }
 }
 
+export async function revokeReadPermissions(uris: Array<string>): Promise<void> {
+  const uniqueUris = uniqueNonEmptyUris(uris, []);
+  for (let offset = 0; offset < uniqueUris.length; offset += PERSIST_BATCH_SIZE) {
+    const batch = uniqueUris.slice(offset, Math.min(offset + PERSIST_BATCH_SIZE, uniqueUris.length));
+    try {
+      await fileShare.revokePermission(createReadPolicies(batch));
+    } catch (_) {
+      for (const uri of batch) {
+        try {
+          await fileShare.revokePermission([createReadPolicy(uri)]);
+        } catch (_) {
+          console.warn('Unable to revoke one unused persisted permission');
+        }
+      }
+    }
+  }
+}
+
 function createReadPolicy(uri: string): fileShare.PolicyInfo {
   return {
     uri: uri,

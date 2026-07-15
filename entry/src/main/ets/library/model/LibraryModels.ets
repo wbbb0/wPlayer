@@ -147,7 +147,12 @@ export interface TrackListItem {
   durationMs: number;
   trackNumber: number;
   discNumber: number;
+  smallArtworkHash: string;
+  smallArtworkPath: string;
+  artworkHash: string;
   artworkPath: string;
+  artworkWidth: number;
+  artworkHeight: number;
   sectionKey: string;
 }
 
@@ -158,6 +163,8 @@ export interface AlbumListItem {
   trackCount: number;
   totalDurationMs: number;
   artworkPath: string;
+  artworkWidth: number;
+  artworkHeight: number;
   sectionKey: string;
 }
 
@@ -180,6 +187,21 @@ export interface ImportResult {
   imported: number;
   duplicates: number;
   failed: number;
+  items: Array<ImportItemResult>;
+}
+
+export enum ImportItemOutcome {
+  IMPORTED = 'imported',
+  DUPLICATE = 'duplicate',
+  FAILED = 'failed'
+}
+
+export interface ImportItemResult {
+  uri: string;
+  displayName: string;
+  outcome: ImportItemOutcome;
+  reason: string;
+  duplicateTrackId?: number;
 }
 
 export interface MetadataReadResult {
@@ -188,4 +210,5 @@ export interface MetadataReadResult {
   fileSize: number;
   modifiedAt: number;
   quickFingerprint: string;
+  fullFingerprint: string;
 }

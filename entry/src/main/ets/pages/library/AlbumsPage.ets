@@ -1,6 +1,7 @@
 import { PageLayoutSpec } from '../../components/layout/PageLayoutSpec';
 import { PageGridBehavior } from '../../components/layout/PageScrollBehavior';
 import { LibraryAlphabetIndex } from '../../components/library/LibraryAlphabetIndex';
+import { ArtworkFitMode, ArtworkView } from '../../components/artwork/ArtworkView';
 import {
   AlbumListItem,
   LibraryIndexPresentation
@@ -14,23 +15,6 @@ export struct AlbumsPage {
   @Prop bottomInset: number = 0;
   scroller: Scroller = new Scroller();
   private readonly scrollBehavior: PageGridBehavior = new PageGridBehavior();
-  @Builder
-  private Artwork(item: AlbumListItem) {
-    if (item.artworkPath.length > 0) {
-      Image(this.store.resolveArtworkPath(item.artworkPath))
-        .width('100%')
-        .aspectRatio(1)
-        .objectFit(ImageFit.Cover)
-        .borderRadius(18)
-    } else {
-      Image($r('app.media.default_album_cover'))
-        .width('100%')
-        .aspectRatio(1)
-        .objectFit(ImageFit.Cover)
-        .borderRadius(18)
-    }
-  }
-
   build() {
     Column() {
       Stack({ alignContent: Alignment.End }) {
@@ -38,7 +22,14 @@ export struct AlbumsPage {
           LazyForEach(this.store.albumDataSource, (item: AlbumListItem) => {
             GridItem() {
               Column({ space: 7 }) {
-                this.Artwork(item)
+                ArtworkView({
+                  sourcePath: item.artworkPath.length > 0 ? this.store.resolveArtworkPath(item.artworkPath) : '',
+                  sourceWidth: item.artworkWidth,
+                  sourceHeight: item.artworkHeight,
+                  fitMode: ArtworkFitMode.CONTAIN,
+                  cornerRadius: 18,
+                  shadowEnabled: item.artworkPath.length > 0
+                })
                 Text(item.title)
                   .fontSize(15)
                   .fontWeight(FontWeight.Medium)

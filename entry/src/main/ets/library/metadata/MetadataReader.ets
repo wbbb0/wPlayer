@@ -4,12 +4,14 @@ import { media } from '@kit.MediaKit';
 import {
   MediaFormat,
   MetadataReadResult,
+  ParsedArtwork,
   ParsedMetadata
 } from '../model/LibraryModels';
 import { BinaryFileReader } from './BinaryFileReader';
 import { FlacTagReader } from './FlacTagReader';
 import { Id3TagReader } from './Id3TagReader';
 import { MetadataNormalizer } from './MetadataNormalizer';
+import { calculateFullFingerprint } from './MediaFileTasks';
 
 export class MetadataReader {
   static async read(uri: string): Promise<MetadataReadResult> {
@@ -34,6 +36,7 @@ export class MetadataReader {
     } finally {
       reader.close();
     }
+    const fullFingerprintPromise = calculateFullFingerprint(uri);
     metadata = await MetadataReader.mergeSystemMetadata(uri, fileSize, metadata);
     if (metadata.title.length === 0) {
       metadata.title = MetadataReader.fileStem(fileName);
@@ -46,7 +49,8 @@ export class MetadataReader {
       fileName: fileName,
       fileSize: fileSize,
       modifiedAt: modifiedAt,
-      quickFingerprint: quickFingerprint
+      quickFingerprint: quickFingerprint,
+      fullFingerprint: await fullFingerprintPromise
     };
   }
 
@@ -58,6 +62,18 @@ export class MetadataReader {
     const reader = new BinaryFileReader(uri);
     try {
       if (metadata.format === MediaFormat.MP3) {
+        return Id3TagReader.readArtworkBytes(reader, artwork);
+      }
+      return reader.read(artwork.byteOffset, artwork.byteLength);
+    } finally {
+      reader.close();
+    }
+  }
+
+  static readSelectedArtworkBytes(uri: string, format: MediaFormat, artwork: ParsedArtwork): Uint8Array {
+    const reader = new BinaryFileReader(uri);
+    try {
+      if (format === MediaFormat.MP3) {
         return Id3TagReader.readArtworkBytes(reader, artwork);
       }
       return reader.read(artwork.byteOffset, artwork.byteLength);

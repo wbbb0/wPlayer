@@ -77,6 +77,10 @@
       "value": "#305B5CE2"
     },
     {
+      "name": "artwork_shadow",
+      "value": "#66000000"
+    },
+    {
       "name": "message_success",
       "value": "#8DCB99"
     },

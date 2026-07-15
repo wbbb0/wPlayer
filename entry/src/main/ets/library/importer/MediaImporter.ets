@@ -10,17 +10,23 @@ import {
   ArtworkPictureType,
   ImportProgress,
   ImportResult,
+  ImportItemOutcome,
+  ImportItemResult,
   MetadataReadResult,
   ParsedArtwork
 } from '../model/LibraryModels';
 import {
   persistReadPermissions,
+  revokeReadPermissions,
   selectAudioFiles
 } from './MediaPickerService';
 
 export type ImportProgressCallback = (progress: ImportProgress) => void;
 
 interface PreparedImport {
+  uri: string;
+  displayName: string;
+  errorMessage: string;
   input?: TrackImportInput;
   failed: boolean;
 }
@@ -28,6 +34,9 @@ interface PreparedImport {
 interface CommitOutcome {
   imported: boolean;
   failed: boolean;
+  trackId?: number;
+  duplicateSource?: string;
+  errorMessage: string;
 }
 
 const IMPORT_BATCH_SIZE = 16;
@@ -65,10 +74,15 @@ export class MediaImporter {
     try {
       const uris = await selectAudioFiles(this.context);
       if (uris.length === 0) {
-        return { imported: 0, duplicates: 0, failed: 0 };
+        return { imported: 0, duplicates: 0, failed: 0, items: [] };
       }
       return await this.importUris(uris, onProgress);
     } finally {
+      try {
+        await this.cleanupArtworkFiles();
+      } catch (error) {
+        console.warn(`Artwork orphan cleanup failed: ${MediaImporter.errorMessage(error)}`);
+      }
       this.importing = false;
       this.cancelRequested = false;
       this.artworkPreparations.clear();
@@ -92,27 +106,31 @@ export class MediaImporter {
       await this.repository.removeUnreferencedArtwork(asset.assetId);
     }
     this.artworkCache.cleanupTempFiles();
+    await this.cleanupArtworkFiles();
+  }
+
+  cleanupArtworkStorage(): Promise<void> {
+    return this.cleanupArtworkFiles();
   }
 
   private async importUris(uris: Array<string>, onProgress?: ImportProgressCallback): Promise<ImportResult> {
-    const permissionResult = await persistReadPermissions(uris);
+    const itemResults: Array<ImportItemResult> = [];
     const progress: ImportProgress = {
       total: uris.length,
-      processed: permissionResult.failedUris.length,
+      processed: 0,
       imported: 0,
       duplicates: 0,
-      failed: permissionResult.failedUris.length,
+      failed: 0,
       currentName: ''
     };
     this.notify(onProgress, progress);
 
-    const successfulUris = permissionResult.successfulUris;
-    for (let batchOffset = 0; batchOffset < successfulUris.length; batchOffset += IMPORT_BATCH_SIZE) {
+    for (let batchOffset = 0; batchOffset < uris.length; batchOffset += IMPORT_BATCH_SIZE) {
       if (this.cancelRequested) {
         break;
       }
-      const uriBatch = successfulUris.slice(
-        batchOffset, Math.min(batchOffset + IMPORT_BATCH_SIZE, successfulUris.length)
+      const uriBatch = uris.slice(
+        batchOffset, Math.min(batchOffset + IMPORT_BATCH_SIZE, uris.length)
       );
       progress.currentName = '正在检查重复文件';
       this.notify(onProgress, progress);
@@ -124,20 +142,43 @@ export class MediaImporter {
         if (existingUris.indexOf(uri) >= 0) {
           progress.duplicates += 1;
           progress.processed += 1;
+          itemResults.push({
+            uri: uri,
+            displayName: uri,
+            outcome: ImportItemOutcome.DUPLICATE,
+            reason: '同一文件 URI 已在音乐库中'
+          });
         } else {
           pendingUris.push(uri);
         }
       }
       this.notify(onProgress, progress);
 
+      if (pendingUris.length === 0) {
+        continue;
+      }
+      const permissionResult = await persistReadPermissions(pendingUris);
+      progress.failed += permissionResult.failedUris.length;
+      progress.processed += permissionResult.failedUris.length;
+      permissionResult.failedUris.forEach((uri: string) => {
+        itemResults.push({
+          uri: uri,
+          displayName: uri,
+          outcome: ImportItemOutcome.FAILED,
+          reason: '无法持久化文件读取授权'
+        });
+      });
+      this.notify(onProgress, progress);
+
       const preparedInputs: Array<TrackImportInput> = [];
-      for (let prepareOffset = 0; prepareOffset < pendingUris.length;
+      const revokeAfterBatch: Array<string> = [];
+      for (let prepareOffset = 0; prepareOffset < permissionResult.successfulUris.length;
         prepareOffset += PREPARATION_PARALLELISM) {
         if (this.cancelRequested) {
           break;
         }
-        const preparationWindow = pendingUris.slice(
-          prepareOffset, Math.min(prepareOffset + PREPARATION_PARALLELISM, pendingUris.length)
+        const preparationWindow = permissionResult.successfulUris.slice(
+          prepareOffset, Math.min(prepareOffset + PREPARATION_PARALLELISM, permissionResult.successfulUris.length)
         );
         progress.currentName = `正在并行读取 ${preparationWindow.length} 个音乐文件`;
         this.notify(onProgress, progress);
@@ -147,6 +188,13 @@ export class MediaImporter {
           if (item.failed || item.input === undefined) {
             progress.failed += 1;
             progress.processed += 1;
+            revokeAfterBatch.push(item.uri);
+            itemResults.push({
+              uri: item.uri,
+              displayName: item.displayName,
+              outcome: ImportItemOutcome.FAILED,
+              reason: item.errorMessage
+            });
           } else {
             preparedInputs.push(item.input);
           }
@@ -155,6 +203,7 @@ export class MediaImporter {
       }
 
       if (this.cancelRequested) {
+        await revokeReadPermissions(permissionResult.successfulUris);
         break;
       }
       if (preparedInputs.length > 0) {
@@ -164,22 +213,48 @@ export class MediaImporter {
         for (let index = 0; index < results.length; index += 1) {
           if (results[index].failed) {
             progress.failed += 1;
+            itemResults.push({
+              uri: preparedInputs[index].uri,
+              displayName: preparedInputs[index].displayName,
+              outcome: ImportItemOutcome.FAILED,
+              reason: results[index].errorMessage
+            });
           } else if (results[index].imported) {
             progress.imported += 1;
+            itemResults.push({
+              uri: preparedInputs[index].uri,
+              displayName: preparedInputs[index].displayName,
+              outcome: ImportItemOutcome.IMPORTED,
+              reason: '导入成功'
+            });
           } else {
             progress.duplicates += 1;
+            revokeAfterBatch.push(preparedInputs[index].uri);
+            itemResults.push({
+              uri: preparedInputs[index].uri,
+              displayName: preparedInputs[index].displayName,
+              outcome: ImportItemOutcome.DUPLICATE,
+              reason: results[index].duplicateSource === 'content' ? '文件完整内容与已有歌曲相同' : '文件已存在',
+              duplicateTrackId: results[index].trackId
+            });
+          }
+          if (results[index].failed) {
+            revokeAfterBatch.push(preparedInputs[index].uri);
           }
           progress.processed += 1;
         }
         this.notify(onProgress, progress);
       }
+      await revokeReadPermissions(revokeAfterBatch);
+      this.artworkPreparations.clear();
     }
     progress.currentName = '';
     this.notify(onProgress, progress);
     return {
       imported: progress.imported,
       duplicates: progress.duplicates,
-      failed: progress.failed
+      failed: progress.failed,
+      items: itemResults
     };
   }
 
@@ -194,6 +269,9 @@ export class MediaImporter {
         artworks = MediaImporter.artworkMetadataOnly(readResult.metadata.artworks);
       }
       return {
+        uri: uri,
+        displayName: readResult.fileName,
+        errorMessage: '',
         failed: false,
         input: {
           uri: uri,
@@ -201,14 +279,16 @@ export class MediaImporter {
           fileSize: readResult.fileSize,
           modifiedAt: readResult.modifiedAt,
           quickFingerprint: readResult.quickFingerprint,
+          fullFingerprint: readResult.fullFingerprint,
           authorizationPersisted: true,
           metadata: readResult.metadata,
           artworks: artworks
         }
       };
     } catch (error) {
-      console.warn(`Music import failed: ${MediaImporter.errorMessage(error)}`);
-      return { failed: true };
+      const message = MediaImporter.errorMessage(error);
+      console.warn(`Music import failed: ${message}`);
+      return { uri: uri, displayName: uri, errorMessage: message, failed: true };
     }
   }
 
@@ -217,7 +297,13 @@ export class MediaImporter {
       const batchResults = await this.repository.importTracks(inputs);
       const outcomes: Array<CommitOutcome> = [];
       for (let index = 0; index < batchResults.length; index += 1) {
-        outcomes.push({ imported: batchResults[index].imported, failed: false });
+        outcomes.push({
+          imported: batchResults[index].imported,
+          failed: false,
+          trackId: batchResults[index].trackId,
+          duplicateSource: batchResults[index].duplicateSource,
+          errorMessage: ''
+        });
       }
       return outcomes;
     } catch (error) {
@@ -226,10 +312,17 @@ export class MediaImporter {
       for (let index = 0; index < inputs.length; index += 1) {
         try {
           const result = await this.repository.importTrack(inputs[index]);
-          results.push({ imported: result.imported, failed: false });
+          results.push({
+            imported: result.imported,
+            failed: false,
+            trackId: result.trackId,
+            duplicateSource: result.duplicateSource,
+            errorMessage: ''
+          });
         } catch (itemError) {
-          console.warn(`Music database write failed: ${MediaImporter.errorMessage(itemError)}`);
-          results.push({ imported: false, failed: true });
+          const message = MediaImporter.errorMessage(itemError);
+          console.warn(`Music database write failed: ${message}`);
+          results.push({ imported: false, failed: true, errorMessage: message });
         }
       }
       return results;
@@ -281,7 +374,8 @@ export class MediaImporter {
 
   private async resolveArtwork(sourceHash: string, sourceBytes: Uint8Array): Promise<ArtworkCacheResult> {
     const existing = await this.repository.findArtworkBySourceHash(sourceHash);
-    if (existing !== undefined) {
+    if (existing !== undefined && this.artworkCache.exists(existing.smallPath) &&
+      this.artworkCache.exists(existing.largePath)) {
       return {
         sourceHash: sourceHash,
         small: {
@@ -303,6 +397,12 @@ export class MediaImporter {
       };
     }
     return this.artworkCache.cache(sourceBytes, sourceHash);
+  }
+
+  private async cleanupArtworkFiles(): Promise<void> {
+    const referencedPaths = await this.repository.getReferencedArtworkPaths();
+    this.artworkCache.cleanupTempFiles();
+    this.artworkCache.cleanupOrphans(referencedPaths);
   }
 
   private static selectPrimaryArtwork(artworks: Array<ParsedArtwork>): number {

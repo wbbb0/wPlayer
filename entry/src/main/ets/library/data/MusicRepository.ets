@@ -11,15 +11,18 @@ import {
   LibraryIndexPresentation,
   LibrarySection,
   LibrarySnapshot,
+  MediaFormat,
   ParsedArtwork,
   ParsedMetadata,
   TrackListItem,
   TrackSortField,
   SortDirection
 } from '../model/LibraryModels';
+import { PlaybackTrack, ResumeState } from '../../playback/model/PlaybackModels';
 import { MetadataNormalizer } from '../metadata/MetadataNormalizer';
 import { SortKeyNormalizer } from '../metadata/SortKeyNormalizer';
 import { LibraryDatabase } from './LibraryDatabase';
+import { DuplicatePolicy } from '../importer/DuplicatePolicy';
 
 export interface ArtworkImportInput {
   metadata: ParsedArtwork;
@@ -45,6 +48,7 @@ export interface TrackImportInput {
   fileSize: number;
   modifiedAt: number;
   quickFingerprint: string;
+  fullFingerprint: string;
   authorizationPersisted: boolean;
   metadata: ParsedMetadata;
   artworks?: Array<ArtworkImportInput>;
@@ -53,6 +57,7 @@ export interface TrackImportInput {
 export interface ImportTrackResult {
   imported: boolean;
   trackId: number;
+  duplicateSource?: string;
 }
 
 export interface ArtworkAssetLookup {
@@ -104,8 +109,6 @@ export class MusicRepository {
   clearLibrary(): Promise<void> {
     return this.database.enqueueWrite(async (transaction: relationalStore.Transaction) => {
       const now = Date.now();
-      await transaction.execute('DELETE FROM import_error');
-      await transaction.execute('DELETE FROM import_job');
       await transaction.execute('DELETE FROM track_artwork');
       await transaction.execute('DELETE FROM track_credit');
       await transaction.execute('DELETE FROM track_genre');
@@ -158,7 +161,9 @@ export class MusicRepository {
     const resultSet = await this.database.getStore().querySql(
       `SELECT t.id, t.title, t.artist_display, t.album_display, t.duration_ms,
         COALESCE(t.track_number, 0), COALESCE(t.disc_number, 0),
-        COALESCE(a.small_path, ''), ${sectionColumn}
+        COALESCE(a.small_hash, ''), COALESCE(a.small_path, ''),
+        COALESCE(a.large_hash, ''), COALESCE(a.large_path, ''),
+        COALESCE(a.large_width, 0), COALESCE(a.large_height, 0), ${sectionColumn}
        FROM track t LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
        ORDER BY ${orderClause}`
     );
@@ -173,8 +178,13 @@ export class MusicRepository {
           durationMs: resultSet.getLong(4),
           trackNumber: resultSet.getLong(5),
           discNumber: resultSet.getLong(6),
-          artworkPath: resultSet.getString(7),
-          sectionKey: resultSet.getString(8)
+          smallArtworkHash: resultSet.getString(7),
+          smallArtworkPath: resultSet.getString(8),
+          artworkHash: resultSet.getString(9),
+          artworkPath: resultSet.getString(10),
+          artworkWidth: resultSet.getLong(11),
+          artworkHeight: resultSet.getLong(12),
+          sectionKey: resultSet.getString(13)
         });
       }
     } finally {
@@ -185,6 +195,112 @@ export class MusicRepository {
       sections: alphabetic ? this.buildSections(items) : [],
       indexPresentation: alphabetic ? LibraryIndexPresentation.ALPHABET : LibraryIndexPresentation.SCROLLBAR
     };
+  }
+
+  async getPlaybackTrack(trackId: number): Promise<PlaybackTrack | undefined> {
+    const resultSet = await this.database.getStore().querySql(
+      `SELECT t.id, t.title, t.artist_display, t.album_display, t.duration_ms,
+        m.uri, m.file_size, m.modified_at, m.format, m.availability_state,
+        m.authorization_persisted, COALESCE(a.small_hash, ''), COALESCE(a.small_path, ''),
+        COALESCE(a.large_hash, ''), COALESCE(a.large_path, ''),
+        COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
+        COALESCE(ta.picture_type, 0), COALESCE(ta.mime_type, ''), COALESCE(ta.description, ''),
+        COALESCE(ta.width, 0), COALESCE(ta.height, 0), COALESCE(ta.color_depth, 0),
+        COALESCE(ta.byte_offset, 0), COALESCE(ta.byte_length, 0), COALESCE(ta.payload_offset, 0),
+        COALESCE(ta.ordinal, 0), COALESCE(ta.unsynchronized, 0)
+       FROM track t
+       JOIN media_file m ON m.id = t.media_file_id
+       LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
+       LEFT JOIN track_artwork ta ON ta.id = (
+         SELECT selected.id FROM track_artwork selected
+         WHERE selected.track_id = t.id AND selected.asset_id = t.primary_artwork_id
+         ORDER BY selected.picture_type = 3 DESC, selected.ordinal ASC LIMIT 1
+       )
+       WHERE t.id = ? LIMIT 1`,
+      [trackId]
+    );
+    try {
+      if (!resultSet.goToNextRow()) {
+        return undefined;
+      }
+      const byteLength = resultSet.getLong(24);
+      const track: PlaybackTrack = {
+        id: resultSet.getLong(0),
+        title: resultSet.getString(1),
+        artistDisplay: resultSet.getString(2),
+        albumDisplay: resultSet.getString(3),
+        durationMs: resultSet.getLong(4),
+        uri: resultSet.getString(5),
+        fileSize: resultSet.getLong(6),
+        modifiedAt: resultSet.getLong(7),
+        format: resultSet.getString(8) as MediaFormat,
+        availability: resultSet.getLong(9) as AvailabilityState,
+        authorizationPersisted: resultSet.getLong(10) === 1,
+        smallArtworkHash: resultSet.getString(11),
+        smallArtworkPath: resultSet.getString(12),
+        largeArtworkHash: resultSet.getString(13),
+        largeArtworkPath: resultSet.getString(14),
+        artworkWidth: resultSet.getLong(15),
+        artworkHeight: resultSet.getLong(16)
+      };
+      if (byteLength > 0) {
+        track.artwork = {
+          pictureType: resultSet.getLong(17) as ArtworkPictureType,
+          mimeType: resultSet.getString(18),
+          description: resultSet.getString(19),
+          width: resultSet.getLong(20),
+          height: resultSet.getLong(21),
+          colorDepth: resultSet.getLong(22),
+          byteOffset: resultSet.getLong(23),
+          byteLength: byteLength,
+          payloadOffset: resultSet.getLong(25),
+          ordinal: resultSet.getLong(26),
+          unsynchronized: resultSet.getLong(27) === 1
+        };
+      }
+      return track;
+    } finally {
+      resultSet.close();
+    }
+  }
+
+  async getResumeState(trackId: number): Promise<ResumeState> {
+    const resultSet = await this.database.getStore().querySql(
+      `SELECT resume_position_ms, duration_ms, completed
+       FROM track_playback_state WHERE track_id = ? LIMIT 1`,
+      [trackId]
+    );
+    try {
+      if (!resultSet.goToNextRow() || resultSet.getLong(2) === 1) {
+        return { positionMs: 0, durationMs: 0 };
+      }
+      return { positionMs: resultSet.getLong(0), durationMs: resultSet.getLong(1) };
+    } finally {
+      resultSet.close();
+    }
+  }
+
+  savePlaybackState(trackId: number, positionMs: number, durationMs: number,
+    completed: boolean): Promise<void> {
+    return this.database.enqueueWrite(async (transaction: relationalStore.Transaction) => {
+      const now = Date.now();
+      await transaction.execute(
+        `INSERT OR REPLACE INTO track_playback_state(
+          track_id, resume_position_ms, duration_ms, completed, last_played_at, updated_at
+        ) VALUES(?, ?, ?, ?, ?, ?)`,
+        [trackId, positionMs, durationMs, completed ? 1 : 0, now, now]
+      );
+    });
+  }
+
+  setTrackAvailability(trackId: number, state: AvailabilityState): Promise<void> {
+    return this.database.enqueueWrite(async (transaction: relationalStore.Transaction) => {
+      await transaction.execute(
+        `UPDATE media_file SET availability_state = ?, last_checked_at = ?, updated_at = ?
+         WHERE id = (SELECT media_file_id FROM track WHERE id = ?)`,
+        [state, Date.now(), Date.now(), trackId]
+      );
+    });
   }
 
   async getAlbums(field: AlbumSortField, direction: SortDirection): Promise<LibrarySnapshot<AlbumListItem>> {
@@ -203,7 +319,8 @@ export class MusicRepository {
     }
     const resultSet = await this.database.getStore().querySql(
       `SELECT al.id, al.title, al.album_artist_display, al.track_count,
-        al.total_duration_ms, COALESCE(a.large_path, ''), ${sectionColumn}
+        al.total_duration_ms, COALESCE(a.large_path, ''),
+        COALESCE(a.large_width, 0), COALESCE(a.large_height, 0), ${sectionColumn}
        FROM album al LEFT JOIN artwork_asset a ON a.id = al.primary_artwork_id
        ORDER BY ${orderClause}`
     );
@@ -217,7 +334,9 @@ export class MusicRepository {
           trackCount: resultSet.getLong(3),
           totalDurationMs: resultSet.getLong(4),
           artworkPath: resultSet.getString(5),
-          sectionKey: resultSet.getString(6)
+          artworkWidth: resultSet.getLong(6),
+          artworkHeight: resultSet.getLong(7),
+          sectionKey: resultSet.getString(8)
         });
       }
     } finally {
@@ -327,6 +446,28 @@ export class MusicRepository {
     return candidates;
   }
 
+  async getReferencedArtworkPaths(): Promise<Array<string>> {
+    const resultSet = await this.database.getStore().querySql(
+      'SELECT small_path, large_path FROM artwork_asset WHERE ref_count > 0'
+    );
+    const paths: Array<string> = [];
+    try {
+      while (resultSet.goToNextRow()) {
+        const smallPath = resultSet.getString(0);
+        const largePath = resultSet.getString(1);
+        if (smallPath.length > 0 && paths.indexOf(smallPath) < 0) {
+          paths.push(smallPath);
+        }
+        if (largePath.length > 0 && paths.indexOf(largePath) < 0) {
+          paths.push(largePath);
+        }
+      }
+    } finally {
+      resultSet.close();
+    }
+    return paths;
+  }
+
   removeUnreferencedArtwork(assetId: number): Promise<void> {
     return this.database.enqueueWrite(async (transaction: relationalStore.Transaction) => {
       await transaction.execute(
@@ -355,14 +496,18 @@ export class MusicRepository {
     input: TrackImportInput): Promise<ImportTrackResult> {
       const existingTrackId = await this.findTrackIdByUri(transaction, input.uri);
       if (existingTrackId !== undefined) {
-        const duplicateResult: ImportTrackResult = { imported: false, trackId: existingTrackId };
+        const duplicateResult: ImportTrackResult = {
+          imported: false,
+          trackId: existingTrackId,
+          duplicateSource: 'uri'
+        };
         return duplicateResult;
       }
       const duplicateTrackId = await this.findTrackIdByFingerprint(
-        transaction, input.fileSize, input.quickFingerprint
+        transaction, input.fileSize, input.quickFingerprint, input.fullFingerprint
       );
       if (duplicateTrackId !== undefined) {
-        return { imported: false, trackId: duplicateTrackId };
+        return { imported: false, trackId: duplicateTrackId, duplicateSource: 'content' };
       }
       const now = Date.now();
       const metadata = input.metadata;
@@ -372,6 +517,7 @@ export class MusicRepository {
         file_size: input.fileSize,
         modified_at: input.modifiedAt,
         quick_fingerprint: input.quickFingerprint,
+        content_fingerprint: input.fullFingerprint,
         format: metadata.format,
         mime_type: metadata.mimeType,
         authorization_persisted: input.authorizationPersisted ? 1 : 0,
@@ -745,19 +891,25 @@ export class MusicRepository {
   private async findTrackIdByFingerprint(
     transaction: relationalStore.Transaction,
     fileSize: number,
-    quickFingerprint: string
+    quickFingerprint: string,
+    fullFingerprint: string
   ): Promise<number | undefined> {
-    if (fileSize <= 0 || quickFingerprint.length === 0) {
+    if (fileSize <= 0 || quickFingerprint.length === 0 || fullFingerprint.length === 0) {
       return undefined;
     }
     const resultSet = await transaction.querySql(
-      `SELECT t.id FROM track t
+      `SELECT t.id, f.quick_fingerprint, f.content_fingerprint FROM track t
        INNER JOIN media_file f ON f.id = t.media_file_id
-       WHERE f.file_size = ? AND f.quick_fingerprint = ? LIMIT 1`,
-      [fileSize, quickFingerprint]
+       WHERE f.file_size = ? AND f.content_fingerprint = ? LIMIT 1`,
+      [fileSize, fullFingerprint]
     );
     try {
-      return resultSet.goToNextRow() ? resultSet.getLong(0) : undefined;
+      if (!resultSet.goToNextRow()) {
+        return undefined;
+      }
+      return DuplicatePolicy.isConfirmedDuplicate(
+        resultSet.getString(1), quickFingerprint, resultSet.getString(2), fullFingerprint
+      ) ? resultSet.getLong(0) : undefined;
     } finally {
       resultSet.close();
     }

@@ -40,6 +40,8 @@ export class PlayerMotionSpec {
   static readonly MINI_CONTENT_FADE_START: number = 0.08;
   static readonly MINI_CONTENT_FADE_RATE: number = 4.2;
   static readonly MINI_CONTENT_VISIBLE_LIMIT: number = 0.32;
+  static readonly FULL_ARTWORK_SHADOW_RADIUS: number = 38;
+  static readonly FULL_ARTWORK_SHADOW_OFFSET_Y: number = 20;
 }
 
 export class PlayerLayoutSpec {
@@ -49,6 +51,6 @@ export class PlayerLayoutSpec {
   static readonly MINI_ARTWORK_SIZE: number = 48;
   static readonly MINI_ARTWORK_RADIUS: number = 24;
   static readonly FULL_ARTWORK_SIZE: number = 286;
-  static readonly FULL_ARTWORK_RADIUS: number = 18;
+  static readonly FULL_ARTWORK_RADIUS: number = 10;
   static readonly MINI_ARTWORK_INSET: number = 4;
 }

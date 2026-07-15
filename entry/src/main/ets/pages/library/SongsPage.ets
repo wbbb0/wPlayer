@@ -1,6 +1,7 @@
 import { PageLayoutSpec } from '../../components/layout/PageLayoutSpec';
 import { PageListBehavior } from '../../components/layout/PageScrollBehavior';
 import { LibraryAlphabetIndex } from '../../components/library/LibraryAlphabetIndex';
+import { ArtworkFitMode, ArtworkView } from '../../components/artwork/ArtworkView';
 import {
   LibraryIndexPresentation,
   TrackListItem
@@ -12,25 +13,9 @@ export struct SongsPage {
   @ObjectLink store: LibraryStore;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
+  onPlayTrack: (item: TrackListItem) => void = (_item: TrackListItem): void => {};
   scroller: Scroller = new Scroller();
   private readonly scrollBehavior: PageListBehavior = new PageListBehavior();
-  @Builder
-  private Artwork(item: TrackListItem) {
-    if (item.artworkPath.length > 0) {
-      Image(this.store.resolveArtworkPath(item.artworkPath))
-        .width(52)
-        .height(52)
-        .objectFit(ImageFit.Cover)
-        .borderRadius(10)
-    } else {
-      Image($r('app.media.default_album_cover'))
-        .width(52)
-        .height(52)
-        .objectFit(ImageFit.Cover)
-        .borderRadius(10)
-    }
-  }
-
   @Builder
   private EmptyState() {
     ListItem() {
@@ -65,7 +50,14 @@ export struct SongsPage {
           LazyForEach(this.store.trackDataSource, (item: TrackListItem) => {
             ListItem() {
               Row({ space: 12 }) {
-                this.Artwork(item)
+                ArtworkView({
+                  sourcePath: item.artworkPath.length > 0 ? this.store.resolveArtworkPath(item.artworkPath) : '',
+                  sourceWidth: item.artworkWidth,
+                  sourceHeight: item.artworkHeight,
+                  slotWidth: 52,
+                  fitMode: ArtworkFitMode.CONTAIN,
+                  cornerRadius: 10
+                })
                 Column({ space: 4 }) {
                   Text(item.title)
                     .fontSize(16)
@@ -84,6 +76,10 @@ export struct SongsPage {
               .padding({ left: 16, right: 16, top: 8, bottom: 8 })
               .borderRadius(16)
               .backgroundColor($r('app.color.glass_surface_subtle'))
+              .clickEffect({ level: ClickEffectLevel.LIGHT })
+              .onClick(() => {
+                this.onPlayTrack(item);
+              })
             }
             .padding({ left: 12, right: 12 })
           }, (item: TrackListItem) => `${item.id}`)

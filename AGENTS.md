@@ -195,9 +195,20 @@ Cache resized artwork in application storage. Do not store full artwork images a
 
 Use relational storage for tracks, playlists and playlist membership.
 
-Every schema change must include a database version and migration.
+Every schema change must increment the database version.
 
-Do not delete the user's media library when a migration fails.
+The application is currently in development. When the database version changes, it is acceptable to drop and
+rebuild the local music-library database instead of implementing an incremental data-preserving migration. Treat
+this as an explicit development-only workflow, and do not describe it as production-safe migration behavior.
+
+If a task explicitly requires preserving existing user data or preparing a production release, replace the
+destructive rebuild with a versioned incremental migration and ensure migration failures do not delete the user's
+media library.
+
+Import and sort-index progress and result reports are session-only state. Keep them in the application-level
+observable store; do not persist reports or per-item outcomes in relational storage or Preferences. Dismissing the
+report surface or navigating away must not interrupt the active operation, while terminating the application may
+discard the report and its completed-item details.
 
 Track records must retain enough information to detect duplicate imports and unavailable files.
 

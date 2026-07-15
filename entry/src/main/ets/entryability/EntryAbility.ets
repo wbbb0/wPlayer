@@ -3,6 +3,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { AppAppearancePalette, appAppearanceController } from '../appearance/AppAppearance';
+import { playbackRuntime } from '../playback/PlaybackRuntime';
 
 const DOMAIN = 0x0000;
 const TAG = 'wPlayer/EntryAbility';
@@ -19,6 +20,9 @@ export default class EntryAbility extends UIAbility {
   }
 
   onDestroy(): void {
+    playbackRuntime.shutdown().catch((error: Object) => {
+      hilog.warn(DOMAIN, TAG, 'Failed to shut down playback runtime. Cause: %{public}s', JSON.stringify(error));
+    });
     hilog.info(DOMAIN, TAG, 'Ability destroyed');
   }
 
@@ -81,6 +85,7 @@ export default class EntryAbility extends UIAbility {
   }
 
   onBackground(): void {
+    playbackRuntime.onBackground();
     hilog.info(DOMAIN, TAG, 'Ability entered background');
   }
 }

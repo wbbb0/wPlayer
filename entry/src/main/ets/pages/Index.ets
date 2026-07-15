@@ -1,20 +1,8 @@
 import {
-  HdsBarLayoutMode,
   HdsBarStyle,
-  HdsNavDestination,
-  HdsNavDestinationTitleMode,
-  HdsNavigation,
-  HdsNavigationMenuContentOptions,
-  HdsNavigationMenuItemOptions,
-  HdsNavigationTitleMode,
-  HdsTabs,
   HdsTabsController,
-  HdsTabsFloatingStyle,
-  IconStyleMode,
-  TextStyleMode,
-  hdsMaterial
 } from '@kit.UIDesignKit';
-import { ComponentContent, curves, SymbolGlyphModifier, window } from '@kit.ArkUI';
+import { ComponentContent, curves, window } from '@kit.ArkUI';
 import { vibrator } from '@kit.SensorServiceKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { common } from '@kit.AbilityKit';
@@ -27,52 +15,33 @@ import {
   PlayerMotionSpec,
   PlayerPoint
 } from '../components/player/PlayerMotion';
-import { AppNavigationStyle } from '../components/navigation/AppNavigationStyle';
 import {
   AppPrimaryTitleContent,
   AppPrimaryTitleParams
 } from '../components/navigation/AppPrimaryTitleContent';
-import {
-  LibrarySortMenu,
-  LibrarySortMenuParams
-} from '../components/library/LibrarySortMenu';
-import {
-  AlbumSortField,
-  SortDirection,
-  TrackSortField
-} from '../library/model/LibraryModels';
 import { LibraryStore } from '../library/store/LibraryStore';
 import { playbackRuntime } from '../playback/PlaybackRuntime';
-import { PlayerStore, RepeatMode } from '../playback/model/PlaybackModels';
-import { AlbumsPage } from './library/AlbumsPage';
-import { LibraryManagementPage } from './library/LibraryManagementPage';
-import { MorePage } from './library/MorePage';
-import { PlaylistsPage } from './library/PlaylistsPage';
-import { SongsPage } from './library/SongsPage';
+import { PlayerStore } from '../playback/model/PlaybackModels';
 import { SettingsRepository } from '../settings/SettingsRepository';
 import { AppShellLayoutSpec } from '../components/layout/AppShellLayoutSpec';
-import { ArtworkFitMode, ArtworkView } from '../components/artwork/ArtworkView';
+import { WindowAvoidAreaController } from '../components/layout/WindowAvoidAreaController';
+import { FullPlayerContent } from '../components/player/FullPlayerContent';
+import {
+  MiniPlayerContent,
+  MiniPlayerSurface
+} from '../components/player/MiniPlayerSurface';
 import { ArtworkLayout } from '../components/artwork/ArtworkLayout';
 import {
   MORE_NAVIGATION_ITEMS,
-  MoreNavigationItem,
   MoreRoute
 } from '../components/navigation/MoreNavigation';
+import { ResponsiveNavigationShell } from '../components/navigation/ResponsiveNavigationShell';
 import {
   AppAppearanceListener,
   AppAppearancePalette,
   appAppearanceController
 } from '../appearance/AppAppearance';
 
-interface NavigationItem {
-  label: string;
-  symbol: Resource;
-}
-
-const TRACK_SORT_LABELS: Array<string> = ['名称', '专辑', '艺术家', '发行日期', '添加时间'];
-const ALBUM_SORT_LABELS: Array<string> = ['名称', '艺术家', '发行日期', '添加时间'];
-const TRACK_SORT_MENU_ID: string = 'track_sort_menu';
-const ALBUM_SORT_MENU_ID: string = 'album_sort_menu';
 const MORE_TAB_INDEX: number = 3;
 
 @Entry
@@ -122,17 +91,13 @@ struct Index {
   };
   private returnToExpandedMiniBar: boolean = false;
   private morphTransitionEpoch: number = 0;
-  private avoidAreaObserverEpoch: number = 0;
-  private avoidAreaObserverActive: boolean = false;
-  private mainWindow?: window.Window;
   private readonly appearanceListener: AppAppearanceListener = (_epoch: number): void => {
     this.refreshAppearance();
   };
-  private readonly avoidAreaChangeCallback = (options: window.AvoidAreaOptions): void => {
-    if (this.avoidAreaObserverActive) {
-      this.applyAvoidArea(options.type, options.area);
-    }
-  };
+  private readonly avoidAreaController: WindowAvoidAreaController =
+    new WindowAvoidAreaController((type: window.AvoidAreaType, area: window.AvoidArea): void => {
+      this.applyAvoidArea(type, area);
+    });
 
   private readonly compactTabsController: HdsTabsController = new HdsTabsController();
   private readonly expandedTabsController: HdsTabsController = new HdsTabsController();
@@ -151,23 +116,16 @@ struct Index {
     new Scroller(), new Scroller(), new Scroller(), new Scroller()
   ];
   private readonly libraryManagementScroller: Scroller = new Scroller();
-  private readonly navigationItems: NavigationItem[] = [
-    { label: '播放列表', symbol: $r('sys.symbol.music_note_list_fill') },
-    { label: '音乐', symbol: $r('sys.symbol.music_fill') },
-    { label: '专辑', symbol: $r('sys.symbol.opticaldisc') },
-    { label: '更多', symbol: $r('sys.symbol.square_fill_grid_2x2') }
-  ];
+  private readonly navigationLabels: Array<string> = ['播放列表', '音乐', '专辑', '更多'];
 
   aboutToAppear(): void {
     appAppearanceController.addListener(this.appearanceListener);
     this.refreshAppearance();
     this.initializePrimaryTitleContents();
-    this.avoidAreaObserverActive = true;
-    const observerEpoch = ++this.avoidAreaObserverEpoch;
-    this.initializeWindowAvoidAreas(observerEpoch);
     const context = this.getUIContext().getHostContext();
     if (context !== undefined) {
       const abilityContext = context as common.UIAbilityContext;
+      this.avoidAreaController.start(abilityContext);
       try {
         this.settingsRepository = new SettingsRepository(abilityContext);
         this.selectedTabIndex = this.normalizeTabIndex(this.settingsRepository.getLastTabIndex());
@@ -184,12 +142,7 @@ struct Index {
 
   aboutToDisappear(): void {
     appAppearanceController.removeListener(this.appearanceListener);
-    this.avoidAreaObserverActive = false;
-    ++this.avoidAreaObserverEpoch;
-    if (this.mainWindow !== undefined) {
-      this.mainWindow.off('avoidAreaChange', this.avoidAreaChangeCallback);
-      this.mainWindow = undefined;
-    }
+    this.avoidAreaController.stop();
     for (let index = 0; index < this.primaryTitleContents.length; index += 1) {
       this.primaryTitleContents[index]?.dispose();
       this.primaryTitleContents[index] = undefined;
@@ -202,12 +155,12 @@ struct Index {
 
   private initializePrimaryTitleContents(): void {
     const uiContext = this.getUIContext();
-    for (let index = 0; index < this.navigationItems.length; index += 1) {
+    for (let index = 0; index < this.navigationLabels.length; index += 1) {
       if (this.primaryTitleContents[index] === undefined) {
         this.primaryTitleContents[index] = new ComponentContent(
           uiContext,
           wrapBuilder(AppPrimaryTitleContent),
-          new AppPrimaryTitleParams(this.navigationItems[index].label, this.appearancePalette.titlePrimary)
+          new AppPrimaryTitleParams(this.navigationLabels[index], this.appearancePalette.titlePrimary)
         );
       }
     }
@@ -231,42 +184,13 @@ struct Index {
     this.appearancePalette = palette;
     for (let index = 0; index < this.primaryTitleContents.length; index += 1) {
       this.primaryTitleContents[index]?.update(
-        new AppPrimaryTitleParams(this.navigationItems[index].label, palette.titlePrimary)
+        new AppPrimaryTitleParams(this.navigationLabels[index], palette.titlePrimary)
       );
     }
     for (let index = 0; index < this.moreTitleContents.length; index += 1) {
       this.moreTitleContents[index]?.update(
         new AppPrimaryTitleParams(MORE_NAVIGATION_ITEMS[index].label, palette.titlePrimary)
       );
-    }
-  }
-
-  private async initializeWindowAvoidAreas(observerEpoch: number): Promise<void> {
-    const context = this.getUIContext().getHostContext();
-    if (context === undefined) {
-      return;
-    }
-    try {
-      const mainWindow = await window.getLastWindow(context);
-      if (!this.avoidAreaObserverActive || observerEpoch !== this.avoidAreaObserverEpoch) {
-        return;
-      }
-      if (this.mainWindow !== undefined) {
-        this.mainWindow.off('avoidAreaChange', this.avoidAreaChangeCallback);
-      }
-      this.mainWindow = mainWindow;
-      this.applyAvoidArea(
-        window.AvoidAreaType.TYPE_SYSTEM,
-        mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM)
-      );
-      this.applyAvoidArea(
-        window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR,
-        mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR)
-      );
-      mainWindow.on('avoidAreaChange', this.avoidAreaChangeCallback);
-    } catch (error) {
-      const businessError = error as BusinessError;
-      console.warn(`Unable to observe window avoid areas: ${businessError.code}, ${businessError.message}`);
     }
   }
 
@@ -287,90 +211,8 @@ struct Index {
     return width >= AppShellLayoutSpec.SIDE_NAVIGATION_BREAKPOINT;
   }
 
-  private usesPortraitSideNavigation(
-    width: number = this.rootFrame.width,
-    height: number = this.rootFrame.height
-  ): boolean {
-    return this.usesWideLayout(width) && width < height;
-  }
-
-  private wideMiniPlayerWidth(): number {
-    return this.usesPortraitSideNavigation() ?
-      AppShellLayoutSpec.MINI_PLAYER_MEDIUM_WIDTH : AppShellLayoutSpec.MINI_PLAYER_LARGE_WIDTH;
-  }
-
-  private expandedTabBarWidth(): number {
-    return this.usesPortraitSideNavigation() ?
-      AppShellLayoutSpec.EXPANDED_TAB_BAR_PORTRAIT_WIDTH :
-      AppShellLayoutSpec.EXPANDED_TAB_BAR_LANDSCAPE_WIDTH;
-  }
-
-  private compactTabsFloatingStyle(): HdsTabsFloatingStyle {
-    return {
-      barWidth: {
-        smallWidth: AppShellLayoutSpec.COMPACT_TAB_SMALL_WIDTH,
-        mediumWidth: AppShellLayoutSpec.COMPACT_TAB_MEDIUM_WIDTH,
-        largeWidth: AppShellLayoutSpec.COMPACT_TAB_LARGE_WIDTH
-      },
-      barBottomMargin: AppShellLayoutSpec.FLOATING_BAR_BOTTOM_MARGIN,
-      gradientMask: { maskColor: $r('app.color.float_bar_gradient_mask'), maskHeight: 84 },
-      systemMaterialEffect: {
-        materialType: hdsMaterial.MaterialType.ADAPTIVE,
-        materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
-      },
-      miniBar: {
-        miniBarBuilder: () => this.MiniPlayer(),
-        miniBarWidth: {
-          smallWidth: AppShellLayoutSpec.MINI_PLAYER_SMALL_WIDTH,
-          mediumWidth: AppShellLayoutSpec.MINI_PLAYER_MEDIUM_WIDTH,
-          largeWidth: AppShellLayoutSpec.MINI_PLAYER_LARGE_WIDTH
-        },
-        miniBarStyle: HdsBarStyle.COLLAPSE,
-        barLayoutMode: HdsBarLayoutMode.HORIZONTAL,
-        onBarStyleChange: (miniBarStyle: HdsBarStyle) => {
-          this.miniBarExpanded = miniBarStyle === HdsBarStyle.EXPAND;
-        },
-        enableMiniBarBackground: true,
-        enableMiniBarClip: true
-      }
-    };
-  }
-
-  private wideMiniPlayerFloatingStyle(): HdsTabsFloatingStyle {
-    const miniPlayerWidth = this.wideMiniPlayerWidth();
-    return {
-      barWidth: {
-        smallWidth: AppShellLayoutSpec.HIDDEN_TAB_BAR_WIDTH,
-        mediumWidth: AppShellLayoutSpec.HIDDEN_TAB_BAR_WIDTH,
-        largeWidth: AppShellLayoutSpec.HIDDEN_TAB_BAR_WIDTH
-      },
-      barSideMargin: AppShellLayoutSpec.WIDE_SIDE_MARGIN,
-      barBottomMargin: AppShellLayoutSpec.FLOATING_BAR_BOTTOM_MARGIN,
-      systemMaterialEffect: {
-        materialType: hdsMaterial.MaterialType.ADAPTIVE,
-        materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
-      },
-      barOpacity: 0,
-      miniBar: {
-        miniBarBuilder: () => this.MiniPlayer(),
-        miniBarWidth: {
-          smallWidth: miniPlayerWidth,
-          mediumWidth: miniPlayerWidth,
-          largeWidth: miniPlayerWidth
-        },
-        miniBarStyle: HdsBarStyle.EXPAND,
-        barLayoutMode: HdsBarLayoutMode.HORIZONTAL,
-        onBarStyleChange: (miniBarStyle: HdsBarStyle) => {
-          this.miniBarExpanded = miniBarStyle === HdsBarStyle.EXPAND;
-        },
-        enableMiniBarBackground: true,
-        enableMiniBarClip: true
-      }
-    };
-  }
-
   private normalizeTabIndex(index: number): number {
-    return Number.isInteger(index) && index >= 0 && index < this.navigationItems.length ? index : 0;
+    return Number.isInteger(index) && index >= 0 && index < this.navigationLabels.length ? index : 0;
   }
 
   private handleCompactTabChange(index: number): void {
@@ -418,89 +260,6 @@ struct Index {
       return;
     }
     this.expandedMorePathStacks[index - MORE_TAB_INDEX].clear(true);
-  }
-
-  private applyTrackSort(field: TrackSortField, direction: SortDirection): void {
-    this.libraryStore.setTrackSort(field, direction).then(() => {
-      if (this.libraryStore.trackDataSource.totalCount() > 0) {
-        this.pageScrollers[1].scrollToIndex(0, false, ScrollAlign.START);
-      }
-    });
-  }
-
-  private applyAlbumSort(field: AlbumSortField, direction: SortDirection): void {
-    this.libraryStore.setAlbumSort(field, direction).then(() => {
-      if (this.libraryStore.albumDataSource.totalCount() > 0) {
-        this.pageScrollers[2].scrollToIndex(0, false, ScrollAlign.START);
-      }
-    });
-  }
-
-  private openSortMenu(tabIndex: number, targetId: string): void {
-    const isTracks = tabIndex === 1;
-    const params = isTracks ? new LibrarySortMenuParams(
-      TRACK_SORT_LABELS,
-      this.libraryStore.trackSortField,
-      this.libraryStore.trackSortDirection === SortDirection.DESCENDING,
-      (index: number) => this.applyTrackSort(index as TrackSortField, this.libraryStore.trackSortDirection),
-      (descending: boolean) => this.applyTrackSort(this.libraryStore.trackSortField,
-        descending ? SortDirection.DESCENDING : SortDirection.ASCENDING)
-    ) : new LibrarySortMenuParams(
-      ALBUM_SORT_LABELS,
-      this.libraryStore.albumSortField,
-      this.libraryStore.albumSortDirection === SortDirection.DESCENDING,
-      (index: number) => this.applyAlbumSort(index as AlbumSortField, this.libraryStore.albumSortDirection),
-      (descending: boolean) => this.applyAlbumSort(this.libraryStore.albumSortField,
-        descending ? SortDirection.DESCENDING : SortDirection.ASCENDING)
-    );
-    const content = new ComponentContent(
-      this.getUIContext(), wrapBuilder(LibrarySortMenu), params
-    );
-    this.getUIContext().getPromptAction().openMenu(content, { id: targetId }, { enableArrow: true })
-      .catch((error: BusinessError) => {
-        console.warn(`Unable to open sort menu: ${error.code}, ${error.message}`);
-      });
-  }
-
-  private libraryTitleMenu(index: number): HdsNavigationMenuContentOptions | undefined {
-    if (index !== 1 && index !== 2) {
-      return undefined;
-    }
-    const targetId = index === 1 ? TRACK_SORT_MENU_ID : ALBUM_SORT_MENU_ID;
-    const countLabel = index === 1 ?
-      `${this.libraryStore.statistics.trackCount} 首` : `${this.libraryStore.statistics.albumCount} 张`;
-    let values: Array<HdsNavigationMenuItemOptions>;
-    if (index === 1) {
-      values = [{
-        content: {
-          icon: $r('sys.symbol.shuffle'),
-          label: '随机播放全部音乐',
-          type: IconStyleMode.NORMAL,
-          isEnabled: this.libraryStore.statistics.trackCount > 0,
-          action: () => playbackRuntime.shuffleAll(this.libraryStore.trackSnapshot())
-        }
-      }, {
-        content: {
-          label: countLabel,
-          type: TextStyleMode.NORMAL,
-          componentId: targetId,
-          action: () => this.openSortMenu(index, targetId)
-        }
-      }];
-    } else {
-      values = [{
-        content: {
-          label: countLabel,
-          type: TextStyleMode.NORMAL,
-          componentId: targetId,
-          action: () => this.openSortMenu(index, targetId)
-        }
-      }];
-    }
-    return {
-      maxCount: values.length,
-      value: values
-    };
   }
 
   private moreNavigationIndex(routeId: string = this.selectedMoreRouteId): number {
@@ -652,20 +411,6 @@ struct Index {
   private containedArtworkHeight(width: number, height: number): number {
     return ArtworkLayout.containedSize(width, height,
       PlayerLayoutSpec.FULL_ARTWORK_SIZE, PlayerLayoutSpec.FULL_ARTWORK_SIZE).height;
-  }
-
-  private currentArtworkWidth(): number {
-    return this.containedArtworkWidth(
-      this.playerStore.currentTrack?.artworkWidth ?? 0,
-      this.playerStore.currentTrack?.artworkHeight ?? 0
-    );
-  }
-
-  private currentArtworkHeight(): number {
-    return this.containedArtworkHeight(
-      this.playerStore.currentTrack?.artworkWidth ?? 0,
-      this.playerStore.currentTrack?.artworkHeight ?? 0
-    );
   }
 
   private morphTargetArtworkWidth(): number {
@@ -874,136 +619,6 @@ struct Index {
     });
   }
 
-  @Builder
-  private LibraryPage(index: number) {
-    if (index === 0) {
-      PlaylistsPage({
-        store: this.libraryStore,
-        topInset: this.statusBarAvoidHeight,
-        bottomInset: this.navigationAvoidHeight,
-        scroller: this.pageScrollers[0]
-      })
-    } else if (index === 1) {
-      SongsPage({
-        store: this.libraryStore,
-        topInset: this.statusBarAvoidHeight,
-        bottomInset: this.navigationAvoidHeight,
-        scroller: this.pageScrollers[1],
-        onPlayTrack: (item) => {
-          playbackRuntime.playFromLibrary(item, this.libraryStore.trackSnapshot());
-        }
-      })
-    } else if (index === 2) {
-      AlbumsPage({
-        store: this.libraryStore,
-        topInset: this.statusBarAvoidHeight,
-        bottomInset: this.navigationAvoidHeight,
-        scroller: this.pageScrollers[2]
-      })
-    } else {
-      MorePage({
-        topInset: this.statusBarAvoidHeight,
-        bottomInset: this.navigationAvoidHeight,
-        scroller: this.pageScrollers[MORE_TAB_INDEX],
-        openDestination: (routeId: string) => {
-          this.openMoreDestination(routeId);
-        }
-      })
-    }
-  }
-
-  @Builder
-  private LibraryManagementContent() {
-    LibraryManagementPage({
-      store: this.libraryStore,
-      topInset: this.statusBarAvoidHeight,
-      bottomInset: this.navigationAvoidHeight,
-      scroller: this.libraryManagementScroller
-    })
-  }
-
-  @Builder
-  private MoreRootPage(routeId: string) {
-    if (routeId === MoreRoute.LIBRARY_MANAGEMENT) {
-      this.LibraryManagementContent()
-    }
-  }
-
-  @Builder
-  private DestinationBuilder(name: string, _param: Object) {
-    if (name === MoreRoute.LIBRARY_MANAGEMENT) {
-      HdsNavDestination() {
-        this.LibraryManagementContent()
-      }
-      .width('100%')
-      .height('100%')
-      .backgroundColor($r('app.color.page_background'))
-      .titleMode(HdsNavDestinationTitleMode.MINI)
-      .titleBar(AppNavigationStyle.secondaryTitleBar(
-        MORE_NAVIGATION_ITEMS[this.moreNavigationIndex(name)].label,
-        this.appearancePalette
-      ))
-      .bindToScrollable([this.libraryManagementScroller])
-    }
-  }
-
-  @Builder
-  private TabNavigation(index: number) {
-    HdsNavigation(this.tabPathStacks[index]) {
-      this.LibraryPage(index)
-    }
-    .width('100%')
-    .height('100%')
-    .mode(NavigationMode.Stack)
-    .backgroundColor($r('app.color.page_background'))
-    .titleMode(HdsNavigationTitleMode.MINI)
-    .hideBackButton(true)
-    .titleBar(AppNavigationStyle.primaryTitleBar(
-      this.navigationItems[index].label,
-      this.appearancePalette,
-      this.libraryTitleMenu(index),
-      this.primaryTitleContents[index]
-    ))
-    .bindToScrollable([this.pageScrollers[index]])
-    .navDestination(this.DestinationBuilder)
-  }
-
-  @Builder
-  private ExpandedMoreNavigation(item: MoreNavigationItem, index: number) {
-    HdsNavigation(this.expandedMorePathStacks[index]) {
-      this.MoreRootPage(item.routeId)
-    }
-    .width('100%')
-    .height('100%')
-    .mode(NavigationMode.Stack)
-    .backgroundColor($r('app.color.page_background'))
-    .titleMode(HdsNavigationTitleMode.MINI)
-    .hideBackButton(true)
-    .titleBar(AppNavigationStyle.primaryTitleBar(
-      item.label,
-      this.appearancePalette,
-      undefined,
-      this.moreTitleContents[index]
-    ))
-    .bindToScrollable([this.libraryManagementScroller])
-    .navDestination(this.DestinationBuilder)
-  }
-
-  @Builder
-  private MiniAlbumCover() {
-    ArtworkView({
-      sourcePixelMap: this.playerStore.miniArtwork,
-      sourcePath: this.playerStore.miniArtworkUri,
-      slotWidth: PlayerLayoutSpec.MINI_ARTWORK_SIZE,
-      fitMode: ArtworkFitMode.COVER,
-      cornerRadius: PlayerLayoutSpec.FULL_ARTWORK_RADIUS,
-      circularProgress: 1,
-      shadowEnabled: false,
-      shadowRadius: 0,
-      shadowOffsetY: 0
-    })
-  }
-
   private morphArtworkSourceRadius(): number {
     const fullRadius = Math.min(
       PlayerLayoutSpec.FULL_ARTWORK_RADIUS,
@@ -1016,440 +631,47 @@ struct Index {
   }
 
   @Builder
-  private HeroAlbumCover(size: number, radius: number) {
-    Stack() {
-      Stack() {
-        if (this.playerStore.heroArtworkPreferPixelMap && this.playerStore.heroArtwork !== undefined) {
-          Image(this.playerStore.heroArtwork)
-            .width('100%')
-            .height('100%')
-            .objectFit(ImageFit.Cover)
-        } else if (this.playerStore.heroArtworkUri.length > 0) {
-          Image(this.playerStore.heroArtworkUri)
-            .width('100%')
-            .height('100%')
-            .objectFit(ImageFit.Cover)
-        } else {
-          Image($r('app.media.default_album_cover'))
-            .width('100%')
-            .height('100%')
-            .objectFit(ImageFit.Cover)
-        }
-      }
-      .width(this.currentArtworkWidth())
-      .height(this.currentArtworkHeight())
-      .borderRadius(Math.min(radius, Math.min(this.currentArtworkWidth(), this.currentArtworkHeight()) / 2))
-      .clip(true)
-      .shadow({
-        radius: PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS,
-        color: $r('app.color.artwork_shadow'),
-        offsetY: PlayerMotionSpec.FULL_ARTWORK_SHADOW_OFFSET_Y
-      })
-    }
-    .width(size)
-    .height(size)
-  }
-
-  @Builder
-  private PlaybackButton(size: number) {
-    Stack() {
-      SymbolGlyph(this.playerStore.isPlaying() ? $r('sys.symbol.pause') : $r('sys.symbol.play_fill'))
-        .fontSize(size * 0.42)
-        .fontColor(['#FFFFFF'])
-        .renderingStrategy(SymbolRenderingStrategy.MULTIPLE_OPACITY)
-    }
-    .width(size)
-    .height(size)
-    .borderRadius(size / 2)
-    .backgroundColor($r('app.color.theme_accent'))
-    .shadow({ radius: 12, color: $r('app.color.theme_accent_shadow'), offsetY: 5 })
-    .clickEffect({ level: ClickEffectLevel.MIDDLE })
-    .accessibilityText(this.playerStore.isPlaying() ? '暂停' : '播放')
-    .onClick(() => {
-      playbackRuntime.togglePlayback();
-    })
-  }
-
-  @Builder
-  private MiniPlayerContent(showArtwork: boolean, followsSwipeOffset: boolean) {
-    Row({ space: 10 }) {
-      Stack() {
-        if (showArtwork) {
-          this.MiniAlbumCover()
-        }
-      }
-      .width(48)
-      .height(48)
-      .zIndex(2)
-      .onClick(() => {
-        this.showFullPlayer();
-      })
-
-      if (this.miniBarExpanded) {
-        Column({ space: 2 }) {
-          Text(this.playerStore.currentTrack?.title ?? '尚未播放')
-            .fontSize(15)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.text_primary'))
-            .maxLines(1)
-
-          Text(this.playerStore.currentTrack?.artistDisplay || '选择一首音乐')
-            .fontSize(11)
-            .fontColor($r('app.color.text_secondary'))
-            .maxLines(1)
-        }
-        .alignItems(HorizontalAlign.Start)
-        .layoutWeight(1)
-        .translate({ x: followsSwipeOffset ? this.miniPlayerOffsetX : 0 })
-        .onClick(() => {
-          this.showFullPlayer();
-        })
-
-        this.PlaybackButton(40)
-      }
-    }
-    .height(56)
-    .width('100%')
-    .padding({ left: 4, right: this.miniBarExpanded ? 8 : 4 })
-    .alignItems(VerticalAlign.Center)
-    .borderRadius(28)
-    .clip(true)
-  }
-
-  @Builder
-  private MiniPlayer() {
-    Stack() {
-      this.MiniPlayerContent(true, true)
-    }
-    .height(56)
-    .width('100%')
-    .id('mini_player_surface')
-    .borderRadius(28)
-    .clip(true)
-    .opacity(this.isMorphActive() ? 0 : 1)
-    .onAreaChange((_oldValue: Area, newValue: Area) => {
-      this.measuredMiniPlayerFrame = {
-        x: this.lengthToNumber(newValue.globalPosition.x, this.measuredMiniPlayerFrame.x),
-        y: this.lengthToNumber(newValue.globalPosition.y, this.measuredMiniPlayerFrame.y),
-        width: this.lengthToNumber(newValue.width, this.measuredMiniPlayerFrame.width),
-        height: this.lengthToNumber(newValue.height, this.measuredMiniPlayerFrame.height)
-      };
-    })
-    .parallelGesture(
-      PanGesture({ direction: PanDirection.All, distance: 3 })
-        .onActionStart(() => {
-          this.playerGestureAxis = PlayerGestureAxis.UNDECIDED;
-          this.freezeMiniPlayerGeometry();
-        })
-        .onActionUpdate((event: GestureEvent) => {
-          this.updateMiniPlayerGesture(event);
-        })
-        .onActionEnd(() => {
-          this.finishMiniPlayerGesture();
-        })
-        .onActionCancel(() => {
-          this.finishMiniPlayerGesture();
-        })
-    )
-  }
-
-  @Builder
-  private ExpandedTabBar(item: NavigationItem | MoreNavigationItem, tabIndex: number) {
-    if (this.usesPortraitSideNavigation()) {
-      Column({ space: AppShellLayoutSpec.EXPANDED_TAB_ITEM_VERTICAL_GAP }) {
-        SymbolGlyph(item.symbol)
-          .fontSize(AppShellLayoutSpec.EXPANDED_TAB_ITEM_ICON_SIZE)
-          .fontColor([
-            this.expandedTabIndex() === tabIndex ?
-              $r('app.color.theme_accent') : $r('app.color.text_tertiary')
-          ])
-        Text(item.label)
-          .fontSize(AppShellLayoutSpec.EXPANDED_TAB_ITEM_LABEL_SIZE)
-          .fontWeight(this.expandedTabIndex() === tabIndex ? FontWeight.Medium : FontWeight.Normal)
-          .fontColor(
-            this.expandedTabIndex() === tabIndex ?
-              $r('app.color.theme_accent') : $r('app.color.text_secondary')
-          )
-          .maxLines(1)
-      }
-      .width('100%')
-      .height(AppShellLayoutSpec.EXPANDED_TAB_ITEM_PORTRAIT_HEIGHT)
-      .alignItems(HorizontalAlign.Center)
-      .justifyContent(FlexAlign.Center)
-    } else {
-      Row({ space: AppShellLayoutSpec.EXPANDED_TAB_ITEM_HORIZONTAL_GAP }) {
-        SymbolGlyph(item.symbol)
-          .fontSize(AppShellLayoutSpec.EXPANDED_TAB_ITEM_ICON_SIZE)
-          .fontColor([
-            this.expandedTabIndex() === tabIndex ?
-              $r('app.color.theme_accent') : $r('app.color.text_tertiary')
-          ])
-        Text(item.label)
-          .fontSize(AppShellLayoutSpec.EXPANDED_TAB_ITEM_LABEL_SIZE)
-          .fontWeight(this.expandedTabIndex() === tabIndex ? FontWeight.Medium : FontWeight.Normal)
-          .fontColor(
-            this.expandedTabIndex() === tabIndex ?
-              $r('app.color.theme_accent') : $r('app.color.text_secondary')
-          )
-          .maxLines(1)
-      }
-      .width('100%')
-      .height(AppShellLayoutSpec.EXPANDED_TAB_ITEM_LANDSCAPE_HEIGHT)
-      .padding({ left: AppShellLayoutSpec.EXPANDED_TAB_ITEM_LEADING_PADDING })
-      .alignItems(VerticalAlign.Center)
-      .justifyContent(FlexAlign.Start)
-    }
-  }
-
-  @Builder
-  private CompactTabsContent() {
-    HdsTabs({ controller: this.compactTabsController, index: this.selectedTabIndex }) {
-      ForEach(this.navigationItems, (item: NavigationItem, index: number) => {
-        TabContent() {
-          this.TabNavigation(index)
-        }
-        .tabBar(new BottomTabBarStyle({
-          normal: new SymbolGlyphModifier(item.symbol)
-        }, item.label))
-      }, (item: NavigationItem) => item.label)
-    }
-    .width('100%')
-    .height('100%')
-    .barOverlap(true)
-    .barPosition(BarPosition.End)
-    .vertical(false)
-    .barMode(BarMode.Fixed)
-    .scrollable(false)
-    .onChange((index: number) => {
-      this.handleCompactTabChange(index);
-    })
-    .onTabBarClick((index: number) => {
-      this.handleCompactTabBarClick(index);
-    })
-    .barFloatingStyle(this.compactTabsFloatingStyle())
-  }
-
-  @Builder
-  private ExpandedTabsContent() {
-    HdsTabs({ controller: this.expandedTabsController, index: this.expandedTabIndex() }) {
-      ForEach(this.navigationItems.slice(0, MORE_TAB_INDEX), (item: NavigationItem, index: number) => {
-        TabContent() {
-          this.TabNavigation(index)
-        }
-        .tabBar(this.ExpandedTabBar(item, index))
-      }, (item: NavigationItem) => item.label)
-
-      ForEach(MORE_NAVIGATION_ITEMS, (item: MoreNavigationItem, index: number) => {
-        TabContent() {
-          this.ExpandedMoreNavigation(item, index)
-        }
-        .tabBar(this.ExpandedTabBar(item, MORE_TAB_INDEX + index))
-      }, (item: MoreNavigationItem) => item.routeId)
-    }
-    .width('100%')
-    .height('100%')
-    .barPosition(BarPosition.Start)
-    .barWidth(this.expandedTabBarWidth())
-    .vertical(true)
-    .barMode(BarMode.Scrollable)
-    .scrollable(false)
-    .animationDuration(0)
-    .onChange((index: number) => {
-      this.handleExpandedTabChange(index);
-    })
-    .onTabBarClick((index: number) => {
-      this.handleExpandedTabBarClick(index);
-    })
-  }
-
-  @Builder
-  private WideMiniPlayerHost() {
-    Stack() {
-      HdsTabs({ index: 0 }) {
-        TabContent() {
-          Stack()
-        }
-        .tabBar(new BottomTabBarStyle({
-          normal: new SymbolGlyphModifier($r('sys.symbol.music_fill'))
-        }, '播放器'))
-      }
-      .width('100%')
-      .height('100%')
-      .barOverlap(true)
-      .barPosition(BarPosition.End)
-      .vertical(false)
-      .barMode(BarMode.Fixed)
-      .scrollable(false)
-      .barFloatingStyle(this.wideMiniPlayerFloatingStyle())
-    }
-    .id('wide_mini_player_hds_host')
-    .width(this.wideMiniPlayerWidth() + AppShellLayoutSpec.WIDE_SIDE_MARGIN * 2)
-    .height(AppShellLayoutSpec.MINI_PLAYER_HEIGHT + AppShellLayoutSpec.FLOATING_BAR_BOTTOM_MARGIN)
-  }
-
-  @Builder
-  private PlayerTabs() {
-    if (this.usesWideLayout()) {
-      Stack({ alignContent: Alignment.BottomEnd }) {
-        this.ExpandedTabsContent()
-        this.WideMiniPlayerHost()
-      }
-      .id('player_tabs_wide_content_host')
-      .width('100%')
-      .height('100%')
-    } else {
-      Stack() {
-        this.CompactTabsContent()
-      }
-      .id('player_tabs_compact_content_host')
-      .width('100%')
-      .height('100%')
-    }
-  }
-
-  @Builder
-  private FullPlayerControl(icon: Resource, accessibilityText: string, size: number, action: () => void) {
-    Stack() {
-      Image(icon)
-        .width(size * 0.45)
-        .height(size * 0.45)
-        .fillColor($r('app.color.control_foreground'))
-    }
-    .width(size)
-    .height(size)
-    .borderRadius(size / 2)
-    .backgroundColor($r('app.color.glass_surface_subtle'))
-    .clickEffect({ level: ClickEffectLevel.MIDDLE })
-    .accessibilityText(accessibilityText)
-    .onClick(action)
-  }
-
-  @Builder
-  private PlaybackModeButton(symbol: Resource, active: boolean, accessibilityText: string, action: () => void) {
-    Stack() {
-      SymbolGlyph(symbol)
-        .fontSize(22)
-        .fontColor([active ? $r('app.color.theme_accent') : $r('app.color.text_secondary')])
-    }
-    .width(44)
-    .height(44)
-    .borderRadius(22)
-    .clickEffect({ level: ClickEffectLevel.LIGHT })
-    .accessibilityText(accessibilityText)
-    .onClick(action)
-  }
-
-  @Builder
-  private FullPlayerContent(showArtwork: boolean, measuresArtworkTarget: boolean = false) {
-    Column() {
-      Row() {
-        Stack() {
-          Image($r('app.media.control_chevron_down'))
-            .width(22)
-            .height(22)
-            .fillColor($r('app.color.text_primary'))
-        }
-        .width(44)
-        .height(44)
-        .borderRadius(22)
-        .backgroundColor($r('app.color.glass_surface_strong'))
-        .backgroundBlurStyle(BlurStyle.Thin)
-        .clickEffect({ level: ClickEffectLevel.MIDDLE })
-        .accessibilityText('收起播放器')
-        .onClick(() => {
-          this.hideFullPlayer();
-        })
-
-        Text('正在播放')
-          .fontSize(16)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_primary'))
-          .layoutWeight(1)
-          .textAlign(TextAlign.Center)
-
-        Blank().width(44)
-      }
-      .width('100%')
-
-      Blank().layoutWeight(1)
-
-      Stack() {
-        if (showArtwork) {
-          this.HeroAlbumCover(PlayerLayoutSpec.FULL_ARTWORK_SIZE, PlayerLayoutSpec.FULL_ARTWORK_RADIUS)
-        }
-      }
-      .width(PlayerLayoutSpec.FULL_ARTWORK_SIZE)
-      .height(PlayerLayoutSpec.FULL_ARTWORK_SIZE)
-      .borderRadius(PlayerLayoutSpec.FULL_ARTWORK_SIZE / 2)
-      .onAreaChange((_oldValue: Area, newValue: Area) => {
-        if (!measuresArtworkTarget) {
-          return;
-        }
-        this.artworkTarget = {
-          x: this.lengthToNumber(
-            newValue.globalPosition.x,
-            this.artworkTarget.x + this.rootFrame.x
-          ) - this.rootFrame.x,
-          y: this.lengthToNumber(
-            newValue.globalPosition.y,
-            this.artworkTarget.y + this.rootFrame.y
-          ) - this.rootFrame.y
-        };
-      })
-
-      Blank().layoutWeight(1)
-
-      Column({ space: 7 }) {
-        Text(this.playerStore.currentTrack?.title ?? '尚未播放')
-          .fontSize(26)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_primary'))
-        Text(this.playerStore.currentTrack?.artistDisplay || '选择一首音乐开始播放')
-          .fontSize(15)
-          .fontColor($r('app.color.text_secondary'))
-      }
-      .alignItems(HorizontalAlign.Start)
-      .width('100%')
-
-      Row() {
-        this.FullPlayerControl($r('app.media.control_previous'), '上一首', 54, () => {
-          playbackRuntime.previous();
-        })
-        this.PlaybackButton(74)
-        this.FullPlayerControl($r('app.media.control_next'), '下一首', 54, () => {
-          playbackRuntime.next();
-        })
-      }
-      .justifyContent(FlexAlign.SpaceAround)
-      .alignItems(VerticalAlign.Center)
-      .width('100%')
-      .margin({ top: 24 })
-
-      Row() {
-        this.PlaybackModeButton($r('sys.symbol.shuffle'), this.playerStore.shuffleEnabled,
-          this.playerStore.shuffleEnabled ? '关闭随机播放' : '开启随机播放', () => {
-            playbackRuntime.toggleShuffle();
-          })
-        this.PlaybackModeButton(
-          this.playerStore.repeatMode === RepeatMode.ONE ?
-            $r('sys.symbol.repeat_1') : $r('sys.symbol.repeat'),
-          this.playerStore.repeatMode !== RepeatMode.OFF,
-          '切换循环模式', () => {
-            playbackRuntime.cycleRepeatMode();
-          })
-      }
-      .width('100%')
-      .justifyContent(FlexAlign.SpaceBetween)
-      .padding({ left: 18, right: 18 })
-      .margin({ bottom: 16 })
-    }
-    .width('100%')
-    .height('100%')
-    .padding({
-      left: 28,
-      right: 28,
-      top: this.statusBarAvoidHeight + 18,
-      bottom: this.navigationAvoidHeight + 10
+  private NavigationShell() {
+    ResponsiveNavigationShell({
+      libraryStore: this.libraryStore,
+      playerStore: this.playerStore,
+      topInset: this.statusBarAvoidHeight,
+      bottomInset: this.navigationAvoidHeight,
+      rootWidth: this.rootFrame.width,
+      rootHeight: this.rootFrame.height,
+      selectedTabIndex: this.selectedTabIndex,
+      selectedMoreRouteId: this.selectedMoreRouteId,
+      miniBarExpanded: this.miniBarExpanded,
+      miniPlayerOffsetX: this.miniPlayerOffsetX,
+      morphActive: this.isMorphActive(),
+      measuredMiniPlayerFrame: this.measuredMiniPlayerFrame,
+      appearancePalette: this.appearancePalette,
+      compactTabsController: this.compactTabsController,
+      expandedTabsController: this.expandedTabsController,
+      primaryTitleContents: this.primaryTitleContents,
+      moreTitleContents: this.moreTitleContents,
+      tabPathStacks: this.tabPathStacks,
+      expandedMorePathStacks: this.expandedMorePathStacks,
+      pageScrollers: this.pageScrollers,
+      libraryManagementScroller: this.libraryManagementScroller,
+      onCompactTabChange: (index: number): void => this.handleCompactTabChange(index),
+      onCompactTabClick: (index: number): void => this.handleCompactTabBarClick(index),
+      onExpandedTabChange: (index: number): void => this.handleExpandedTabChange(index),
+      onExpandedTabClick: (index: number): void => this.handleExpandedTabBarClick(index),
+      onOpenMoreDestination: (routeId: string): void => this.openMoreDestination(routeId),
+      onMiniBarStyleChange: (expanded: boolean): void => {
+        this.miniBarExpanded = expanded;
+      },
+      onShowFullPlayer: (): void => this.showFullPlayer(),
+      onMeasuredMiniPlayerFrame: (frame: PlayerFrame): void => {
+        this.measuredMiniPlayerFrame = frame;
+      },
+      onMiniPlayerGestureStart: (): void => {
+        this.playerGestureAxis = PlayerGestureAxis.UNDECIDED;
+        this.freezeMiniPlayerGeometry();
+      },
+      onMiniPlayerGestureUpdate: (event: GestureEvent): void => this.updateMiniPlayerGesture(event),
+      onMiniPlayerGestureFinish: (): void => this.finishMiniPlayerGesture()
     })
   }
 
@@ -1472,7 +694,15 @@ struct Index {
 
       Stack() {
         Stack() {
-          this.FullPlayerContent(false, false)
+          FullPlayerContent({
+            playerStore: this.playerStore,
+            topInset: this.statusBarAvoidHeight,
+            bottomInset: this.navigationAvoidHeight,
+            showArtwork: false,
+            rootFrame: this.frozenRootFrame,
+            previousArtworkTarget: this.artworkTarget,
+            onClose: () => this.hideFullPlayer()
+          })
         }
         .width(this.frozenRootFrame.width)
         .height(this.frozenRootFrame.height)
@@ -1486,7 +716,14 @@ struct Index {
 
         if (this.playerExpandProgress < PlayerMotionSpec.MINI_CONTENT_VISIBLE_LIMIT) {
           Stack() {
-            this.MiniPlayerContent(false, false)
+            MiniPlayerContent({
+              playerStore: this.playerStore,
+              expanded: this.miniBarExpanded,
+              showArtwork: false,
+              followsSwipeOffset: false,
+              swipeOffsetX: 0,
+              onShowFullPlayer: () => this.showFullPlayer()
+            })
           }
           .width('100%')
           .height('100%')
@@ -1549,7 +786,19 @@ struct Index {
   @Builder
   private FullPlayerGeometryProbe() {
     Stack() {
-      this.FullPlayerContent(false, true)
+      FullPlayerContent({
+        playerStore: this.playerStore,
+        topInset: this.statusBarAvoidHeight,
+        bottomInset: this.navigationAvoidHeight,
+        showArtwork: false,
+        measuresArtworkTarget: true,
+        rootFrame: this.rootFrame,
+        previousArtworkTarget: this.artworkTarget,
+        onClose: () => this.hideFullPlayer(),
+        onArtworkTarget: (target: PlayerPoint): void => {
+          this.artworkTarget = target;
+        }
+      })
     }
     .width('100%')
     .height('100%')
@@ -1561,7 +810,7 @@ struct Index {
     Stack() {
       this.FullPlayerGeometryProbe()
 
-      this.PlayerTabs()
+      this.NavigationShell()
 
       if (this.isMorphActive()) {
         this.MorphPlayer()

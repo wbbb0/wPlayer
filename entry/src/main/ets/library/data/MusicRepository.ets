@@ -24,11 +24,18 @@ import { LibraryDatabase } from './LibraryDatabase';
 export interface ArtworkImportInput {
   metadata: ParsedArtwork;
   sourceHash?: string;
-  thumbnailHash?: string;
-  thumbnailPath?: string;
-  thumbnailWidth?: number;
-  thumbnailHeight?: number;
-  thumbnailByteSize?: number;
+  smallHash?: string;
+  smallPath?: string;
+  smallFormat?: string;
+  smallWidth?: number;
+  smallHeight?: number;
+  smallByteSize?: number;
+  largeHash?: string;
+  largePath?: string;
+  largeFormat?: string;
+  largeWidth?: number;
+  largeHeight?: number;
+  largeByteSize?: number;
   primary?: boolean;
 }
 
@@ -49,11 +56,26 @@ export interface ImportTrackResult {
 }
 
 export interface ArtworkAssetLookup {
-  thumbnailHash: string;
-  thumbnailPath: string;
-  width: number;
-  height: number;
-  byteSize: number;
+  smallHash: string;
+  smallPath: string;
+  smallFormat: string;
+  smallWidth: number;
+  smallHeight: number;
+  smallByteSize: number;
+  largeHash: string;
+  largePath: string;
+  largeFormat: string;
+  largeWidth: number;
+  largeHeight: number;
+  largeByteSize: number;
+}
+
+export interface ArtworkCleanupCandidate {
+  assetId: number;
+  smallPath: string;
+  largePath: string;
+  deleteSmall: boolean;
+  deleteLarge: boolean;
 }
 
 interface CreditGroup {
@@ -71,7 +93,7 @@ const URI_QUERY_BATCH_SIZE = 128;
 export class MusicRepository {
   private readonly database: LibraryDatabase = new LibraryDatabase();
 
-  initialize(context: common.Context): Promise<void> {
+  initialize(context: common.Context): Promise<boolean> {
     return this.database.initialize(context);
   }
 
@@ -136,7 +158,7 @@ export class MusicRepository {
     const resultSet = await this.database.getStore().querySql(
       `SELECT t.id, t.title, t.artist_display, t.album_display, t.duration_ms,
         COALESCE(t.track_number, 0), COALESCE(t.disc_number, 0),
-        COALESCE(a.thumbnail_path, ''), ${sectionColumn}
+        COALESCE(a.small_path, ''), ${sectionColumn}
        FROM track t LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
        ORDER BY ${orderClause}`
     );
@@ -181,7 +203,7 @@ export class MusicRepository {
     }
     const resultSet = await this.database.getStore().querySql(
       `SELECT al.id, al.title, al.album_artist_display, al.track_count,
-        al.total_duration_ms, COALESCE(a.thumbnail_path, ''), ${sectionColumn}
+        al.total_duration_ms, COALESCE(a.large_path, ''), ${sectionColumn}
        FROM album al LEFT JOIN artwork_asset a ON a.id = al.primary_artwork_id
        ORDER BY ${orderClause}`
     );
@@ -244,7 +266,8 @@ export class MusicRepository {
 
   async findArtworkBySourceHash(sourceHash: string): Promise<ArtworkAssetLookup | undefined> {
     const resultSet = await this.database.getStore().querySql(
-      `SELECT a.thumbnail_hash, a.thumbnail_path, a.width, a.height, a.byte_size
+      `SELECT a.small_hash, a.small_path, a.small_format, a.small_width, a.small_height, a.small_byte_size,
+        a.large_hash, a.large_path, a.large_format, a.large_width, a.large_height, a.large_byte_size
        FROM artwork_source s JOIN artwork_asset a ON a.id = s.asset_id
        WHERE s.source_hash = ? LIMIT 1`,
       [sourceHash]
@@ -254,37 +277,61 @@ export class MusicRepository {
         return undefined;
       }
       return {
-        thumbnailHash: resultSet.getString(0),
-        thumbnailPath: resultSet.getString(1),
-        width: resultSet.getLong(2),
-        height: resultSet.getLong(3),
-        byteSize: resultSet.getLong(4)
+        smallHash: resultSet.getString(0),
+        smallPath: resultSet.getString(1),
+        smallFormat: resultSet.getString(2),
+        smallWidth: resultSet.getLong(3),
+        smallHeight: resultSet.getLong(4),
+        smallByteSize: resultSet.getLong(5),
+        largeHash: resultSet.getString(6),
+        largePath: resultSet.getString(7),
+        largeFormat: resultSet.getString(8),
+        largeWidth: resultSet.getLong(9),
+        largeHeight: resultSet.getLong(10),
+        largeByteSize: resultSet.getLong(11)
       };
     } finally {
       resultSet.close();
     }
   }
 
-  async getUnreferencedArtworkPaths(): Promise<Array<string>> {
+  async getUnreferencedArtworkAssets(): Promise<Array<ArtworkCleanupCandidate>> {
     const resultSet = await this.database.getStore().querySql(
-      'SELECT thumbnail_path FROM artwork_asset WHERE ref_count = 0 ORDER BY id'
+      `SELECT candidate.id, candidate.small_path, candidate.large_path,
+        NOT EXISTS (
+          SELECT 1 FROM artwork_asset active
+          WHERE active.id <> candidate.id AND active.ref_count > 0
+            AND (active.small_path = candidate.small_path OR active.large_path = candidate.small_path)
+        ),
+        NOT EXISTS (
+          SELECT 1 FROM artwork_asset active
+          WHERE active.id <> candidate.id AND active.ref_count > 0
+            AND (active.small_path = candidate.large_path OR active.large_path = candidate.large_path)
+        )
+       FROM artwork_asset candidate WHERE candidate.ref_count = 0 ORDER BY candidate.id`
     );
-    const paths: Array<string> = [];
+    const candidates: Array<ArtworkCleanupCandidate> = [];
     try {
       while (resultSet.goToNextRow()) {
-        paths.push(resultSet.getString(0));
+        candidates.push({
+          assetId: resultSet.getLong(0),
+          smallPath: resultSet.getString(1),
+          largePath: resultSet.getString(2),
+          deleteSmall: resultSet.getLong(3) !== 0,
+          deleteLarge: resultSet.getLong(4) !== 0
+        });
       }
     } finally {
       resultSet.close();
     }
-    return paths;
+    return candidates;
   }
 
-  removeUnreferencedArtwork(path: string): Promise<void> {
+  removeUnreferencedArtwork(assetId: number): Promise<void> {
     return this.database.enqueueWrite(async (transaction: relationalStore.Transaction) => {
       await transaction.execute(
-        'DELETE FROM artwork_asset WHERE thumbnail_path = ? AND ref_count = 0',
-        [path]
+        'DELETE FROM artwork_asset WHERE id = ? AND ref_count = 0',
+        [assetId]
       );
     });
   }
@@ -581,18 +628,29 @@ export class MusicRepository {
         return existingSource;
       }
     }
-    if (artwork.thumbnailHash === undefined || artwork.thumbnailHash.length === 0 ||
-      artwork.thumbnailPath === undefined || artwork.thumbnailPath.length === 0) {
+    if (artwork.smallHash === undefined || artwork.smallHash.length === 0 ||
+      artwork.smallPath === undefined || artwork.smallPath.length === 0 ||
+      artwork.smallFormat === undefined || artwork.smallFormat.length === 0 ||
+      artwork.largeHash === undefined || artwork.largeHash.length === 0 ||
+      artwork.largePath === undefined || artwork.largePath.length === 0 ||
+      artwork.largeFormat === undefined || artwork.largeFormat.length === 0) {
       return {};
     }
-    let assetId = await this.findId(transaction, 'artwork_asset', 'thumbnail_hash', artwork.thumbnailHash);
+    let assetId = await this.findArtworkAssetId(transaction, artwork.smallHash, artwork.largeHash);
     if (assetId === undefined) {
       assetId = await transaction.insert('artwork_asset', {
-        thumbnail_hash: artwork.thumbnailHash,
-        thumbnail_path: artwork.thumbnailPath,
-        width: artwork.thumbnailWidth === undefined ? 0 : artwork.thumbnailWidth,
-        height: artwork.thumbnailHeight === undefined ? 0 : artwork.thumbnailHeight,
-        byte_size: artwork.thumbnailByteSize === undefined ? 0 : artwork.thumbnailByteSize,
+        small_hash: artwork.smallHash,
+        small_path: artwork.smallPath,
+        small_format: artwork.smallFormat,
+        small_width: artwork.smallWidth === undefined ? 0 : artwork.smallWidth,
+        small_height: artwork.smallHeight === undefined ? 0 : artwork.smallHeight,
+        small_byte_size: artwork.smallByteSize === undefined ? 0 : artwork.smallByteSize,
+        large_hash: artwork.largeHash,
+        large_path: artwork.largePath,
+        large_format: artwork.largeFormat,
+        large_width: artwork.largeWidth === undefined ? 0 : artwork.largeWidth,
+        large_height: artwork.largeHeight === undefined ? 0 : artwork.largeHeight,
+        large_byte_size: artwork.largeByteSize === undefined ? 0 : artwork.largeByteSize,
         ref_count: 0,
         unreferenced_at: now,
         created_at: now
@@ -614,6 +672,22 @@ export class MusicRepository {
       });
     }
     return { assetId: assetId, sourceId: sourceId };
+  }
+
+  private async findArtworkAssetId(
+    transaction: relationalStore.Transaction,
+    smallHash: string,
+    largeHash: string
+  ): Promise<number | undefined> {
+    const resultSet = await transaction.querySql(
+      'SELECT id FROM artwork_asset WHERE small_hash = ? AND large_hash = ? LIMIT 1',
+      [smallHash, largeHash]
+    );
+    try {
+      return resultSet.goToNextRow() ? resultSet.getLong(0) : undefined;
+    } finally {
+      resultSet.close();
+    }
   }
 
   private async findArtworkSource(

@@ -76,8 +76,11 @@ export class LibraryStore {
     try {
       this.settings = settings === undefined ? new SettingsRepository(context) : settings;
       this.restoreSortSettings();
-      await this.repository.initialize(context);
       this.artworkCache = new ArtworkCache(context);
+      const databaseRebuilt = await this.repository.initialize(context);
+      if (databaseRebuilt) {
+        this.artworkCache.clearAll();
+      }
       this.importer = new MediaImporter(context, this.repository, this.artworkCache);
       await this.refresh();
       this.initialized = true;

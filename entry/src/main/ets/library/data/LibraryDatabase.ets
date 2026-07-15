@@ -3,7 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { SortKeyNormalizer } from '../metadata/SortKeyNormalizer';
 
 const DATABASE_NAME = 'music_library.db';
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 3;
 const SORT_REBUILD_BATCH_SIZE = 500;
 
 const STORE_CONFIG: relationalStore.StoreConfig = {
@@ -36,14 +36,22 @@ const CURRENT_SCHEMA: Array<string> = [
   )`,
   `CREATE TABLE artwork_asset (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    thumbnail_hash TEXT NOT NULL UNIQUE,
-    thumbnail_path TEXT NOT NULL,
-    width INTEGER NOT NULL DEFAULT 0,
-    height INTEGER NOT NULL DEFAULT 0,
-    byte_size INTEGER NOT NULL DEFAULT 0,
+    small_hash TEXT NOT NULL,
+    small_path TEXT NOT NULL,
+    small_format TEXT NOT NULL,
+    small_width INTEGER NOT NULL DEFAULT 0,
+    small_height INTEGER NOT NULL DEFAULT 0,
+    small_byte_size INTEGER NOT NULL DEFAULT 0,
+    large_hash TEXT NOT NULL,
+    large_path TEXT NOT NULL,
+    large_format TEXT NOT NULL,
+    large_width INTEGER NOT NULL DEFAULT 0,
+    large_height INTEGER NOT NULL DEFAULT 0,
+    large_byte_size INTEGER NOT NULL DEFAULT 0,
     ref_count INTEGER NOT NULL DEFAULT 0 CHECK (ref_count >= 0),
     unreferenced_at INTEGER,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    UNIQUE (small_hash, large_hash)
   )`,
   `CREATE TABLE artwork_source (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -221,12 +229,12 @@ const CURRENT_SCHEMA: Array<string> = [
 
 export class LibraryDatabase {
   private store?: relationalStore.RdbStore;
-  private initializePromise?: Promise<void>;
+  private initializePromise?: Promise<boolean>;
   private writeTail: Promise<void> = Promise.resolve();
 
-  initialize(context: common.Context): Promise<void> {
+  initialize(context: common.Context): Promise<boolean> {
     if (this.store !== undefined) {
-      return Promise.resolve();
+      return Promise.resolve(false);
     }
     if (this.initializePromise === undefined) {
       this.initializePromise = this.openAndMigrate(context);
@@ -278,12 +286,13 @@ export class LibraryDatabase {
     }
   }
 
-  private async openAndMigrate(context: common.Context): Promise<void> {
+  private async openAndMigrate(context: common.Context): Promise<boolean> {
     const store = await relationalStore.getRdbStore(context, STORE_CONFIG);
     try {
       await store.execute('PRAGMA foreign_keys = ON');
-      await this.migrate(store);
+      const rebuilt = await this.migrate(store);
       this.store = store;
+      return rebuilt;
     } catch (error) {
       await store.close();
       this.initializePromise = undefined;
@@ -292,7 +301,7 @@ export class LibraryDatabase {
     }
   }
 
-  private async migrate(store: relationalStore.RdbStore): Promise<void> {
+  private async migrate(store: relationalStore.RdbStore): Promise<boolean> {
     const hasSchemaMeta = await this.tableExists(store, 'schema_meta');
     if (!hasSchemaMeta) {
       const transaction = await store.createTransaction({
@@ -308,7 +317,7 @@ export class LibraryDatabase {
         );
         await transaction.commit();
         store.version = DATABASE_VERSION;
-        return;
+        return false;
       } catch (error) {
         try {
           await transaction.rollback();
@@ -321,12 +330,44 @@ export class LibraryDatabase {
 
     const version = await this.readSchemaVersion(store);
     if (version !== DATABASE_VERSION) {
-      throw new Error(
-        `Unsupported library database version ${version}; clear application data before the first public release`
-      );
+      await this.rebuildSchema(store);
+      return true;
     }
     if (store.version !== DATABASE_VERSION) {
       store.version = DATABASE_VERSION;
+    }
+    return false;
+  }
+
+  private async rebuildSchema(store: relationalStore.RdbStore): Promise<void> {
+    const transaction = await store.createTransaction({
+      transactionType: relationalStore.TransactionType.IMMEDIATE
+    });
+    const tables = [
+      'import_error', 'import_job', 'track_artwork', 'track_tag_extra', 'track_genre',
+      'album_credit', 'track_credit', 'genre', 'person', 'track', 'media_file', 'album',
+      'artwork_source', 'artwork_asset', 'schema_meta'
+    ];
+    try {
+      for (let index = 0; index < tables.length; index += 1) {
+        await transaction.execute(`DROP TABLE IF EXISTS ${tables[index]}`);
+      }
+      for (let index = 0; index < CURRENT_SCHEMA.length; index += 1) {
+        await transaction.execute(this.withIfNotExists(CURRENT_SCHEMA[index]));
+      }
+      await transaction.execute(
+        'INSERT INTO schema_meta(singleton, version, migrated_at) VALUES(1, ?, ?)',
+        [DATABASE_VERSION, Date.now()]
+      );
+      await transaction.commit();
+      store.version = DATABASE_VERSION;
+    } catch (error) {
+      try {
+        await transaction.rollback();
+      } catch (_) {
+      }
+      const cause = error as Error;
+      throw cause;
     }
   }
 

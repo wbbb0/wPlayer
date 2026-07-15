@@ -80,11 +80,16 @@ export class MediaImporter {
       throw new Error('Cannot clear the library during an import');
     }
     await this.repository.clearLibrary();
-    const paths = await this.repository.getUnreferencedArtworkPaths();
-    for (let index = 0; index < paths.length; index += 1) {
-      const path = paths[index];
-      this.artworkCache.delete(path);
-      await this.repository.removeUnreferencedArtwork(path);
+    const assets = await this.repository.getUnreferencedArtworkAssets();
+    for (let index = 0; index < assets.length; index += 1) {
+      const asset = assets[index];
+      if (asset.deleteSmall) {
+        this.artworkCache.delete(asset.smallPath);
+      }
+      if (asset.deleteLarge) {
+        this.artworkCache.delete(asset.largePath);
+      }
+      await this.repository.removeUnreferencedArtwork(asset.assetId);
     }
     this.artworkCache.cleanupTempFiles();
   }
@@ -247,11 +252,18 @@ export class MediaImporter {
     inputs[primaryIndex] = {
       metadata: parsedArtworks[primaryIndex],
       sourceHash: cached.sourceHash,
-      thumbnailHash: cached.thumbnailHash,
-      thumbnailPath: cached.relativePath,
-      thumbnailWidth: cached.width,
-      thumbnailHeight: cached.height,
-      thumbnailByteSize: cached.byteSize,
+      smallHash: cached.small.hash,
+      smallPath: cached.small.relativePath,
+      smallFormat: cached.small.format,
+      smallWidth: cached.small.width,
+      smallHeight: cached.small.height,
+      smallByteSize: cached.small.byteSize,
+      largeHash: cached.large.hash,
+      largePath: cached.large.relativePath,
+      largeFormat: cached.large.format,
+      largeWidth: cached.large.width,
+      largeHeight: cached.large.height,
+      largeByteSize: cached.large.byteSize,
       primary: true
     };
     return inputs;
@@ -272,11 +284,22 @@ export class MediaImporter {
     if (existing !== undefined) {
       return {
         sourceHash: sourceHash,
-        thumbnailHash: existing.thumbnailHash,
-        relativePath: existing.thumbnailPath,
-        width: existing.width,
-        height: existing.height,
-        byteSize: existing.byteSize
+        small: {
+          hash: existing.smallHash,
+          relativePath: existing.smallPath,
+          format: existing.smallFormat,
+          width: existing.smallWidth,
+          height: existing.smallHeight,
+          byteSize: existing.smallByteSize
+        },
+        large: {
+          hash: existing.largeHash,
+          relativePath: existing.largePath,
+          format: existing.largeFormat,
+          width: existing.largeWidth,
+          height: existing.largeHeight,
+          byteSize: existing.largeByteSize
+        }
       };
     }
     return this.artworkCache.cache(sourceBytes, sourceHash);

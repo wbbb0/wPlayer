@@ -215,19 +215,27 @@ export class ArtworkCache {
     if (info.pixelFormat !== image.PixelMapFormat.RGBA_8888) {
       throw new Error(`Unexpected artwork pixel format: ${info.pixelFormat}`);
     }
-    const sourceBuffer = new ArrayBuffer(info.stride * info.size.height);
-    await pixelMap.readPixelsToBuffer(sourceBuffer);
+    const packedStride = info.size.width * 4;
+    const sourceBuffer = new ArrayBuffer(packedStride * info.size.height);
+    await pixelMap.readPixels({
+      pixels: sourceBuffer,
+      offset: 0,
+      stride: packedStride,
+      region: { x: 0, y: 0, size: info.size }
+    });
     const source = new Uint8Array(sourceBuffer);
     const opaque = new Uint8Array(info.size.width * info.size.height * 4);
     const premultiplied = info.alphaType === image.AlphaType.PREMUL;
     for (let y = 0; y < info.size.height; y++) {
       for (let x = 0; x < info.size.width; x++) {
-        const sourceOffset = y * info.stride + x * 4;
+        const sourceOffset = y * packedStride + x * 4;
         const targetOffset = (y * info.size.width + x) * 4;
         const alpha = source[sourceOffset + 3];
         const white = 255 - alpha;
         for (let channel = 0; channel < 3; channel++) {
-          const color = source[sourceOffset + channel];
+          // readPixels(PositionArea) returns BGRA; write an RGBA buffer for ImagePacker.
+          const sourceChannel = channel === 0 ? 2 : channel === 2 ? 0 : 1;
+          const color = source[sourceOffset + sourceChannel];
           opaque[targetOffset + channel] = premultiplied ?
             Math.min(255, color + white) : Math.round((color * alpha) / 255 + white);
         }

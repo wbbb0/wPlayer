@@ -6,8 +6,11 @@ import {
   HdsNavigation,
   HdsNavigationMenuContentOptions,
   HdsNavigationTitleMode,
+  HdsSideMenu,
+  HdsSideMenuMainItem,
   HdsTabs,
   HdsTabsController,
+  HdsTabsFloatingStyle,
   hdsMaterial
 } from '@kit.UIDesignKit';
 import { ComponentContent, curves, SymbolGlyphModifier, window } from '@kit.ArkUI';
@@ -43,10 +46,11 @@ import { MorePage } from './library/MorePage';
 import { PlaylistsPage } from './library/PlaylistsPage';
 import { SongsPage } from './library/SongsPage';
 import { SettingsRepository } from '../settings/SettingsRepository';
+import { AppShellLayoutSpec } from '../components/layout/AppShellLayoutSpec';
 
 interface NavigationItem {
   label: string;
-  icon: SymbolGlyphModifier;
+  symbol: Resource;
 }
 
 const LIBRARY_MANAGEMENT_DESTINATION: string = 'libraryManagement';
@@ -115,15 +119,29 @@ struct Index {
     new Scroller(), new Scroller(), new Scroller(), new Scroller()
   ];
   private readonly libraryManagementScroller: Scroller = new Scroller();
-  private readonly floatingBarBottomMargin: number = 18;
-  private readonly floatingCircleRightMargin: number = 16;
-  private readonly floatingLargeHorizontalMargin: number = 32;
-  private readonly largeLayoutBreakpoint: number = 840;
   private readonly navigationItems: NavigationItem[] = [
-    { label: '播放列表', icon: new SymbolGlyphModifier($r('sys.symbol.music_note_list_fill')) },
-    { label: '音乐', icon: new SymbolGlyphModifier($r('sys.symbol.music_fill')) },
-    { label: '专辑', icon: new SymbolGlyphModifier($r('sys.symbol.opticaldisc')) },
-    { label: '更多', icon: new SymbolGlyphModifier($r('sys.symbol.square_fill_grid_2x2')) }
+    { label: '播放列表', symbol: $r('sys.symbol.music_note_list_fill') },
+    { label: '音乐', symbol: $r('sys.symbol.music_fill') },
+    { label: '专辑', symbol: $r('sys.symbol.opticaldisc') },
+    { label: '更多', symbol: $r('sys.symbol.square_fill_grid_2x2') }
+  ];
+  private readonly sideMenuItems: HdsSideMenuMainItem[] = [
+    new HdsSideMenuMainItem({
+      label: '播放列表',
+      symbol: new SymbolGlyphModifier($r('sys.symbol.music_note_list_fill'))
+    }),
+    new HdsSideMenuMainItem({
+      label: '音乐',
+      symbol: new SymbolGlyphModifier($r('sys.symbol.music_fill'))
+    }),
+    new HdsSideMenuMainItem({
+      label: '专辑',
+      symbol: new SymbolGlyphModifier($r('sys.symbol.opticaldisc'))
+    }),
+    new HdsSideMenuMainItem({
+      label: '更多',
+      symbol: new SymbolGlyphModifier($r('sys.symbol.square_fill_grid_2x2'))
+    })
   ];
 
   aboutToAppear(): void {
@@ -213,6 +231,104 @@ struct Index {
     return Math.max(minimum, Math.min(maximum, value));
   }
 
+  private usesWideLayout(width: number = this.rootFrame.width): boolean {
+    return width >= AppShellLayoutSpec.SIDE_NAVIGATION_BREAKPOINT;
+  }
+
+  private usesPortraitSideNavigation(
+    width: number = this.rootFrame.width,
+    height: number = this.rootFrame.height
+  ): boolean {
+    return this.usesWideLayout(width) && width < height;
+  }
+
+  private wideMiniPlayerWidth(): number {
+    return this.usesPortraitSideNavigation() ?
+      AppShellLayoutSpec.MINI_PLAYER_MEDIUM_WIDTH : AppShellLayoutSpec.MINI_PLAYER_LARGE_WIDTH;
+  }
+
+  private compactTabsFloatingStyle(): HdsTabsFloatingStyle {
+    return {
+      barWidth: {
+        smallWidth: AppShellLayoutSpec.COMPACT_TAB_SMALL_WIDTH,
+        mediumWidth: AppShellLayoutSpec.COMPACT_TAB_MEDIUM_WIDTH,
+        largeWidth: AppShellLayoutSpec.COMPACT_TAB_LARGE_WIDTH
+      },
+      barBottomMargin: AppShellLayoutSpec.FLOATING_BAR_BOTTOM_MARGIN,
+      gradientMask: { maskColor: $r('app.color.float_bar_gradient_mask'), maskHeight: 84 },
+      systemMaterialEffect: {
+        materialType: hdsMaterial.MaterialType.ADAPTIVE,
+        materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+      },
+      miniBar: {
+        miniBarBuilder: () => this.MiniPlayer(),
+        miniBarWidth: {
+          smallWidth: AppShellLayoutSpec.MINI_PLAYER_SMALL_WIDTH,
+          mediumWidth: AppShellLayoutSpec.MINI_PLAYER_MEDIUM_WIDTH,
+          largeWidth: AppShellLayoutSpec.MINI_PLAYER_LARGE_WIDTH
+        },
+        miniBarStyle: HdsBarStyle.COLLAPSE,
+        barLayoutMode: HdsBarLayoutMode.HORIZONTAL,
+        onBarStyleChange: (miniBarStyle: HdsBarStyle) => {
+          this.miniBarExpanded = miniBarStyle === HdsBarStyle.EXPAND;
+        },
+        enableMiniBarBackground: true,
+        enableMiniBarClip: true
+      }
+    };
+  }
+
+  private wideTabsFloatingStyle(): HdsTabsFloatingStyle {
+    return {
+      barWidth: {
+        smallWidth: AppShellLayoutSpec.HIDDEN_TAB_BAR_WIDTH,
+        mediumWidth: AppShellLayoutSpec.HIDDEN_TAB_BAR_WIDTH,
+        largeWidth: AppShellLayoutSpec.HIDDEN_TAB_BAR_WIDTH
+      },
+      barSideMargin: AppShellLayoutSpec.WIDE_SIDE_MARGIN,
+      barBottomMargin: AppShellLayoutSpec.FLOATING_BAR_BOTTOM_MARGIN,
+      gradientMask: { maskColor: $r('app.color.float_bar_gradient_mask'), maskHeight: 84 },
+      systemMaterialEffect: {
+        materialType: hdsMaterial.MaterialType.ADAPTIVE,
+        materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+      },
+      barOpacity: 0
+    };
+  }
+
+  private wideMiniPlayerFloatingStyle(): HdsTabsFloatingStyle {
+    const miniPlayerWidth = this.wideMiniPlayerWidth();
+    return {
+      barWidth: {
+        smallWidth: AppShellLayoutSpec.HIDDEN_TAB_BAR_WIDTH,
+        mediumWidth: AppShellLayoutSpec.HIDDEN_TAB_BAR_WIDTH,
+        largeWidth: AppShellLayoutSpec.HIDDEN_TAB_BAR_WIDTH
+      },
+      barSideMargin: AppShellLayoutSpec.WIDE_SIDE_MARGIN,
+      barBottomMargin: AppShellLayoutSpec.FLOATING_BAR_BOTTOM_MARGIN,
+      systemMaterialEffect: {
+        materialType: hdsMaterial.MaterialType.ADAPTIVE,
+        materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+      },
+      barOpacity: 0,
+      miniBar: {
+        miniBarBuilder: () => this.MiniPlayer(),
+        miniBarWidth: {
+          smallWidth: miniPlayerWidth,
+          mediumWidth: miniPlayerWidth,
+          largeWidth: miniPlayerWidth
+        },
+        miniBarStyle: HdsBarStyle.EXPAND,
+        barLayoutMode: HdsBarLayoutMode.HORIZONTAL,
+        onBarStyleChange: (miniBarStyle: HdsBarStyle) => {
+          this.miniBarExpanded = miniBarStyle === HdsBarStyle.EXPAND;
+        },
+        enableMiniBarBackground: true,
+        enableMiniBarClip: true
+      }
+    };
+  }
+
   private normalizeTabIndex(index: number): number {
     return Number.isInteger(index) && index >= 0 && index < this.navigationItems.length ? index : 0;
   }
@@ -292,6 +408,14 @@ struct Index {
     };
   }
 
+  private selectTabFromSideMenu(index: number): void {
+    if (index === this.selectedTabIndex) {
+      this.handleTabBarClick(index);
+      return;
+    }
+    this.tabsController.changeIndex(index);
+  }
+
   private lengthToNumber(value: Length | undefined, fallback: number): number {
     if (typeof value === 'number') {
       return value;
@@ -310,18 +434,19 @@ struct Index {
       const componentUtils = uiContext.getComponentUtils();
       const miniPlayerRectangle = componentUtils.getRectangleById('mini_player_surface');
       const rootRectangle = componentUtils.getRectangleById('player_page_root');
-      const floatingBarMargin = uiContext.vp2px(this.floatingBarBottomMargin);
-      const usesLargeLayout = uiContext.px2vp(rootRectangle.size.width) >= this.largeLayoutBreakpoint;
-      const horizontalMargin = uiContext.vp2px(
-        usesLargeLayout ? this.floatingLargeHorizontalMargin : this.floatingCircleRightMargin
-      );
-      const visibleMiniPlayerX = this.miniBarExpanded ?
-        (usesLargeLayout ?
-          rootRectangle.windowOffset.x + rootRectangle.size.width - miniPlayerRectangle.size.width - horizontalMargin :
-          rootRectangle.windowOffset.x + (rootRectangle.size.width - miniPlayerRectangle.size.width) / 2) :
-        rootRectangle.windowOffset.x + rootRectangle.size.width - miniPlayerRectangle.size.width -
-          horizontalMargin;
-      const visibleMiniPlayerY = miniPlayerRectangle.windowOffset.y - floatingBarMargin;
+      const wideLayout = this.usesWideLayout(uiContext.px2vp(rootRectangle.size.width));
+      const sourceHostId = wideLayout ?
+        'wide_mini_player_hds_host' : 'player_tabs_compact_content_host';
+      const sourceHostRectangle = componentUtils.getRectangleById(sourceHostId);
+      const horizontalMargin = uiContext.vp2px(AppShellLayoutSpec.COMPACT_SIDE_MARGIN);
+      const bottomMargin = uiContext.vp2px(AppShellLayoutSpec.FLOATING_BAR_BOTTOM_MARGIN);
+      const visibleMiniPlayerX = wideLayout || this.miniBarExpanded ?
+        sourceHostRectangle.windowOffset.x +
+          (sourceHostRectangle.size.width - miniPlayerRectangle.size.width) / 2 :
+        sourceHostRectangle.windowOffset.x + sourceHostRectangle.size.width -
+          miniPlayerRectangle.size.width - horizontalMargin;
+      const visibleMiniPlayerY = sourceHostRectangle.windowOffset.y + sourceHostRectangle.size.height -
+        miniPlayerRectangle.size.height - bottomMargin;
       this.frozenMiniPlayerFrame = {
         x: uiContext.px2vp(visibleMiniPlayerX - rootRectangle.windowOffset.x),
         y: uiContext.px2vp(visibleMiniPlayerY - rootRectangle.windowOffset.y),
@@ -734,13 +859,29 @@ struct Index {
   }
 
   @Builder
-  private PlayerTabs() {
+  private SideNavigation() {
+    HdsSideMenu({
+      items: this.sideMenuItems,
+      selectedIndex: this.selectedTabIndex,
+      $selectedIndex: (index: number) => {
+        this.selectTabFromSideMenu(index);
+      },
+      maxItemTextLines: 1
+    })
+      .width('100%')
+      .height('100%')
+  }
+
+  @Builder
+  private TabsContent() {
     HdsTabs({ controller: this.tabsController, index: this.selectedTabIndex }) {
       ForEach(this.navigationItems, (item: NavigationItem, index: number) => {
         TabContent() {
           this.TabNavigation(index)
         }
-        .tabBar(new BottomTabBarStyle({ normal: item.icon }, item.label))
+        .tabBar(new BottomTabBarStyle({
+          normal: new SymbolGlyphModifier(item.symbol)
+        }, item.label))
       }, (item: NavigationItem) => item.label)
     }
     .width('100%')
@@ -748,33 +889,75 @@ struct Index {
     .barOverlap(true)
     .barPosition(BarPosition.End)
     .vertical(false)
-    .scrollable(true)
+    .barMode(BarMode.Fixed)
+    .scrollable(false)
     .onChange((index: number) => {
       this.handleTabChange(index);
     })
     .onTabBarClick((index: number) => {
-      this.handleTabBarClick(index);
-    })
-    .barFloatingStyle({
-      barWidth: { smallWidth: 300, mediumWidth: 320, largeWidth: 328 },
-      barBottomMargin: this.floatingBarBottomMargin,
-      gradientMask: { maskColor: $r('app.color.float_bar_gradient_mask'), maskHeight: 84 },
-      systemMaterialEffect: {
-        materialType: hdsMaterial.MaterialType.ADAPTIVE,
-        materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
-      },
-      miniBar: {
-        miniBarBuilder: () => this.MiniPlayer(),
-        miniBarWidth: { smallWidth: 270, mediumWidth: 300, largeWidth: 328 },
-        miniBarStyle: HdsBarStyle.COLLAPSE,
-        barLayoutMode: HdsBarLayoutMode.HORIZONTAL,
-        onBarStyleChange: (miniBarStyle: HdsBarStyle) => {
-          this.miniBarExpanded = miniBarStyle === HdsBarStyle.EXPAND;
-        },
-        enableMiniBarBackground: true,
-        enableMiniBarClip: true
+      if (!this.usesWideLayout()) {
+        this.handleTabBarClick(index);
       }
     })
+    .barFloatingStyle(this.usesWideLayout() ?
+      this.wideTabsFloatingStyle() : this.compactTabsFloatingStyle())
+  }
+
+  @Builder
+  private WideMiniPlayerHost() {
+    Stack() {
+      HdsTabs({ index: 0 }) {
+        TabContent() {
+          Stack()
+        }
+        .tabBar(new BottomTabBarStyle({
+          normal: new SymbolGlyphModifier($r('sys.symbol.music_fill'))
+        }, '播放器'))
+      }
+      .width('100%')
+      .height('100%')
+      .barOverlap(true)
+      .barPosition(BarPosition.End)
+      .vertical(false)
+      .barMode(BarMode.Fixed)
+      .scrollable(false)
+      .barFloatingStyle(this.wideMiniPlayerFloatingStyle())
+    }
+    .id('wide_mini_player_hds_host')
+    .width(this.wideMiniPlayerWidth() + AppShellLayoutSpec.WIDE_SIDE_MARGIN * 2)
+    .height(AppShellLayoutSpec.MINI_PLAYER_HEIGHT + AppShellLayoutSpec.FLOATING_BAR_BOTTOM_MARGIN)
+  }
+
+  @Builder
+  private PlayerTabs() {
+    if (this.usesWideLayout()) {
+      Row() {
+        Stack() {
+          this.SideNavigation()
+        }
+        .width(AppShellLayoutSpec.WIDE_SIDE_MENU_WIDTH)
+        .height('100%')
+        .backgroundColor(Color.Transparent)
+        .clip(true)
+
+        Stack({ alignContent: Alignment.BottomEnd }) {
+          this.TabsContent()
+          this.WideMiniPlayerHost()
+        }
+        .id('player_tabs_wide_content_host')
+        .layoutWeight(1)
+        .height('100%')
+      }
+      .width('100%')
+      .height('100%')
+    } else {
+      Stack() {
+        this.TabsContent()
+      }
+      .id('player_tabs_compact_content_host')
+      .width('100%')
+      .height('100%')
+    }
   }
 
   @Builder
@@ -1009,12 +1192,19 @@ struct Index {
     .backgroundColor($r('app.color.page_background'))
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     .onAreaChange((_oldValue: Area, newValue: Area) => {
+      const previousWideLayout = this.usesWideLayout();
+      const nextWidth = this.lengthToNumber(newValue.width, this.rootFrame.width);
+      const nextHeight = this.lengthToNumber(newValue.height, this.rootFrame.height);
       this.rootFrame = {
         x: this.lengthToNumber(newValue.globalPosition.x, this.rootFrame.x),
         y: this.lengthToNumber(newValue.globalPosition.y, this.rootFrame.y),
-        width: this.lengthToNumber(newValue.width, this.rootFrame.width),
-        height: this.lengthToNumber(newValue.height, this.rootFrame.height)
+        width: nextWidth,
+        height: nextHeight
       };
+      const nextWideLayout = this.usesWideLayout(nextWidth);
+      if (previousWideLayout !== nextWideLayout) {
+        this.miniBarExpanded = nextWideLayout;
+      }
     })
   }
 }

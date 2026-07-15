@@ -1,6 +1,8 @@
 import {
   HdsNavigationMenuContentOptions,
+  HdsNavigationTitleBarStyle,
   HdsNavigationTitleBarOptions,
+  HdsTitleBarContentStyle,
   ScrollEffectType,
   TitleBarContentOptions,
   hdsMaterial
@@ -36,11 +38,35 @@ export class AppNavigationStyle {
           enableScrollEffect: true,
           scrollEffectType: ScrollEffectType.IMMERSIVE_GRADIENT_BLUR
         },
+        originalStyle: AppNavigationStyle.foregroundStyle(),
+        scrollEffectStyle: AppNavigationStyle.foregroundStyle(),
         systemMaterialEffect: {
           materialType: hdsMaterial.MaterialType.ADAPTIVE,
           materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
         }
       }
     };
+  }
+
+  private static foregroundStyle(): HdsNavigationTitleBarStyle {
+    const contentStyle: HdsTitleBarContentStyle = {
+      titleStyle: {
+        mainTitleColor: $r('app.color.text_primary'),
+        subTitleColor: $r('app.color.text_secondary')
+      },
+      menuStyle: {
+        iconColor: $r('app.color.text_primary'),
+        textColor: $r('app.color.text_primary')
+      },
+      backIconStyle: {
+        iconColor: $r('app.color.text_primary'),
+        textColor: $r('app.color.text_primary')
+      },
+      subIconStyle: {
+        iconColor: $r('app.color.text_primary'),
+        textColor: $r('app.color.text_primary')
+      }
+    };
+    return { contentStyle: contentStyle };
   }
 }

@@ -77,11 +77,6 @@ export class QueueTrackDataSource implements IDataSource {
   }
 }
 
-export enum PlaybackIntent {
-  PAUSED,
-  PLAYING
-}
-
 export interface PlaybackTrack extends QueueTrack {
   uri: string;
   fileSize: number;
@@ -100,7 +95,7 @@ export interface ResumeState {
 @Observed
 export class PlayerStore {
   state: PlayerState = PlayerState.IDLE;
-  playbackIntent: PlaybackIntent = PlaybackIntent.PAUSED;
+  playWhenReady: boolean = false;
   currentTrack?: QueueTrack;
   positionMs: number = 0;
   durationMs: number = 0;
@@ -122,7 +117,7 @@ export class PlayerStore {
   paletteAccent: string = DEFAULT_PLAYER_PALETTE_ACCENT;
 
   isPlaying(): boolean {
-    return this.playbackIntent === PlaybackIntent.PLAYING;
+    return this.playWhenReady;
   }
 
   hasCurrentTrack(): boolean {

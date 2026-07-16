@@ -44,12 +44,12 @@ export class PlaybackEngine {
     this.listener = listener;
   }
 
-  playTrack(track: PlaybackTrack, resumePositionMs: number): Promise<void> {
+  playTrack(track: PlaybackTrack, resumePositionMs: number, playWhenReady: () => boolean): Promise<void> {
     const epoch = this.requestEpoch.begin();
     this.listener?.onStateChanged(PlayerState.LOADING);
     return this.enqueue(async () => {
       this.activeEpoch = epoch;
-      await this.loadAndPlay(track, resumePositionMs, epoch);
+      await this.loadTrack(track, resumePositionMs, epoch, playWhenReady);
     });
   }
 
@@ -118,7 +118,8 @@ export class PlaybackEngine {
     this.closeSourceFile();
   }
 
-  private async loadAndPlay(track: PlaybackTrack, resumePositionMs: number, epoch: number): Promise<void> {
+  private async loadTrack(track: PlaybackTrack, resumePositionMs: number, epoch: number,
+    playWhenReady: () => boolean): Promise<void> {
     if (track.availability !== AvailabilityState.AVAILABLE) {
       throw new Error('音乐文件当前不可用，请重新授权或重新导入');
     }
@@ -150,7 +151,9 @@ export class PlaybackEngine {
       await this.seekInternal(resumePositionMs);
       this.ensureCurrent(epoch);
     }
-    await player.play();
+    if (playWhenReady()) {
+      await player.play();
+    }
   }
 
   private async ensurePlayer(): Promise<media.AVPlayer> {

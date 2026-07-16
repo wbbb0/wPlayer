@@ -10,7 +10,6 @@ import { PlaybackEngine, PlaybackEngineListener } from './engine/PlaybackEngine'
 import {
   PlaybackTrack,
   PlayerState,
-  PlaybackIntent,
   PlayerStore,
   QueueBuildPhase,
   QueueTrack,
@@ -120,9 +119,12 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     if (!this.playerStore.hasCurrentTrack()) {
       return;
     }
-    this.playerStore.playbackIntent = PlaybackIntent.PLAYING;
+    this.playerStore.playWhenReady = true;
+    if (this.playerStore.state === PlayerState.LOADING) {
+      return;
+    }
     this.engine.play().catch((error: Object) => {
-      this.playerStore.playbackIntent = PlaybackIntent.PAUSED;
+      this.playerStore.playWhenReady = false;
       this.onStateChanged(PlayerState.ERROR, PlaybackRuntime.messageOf(error));
     });
   }
@@ -131,7 +133,10 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     if (!this.playerStore.hasCurrentTrack()) {
       return;
     }
-    this.playerStore.playbackIntent = PlaybackIntent.PAUSED;
+    this.playerStore.playWhenReady = false;
+    if (this.playerStore.state === PlayerState.LOADING || this.playerStore.state === PlayerState.READY) {
+      return;
+    }
     this.engine.pause().catch((error: Object) => {
       this.onStateChanged(PlayerState.ERROR, PlaybackRuntime.messageOf(error));
     });
@@ -243,7 +248,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.durationMs = 0;
     this.playerStore.queuePhase = QueueBuildPhase.EMPTY;
     this.playerStore.queueSize = 0;
-    this.playerStore.playbackIntent = PlaybackIntent.PAUSED;
+    this.playerStore.playWhenReady = false;
     this.syncQueueSnapshot();
     this.onStateChanged(PlayerState.IDLE);
   }
@@ -265,7 +270,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.positionMs = 0;
     this.playerStore.durationMs = 0;
     this.playerStore.state = PlayerState.IDLE;
-    this.playerStore.playbackIntent = PlaybackIntent.PAUSED;
+    this.playerStore.playWhenReady = false;
     this.playerStore.errorMessage = '';
     this.playerStore.queuePhase = QueueBuildPhase.EMPTY;
     this.playerStore.queueSize = 0;
@@ -284,10 +289,8 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
 
   onStateChanged(state: PlayerState, message?: string): void {
     this.playerStore.state = state;
-    if (state === PlayerState.PLAYING) {
-      this.playerStore.playbackIntent = PlaybackIntent.PLAYING;
-    } else if (state === PlayerState.ERROR) {
-      this.playerStore.playbackIntent = PlaybackIntent.PAUSED;
+    if (state === PlayerState.ERROR) {
+      this.playerStore.playWhenReady = false;
     }
     this.playerStore.errorMessage = message === undefined ? '' : message;
     if (state === PlayerState.PAUSED || state === PlayerState.ERROR) {
@@ -321,6 +324,9 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.syncQueueSnapshot();
     if (next !== undefined) {
       this.beginTrack(next);
+    } else {
+      this.playerStore.playWhenReady = false;
+      this.syncSessionState();
     }
   }
 
@@ -400,7 +406,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.palettePrimary = track.palettePrimary;
     this.playerStore.paletteSecondary = track.paletteSecondary;
     this.playerStore.paletteAccent = track.paletteAccent;
-    this.playerStore.playbackIntent = PlaybackIntent.PLAYING;
+    this.playerStore.playWhenReady = true;
     this.playerStore.state = PlayerState.LOADING;
     this.playerStore.errorMessage = '';
     this.artworkCache?.pinCurrent(track);
@@ -482,7 +488,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
         });
       }
       const resumePosition = PlaybackRuntime.validResumePosition(results[1].positionMs, track.durationMs);
-      await this.engine.playTrack(track, resumePosition);
+      await this.engine.playTrack(track, resumePosition, () => this.playerStore.playWhenReady);
       if (epoch !== this.artworkEpoch) {
         return;
       }

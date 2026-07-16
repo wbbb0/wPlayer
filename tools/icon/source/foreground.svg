@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="disc" cx="0" cy="0" r="1" gradientTransform="translate(642 642) rotate(-132) scale(570)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#55C8F2"/>
+      <stop offset="0.30" stop-color="#278FEF"/>
+      <stop offset="0.64" stop-color="#176FDF"/>
+      <stop offset="1" stop-color="#294CCB"/>
+    </radialGradient>
+    <linearGradient id="edge" x1="296" y1="260" x2="748" y2="786" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E9FFFF"/>
+      <stop offset="0.25" stop-color="#83E8FF"/>
+      <stop offset="0.62" stop-color="#1677F2"/>
+      <stop offset="1" stop-color="#9588FF"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="330" y1="322" x2="712" y2="690" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.86"/>
+      <stop offset="0.42" stop-color="#A8F3FF" stop-opacity="0.22"/>
+      <stop offset="0.72" stop-color="#B7ACFF" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#EEE8FF" stop-opacity="0.58"/>
+    </linearGradient>
+    <radialGradient id="hub" cx="0" cy="0" r="1" gradientTransform="translate(480 472) rotate(48) scale(144)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="0.55" stop-color="#E9F7FF"/>
+      <stop offset="1" stop-color="#BFD5F5"/>
+    </radialGradient>
+    <filter id="shadow" x="160" y="172" width="704" height="736" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="42" stdDeviation="36" flood-color="#3158B6" flood-opacity="0.30"/>
+    </filter>
+  </defs>
+
+  <g transform="translate(512 512) scale(1.36) translate(-512 -492)">
+  <g filter="url(#shadow)">
+    <circle cx="512" cy="492" r="300" fill="url(#edge)"/>
+    <circle cx="512" cy="492" r="284" fill="url(#disc)"/>
+  </g>
+
+  <circle cx="512" cy="492" r="221" fill="none" stroke="url(#sheen)" stroke-opacity="0.64" stroke-width="5"/>
+  <circle cx="512" cy="492" r="150" fill="none" stroke="#D8F7FF" stroke-opacity="0.24" stroke-width="4"/>
+
+  <circle cx="512" cy="492" r="266" fill="none" stroke="#D9D0FF" stroke-opacity="0.56" stroke-width="11"
+    stroke-linecap="round" stroke-dasharray="170 1501" transform="rotate(205 512 492)"/>
+  <circle cx="512" cy="492" r="266" fill="none" stroke="#FFFFFF" stroke-opacity="0.62" stroke-width="14"
+    stroke-linecap="round" stroke-dasharray="330 1341" transform="rotate(9.5 512 492)"/>
+
+  <circle cx="512" cy="492" r="88" fill="url(#hub)"/>
+  <circle cx="512" cy="492" r="63" fill="none" stroke="#FFFFFF" stroke-opacity="0.72" stroke-width="6"/>
+  <circle cx="512" cy="492" r="35" fill="#1C83EF"/>
+  </g>
+</svg>

@@ -1,0 +1,11 @@
+{
+  "name": "wplayer-icon-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "node generate-icon.mjs"
+  },
+  "dependencies": {
+    "sharp": "^0.34.3"
+  }
+}

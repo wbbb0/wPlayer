@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="paper" cx="0" cy="0" r="1" gradientTransform="translate(340 260) rotate(48) scale(820)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="0.62" stop-color="#F8FBFF"/>
+      <stop offset="1" stop-color="#ECF3FC"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#paper)"/>
+</svg>

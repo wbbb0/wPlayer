@@ -1,4 +1,6 @@
 /node_modules
+/tools/icon/node_modules/
+/tools/icon/preview/
 /oh_modules
 /local.properties
 /.idea

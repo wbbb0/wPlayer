@@ -250,7 +250,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.queuePhase = QueueBuildPhase.EMPTY;
     this.playerStore.queueSize = 0;
     this.playerStore.playWhenReady = false;
-    this.settings?.setPlaybackLastTrackId(-1);
+    this.settings?.setPlaybackResumeState(-1, 0);
     this.settings?.setPlaybackQueue([], -1);
     this.syncQueueSnapshot();
     this.onStateChanged(PlayerState.IDLE);
@@ -416,7 +416,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       }
     });
     if (track === undefined) {
-      this.settings?.setPlaybackLastTrackId(-1);
+      this.settings?.setPlaybackResumeState(-1, 0);
       this.settings?.setPlaybackQueue([], -1);
       return;
     }
@@ -425,7 +425,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.queuePhase = QueueBuildPhase.READY;
     this.playerStore.queueSize = queueTracks.length;
     this.syncQueueSnapshot();
-    await this.beginTrack(queueTrack, false);
+    await this.beginTrack(queueTrack, false, true);
   }
 
   private enqueueLibraryItems(items: Array<TrackListItem>, insertNext: boolean): void {
@@ -460,7 +460,8 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.artworkCache = undefined;
   }
 
-  private beginTrack(track: QueueTrack, playWhenReady: boolean = true): Promise<void> {
+  private beginTrack(track: QueueTrack, playWhenReady: boolean = true,
+    preserveStoredPosition: boolean = false): Promise<void> {
     this.persistProgress(false);
     ++this.seekEpoch;
     this.pendingSeekPositionMs = undefined;
@@ -481,7 +482,9 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.paletteAccent = track.paletteAccent;
     this.notifyPaletteChange();
     this.playerStore.playWhenReady = playWhenReady;
-    this.settings?.setPlaybackLastTrackId(track.id);
+    if (!preserveStoredPosition) {
+      this.settings?.setPlaybackResumeState(track.id, 0);
+    }
     this.playerStore.state = PlayerState.LOADING;
     this.playerStore.errorMessage = '';
     this.artworkCache?.pinCurrent(track);
@@ -534,14 +537,10 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
 
   private async loadAndPlayTrack(trackId: number, epoch: number): Promise<void> {
     try {
-      const results = await Promise.all([
-        this.repository.getPlaybackTrack(trackId),
-        this.repository.getResumeState(trackId)
-      ]);
+      const track = await this.repository.getPlaybackTrack(trackId);
       if (epoch !== this.artworkEpoch) {
         return;
       }
-      const track = results[0];
       if (track === undefined) {
         throw new Error('音乐记录不存在，可能已从音乐库移除');
       }
@@ -563,7 +562,10 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
           console.warn(`Unable to restore track availability: ${PlaybackRuntime.messageOf(error)}`);
         });
       }
-      const resumePosition = PlaybackRuntime.validResumePosition(results[1].positionMs, track.durationMs);
+      const storedTrackId = this.settings?.getPlaybackLastTrackId(-1) ?? -1;
+      const storedPosition = storedTrackId === trackId ?
+        this.settings?.getPlaybackLastPositionMs(0) ?? 0 : 0;
+      const resumePosition = PlaybackRuntime.validResumePosition(storedPosition, track.durationMs);
       await this.engine.playTrack(track, resumePosition, () => this.playerStore.playWhenReady);
       if (epoch !== this.artworkEpoch) {
         return;
@@ -651,9 +653,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     if (position < RESUME_MINIMUM_MS || consideredCompleted) {
       position = 0;
     }
-    this.repository.savePlaybackState(track.id, position, duration, consideredCompleted).catch((error: Object) => {
-      console.warn(`Unable to persist playback progress: ${PlaybackRuntime.messageOf(error)}`);
-    });
+    this.settings?.setPlaybackResumeState(track.id, position);
   }
 
   private syncSessionState(): void {

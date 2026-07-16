@@ -16,6 +16,7 @@ const PLAYBACK_ARTWORK_WINDOW_KEY: string = 'playback.artwork_window_radius';
 const PLAYBACK_LAST_TRACK_ID_KEY: string = 'playback.last_track_id';
 const PLAYBACK_QUEUE_TRACK_IDS_KEY: string = 'playback.queue_track_ids';
 const PLAYBACK_QUEUE_CURRENT_TRACK_ID_KEY: string = 'playback.queue_current_track_id';
+const PLAYBACK_LAST_POSITION_MS_KEY: string = 'playback.last_position_ms';
 
 interface SettingUpdate {
   key: string;
@@ -125,6 +126,17 @@ export class SettingsRepository {
 
   setPlaybackLastTrackId(value: number): void {
     this.setValue(PLAYBACK_LAST_TRACK_ID_KEY, value);
+  }
+
+  getPlaybackLastPositionMs(defaultValue: number = 0): number {
+    return this.getNumber(PLAYBACK_LAST_POSITION_MS_KEY, defaultValue);
+  }
+
+  setPlaybackResumeState(trackId: number, positionMs: number): void {
+    this.setValues([
+      { key: PLAYBACK_LAST_TRACK_ID_KEY, value: trackId },
+      { key: PLAYBACK_LAST_POSITION_MS_KEY, value: positionMs }
+    ]);
   }
 
   getPlaybackQueueTrackIds(): Array<number> {

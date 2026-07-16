@@ -58,29 +58,6 @@ import { DynamicColor } from '../appearance/DynamicColor';
 
 const MORE_TAB_INDEX: number = PRIMARY_NAVIGATION_COUNT;
 
-@Component
-struct SystemBarContentSynchronizer {
-  @Prop contentColor: string = '#FFFFFFFF';
-  onContentColorChange: (contentColor: string) => void = (_contentColor: string): void => {};
-  private lastContentColor: string = '';
-
-  onDidBuild(): void {
-    if (this.lastContentColor === this.contentColor) {
-      return;
-    }
-    this.lastContentColor = this.contentColor;
-    this.onContentColorChange(this.contentColor);
-  }
-
-  build() {
-    Stack()
-      .width(0)
-      .height(0)
-      .backgroundColor(this.contentColor)
-      .hitTestBehavior(HitTestMode.None)
-  }
-}
-
 @Entry
 @Component
 struct Index {
@@ -161,6 +138,7 @@ struct Index {
   aboutToAppear(): void {
     playbackRuntime.setPaletteChangeListener((primary: string, _secondary: string, _accent: string): void => {
       this.animateThemePrimary(primary);
+      this.syncSystemBarContentColor();
     });
     appAppearanceController.addListener(this.appearanceListener);
     this.refreshAppearance();
@@ -170,6 +148,7 @@ struct Index {
       const abilityContext = context as common.UIAbilityContext;
       window.getLastWindow(abilityContext).then((mainWindow: window.Window) => {
         this.mainWindow = mainWindow;
+        this.syncSystemBarContentColor();
       }).catch((error: Object) => {
         const businessError = error as BusinessError;
         console.warn(`Unable to cache main window: ${businessError.code}, ${businessError.message}`);
@@ -240,6 +219,7 @@ struct Index {
     const palette = AppAppearancePalette.resolve(context as common.UIAbilityContext);
     this.appearancePalette = palette;
     this.playerStore.themeBaseBackground = palette.windowBackground;
+    this.syncSystemBarContentColor();
     for (let index = 0; index < this.rootTitleContents.length; index += 1) {
       this.rootTitleContents[index]?.update(
         new AppPrimaryTitleParams(ALL_ROOT_NAVIGATION_ITEMS[index].label, palette.titlePrimary)
@@ -519,6 +499,11 @@ struct Index {
     });
   }
 
+  private syncSystemBarContentColor(): void {
+    this.setSystemBarContentColor(this.isMorphActive() ?
+      this.playerStore.themeOnPrimary() : this.appearancePalette.systemBarContent);
+  }
+
   private freezeArtworkTargetForCurrentPage(): void {
     const usesSidePageProxy = this.fullPlayerPaneCount() === 1 &&
       Math.abs(this.fullPlayerPagePosition - FullPlayerPage.COVER) > 0.5;
@@ -690,6 +675,7 @@ struct Index {
   private beginMorphPhase(phase: PlayerMorphPhase): number {
     this.morphTransitionEpoch += 1;
     this.playerMorphPhase = phase;
+    this.syncSystemBarContentColor();
     return this.morphTransitionEpoch;
   }
 
@@ -724,6 +710,7 @@ struct Index {
           return;
         }
         this.playerMorphPhase = PlayerMorphPhase.IDLE;
+        this.syncSystemBarContentColor();
         this.playerMorphBackgroundOpacity = 1;
         this.releaseMorphArtworkSource();
       }
@@ -1302,14 +1289,6 @@ struct Index {
 
   build() {
     Stack() {
-      SystemBarContentSynchronizer({
-        contentColor: this.isMorphActive() ?
-          this.playerStore.themeOnPrimary() : this.appearancePalette.systemBarContent,
-        onContentColorChange: (contentColor: string): void => {
-          this.setSystemBarContentColor(contentColor);
-        }
-      })
-
       Stack()
         .width('100%')
         .height('100%')

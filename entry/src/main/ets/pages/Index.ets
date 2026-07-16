@@ -418,6 +418,14 @@ struct Index {
     return this.playerMorphPhase === PlayerMorphPhase.OPEN ? this.artworkTarget : this.frozenArtworkTarget;
   }
 
+  onBackPress(): boolean {
+    if (!this.isMorphActive()) {
+      return false;
+    }
+    this.hideFullPlayer();
+    return true;
+  }
+
   private fullArtworkSlotSize(): number {
     const fullPlayerFrame = this.fullPlayerFrame();
     return PlayerLayoutSpec.fullArtworkSize(
@@ -558,6 +566,7 @@ struct Index {
 
     if (this.playerGestureAxis === PlayerGestureAxis.VERTICAL) {
       if (!this.isMorphActive()) {
+        this.freezeMiniPlayerGeometry();
         this.freezeMorphArtworkSource();
         this.beginMorphPhase(PlayerMorphPhase.DRAGGING);
         this.playerMorphBackgroundOpacity = 1;
@@ -574,14 +583,41 @@ struct Index {
     const wasVerticalGesture = this.playerGestureAxis === PlayerGestureAxis.VERTICAL;
     const wasHorizontalGesture = this.playerGestureAxis === PlayerGestureAxis.HORIZONTAL;
     const swipeOffset = this.miniPlayerOffsetX;
-    const shouldChangeTrack = wasHorizontalGesture && Math.abs(swipeOffset) >=
-      PlayerMotionSpec.HORIZONTAL_HAPTIC_THRESHOLD;
-    const shouldExpand = wasVerticalGesture &&
-      this.playerExpandProgress >= this.morphGestureCompletionProgress();
+    this.playerGestureAxis = PlayerGestureAxis.UNDECIDED;
+    this.swipeHapticTriggered = false;
+
+    if (wasHorizontalGesture) {
+      const shouldChangeTrack = Math.abs(swipeOffset) >=
+        PlayerMotionSpec.HORIZONTAL_HAPTIC_THRESHOLD;
+      this.getUIContext().animateTo({
+        duration: PlayerMotionSpec.CANCEL_DURATION,
+        curve: Curve.EaseOut,
+        onFinish: () => {
+          if (!shouldChangeTrack) {
+            return;
+          }
+          if (swipeOffset < 0) {
+            playbackRuntime.next();
+          } else {
+            playbackRuntime.previous();
+          }
+        }
+      }, () => {
+        this.miniPlayerOffsetX = 0;
+      });
+      return;
+    }
+
+    if (!wasVerticalGesture) {
+      this.miniPlayerOffsetX = 0;
+      return;
+    }
+
+    const shouldExpand = this.playerExpandProgress >= this.morphGestureCompletionProgress();
     const duration = shouldExpand ? PlayerMotionSpec.OPEN_DURATION : PlayerMotionSpec.CANCEL_DURATION;
-    const epoch = wasVerticalGesture ? this.beginMorphPhase(
+    const epoch = this.beginMorphPhase(
       shouldExpand ? PlayerMorphPhase.OPENING : PlayerMorphPhase.CLOSING
-    ) : this.morphTransitionEpoch;
+    );
     this.getUIContext().animateTo({
       duration: duration,
       curve: shouldExpand ? curves.springMotion(
@@ -589,14 +625,7 @@ struct Index {
         PlayerMotionSpec.OPEN_SPRING_DAMPING
       ) : Curve.EaseOut,
       onFinish: () => {
-        if (shouldChangeTrack) {
-          if (swipeOffset < 0) {
-            playbackRuntime.next();
-          } else {
-            playbackRuntime.previous();
-          }
-        }
-        if (!wasVerticalGesture || !this.isCurrentMorphTransition(epoch)) {
+        if (!this.isCurrentMorphTransition(epoch)) {
           return;
         }
         if (shouldExpand) {
@@ -610,8 +639,6 @@ struct Index {
       this.miniPlayerOffsetX = 0;
       this.playerExpandProgress = shouldExpand ? 1 : 0;
     });
-    this.playerGestureAxis = PlayerGestureAxis.UNDECIDED;
-    this.swipeHapticTriggered = false;
   }
 
   private showFullPlayer(): void {
@@ -776,7 +803,6 @@ struct Index {
       },
       onMiniPlayerGestureStart: (): void => {
         this.playerGestureAxis = PlayerGestureAxis.UNDECIDED;
-        this.freezeMiniPlayerGeometry();
       },
       onMiniPlayerGestureUpdate: (event: GestureEvent): void => this.updateMiniPlayerGesture(event),
       onMiniPlayerGestureFinish: (): void => this.finishMiniPlayerGesture()

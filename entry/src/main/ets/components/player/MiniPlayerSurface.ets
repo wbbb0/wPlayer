@@ -112,7 +112,7 @@ export struct MiniPlayerSurface {
         height: lengthToNumber(newValue.height, this.measuredFrame.height)
       });
     })
-    .parallelGesture(
+    .priorityGesture(
       PanGesture({ direction: PanDirection.All, distance: 3 })
         .onActionStart(() => {
           this.onGestureStart();
@@ -125,7 +125,8 @@ export struct MiniPlayerSurface {
         })
         .onActionCancel(() => {
           this.onGestureFinish();
-        })
+        }),
+      GestureMask.Normal
     )
   }
 }

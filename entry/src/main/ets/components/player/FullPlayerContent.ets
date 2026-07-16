@@ -87,6 +87,14 @@ export struct FullPlayerContent {
     return Math.max(0, Math.min(this.playerStore.positionMs, this.playerStore.durationMs));
   }
 
+  private currentArtistLabel(): string {
+    if (this.playerStore.currentTrack === undefined) {
+      return '选择一首音乐开始播放';
+    }
+    return this.playerStore.currentTrack.artistDisplay.trim().length > 0 ?
+      this.playerStore.currentTrack.artistDisplay : '未知艺术家';
+  }
+
   private updateSeek(value: number, mode: SliderChangeMode): void {
     this.seekPreviewMs = Math.max(0, Math.min(value, this.playerStore.durationMs));
     if (mode === SliderChangeMode.Begin || mode === SliderChangeMode.Moving) {
@@ -213,7 +221,7 @@ export struct FullPlayerContent {
         .fontWeight(FontWeight.Bold)
         .fontColor(this.playerStore.themeOnPrimary())
         .maxLines(1)
-      Text(this.playerStore.currentTrack?.artistDisplay || '选择一首音乐开始播放')
+      Text(this.currentArtistLabel())
         .fontSize(12)
         .fontColor(this.playerStore.themeOnPrimaryMedium())
         .maxLines(1)
@@ -256,9 +264,8 @@ export struct FullPlayerContent {
                     .margin({
                       left: PlayerLayoutSpec.FULL_PLAYER_QUEUE_INDEX_WIDTH +
                         PlayerLayoutSpec.FULL_PLAYER_QUEUE_ARTWORK_SIZE + 20 +
-                        PlayerLayoutSpec.FULL_PLAYER_QUEUE_HIGHLIGHT_BLEED,
-                      right: PlayerLayoutSpec.FULL_PLAYER_PAGE_HORIZONTAL_INSET +
-                        PlayerLayoutSpec.FULL_PLAYER_QUEUE_HIGHLIGHT_BLEED
+                        PlayerLayoutSpec.FULL_PLAYER_QUEUE_CONTENT_HORIZONTAL_INSET,
+                      right: PlayerLayoutSpec.FULL_PLAYER_QUEUE_CONTENT_HORIZONTAL_INSET
                     })
                 }
                 Row({ space: 10 }) {
@@ -293,8 +300,8 @@ export struct FullPlayerContent {
                 }
                 .width('100%')
                 .padding({
-                  left: PlayerLayoutSpec.FULL_PLAYER_QUEUE_HIGHLIGHT_BLEED,
-                  right: PlayerLayoutSpec.FULL_PLAYER_QUEUE_HIGHLIGHT_BLEED,
+                  left: PlayerLayoutSpec.FULL_PLAYER_QUEUE_CONTENT_HORIZONTAL_INSET,
+                  right: PlayerLayoutSpec.FULL_PLAYER_QUEUE_CONTENT_HORIZONTAL_INSET,
                   top: PlayerLayoutSpec.FULL_PLAYER_QUEUE_ROW_VERTICAL_INSET,
                   bottom: PlayerLayoutSpec.FULL_PLAYER_QUEUE_ROW_VERTICAL_INSET
                 })
@@ -324,6 +331,10 @@ export struct FullPlayerContent {
                 )
               }
               .width('100%')
+              .padding({
+                left: PlayerLayoutSpec.FULL_PLAYER_QUEUE_SHADOW_CLEARANCE,
+                right: PlayerLayoutSpec.FULL_PLAYER_QUEUE_SHADOW_CLEARANCE
+              })
             }
           }, (item: QueueTrack) => `${item.id}`)
         }
@@ -343,10 +354,6 @@ export struct FullPlayerContent {
     .width(this.pageWidth())
     .height('100%')
     .padding({
-      left: PlayerLayoutSpec.FULL_PLAYER_PAGE_HORIZONTAL_INSET -
-        PlayerLayoutSpec.FULL_PLAYER_QUEUE_HIGHLIGHT_BLEED,
-      right: PlayerLayoutSpec.FULL_PLAYER_PAGE_HORIZONTAL_INSET -
-        PlayerLayoutSpec.FULL_PLAYER_QUEUE_HIGHLIGHT_BLEED,
       top: PlayerLayoutSpec.FULL_PLAYER_PAGE_TOP_INSET,
       bottom: this.bottomInset + PlayerLayoutSpec.FULL_PLAYER_BOTTOM_INSET
     })
@@ -419,7 +426,7 @@ export struct FullPlayerContent {
         .width('100%')
         .alignItems(VerticalAlign.Center)
 
-        Text(this.playerStore.currentTrack?.artistDisplay || '选择一首音乐开始播放')
+        Text(this.currentArtistLabel())
           .fontSize(PlayerLayoutSpec.FULL_PLAYER_ARTIST_SIZE)
           .fontColor(this.playerStore.themeOnPrimaryMedium())
           .maxLines(1)

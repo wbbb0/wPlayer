@@ -39,6 +39,7 @@ import { PlayerFrame } from '../player/PlayerMotion';
 import { AlbumSortField, SortDirection, TrackSortField } from '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
+import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { AlbumsPage } from '../../pages/library/AlbumsPage';
 import { AlbumDetailPage } from '../../pages/library/AlbumDetailPage';
 import { MaterialDebugPage } from '../../pages/debug/MaterialDebugPage';
@@ -71,6 +72,7 @@ class AlbumDetailRouteParams {
 @Component
 export struct ResponsiveNavigationShell {
   @ObjectLink libraryStore: LibraryStore;
+  @ObjectLink playerStore: PlayerStore;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @Prop rootWidth: number = 0;
@@ -82,6 +84,7 @@ export struct ResponsiveNavigationShell {
   @Prop morphActive: boolean = false;
   @Prop measuredMiniPlayerFrame: PlayerFrame = { x: 0, y: 0, width: 56, height: 56 };
   @Prop appearancePalette: AppAppearancePalette = AppAppearancePalette.fallback();
+  @Prop themePageBackground: string = '#FF000000';
 
   compactTabsController: HdsTabsController = new HdsTabsController();
   expandedTabsController: HdsTabsController = new HdsTabsController();
@@ -298,7 +301,8 @@ export struct ResponsiveNavigationShell {
   }
 
   private albumDetailBackground(params: AlbumDetailRouteParams): string {
-    return this.blendOpaque(this.appearancePalette.windowBackground, params.palettePrimary, 0.12);
+    const darkMode = this.appearancePalette.windowBackground.toUpperCase() === '#FF000000';
+    return this.blendOpaque(this.appearancePalette.windowBackground, params.palettePrimary, darkMode ? 0.50 : 0.36);
   }
 
   private blendOpaque(base: string, tint: string, opacity: number): string {
@@ -419,7 +423,8 @@ export struct ResponsiveNavigationShell {
       }
       .width('100%')
       .height('100%')
-      .backgroundColor($r('app.color.page_background'))
+      .backgroundColor(this.themePageBackground)
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryTitleBar('自定义页面', this.appearancePalette))
       .bindToScrollable([this.customizationScroller])
@@ -429,7 +434,8 @@ export struct ResponsiveNavigationShell {
       }
       .width('100%')
       .height('100%')
-      .backgroundColor($r('app.color.page_background'))
+      .backgroundColor(this.themePageBackground)
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryTitleBar(
         navigationItem(name)?.label ?? '',
@@ -447,7 +453,8 @@ export struct ResponsiveNavigationShell {
     .width('100%')
     .height('100%')
     .mode(NavigationMode.Stack)
-    .backgroundColor($r('app.color.page_background'))
+    .backgroundColor(this.themePageBackground)
+    .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
     .titleMode(HdsNavigationTitleMode.MINI)
     .hideBackButton(true)
     .titleBar(AppNavigationStyle.primaryTitleBar(
@@ -474,7 +481,8 @@ export struct ResponsiveNavigationShell {
     .width('100%')
     .height('100%')
     .mode(NavigationMode.Stack)
-    .backgroundColor($r('app.color.page_background'))
+    .backgroundColor(this.themePageBackground)
+    .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
     .titleMode(HdsNavigationTitleMode.MINI)
     .hideBackButton(true)
     .titleBar(AppNavigationStyle.primaryTitleBar('更多', this.appearancePalette))

@@ -122,6 +122,7 @@ export interface ParsedMetadata {
   artists: Array<string>;
   composers: Array<string>;
   lyricists: Array<string>;
+  lyrics: string;
   conductors: Array<string>;
   performers: Array<string>;
   genres: Array<string>;

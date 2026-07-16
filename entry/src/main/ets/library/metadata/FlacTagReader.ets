@@ -172,6 +172,7 @@ export class FlacTagReader {
     metadata.artists = MetadataNormalizer.values(tags, ['ARTIST']);
     metadata.composers = MetadataNormalizer.values(tags, ['COMPOSER']);
     metadata.lyricists = MetadataNormalizer.values(tags, ['LYRICIST', 'WRITER']);
+    metadata.lyrics = MetadataNormalizer.first(tags, ['LYRICS', 'UNSYNCEDLYRICS']);
     metadata.conductors = MetadataNormalizer.values(tags, ['CONDUCTOR']);
     metadata.performers = MetadataNormalizer.values(tags, ['PERFORMER']);
     metadata.genres = MetadataNormalizer.values(tags, ['GENRE']);

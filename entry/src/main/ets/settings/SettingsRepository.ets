@@ -13,6 +13,7 @@ const ALBUM_SORT_DESCENDING_KEY: string = 'library.albums.sort_descending';
 const PLAYBACK_SHUFFLE_KEY: string = 'playback.shuffle_enabled';
 const PLAYBACK_REPEAT_MODE_KEY: string = 'playback.repeat_mode';
 const PLAYBACK_ARTWORK_WINDOW_KEY: string = 'playback.artwork_window_radius';
+const PLAYBACK_LAST_TRACK_ID_KEY: string = 'playback.last_track_id';
 
 interface SettingUpdate {
   key: string;
@@ -114,6 +115,14 @@ export class SettingsRepository {
 
   getPlaybackArtworkWindowRadius(defaultValue: number = 2): number {
     return this.getNumber(PLAYBACK_ARTWORK_WINDOW_KEY, defaultValue);
+  }
+
+  getPlaybackLastTrackId(defaultValue: number = -1): number {
+    return this.getNumber(PLAYBACK_LAST_TRACK_ID_KEY, defaultValue);
+  }
+
+  setPlaybackLastTrackId(value: number): void {
+    this.setValue(PLAYBACK_LAST_TRACK_ID_KEY, value);
   }
 
   private getNumber(key: string, defaultValue: number): number {

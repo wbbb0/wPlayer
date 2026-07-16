@@ -1,9 +1,10 @@
 import { relationalStore } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { SortKeyNormalizer } from '../metadata/SortKeyNormalizer';
+import { ARTWORK_PALETTE_VERSION } from '../artwork/ArtworkPaletteExtractor';
 
 const DATABASE_NAME = 'music_library.db';
-const DATABASE_VERSION = 10;
+const DATABASE_VERSION = 11;
 const SORT_REBUILD_BATCH_SIZE = 500;
 
 const STORE_CONFIG: relationalStore.StoreConfig = {
@@ -52,7 +53,7 @@ const CURRENT_SCHEMA: Array<string> = [
     palette_primary TEXT NOT NULL DEFAULT '#FF7C4DFF',
     palette_secondary TEXT NOT NULL DEFAULT '#FFFF4D8D',
     palette_accent TEXT NOT NULL DEFAULT '#FFFFB347',
-    palette_version INTEGER NOT NULL DEFAULT 4,
+    palette_version INTEGER NOT NULL DEFAULT ${ARTWORK_PALETTE_VERSION},
     ref_count INTEGER NOT NULL DEFAULT 0 CHECK (ref_count >= 0),
     unreferenced_at INTEGER,
     created_at INTEGER NOT NULL,
@@ -109,6 +110,7 @@ const CURRENT_SCHEMA: Array<string> = [
     album_section TEXT NOT NULL DEFAULT '#',
     album_artist_display TEXT NOT NULL DEFAULT '',
     composer_display TEXT NOT NULL DEFAULT '',
+    lyrics TEXT NOT NULL DEFAULT '',
     track_number INTEGER,
     total_track_count INTEGER,
     track_number_raw TEXT NOT NULL DEFAULT '',

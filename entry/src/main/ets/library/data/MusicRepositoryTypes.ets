@@ -1,4 +1,15 @@
 import { ParsedArtwork, ParsedMetadata } from '../model/LibraryModels';
+import { ArtworkPalette } from '../artwork/ArtworkPaletteExtractor';
+
+export interface PaletteRefreshAsset {
+  id: number;
+  artworkPath: string;
+}
+
+export interface ArtworkPaletteUpdate {
+  id: number;
+  palette: ArtworkPalette;
+}
 
 export interface ArtworkImportInput {
   metadata: ParsedArtwork;

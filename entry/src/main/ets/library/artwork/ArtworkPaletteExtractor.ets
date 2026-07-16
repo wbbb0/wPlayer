@@ -8,6 +8,18 @@ const PRIMARY_DENSITY_SIGMA = 0.075;
 const DEFAULT_PRIMARY = '#FF7C4DFF';
 const DEFAULT_SECONDARY = '#FFFF4D8D';
 const DEFAULT_ACCENT = '#FFFFB347';
+export const ARTWORK_PALETTE_VERSION: number = 5;
+const PRIMARY_MIN_LIGHTNESS = 0.32;
+const PRIMARY_MAX_LIGHTNESS = 0.72;
+const SECONDARY_DARK_PRIMARY_THRESHOLD = 0.55;
+const SECONDARY_LIGHT_MIN = 0.62;
+const SECONDARY_LIGHT_MAX = 0.78;
+const SECONDARY_DARK_MIN = 0.32;
+const SECONDARY_DARK_MAX = 0.50;
+const SECONDARY_MIN_LIGHTNESS_GAP = 0.18;
+const SECONDARY_MIN_DISTANCE = 0.20;
+const ACCENT_MIN_LIGHTNESS = 0.62;
+const ACCENT_MAX_LIGHTNESS = 0.80;
 
 export interface ArtworkPalette {
   primary: string;
@@ -79,11 +91,21 @@ export class ArtworkPaletteExtractor {
     if (clusters.length === 0) {
       return ArtworkPaletteExtractor.fallback();
     }
-    const primary = ArtworkPaletteExtractor.bestPrimary(clusters);
-    const secondary = ArtworkPaletteExtractor.bestDistinct(clusters, primary, false) ??
-      ArtworkPaletteExtractor.derive(primary, 28, 1.12, 0.06);
-    const accent = ArtworkPaletteExtractor.bestDistinct(clusters, primary, true, secondary) ??
-      ArtworkPaletteExtractor.derive(primary, -38, 1.25, 0.12);
+    const extractedPrimary = ArtworkPaletteExtractor.bestPrimary(clusters);
+    const extractedSecondary = ArtworkPaletteExtractor.bestDistinct(clusters, extractedPrimary, false) ??
+      ArtworkPaletteExtractor.derive(extractedPrimary, 28, 1.12, 0.06);
+    const extractedAccent = ArtworkPaletteExtractor.bestDistinct(
+      clusters, extractedPrimary, true, extractedSecondary
+    ) ?? ArtworkPaletteExtractor.derive(extractedPrimary, -38, 1.25, 0.12);
+    const primary = ArtworkPaletteExtractor.withLightness(
+      extractedPrimary,
+      ArtworkPaletteExtractor.clamp(extractedPrimary.l, PRIMARY_MIN_LIGHTNESS, PRIMARY_MAX_LIGHTNESS)
+    );
+    const secondary = ArtworkPaletteExtractor.normalizeSecondary(extractedSecondary, primary);
+    const accent = ArtworkPaletteExtractor.withLightness(
+      extractedAccent,
+      ArtworkPaletteExtractor.clamp(extractedAccent.l, ACCENT_MIN_LIGHTNESS, ACCENT_MAX_LIGHTNESS)
+    );
     return {
       primary: ArtworkPaletteExtractor.toColor(primary, 1.05),
       secondary: ArtworkPaletteExtractor.toColor(secondary, 1.18),
@@ -154,6 +176,25 @@ export class ArtworkPaletteExtractor {
       }
     });
     return ArtworkPaletteExtractor.familyCenter(clusters, best);
+  }
+
+  private static normalizeSecondary(color: ColorCluster, primary: ColorCluster): ColorCluster {
+    const useLightRole = primary.l < SECONDARY_DARK_PRIMARY_THRESHOLD;
+    const minimum = useLightRole ? SECONDARY_LIGHT_MIN : SECONDARY_DARK_MIN;
+    const maximum = useLightRole ? SECONDARY_LIGHT_MAX : SECONDARY_DARK_MAX;
+    let lightness = ArtworkPaletteExtractor.clamp(color.l, minimum, maximum);
+    const candidate = ArtworkPaletteExtractor.withLightness(color, lightness);
+    if (Math.abs(lightness - primary.l) < SECONDARY_MIN_LIGHTNESS_GAP ||
+      ArtworkPaletteExtractor.distance(candidate, primary) < SECONDARY_MIN_DISTANCE) {
+      lightness = useLightRole ?
+        Math.min(maximum, primary.l + SECONDARY_MIN_LIGHTNESS_GAP) :
+        Math.max(minimum, primary.l - SECONDARY_MIN_LIGHTNESS_GAP);
+    }
+    return ArtworkPaletteExtractor.withLightness(color, lightness);
+  }
+
+  private static withLightness(color: ColorCluster, lightness: number): ColorCluster {
+    return { l: lightness, a: color.a, b: color.b, population: color.population };
   }
 
   private static familyCenter(clusters: Array<ColorCluster>, seed: ColorCluster): ColorCluster {

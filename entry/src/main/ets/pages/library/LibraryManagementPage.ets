@@ -22,6 +22,7 @@ export struct LibraryManagementPage {
   private hasTaskReport(): boolean {
     return this.store.importing || this.store.lastImportResult !== undefined ||
       this.store.rebuildingSortIndexes || this.store.sortIndexResult.length > 0 ||
+      this.store.refreshingPalettes || this.store.paletteRefreshResult.length > 0 ||
       this.store.sortIndexError.length > 0 || this.store.errorMessage.length > 0;
   }
 
@@ -167,6 +168,25 @@ export struct LibraryManagementPage {
           .width('100%')
       }
 
+      if (this.store.refreshingPalettes) {
+        Column({ space: 10 }) {
+          Progress({
+            value: this.store.paletteRefreshProcessed,
+            total: Math.max(1, this.store.paletteRefreshTotal),
+            type: ProgressType.Linear
+          }).width('100%')
+          Text(`正在刷新封面调色板 ${this.store.paletteRefreshProcessed} / ` +
+            `${this.store.paletteRefreshTotal}`)
+            .fontColor($r('app.color.text_secondary'))
+            .width('100%')
+        }
+        .width('100%')
+      } else if (this.store.paletteRefreshResult.length > 0) {
+        Text(this.store.paletteRefreshResult)
+          .fontColor($r('app.color.message_success'))
+          .width('100%')
+      }
+
       if (this.visibleDetailItems().length > 0) {
         Text('重复与错误明细')
           .fontSize(17)
@@ -264,6 +284,16 @@ export struct LibraryManagementPage {
             this.showTaskReport = true;
           })
 
+        Button(this.store.refreshingPalettes ? '正在刷新调色板…' : '刷新封面调色板')
+          .width('100%')
+          .height(48)
+          .enabled(!this.store.importing && !this.store.loading && !this.store.rebuildingSortIndexes &&
+            !this.store.refreshingPalettes && this.store.statistics.artworkCount > 0)
+          .onClick(() => {
+            this.store.refreshArtworkPalettes();
+            this.showTaskReport = true;
+          })
+
         if (this.hasTaskReport() || this.store.lastMessage.length > 0 || this.store.errorMessage.length > 0) {
           Divider()
             .strokeWidth(1)
@@ -302,7 +332,8 @@ export struct LibraryManagementPage {
           .height(48)
           .fontColor($r('app.color.destructive'))
           .backgroundColor($r('app.color.destructive_surface'))
-          .enabled(!this.store.importing && this.store.statistics.trackCount > 0)
+          .enabled(!this.store.importing && !this.store.refreshingPalettes &&
+            this.store.statistics.trackCount > 0)
           .onClick(() => this.confirmClear())
       }
       .width('100%')

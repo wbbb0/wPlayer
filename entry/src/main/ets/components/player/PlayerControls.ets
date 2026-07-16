@@ -105,14 +105,22 @@ export struct PlayerModeButton {
     Stack() {
       SymbolGlyph(this.symbol())
         .fontSize(22)
-        .fontColor([this.active() ? this.playerStore.themeOnAccent() : this.playerStore.themeOnPrimaryMedium()])
+        .fontColor([this.active() ? this.playerStore.themeOnPrimary() :
+          this.playerStore.themeOnPrimaryMedium()])
         .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+
+      if (!this.active()) {
+        Row()
+          .width(25)
+          .height(2)
+          .borderRadius(1)
+          .backgroundColor(this.playerStore.themeOnPrimaryMedium())
+          .rotate({ angle: -45 })
+      }
     }
     .width(44)
     .height(44)
     .borderRadius(22)
-    .backgroundColor(this.active() ? this.playerStore.themeAccent() : Color.Transparent)
-    .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
     .clickEffect({ level: ClickEffectLevel.LIGHT })
     .accessibilityText(this.accessibilityLabel())
     .onClick(() => {

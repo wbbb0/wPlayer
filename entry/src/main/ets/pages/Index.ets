@@ -91,6 +91,7 @@ struct Index {
   @State selectedRouteId: string = NavigationRoute.PLAYLISTS;
   @State libraryStore: LibraryStore = new LibraryStore(playbackRuntime.repository);
   @State playerStore: PlayerStore = playbackRuntime.playerStore;
+  @State animatedThemePrimary: string = '';
   @State miniBarExpanded: boolean = false;
   @State miniPlayerOffsetX: number = 0;
   @State playerExpandProgress: number = 0;
@@ -158,6 +159,9 @@ struct Index {
   private readonly customizationScroller: Scroller = new Scroller();
 
   aboutToAppear(): void {
+    playbackRuntime.setPaletteChangeListener((primary: string, _secondary: string, _accent: string): void => {
+      this.animateThemePrimary(primary);
+    });
     appAppearanceController.addListener(this.appearanceListener);
     this.refreshAppearance();
     this.initializePrimaryTitleContents();
@@ -193,6 +197,7 @@ struct Index {
   }
 
   aboutToDisappear(): void {
+    playbackRuntime.setPaletteChangeListener(undefined);
     this.setSystemBarContentColor(this.appearancePalette.systemBarContent);
     appAppearanceController.removeListener(this.appearanceListener);
     this.avoidAreaController.stop();
@@ -215,6 +220,18 @@ struct Index {
     }
   }
 
+  private animateThemePrimary(targetColor: string): void {
+    if (this.animatedThemePrimary === targetColor) {
+      return;
+    }
+    this.getUIContext().animateTo({
+      duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION,
+      curve: Curve.EaseInOut
+    }, () => {
+      this.animatedThemePrimary = targetColor;
+    });
+  }
+
   private refreshAppearance(): void {
     const context = this.getUIContext().getHostContext();
     if (context === undefined) {
@@ -222,6 +239,7 @@ struct Index {
     }
     const palette = AppAppearancePalette.resolve(context as common.UIAbilityContext);
     this.appearancePalette = palette;
+    this.playerStore.themeBaseBackground = palette.windowBackground;
     for (let index = 0; index < this.rootTitleContents.length; index += 1) {
       this.rootTitleContents[index]?.update(
         new AppPrimaryTitleParams(ALL_ROOT_NAVIGATION_ITEMS[index].label, palette.titlePrimary)
@@ -558,7 +576,23 @@ struct Index {
   }
 
   private pageThemeTintOpacity(): number {
-    return this.appearancePalette.windowBackground.toUpperCase() === '#FF000000' ? 0.14 : 0.08;
+    return this.appearancePalette.windowBackground.toUpperCase() === '#FF000000' ? 0.24 : 0.16;
+  }
+
+  private animatedPageBackground(): string {
+    if (this.animatedThemePrimary.length === 0 || !this.playerStore.hasCurrentTrack()) {
+      return this.appearancePalette.windowBackground;
+    }
+    return DynamicColor.blendOpaque(
+      this.appearancePalette.windowBackground,
+      this.animatedThemePrimary,
+      this.pageThemeTintOpacity()
+    );
+  }
+
+  private playerThemeBackground(): string {
+    return this.animatedThemePrimary.length > 0 ?
+      this.animatedThemePrimary : this.appearancePalette.windowBackground;
   }
 
   private morphCollapsedSurfaceColor(): string {
@@ -995,6 +1029,7 @@ struct Index {
   private NavigationShell() {
     ResponsiveNavigationShell({
       libraryStore: this.libraryStore,
+      playerStore: this.playerStore,
       topInset: this.statusBarAvoidHeight,
       bottomInset: this.navigationAvoidHeight,
       rootWidth: this.rootFrame.width,
@@ -1006,6 +1041,7 @@ struct Index {
       morphActive: this.isMorphActive(),
       measuredMiniPlayerFrame: this.measuredMiniPlayerFrame,
       appearancePalette: this.appearancePalette,
+      themePageBackground: this.animatedPageBackground(),
       compactTabsController: this.compactTabsController,
       expandedTabsController: this.expandedTabsController,
       rootTitleContents: this.rootTitleContents,
@@ -1045,7 +1081,7 @@ struct Index {
       .height('100%')
       .backgroundColor(DynamicColor.blendOpaque(
         this.morphCollapsedSurfaceColor(),
-        this.playerStore.themePrimary(),
+        this.playerThemeBackground(),
         this.clamp(this.playerExpandProgress, 0, 1)
       ))
       .opacity(this.playerMorphBackgroundOpacity)
@@ -1277,16 +1313,15 @@ struct Index {
       Stack()
         .width('100%')
         .height('100%')
-        .backgroundColor($r('app.color.page_background'))
+        .backgroundColor(this.appearancePalette.windowBackground)
         .hitTestBehavior(HitTestMode.None)
 
       if (this.playerStore.hasCurrentTrack()) {
         Stack()
           .width('100%')
           .height('100%')
-          .backgroundColor(this.playerStore.themePrimary())
+          .backgroundColor(this.playerThemeBackground())
           .opacity(this.pageThemeTintOpacity())
-          .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
           .hitTestBehavior(HitTestMode.None)
       }
 
@@ -1301,7 +1336,7 @@ struct Index {
     .width('100%')
     .height('100%')
     .id('player_page_root')
-    .backgroundColor($r('app.color.page_background'))
+    .backgroundColor(this.animatedPageBackground())
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     .onAreaChange((_oldValue: Area, newValue: Area) => {
       const previousWideLayout = this.usesWideLayout();

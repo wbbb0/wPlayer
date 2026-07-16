@@ -52,6 +52,6 @@ export struct NavigationCustomizationPage {
       bottom: PageLayoutSpec.contentEnd(this.bottomInset)
     })
     .edgeEffect(EdgeEffect.Spring)
-    .backgroundColor($r('app.color.page_background'))
+    .backgroundColor(Color.Transparent)
   }
 }

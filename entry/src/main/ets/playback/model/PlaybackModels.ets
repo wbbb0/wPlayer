@@ -78,6 +78,7 @@ export class QueueTrackDataSource implements IDataSource {
 }
 
 export interface PlaybackTrack extends QueueTrack {
+  lyrics: string;
   uri: string;
   fileSize: number;
   modifiedAt: number;
@@ -105,6 +106,7 @@ export class PlayerStore {
   heroArtworkUri: string = '';
   heroArtworkPreferPixelMap: boolean = false;
   errorMessage: string = '';
+  lyrics: string = '';
   shuffleEnabled: boolean = false;
   repeatMode: RepeatMode = RepeatMode.ALL;
   queuePhase: QueueBuildPhase = QueueBuildPhase.EMPTY;
@@ -115,6 +117,7 @@ export class PlayerStore {
   palettePrimary: string = DEFAULT_PLAYER_PALETTE_PRIMARY;
   paletteSecondary: string = DEFAULT_PLAYER_PALETTE_SECONDARY;
   paletteAccent: string = DEFAULT_PLAYER_PALETTE_ACCENT;
+  themeBaseBackground: string = '#FFFFFFFF';
 
   isPlaying(): boolean {
     return this.playWhenReady;
@@ -125,7 +128,7 @@ export class PlayerStore {
   }
 
   themePrimary(): string {
-    return this.hasCurrentTrack() ? this.palettePrimary : DEFAULT_PLAYER_PALETTE_PRIMARY;
+    return this.hasCurrentTrack() ? this.palettePrimary : '';
   }
 
   themeSecondary(): string {
@@ -137,7 +140,11 @@ export class PlayerStore {
   }
 
   themeOnPrimary(): string {
-    return DynamicColor.foreground(this.themePrimary(), DynamicContainerRole.PRIMARY);
+    const primary = this.themePrimary();
+    return DynamicColor.foreground(
+      primary.length > 0 ? primary : this.themeBaseBackground,
+      DynamicContainerRole.PRIMARY
+    );
   }
 
   themeOnPrimaryMedium(): string {

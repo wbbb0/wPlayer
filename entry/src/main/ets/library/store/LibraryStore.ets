@@ -21,6 +21,14 @@ import { SettingsRepository } from '../../settings/SettingsRepository';
 import { LibraryListDataSource } from './LibraryListDataSource';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { ImportPerformanceTrace } from '../importer/ImportPerformanceTrace';
+import { ArtworkPaletteUpdate, PaletteRefreshAsset } from '../data/MusicRepositoryTypes';
+
+const PALETTE_REFRESH_CONCURRENCY: number = 4;
+
+class PaletteRefreshCursor {
+  nextIndex: number = 0;
+  failed: number = 0;
+}
 
 @Observed
 export class LibraryStore {
@@ -47,6 +55,10 @@ export class LibraryStore {
   loading: boolean = false;
   importing: boolean = false;
   rebuildingSortIndexes: boolean = false;
+  refreshingPalettes: boolean = false;
+  paletteRefreshProcessed: number = 0;
+  paletteRefreshTotal: number = 0;
+  paletteRefreshResult: string = '';
   lastMessage: string = '';
   errorMessage: string = '';
   lastImportResult?: ImportResult;
@@ -270,6 +282,63 @@ export class LibraryStore {
       this.sortIndexError = this.errorMessage;
     } finally {
       this.rebuildingSortIndexes = false;
+    }
+  }
+
+  async refreshArtworkPalettes(): Promise<void> {
+    if (this.importing || this.loading || this.rebuildingSortIndexes || this.refreshingPalettes ||
+      this.artworkCache === undefined) {
+      return;
+    }
+    this.refreshingPalettes = true;
+    this.paletteRefreshProcessed = 0;
+    this.paletteRefreshTotal = 0;
+    this.paletteRefreshResult = '';
+    this.errorMessage = '';
+    this.lastMessage = '';
+    try {
+      const assets = await this.repository.getPaletteRefreshAssets();
+      this.paletteRefreshTotal = assets.length;
+      const updates: Array<ArtworkPaletteUpdate> = [];
+      const cursor = new PaletteRefreshCursor();
+      const workers: Array<Promise<void>> = [];
+      const workerCount = Math.min(PALETTE_REFRESH_CONCURRENCY, assets.length);
+      for (let index = 0; index < workerCount; index += 1) {
+        workers.push(this.runPaletteRefreshWorker(assets, updates, cursor));
+      }
+      await Promise.all(workers);
+      if (updates.length > 0) {
+        await this.repository.updateArtworkPalettes(updates);
+        await playbackRuntime.refreshCurrentTrackPalette();
+      }
+      await this.refresh();
+      this.paletteRefreshResult = `已刷新 ${updates.length} 张封面` +
+        (cursor.failed > 0 ? `，失败 ${cursor.failed} 张` : '');
+      this.lastMessage = this.paletteRefreshResult;
+    } catch (error) {
+      this.errorMessage = LibraryStore.errorMessageOf(error);
+    } finally {
+      this.refreshingPalettes = false;
+    }
+  }
+
+  private async runPaletteRefreshWorker(assets: Array<PaletteRefreshAsset>,
+    updates: Array<ArtworkPaletteUpdate>, cursor: PaletteRefreshCursor): Promise<void> {
+    while (cursor.nextIndex < assets.length) {
+      const index = cursor.nextIndex;
+      cursor.nextIndex += 1;
+      const asset = assets[index];
+      try {
+        if (this.artworkCache === undefined) {
+          return;
+        }
+        const palette = await this.artworkCache.extractPalette(asset.artworkPath);
+        updates.push({ id: asset.id, palette: palette });
+      } catch (error) {
+        cursor.failed += 1;
+        console.warn(`Palette refresh failed for artwork ${asset.id}: ${LibraryStore.errorMessageOf(error)}`);
+      }
+      this.paletteRefreshProcessed += 1;
     }
   }
 

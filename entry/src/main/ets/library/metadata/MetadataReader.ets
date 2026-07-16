@@ -89,6 +89,9 @@ export class MetadataReader {
       if (parsed.genres.length === 0 && systemMetadata.genre !== undefined) {
         parsed.genres = MetadataNormalizer.splitValues([systemMetadata.genre]);
       }
+      if (parsed.lyrics.length === 0 && systemMetadata.customInfo !== undefined) {
+        parsed.lyrics = MetadataReader.customLyrics(systemMetadata.customInfo);
+      }
       if (parsed.releaseDate.precision === 0 && systemMetadata.dateTime !== undefined) {
         parsed.releaseDate = MetadataNormalizer.parseDate(systemMetadata.dateTime);
       }
@@ -108,6 +111,17 @@ export class MetadataReader {
       fs.closeSync(file);
     }
     return parsed;
+  }
+
+  private static customLyrics(customInfo: Record<string, string>): string {
+    const keys = ['lyrics', 'LYRICS', '©lyr', '\u00A9lyr'];
+    for (let index = 0; index < keys.length; index += 1) {
+      const value = customInfo[keys[index]];
+      if (value !== undefined && value.trim().length > 0) {
+        return value.trim();
+      }
+    }
+    return '';
   }
 
   private static fileStem(fileName: string): string {

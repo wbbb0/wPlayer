@@ -14,6 +14,7 @@ export class MetadataFactory {
       artists: [],
       composers: [],
       lyricists: [],
+      lyrics: '',
       conductors: [],
       performers: [],
       genres: [],

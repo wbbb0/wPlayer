@@ -70,6 +70,8 @@ export class Id3TagReader {
           }
         } else if (frame.id.startsWith('T') && frame.id !== 'TXXX') {
           Id3TagReader.addTextFrame(reader, frame, metadata.rawTags);
+        } else if (frame.id === 'USLT') {
+          Id3TagReader.addUnsynchronizedLyrics(reader, frame, metadata.rawTags);
         }
       }
       frameOffset = frame.dataOffset + frame.dataLength;
@@ -159,6 +161,31 @@ export class Id3TagReader {
     const existing = tags.get(frame.id) ?? [];
     existing.push(...values);
     tags.set(frame.id, existing);
+  }
+
+  private static addUnsynchronizedLyrics(reader: BinaryFileReader, frame: Id3Frame,
+    tags: Map<string, Array<string>>): void {
+    let bytes = reader.read(frame.dataOffset, frame.dataLength);
+    if (frame.unsynchronized) {
+      bytes = Id3TagReader.removeUnsynchronization(bytes);
+    }
+    if (bytes.length < 5) {
+      return;
+    }
+    const encoding = bytes[0];
+    const terminatorLength = encoding === 1 || encoding === 2 ? 2 : 1;
+    const descriptionEnd = Id3TagReader.findTerminator(bytes, 4, terminatorLength);
+    if (descriptionEnd < 0) {
+      return;
+    }
+    const lyrics = Id3TagReader.decodeText(
+      encoding, bytes.subarray(descriptionEnd + terminatorLength)
+    ).replace(/\u0000+$/g, '').trim();
+    if (lyrics.length > 0) {
+      const values = tags.get('USLT') ?? [];
+      values.push(lyrics);
+      tags.set('USLT', values);
+    }
   }
 
   private static readPicture(reader: BinaryFileReader, frame: Id3Frame, version: number,
@@ -296,7 +323,7 @@ export class Id3TagReader {
     const mappings: Map<string, string> = new Map<string, string>([
       ['TT2', 'TIT2'], ['TAL', 'TALB'], ['TP1', 'TPE1'], ['TP2', 'TPE2'],
       ['TCM', 'TCOM'], ['TXT', 'TEXT'], ['TCO', 'TCON'], ['TRK', 'TRCK'],
-      ['TPA', 'TPOS'], ['TYE', 'TYER'], ['TOR', 'TORY'], ['PIC', 'PIC']
+      ['TPA', 'TPOS'], ['TYE', 'TYER'], ['TOR', 'TORY'], ['PIC', 'PIC'], ['ULT', 'USLT']
     ]);
     return mappings.get(id) ?? id;
   }
@@ -310,6 +337,7 @@ export class Id3TagReader {
     metadata.artists = MetadataNormalizer.values(tags, ['TPE1']);
     metadata.composers = MetadataNormalizer.values(tags, ['TCOM']);
     metadata.lyricists = MetadataNormalizer.values(tags, ['TEXT']);
+    metadata.lyrics = MetadataNormalizer.first(tags, ['USLT']);
     metadata.conductors = MetadataNormalizer.values(tags, ['TPE3']);
     metadata.performers = MetadataNormalizer.values(tags, ['TPE4']);
     metadata.genres = MetadataNormalizer.values(tags, ['TCON']);

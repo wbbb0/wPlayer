@@ -43,6 +43,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   private lastPositionWriteAt: number = 0;
   private lastSessionPositionAt: number = 0;
   private fullArtwork?: DecodedFullArtwork;
+  private paletteChangeListener?: (primary: string, secondary: string, accent: string) => void;
 
   constructor() {
     this.engine.setListener(this);
@@ -249,6 +250,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.queuePhase = QueueBuildPhase.EMPTY;
     this.playerStore.queueSize = 0;
     this.playerStore.playWhenReady = false;
+    this.settings?.setPlaybackLastTrackId(-1);
     this.syncQueueSnapshot();
     this.onStateChanged(PlayerState.IDLE);
   }
@@ -342,6 +344,37 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     return this.resolveArtworkUri(relativePath);
   }
 
+  setPaletteChangeListener(listener?: (primary: string, secondary: string, accent: string) => void): void {
+    this.paletteChangeListener = listener;
+    if (listener !== undefined) {
+      listener(this.playerStore.themePrimary(), this.playerStore.themeSecondary(), this.playerStore.themeAccent());
+    }
+  }
+
+  private notifyPaletteChange(): void {
+    this.paletteChangeListener?.(
+      this.playerStore.themePrimary(), this.playerStore.themeSecondary(), this.playerStore.themeAccent()
+    );
+  }
+
+  async refreshCurrentTrackPalette(): Promise<void> {
+    const current = this.playerStore.currentTrack;
+    if (current === undefined) {
+      return;
+    }
+    const refreshed = await this.repository.getPlaybackTrack(current.id);
+    if (refreshed === undefined || this.playerStore.currentTrack?.id !== current.id) {
+      return;
+    }
+    current.palettePrimary = refreshed.palettePrimary;
+    current.paletteSecondary = refreshed.paletteSecondary;
+    current.paletteAccent = refreshed.paletteAccent;
+    this.playerStore.palettePrimary = refreshed.palettePrimary;
+    this.playerStore.paletteSecondary = refreshed.paletteSecondary;
+    this.playerStore.paletteAccent = refreshed.paletteAccent;
+    this.notifyPaletteChange();
+  }
+
   private async initializeInternal(context: common.UIAbilityContext,
     providedSettings?: SettingsRepository): Promise<void> {
     this.context = context;
@@ -354,6 +387,25 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.artworkCache = new ArtworkMemoryCache(context);
     this.session = new PlaybackSession(context, this);
     await this.session.initialize();
+    await this.restoreLastPlayback();
+  }
+
+  private async restoreLastPlayback(): Promise<void> {
+    const trackId = this.settings?.getPlaybackLastTrackId(-1) ?? -1;
+    if (trackId < 0) {
+      return;
+    }
+    const track = await this.repository.getPlaybackTrack(trackId);
+    if (track === undefined) {
+      this.settings?.setPlaybackLastTrackId(-1);
+      return;
+    }
+    const queueTrack = PlaybackRuntime.queueTrackOfPlaybackTrack(track);
+    this.queue.build([queueTrack], track.id, false);
+    this.playerStore.queuePhase = QueueBuildPhase.READY;
+    this.playerStore.queueSize = 1;
+    this.syncQueueSnapshot();
+    await this.beginTrack(queueTrack, false);
   }
 
   private enqueueLibraryItems(items: Array<TrackListItem>, insertNext: boolean): void {
@@ -388,7 +440,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.artworkCache = undefined;
   }
 
-  private beginTrack(track: QueueTrack): Promise<void> {
+  private beginTrack(track: QueueTrack, playWhenReady: boolean = true): Promise<void> {
     this.persistProgress(false);
     ++this.seekEpoch;
     this.pendingSeekPositionMs = undefined;
@@ -401,12 +453,15 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.retireFullArtwork();
     this.currentPlaybackTrack = undefined;
     this.playerStore.currentTrack = track;
+    this.playerStore.lyrics = '';
     this.playerStore.positionMs = 0;
     this.playerStore.durationMs = track.durationMs;
     this.playerStore.palettePrimary = track.palettePrimary;
     this.playerStore.paletteSecondary = track.paletteSecondary;
     this.playerStore.paletteAccent = track.paletteAccent;
-    this.playerStore.playWhenReady = true;
+    this.notifyPaletteChange();
+    this.playerStore.playWhenReady = playWhenReady;
+    this.settings?.setPlaybackLastTrackId(track.id);
     this.playerStore.state = PlayerState.LOADING;
     this.playerStore.errorMessage = '';
     this.artworkCache?.pinCurrent(track);
@@ -471,6 +526,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
         throw new Error('音乐记录不存在，可能已从音乐库移除');
       }
       this.currentPlaybackTrack = track;
+      this.playerStore.lyrics = track.lyrics;
       this.playerStore.durationMs = track.durationMs;
       this.session?.updateMetadata(track, this.playerStore.heroArtworkUri);
       if (!await ensureReadPermission(track.uri)) {
@@ -615,6 +671,25 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       palettePrimary: item.palettePrimary,
       paletteSecondary: item.paletteSecondary,
       paletteAccent: item.paletteAccent
+    };
+  }
+
+  private static queueTrackOfPlaybackTrack(track: PlaybackTrack): QueueTrack {
+    return {
+      id: track.id,
+      title: track.title,
+      artistDisplay: track.artistDisplay,
+      albumDisplay: track.albumDisplay,
+      durationMs: track.durationMs,
+      smallArtworkHash: track.smallArtworkHash,
+      smallArtworkPath: track.smallArtworkPath,
+      largeArtworkHash: track.largeArtworkHash,
+      largeArtworkPath: track.largeArtworkPath,
+      artworkWidth: track.artworkWidth,
+      artworkHeight: track.artworkHeight,
+      palettePrimary: track.palettePrimary,
+      paletteSecondary: track.paletteSecondary,
+      paletteAccent: track.paletteAccent
     };
   }
 

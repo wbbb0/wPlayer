@@ -90,6 +90,18 @@ export class ArtworkCache {
     return ArtworkCache.sha256(sourceBytes);
   }
 
+  async extractPalette(relativePath: string): Promise<ArtworkPalette> {
+    const imageSource = image.createImageSource(this.resolvePath(relativePath));
+    try {
+      const imageInfo = await imageSource.getImageInfo();
+      ArtworkCache.validateSourceDimensions(imageInfo.size.width, imageInfo.size.height);
+      const pixels = await ArtworkPaletteExtractor.readPixelBuffer(imageSource, imageInfo.size);
+      return extractArtworkPaletteAsync(pixels);
+    } finally {
+      await imageSource.release();
+    }
+  }
+
   resolvePath(relativePath: string): string {
     return ArtworkCache.resolvePath(this.context, relativePath);
   }

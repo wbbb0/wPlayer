@@ -216,15 +216,17 @@ export struct FullPlayerContent {
   @Builder
   private LyricsHeader() {
     Column({ space: 2 }) {
-      Text(this.playerStore.currentTrack?.title ?? '尚未播放')
-        .fontSize(18)
-        .fontWeight(FontWeight.Bold)
-        .fontColor(this.playerStore.themeOnPrimary())
-        .maxLines(1)
-      Text(this.currentArtistLabel())
-        .fontSize(12)
-        .fontColor(this.playerStore.themeOnPrimaryMedium())
-        .maxLines(1)
+      if (this.paneCount === 1) {
+        Text(this.playerStore.currentTrack?.title ?? '尚未播放')
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(this.playerStore.themeOnPrimary())
+          .maxLines(1)
+        Text(this.currentArtistLabel())
+          .fontSize(12)
+          .fontColor(this.playerStore.themeOnPrimaryMedium())
+          .maxLines(1)
+      }
     }
     .alignItems(HorizontalAlign.Start)
     .justifyContent(FlexAlign.Center)
@@ -468,9 +470,9 @@ export struct FullPlayerContent {
         style: SliderStyle.OutSet
       })
         .width('100%')
-        .selectedColor(this.playerStore.themeAccent())
+        .selectedColor(this.playerStore.themeOnPrimary())
         .trackColor(this.playerStore.themeOnPrimaryMedium())
-        .blockColor(this.playerStore.themeAccent())
+        .blockColor(this.playerStore.themeOnPrimary())
         .trackThickness(PlayerLayoutSpec.FULL_PLAYER_PROGRESS_TRACK_THICKNESS)
         .enabled(this.playerStore.durationMs > 0)
         .onChange((value: number, mode: SliderChangeMode) => {
@@ -504,19 +506,34 @@ export struct FullPlayerContent {
   @Builder
   private LyricsPage() {
     Column() {
-      Column({ space: 10 }) {
-        Text('暂未找到歌词')
-          .fontSize(22)
-          .fontWeight(FontWeight.Medium)
-          .fontColor(this.playerStore.themeOnPrimary())
-        Text('支持歌词后，这里会优先显示同目录下的同名 LRC 文件')
-          .fontSize(14)
-          .fontColor(this.playerStore.themeOnPrimaryMedium())
-          .textAlign(TextAlign.Center)
+      if (this.playerStore.lyrics.length > 0) {
+        Scroll() {
+          Text(this.playerStore.lyrics)
+            .width('100%')
+            .fontSize(20)
+            .lineHeight(34)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(this.playerStore.themeOnPrimary())
+            .textAlign(TextAlign.Start)
+        }
+        .width('100%')
+        .layoutWeight(1)
+        .edgeEffect(EdgeEffect.Spring)
+      } else {
+        Column({ space: 10 }) {
+          Text('暂未找到内嵌歌词')
+            .fontSize(22)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(this.playerStore.themeOnPrimary())
+          Text('当前仅读取音乐文件内部的歌词文本')
+            .fontSize(14)
+            .fontColor(this.playerStore.themeOnPrimaryMedium())
+            .textAlign(TextAlign.Center)
+        }
+        .justifyContent(FlexAlign.Center)
+        .layoutWeight(1)
+        .width('100%')
       }
-      .justifyContent(FlexAlign.Center)
-      .layoutWeight(1)
-      .width('100%')
     }
     .width(this.pageWidth())
     .height('100%')

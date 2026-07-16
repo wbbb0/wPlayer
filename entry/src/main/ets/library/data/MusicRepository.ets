@@ -22,6 +22,8 @@ import {
   ImportTrackResult,
   TrackImportInput
 } from './MusicRepositoryTypes';
+import { ArtworkPaletteUpdate, PaletteRefreshAsset } from './MusicRepositoryTypes';
+import { ARTWORK_PALETTE_VERSION } from '../artwork/ArtworkPaletteExtractor';
 
 export {
   ArtworkAssetLookup,
@@ -143,6 +145,24 @@ export class MusicRepository {
 
   getReferencedArtworkPaths(): Promise<Array<string>> {
     return this.queries.getReferencedArtworkPaths();
+  }
+
+  getPaletteRefreshAssets(): Promise<Array<PaletteRefreshAsset>> {
+    return this.queries.getPaletteRefreshAssets();
+  }
+
+  updateArtworkPalettes(updates: Array<ArtworkPaletteUpdate>): Promise<void> {
+    return this.database.enqueueWrite(async (transaction: relationalStore.Transaction) => {
+      for (let index = 0; index < updates.length; index += 1) {
+        const update = updates[index];
+        await transaction.execute(
+          `UPDATE artwork_asset SET palette_primary = ?, palette_secondary = ?,
+            palette_accent = ?, palette_version = ? WHERE id = ?`,
+          [update.palette.primary, update.palette.secondary, update.palette.accent,
+            ARTWORK_PALETTE_VERSION, update.id]
+        );
+      }
+    });
   }
 
   removeUnreferencedArtwork(assetId: number): Promise<void> {

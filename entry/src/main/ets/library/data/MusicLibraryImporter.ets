@@ -15,6 +15,7 @@ import {
   ImportTrackResult,
   TrackImportInput
 } from './MusicRepositoryTypes';
+import { ARTWORK_PALETTE_VERSION } from '../artwork/ArtworkPaletteExtractor';
 
 interface CreditGroup {
   role: CreditRole;
@@ -110,6 +111,7 @@ export class MusicLibraryImporter {
         album_section: albumSort.section,
         album_artist_display: metadata.albumArtists.join(', '),
         composer_display: metadata.composers.join(', '),
+        lyrics: metadata.lyrics,
         track_number: this.numberOrNull(metadata.trackNumber.value),
         total_track_count: this.numberOrNull(metadata.trackNumber.total),
         track_number_raw: metadata.trackNumber.raw === undefined ? '' : metadata.trackNumber.raw,
@@ -359,7 +361,7 @@ export class MusicLibraryImporter {
         palette_primary: artwork.palettePrimary ?? '#FF7C4DFF',
         palette_secondary: artwork.paletteSecondary ?? '#FFFF4D8D',
         palette_accent: artwork.paletteAccent ?? '#FFFFB347',
-        palette_version: 4,
+        palette_version: ARTWORK_PALETTE_VERSION,
         ref_count: 0,
         unreferenced_at: now,
         created_at: now

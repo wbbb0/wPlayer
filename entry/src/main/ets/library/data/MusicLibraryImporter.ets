@@ -111,7 +111,6 @@ export class MusicLibraryImporter {
         album_section: albumSort.section,
         album_artist_display: metadata.albumArtists.join(', '),
         composer_display: metadata.composers.join(', '),
-        lyrics: metadata.lyrics,
         track_number: this.numberOrNull(metadata.trackNumber.value),
         total_track_count: this.numberOrNull(metadata.trackNumber.total),
         track_number_raw: metadata.trackNumber.raw === undefined ? '' : metadata.trackNumber.raw,

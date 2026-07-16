@@ -8,11 +8,21 @@ import {
 } from '../model/LibraryModels';
 import { BinaryFileReader } from './BinaryFileReader';
 import { Id3TagReader } from './Id3TagReader';
+import { MetadataFactory } from './MetadataFactory';
 import { MetadataNormalizer } from './MetadataNormalizer';
-import { probeMediaFile } from './MediaFileTasks';
+import { probeMediaFile, readEmbeddedLyrics } from './MediaFileTasks';
 import { ImportPerformanceTrace } from '../importer/ImportPerformanceTrace';
 
 export class MetadataReader {
+  static async readLyrics(uri: string, fileSize: number, format: MediaFormat): Promise<string> {
+    const parsedLyrics = await readEmbeddedLyrics(uri, format);
+    if (parsedLyrics.length > 0) {
+      return parsedLyrics;
+    }
+    const empty = MetadataFactory.empty(format);
+    const metadata = await MetadataReader.mergeSystemMetadata(uri, fileSize, empty);
+    return metadata.lyrics;
+  }
   static async read(uri: string): Promise<MetadataReadResult> {
     const fileId = ImportPerformanceTrace.fileId(uri);
     const probeStartedAt = Date.now();

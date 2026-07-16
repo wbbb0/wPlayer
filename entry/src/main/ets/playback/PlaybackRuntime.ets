@@ -3,6 +3,7 @@ import { image } from '@kit.ImageKit';
 import { ArtworkCache } from '../library/artwork/ArtworkCache';
 import { MusicRepository } from '../library/data/MusicRepository';
 import { ensureReadPermission } from '../library/importer/MediaPickerService';
+import { MetadataReader } from '../library/metadata/MetadataReader';
 import { AvailabilityState, TrackListItem } from '../library/model/LibraryModels';
 import { SettingsRepository } from '../settings/SettingsRepository';
 import { ArtworkMemoryCache, DecodedFullArtwork } from './artwork/ArtworkMemoryCache';
@@ -17,6 +18,7 @@ import {
 } from './model/PlaybackModels';
 import { PlaybackQueue } from './queue/PlaybackQueue';
 import { PlaybackSession, PlaybackSessionCommands } from './session/PlaybackSession';
+import { LyricsParser } from './lyrics/LyricsParser';
 
 const POSITION_WRITE_INTERVAL_MS = 5000;
 const SESSION_POSITION_INTERVAL_MS = 1000;
@@ -187,11 +189,13 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     const seekEpoch = ++this.seekEpoch;
     this.pendingSeekPositionMs = targetPositionMs;
     this.playerStore.positionMs = targetPositionMs;
+    this.updateActiveLyricIndex(targetPositionMs);
     this.engine.seek(targetPositionMs).then(() => {
       if (seekEpoch !== this.seekEpoch) {
         return;
       }
       this.playerStore.positionMs = targetPositionMs;
+      this.updateActiveLyricIndex(targetPositionMs);
       this.pendingSeekPositionMs = undefined;
     }).catch((error: Object) => {
       if (seekEpoch !== this.seekEpoch) {
@@ -305,6 +309,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   onPositionChanged(positionMs: number): void {
     if (this.pendingSeekPositionMs === undefined) {
       this.playerStore.positionMs = positionMs;
+      this.updateActiveLyricIndex(positionMs);
     }
     const now = Date.now();
     if (now - this.lastPositionWriteAt >= POSITION_WRITE_INTERVAL_MS) {
@@ -470,11 +475,18 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
         console.warn(`Unable to stop previous playback: ${PlaybackRuntime.messageOf(error)}`);
       }
     });
+    const previousTrack = this.playerStore.currentTrack;
+    const sameLargeArtwork = PlaybackRuntime.sameArtwork(previousTrack, track, true);
+    const sameSmallArtwork = PlaybackRuntime.sameArtwork(previousTrack, track, false);
     const epoch = ++this.artworkEpoch;
-    this.retireFullArtwork();
+    if (!sameLargeArtwork) {
+      this.retireFullArtwork();
+    }
     this.currentPlaybackTrack = undefined;
     this.playerStore.currentTrack = track;
     this.playerStore.lyrics = '';
+    this.playerStore.timedLyrics = [];
+    this.playerStore.setActiveLyricIndex(-1);
     this.playerStore.positionMs = 0;
     this.playerStore.durationMs = track.durationMs;
     this.playerStore.palettePrimary = track.palettePrimary;
@@ -488,12 +500,16 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.state = PlayerState.LOADING;
     this.playerStore.errorMessage = '';
     this.artworkCache?.pinCurrent(track);
-    this.playerStore.miniArtwork = undefined;
-    this.playerStore.miniArtworkUri = this.resolveArtworkUri(track.smallArtworkPath);
-    this.playerStore.heroArtwork = this.artworkCache?.getLarge(track);
-    this.playerStore.heroArtworkUri = this.resolveArtworkUri(track.largeArtworkPath);
-    this.playerStore.heroArtworkPreferPixelMap = this.playerStore.heroArtwork !== undefined;
-    this.loadCurrentHeroArtwork(track, epoch);
+    if (!sameSmallArtwork) {
+      this.playerStore.miniArtwork = undefined;
+      this.playerStore.miniArtworkUri = this.resolveArtworkUri(track.smallArtworkPath);
+    }
+    if (!sameLargeArtwork) {
+      this.playerStore.heroArtwork = this.artworkCache?.getLarge(track);
+      this.playerStore.heroArtworkUri = this.resolveArtworkUri(track.largeArtworkPath);
+      this.playerStore.heroArtworkPreferPixelMap = this.playerStore.heroArtwork !== undefined;
+      this.loadCurrentHeroArtwork(track, epoch);
+    }
     const playbackStarted = this.loadAndPlayTrack(track.id, epoch);
     if (this.playerStore.queuePhase === QueueBuildPhase.READY) {
       this.prefetchCurrentWindow();
@@ -545,7 +561,6 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
         throw new Error('音乐记录不存在，可能已从音乐库移除');
       }
       this.currentPlaybackTrack = track;
-      this.playerStore.lyrics = track.lyrics;
       this.playerStore.durationMs = track.durationMs;
       this.session?.updateMetadata(track, this.playerStore.heroArtworkUri);
       if (!await ensureReadPermission(track.uri)) {
@@ -562,6 +577,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
           console.warn(`Unable to restore track availability: ${PlaybackRuntime.messageOf(error)}`);
         });
       }
+      this.loadCurrentLyrics(track, epoch);
       const storedTrackId = this.settings?.getPlaybackLastTrackId(-1) ?? -1;
       const storedPosition = storedTrackId === trackId ?
         this.settings?.getPlaybackLastPositionMs(0) ?? 0 : 0;
@@ -570,7 +586,9 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       if (epoch !== this.artworkEpoch) {
         return;
       }
-      this.loadFullArtwork(track, epoch);
+      if (this.fullArtwork === undefined) {
+        this.loadFullArtwork(track, epoch);
+      }
     } catch (error) {
       if (epoch !== this.artworkEpoch) {
         return;
@@ -586,6 +604,25 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     if (epoch === this.artworkEpoch && pixelMap !== undefined && this.fullArtwork === undefined) {
       this.playerStore.heroArtwork = pixelMap;
       this.playerStore.heroArtworkPreferPixelMap = true;
+    }
+  }
+
+  private async loadCurrentLyrics(track: PlaybackTrack, epoch: number): Promise<void> {
+    try {
+      const lyrics = await MetadataReader.readLyrics(track.uri, track.fileSize, track.format);
+      if (epoch === this.artworkEpoch) {
+        this.playerStore.lyrics = lyrics;
+        this.playerStore.timedLyrics = LyricsParser.parse(lyrics).lines;
+        this.updateActiveLyricIndex(this.playerStore.positionMs);
+        this.session?.updateMetadata(track, this.playerStore.heroArtworkUri, lyrics);
+      }
+    } catch (error) {
+      if (epoch === this.artworkEpoch) {
+        this.playerStore.lyrics = '';
+        this.playerStore.timedLyrics = [];
+        this.playerStore.setActiveLyricIndex(-1);
+      }
+      console.warn(`Unable to read embedded lyrics: ${PlaybackRuntime.messageOf(error)}`);
     }
   }
 
@@ -681,6 +718,31 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   private retireFullArtwork(): void {
     this.artworkCache?.releaseFullArtwork(this.fullArtwork);
     this.fullArtwork = undefined;
+  }
+
+  private static sameArtwork(previous: QueueTrack | undefined, next: QueueTrack, large: boolean): boolean {
+    if (previous === undefined) {
+      return false;
+    }
+    const previousHash = large ? previous.largeArtworkHash : previous.smallArtworkHash;
+    const nextHash = large ? next.largeArtworkHash : next.smallArtworkHash;
+    if (previousHash.length > 0 && nextHash.length > 0) {
+      return previousHash === nextHash;
+    }
+    const previousPath = large ? previous.largeArtworkPath : previous.smallArtworkPath;
+    const nextPath = large ? next.largeArtworkPath : next.smallArtworkPath;
+    return previousPath.length > 0 && previousPath === nextPath;
+  }
+
+  private updateActiveLyricIndex(positionMs: number): void {
+    let active = -1;
+    for (let index = 0; index < this.playerStore.timedLyrics.length; index += 1) {
+      if (this.playerStore.timedLyrics[index].timeMs > positionMs) {
+        break;
+      }
+      active = index;
+    }
+    this.playerStore.setActiveLyricIndex(active);
   }
 
   private static queueTrackOf(item: TrackListItem): QueueTrack {

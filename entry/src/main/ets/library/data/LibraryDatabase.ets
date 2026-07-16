@@ -4,7 +4,7 @@ import { SortKeyNormalizer } from '../metadata/SortKeyNormalizer';
 import { ARTWORK_PALETTE_VERSION } from '../artwork/ArtworkPaletteExtractor';
 
 const DATABASE_NAME = 'music_library.db';
-const DATABASE_VERSION = 11;
+const DATABASE_VERSION = 10;
 const SORT_REBUILD_BATCH_SIZE = 500;
 
 const STORE_CONFIG: relationalStore.StoreConfig = {
@@ -110,7 +110,6 @@ const CURRENT_SCHEMA: Array<string> = [
     album_section TEXT NOT NULL DEFAULT '#',
     album_artist_display TEXT NOT NULL DEFAULT '',
     composer_display TEXT NOT NULL DEFAULT '',
-    lyrics TEXT NOT NULL DEFAULT '',
     track_number INTEGER,
     total_track_count INTEGER,
     track_number_raw TEXT NOT NULL DEFAULT '',

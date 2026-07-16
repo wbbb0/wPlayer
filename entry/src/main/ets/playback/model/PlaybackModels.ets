@@ -1,6 +1,7 @@
 import { image } from '@kit.ImageKit';
 import { AvailabilityState, MediaFormat, ParsedArtwork } from '../../library/model/LibraryModels';
 import { DynamicColor, DynamicContainerRole, ForegroundEmphasis } from '../../appearance/DynamicColor';
+import { TimedLyricLine } from '../lyrics/LyricsParser';
 
 export const DEFAULT_PLAYER_PALETTE_PRIMARY: string = '#FF5B5CE2';
 export const DEFAULT_PLAYER_PALETTE_SECONDARY: string = '#FF5B5CE2';
@@ -78,7 +79,6 @@ export class QueueTrackDataSource implements IDataSource {
 }
 
 export interface PlaybackTrack extends QueueTrack {
-  lyrics: string;
   uri: string;
   fileSize: number;
   modifiedAt: number;
@@ -92,6 +92,8 @@ export interface ResumeState {
   positionMs: number;
   durationMs: number;
 }
+
+export type LyricIndexListener = (index: number) => void;
 
 @Observed
 export class PlayerStore {
@@ -107,6 +109,9 @@ export class PlayerStore {
   heroArtworkPreferPixelMap: boolean = false;
   errorMessage: string = '';
   lyrics: string = '';
+  timedLyrics: Array<TimedLyricLine> = [];
+  activeLyricIndex: number = -1;
+  private readonly lyricIndexListeners: Array<LyricIndexListener> = [];
   shuffleEnabled: boolean = false;
   repeatMode: RepeatMode = RepeatMode.ALL;
   queuePhase: QueueBuildPhase = QueueBuildPhase.EMPTY;
@@ -121,6 +126,28 @@ export class PlayerStore {
 
   isPlaying(): boolean {
     return this.playWhenReady;
+  }
+
+  addLyricIndexListener(listener: LyricIndexListener): void {
+    if (this.lyricIndexListeners.indexOf(listener) < 0) {
+      this.lyricIndexListeners.push(listener);
+    }
+  }
+
+  removeLyricIndexListener(listener: LyricIndexListener): void {
+    const index = this.lyricIndexListeners.indexOf(listener);
+    if (index >= 0) {
+      this.lyricIndexListeners.splice(index, 1);
+    }
+  }
+
+  setActiveLyricIndex(index: number): void {
+    if (this.activeLyricIndex === index) {
+      return;
+    }
+    this.activeLyricIndex = index;
+    console.info(`LyricTimeline active=${index} listeners=${this.lyricIndexListeners.length}`);
+    this.lyricIndexListeners.slice().forEach((listener: LyricIndexListener) => listener(index));
   }
 
   hasCurrentTrack(): boolean {

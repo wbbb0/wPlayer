@@ -23,6 +23,8 @@ export class PlaybackSession {
   private backgroundTail: Promise<void> = Promise.resolve();
   private sessionUpdateTail: Promise<void> = Promise.resolve();
   private metadataUpdateEpoch: number = 0;
+  private metadataTrackId: number = -1;
+  private metadataLyrics: string = '';
   private shuttingDown: boolean = false;
 
   constructor(context: common.UIAbilityContext, commands: PlaybackSessionCommands) {
@@ -40,7 +42,14 @@ export class PlaybackSession {
     return this.initializePromise;
   }
 
-  updateMetadata(track: PlaybackTrack, artwork?: image.PixelMap | string): Promise<void> {
+  updateMetadata(track: PlaybackTrack, artwork?: image.PixelMap | string, lyrics: string = ''): Promise<void> {
+    if (this.metadataTrackId !== track.id) {
+      this.metadataTrackId = track.id;
+      this.metadataLyrics = '';
+    }
+    if (lyrics.length > 0) {
+      this.metadataLyrics = lyrics;
+    }
     const epoch = ++this.metadataUpdateEpoch;
     return this.enqueueSessionUpdate(async () => {
       await this.initialize();
@@ -58,6 +67,13 @@ export class PlaybackSession {
       };
       if (artwork !== undefined && (typeof artwork !== 'string' || artwork.length > 0)) {
         metadata.mediaImage = artwork;
+      }
+      if (this.metadataLyrics.length > 0 && this.metadataLyrics.length < 40960) {
+        if (/\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\]/.test(this.metadataLyrics)) {
+          metadata.lyric = this.metadataLyrics;
+        } else {
+          metadata.singleLyricText = this.metadataLyrics;
+        }
       }
       await this.session.setAVMetadata(metadata);
     });

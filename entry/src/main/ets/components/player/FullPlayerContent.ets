@@ -16,7 +16,8 @@ import {
   PlayerTransportButton
 } from './PlayerControls';
 import { PlayerHeroArtwork } from './PlayerArtworkViews';
-import { PlayerStore, QueueTrack } from '../../playback/model/PlaybackModels';
+import { LyricIndexListener, PlayerStore, QueueTrack } from '../../playback/model/PlaybackModels';
+import { TimedLyricLine } from '../../playback/lyrics/LyricsParser';
 import { ArtworkFitMode, ArtworkView } from '../artwork/ArtworkView';
 
 function lengthToNumber(value: Length | undefined, fallback: number): number {
@@ -28,6 +29,32 @@ function lengthToNumber(value: Length | undefined, fallback: number): number {
     return Number.isNaN(parsedValue) ? fallback : parsedValue;
   }
   return fallback;
+}
+
+@Component
+struct TimedLyricRow {
+  @ObjectLink playerStore: PlayerStore;
+  @Prop line: TimedLyricLine;
+  @Prop index: number = -1;
+
+  build() {
+    Text(this.line.text)
+      .width('100%')
+      .fontSize(23)
+      .lineHeight(38)
+      .fontWeight(FontWeight.Bold)
+      .fontColor(this.index === this.playerStore.activeLyricIndex ?
+        this.playerStore.themeOnPrimary() : this.playerStore.themeOnPrimaryMedium())
+      .opacity(this.index === this.playerStore.activeLyricIndex ? 1 : 0.72)
+      .textAlign(TextAlign.Start)
+      .scale({
+        x: this.index === this.playerStore.activeLyricIndex ? 1 : 0.88,
+        y: this.index === this.playerStore.activeLyricIndex ? 1 : 0.88,
+        centerX: '0%',
+        centerY: '50%'
+      })
+      .animation({ duration: 220, curve: Curve.EaseInOut })
+  }
 }
 
 @Component
@@ -55,8 +82,19 @@ export struct FullPlayerContent {
   onArtworkTarget: (target: PlayerPoint) => void = (_target: PlayerPoint): void => {};
   onCenteredArtworkTarget: (target: PlayerPoint) => void = (_target: PlayerPoint): void => {};
   private readonly queueScroller: Scroller = new Scroller();
+  private readonly lyricScroller: Scroller = new Scroller();
   private lastFocusedQueueIndex: number = -1;
   private hasFocusedQueue: boolean = false;
+  private lastFocusedLyricIndex: number = -1;
+  private readonly lyricIndexListener: LyricIndexListener = (index: number): void => {
+    if (this.measuresArtworkTarget || index < 0 || this.playerStore.timedLyrics.length === 0) {
+      return;
+    }
+    const targetIndex = Math.max(0, index - 2);
+    this.lastFocusedLyricIndex = index;
+    console.info(`LyricAutoScroll active=${index} target=${targetIndex}`);
+    this.lyricScroller.scrollToIndex(targetIndex, true, ScrollAlign.START);
+  };
   @State private seeking: boolean = false;
   @State private seekPreviewMs: number = 0;
 
@@ -105,18 +143,36 @@ export struct FullPlayerContent {
     this.onSeek(Math.round(this.seekPreviewMs));
   }
 
+  aboutToAppear(): void {
+    this.playerStore.addLyricIndexListener(this.lyricIndexListener);
+  }
+
+  aboutToDisappear(): void {
+    this.playerStore.removeLyricIndexListener(this.lyricIndexListener);
+  }
+
   onDidBuild(): void {
-    if (this.measuresArtworkTarget || this.playerStore.queueCurrentIndex < 0 ||
-      this.lastFocusedQueueIndex === this.playerStore.queueCurrentIndex) {
+    if (this.measuresArtworkTarget) {
       return;
     }
-    this.lastFocusedQueueIndex = this.playerStore.queueCurrentIndex;
-    this.queueScroller.scrollToIndex(
-      this.playerStore.queueCurrentIndex,
-      this.hasFocusedQueue,
-      ScrollAlign.CENTER
-    );
-    this.hasFocusedQueue = true;
+    if (this.playerStore.queueCurrentIndex >= 0 &&
+      this.lastFocusedQueueIndex !== this.playerStore.queueCurrentIndex) {
+      this.lastFocusedQueueIndex = this.playerStore.queueCurrentIndex;
+      this.queueScroller.scrollToIndex(this.playerStore.queueCurrentIndex, this.hasFocusedQueue, ScrollAlign.CENTER);
+      this.hasFocusedQueue = true;
+    }
+    const lyricIndex = this.playerStore.activeLyricIndex;
+    if (this.playerStore.timedLyrics.length === 0) {
+      this.lastFocusedLyricIndex = -1;
+    }
+    if (lyricIndex >= 0 && lyricIndex !== this.lastFocusedLyricIndex) {
+      this.lastFocusedLyricIndex = lyricIndex;
+      this.lyricIndexListener(lyricIndex);
+    }
+  }
+
+  private lyricEndOffset(): number {
+    return Math.max(0, (this.rootFrame.height - this.topInset - this.bottomInset) * 0.62);
   }
 
   private headerTextInset(page: FullPlayerPage): number {
@@ -355,8 +411,16 @@ export struct FullPlayerContent {
     }
     .width(this.pageWidth())
     .height('100%')
+    .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) => {
+      recognizers.forEach((recognizer: GestureRecognizer) => {
+        if (recognizer.getEventTargetInfo().getId() === FULL_PLAYER_VERTICAL_GESTURE_HOST_ID) {
+          recognizer.preventBegin();
+        }
+      });
+    })
     .padding({
-      top: PlayerLayoutSpec.FULL_PLAYER_PAGE_TOP_INSET,
+      top: PlayerLayoutSpec.FULL_PLAYER_PAGE_TOP_INSET +
+        (this.paneCount > 1 ? PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE : 0),
       bottom: this.bottomInset + PlayerLayoutSpec.FULL_PLAYER_BOTTOM_INSET
     })
   }
@@ -506,7 +570,27 @@ export struct FullPlayerContent {
   @Builder
   private LyricsPage() {
     Column() {
-      if (this.playerStore.lyrics.length > 0) {
+      if (this.playerStore.timedLyrics.length > 0) {
+        List({ space: 14, scroller: this.lyricScroller }) {
+          ForEach(this.playerStore.timedLyrics, (line: TimedLyricLine, index: number) => {
+            ListItem() {
+              TimedLyricRow({ playerStore: this.playerStore, line: line, index: index })
+            }
+          }, (line: TimedLyricLine, index: number) => `${line.timeMs}_${index}`)
+        }
+        .width('100%')
+        .layoutWeight(1)
+        .edgeEffect(EdgeEffect.Spring)
+        .scrollBar(BarState.Off)
+        .contentEndOffset(this.lyricEndOffset())
+        .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) => {
+          recognizers.forEach((recognizer: GestureRecognizer) => {
+            if (recognizer.getEventTargetInfo().getId() === FULL_PLAYER_VERTICAL_GESTURE_HOST_ID) {
+              recognizer.preventBegin();
+            }
+          });
+        })
+      } else if (this.playerStore.lyrics.length > 0) {
         Scroll() {
           Text(this.playerStore.lyrics)
             .width('100%')
@@ -519,6 +603,13 @@ export struct FullPlayerContent {
         .width('100%')
         .layoutWeight(1)
         .edgeEffect(EdgeEffect.Spring)
+        .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) => {
+          recognizers.forEach((recognizer: GestureRecognizer) => {
+            if (recognizer.getEventTargetInfo().getId() === FULL_PLAYER_VERTICAL_GESTURE_HOST_ID) {
+              recognizer.preventBegin();
+            }
+          });
+        })
       } else {
         Column({ space: 10 }) {
           Text('暂未找到内嵌歌词')
@@ -537,12 +628,36 @@ export struct FullPlayerContent {
     }
     .width(this.pageWidth())
     .height('100%')
+    .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) => {
+      recognizers.forEach((recognizer: GestureRecognizer) => {
+        if (recognizer.getEventTargetInfo().getId() === FULL_PLAYER_VERTICAL_GESTURE_HOST_ID) {
+          recognizer.preventBegin();
+        }
+      });
+    })
     .padding({
       left: PlayerLayoutSpec.FULL_PLAYER_LYRICS_HORIZONTAL_INSET,
       right: PlayerLayoutSpec.FULL_PLAYER_LYRICS_HORIZONTAL_INSET,
-      top: PlayerLayoutSpec.FULL_PLAYER_PAGE_TOP_INSET,
+      top: this.paneCount > 1 ? 0 : PlayerLayoutSpec.FULL_PLAYER_PAGE_TOP_INSET,
       bottom: this.bottomInset + PlayerLayoutSpec.FULL_PLAYER_BOTTOM_INSET
     })
+  }
+
+  @Builder
+  private PlayerPages() {
+    Stack({ alignContent: Alignment.TopStart }) {
+      Row({ space: 0 }) {
+        this.QueuePage()
+        this.CoverPage()
+        this.LyricsPage()
+      }
+      .width(this.pageWidth() * FullPlayerPagerSpec.PAGE_COUNT)
+      .height('100%')
+      .translate({ x: -this.pagePosition * this.pageWidth() })
+    }
+    .width('100%')
+    .height('100%')
+    .clip(true)
   }
 
   build() {
@@ -558,23 +673,22 @@ export struct FullPlayerContent {
       .width('100%')
       .height('100%')
       .padding({ top: this.topInset + PlayerLayoutSpec.FULL_PLAYER_TOP_INSET })
+    } else if (this.paneCount > 1) {
+      Stack({ alignContent: Alignment.TopStart }) {
+        this.PlayerPages()
+        this.Header()
+      }
+      .width('100%')
+      .height('100%')
+      .padding({ top: this.topInset + PlayerLayoutSpec.FULL_PLAYER_TOP_INSET })
     } else {
       Column() {
         this.Header()
-
-        Stack({ alignContent: Alignment.TopStart }) {
-          Row({ space: 0 }) {
-            this.QueuePage()
-            this.CoverPage()
-            this.LyricsPage()
-          }
-          .width(this.pageWidth() * FullPlayerPagerSpec.PAGE_COUNT)
-          .height('100%')
-          .translate({ x: -this.pagePosition * this.pageWidth() })
+        Stack() {
+          this.PlayerPages()
         }
-        .layoutWeight(1)
         .width('100%')
-        .clip(true)
+        .layoutWeight(1)
       }
       .width('100%')
       .height('100%')

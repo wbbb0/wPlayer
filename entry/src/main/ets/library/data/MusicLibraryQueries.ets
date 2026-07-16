@@ -115,7 +115,7 @@ export class MusicLibraryQueries {
         COALESCE(a.large_hash, ''), COALESCE(a.large_path, ''),
         COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
         COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
-        COALESCE(a.palette_accent, '#FFFFB347'), t.lyrics,
+        COALESCE(a.palette_accent, '#FFFFB347'),
         COALESCE(ta.picture_type, 0), COALESCE(ta.mime_type, ''), COALESCE(ta.description, ''),
         COALESCE(ta.width, 0), COALESCE(ta.height, 0), COALESCE(ta.color_depth, 0),
         COALESCE(ta.byte_offset, 0), COALESCE(ta.byte_length, 0), COALESCE(ta.payload_offset, 0),
@@ -135,7 +135,7 @@ export class MusicLibraryQueries {
       if (!resultSet.goToNextRow()) {
         return undefined;
       }
-      const byteLength = resultSet.getLong(28);
+      const byteLength = resultSet.getLong(27);
       const track: PlaybackTrack = {
         id: resultSet.getLong(0),
         title: resultSet.getString(1),
@@ -156,22 +156,21 @@ export class MusicLibraryQueries {
         artworkHeight: resultSet.getLong(16),
         palettePrimary: resultSet.getString(17),
         paletteSecondary: resultSet.getString(18),
-        paletteAccent: resultSet.getString(19),
-        lyrics: resultSet.getString(20)
+        paletteAccent: resultSet.getString(19)
       };
       if (byteLength > 0) {
         track.artwork = {
-          pictureType: resultSet.getLong(21) as ArtworkPictureType,
-          mimeType: resultSet.getString(22),
-          description: resultSet.getString(23),
-          width: resultSet.getLong(24),
-          height: resultSet.getLong(25),
-          colorDepth: resultSet.getLong(26),
-          byteOffset: resultSet.getLong(27),
+          pictureType: resultSet.getLong(20) as ArtworkPictureType,
+          mimeType: resultSet.getString(21),
+          description: resultSet.getString(22),
+          width: resultSet.getLong(23),
+          height: resultSet.getLong(24),
+          colorDepth: resultSet.getLong(25),
+          byteOffset: resultSet.getLong(26),
           byteLength: byteLength,
-          payloadOffset: resultSet.getLong(29),
-          ordinal: resultSet.getLong(30),
-          unsynchronized: resultSet.getLong(31) === 1
+          payloadOffset: resultSet.getLong(28),
+          ordinal: resultSet.getLong(29),
+          unsynchronized: resultSet.getLong(30) === 1
         };
       }
       return track;

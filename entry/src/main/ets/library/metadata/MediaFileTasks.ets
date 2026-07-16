@@ -92,6 +92,22 @@ function calculateFullFingerprintTask(uri: string): string {
 }
 
 @Concurrent
+function readEmbeddedLyricsTask(uri: string, format: MediaFormat): string {
+  const reader = new BinaryFileReader(uri);
+  try {
+    if (format === MediaFormat.MP3) {
+      return Id3TagReader.read(reader).lyrics;
+    }
+    if (format === MediaFormat.FLAC) {
+      return FlacTagReader.read(reader).lyrics;
+    }
+    return '';
+  } finally {
+    reader.close();
+  }
+}
+
+@Concurrent
 function readArtworkBytesTask(uri: string, byteOffset: number, byteLength: number,
   payloadOffset: number, unsynchronized: boolean): ArrayBuffer {
   if (byteOffset < 0 || byteLength <= 0 || byteLength > 64 * 1024 * 1024) {
@@ -166,6 +182,10 @@ export function calculateFullFingerprint(uri: string): Promise<string> {
 
 export function probeMediaFile(uri: string): Promise<MediaProbeResult> {
   return taskpool.execute(probeMediaFileTask, uri) as Promise<MediaProbeResult>;
+}
+
+export function readEmbeddedLyrics(uri: string, format: MediaFormat): Promise<string> {
+  return taskpool.execute(readEmbeddedLyricsTask, uri, format) as Promise<string>;
 }
 
 export function readArtworkBytesAsync(uri: string, byteOffset: number, byteLength: number,

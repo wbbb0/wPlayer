@@ -32,8 +32,16 @@ import {
 } from '../components/player/MiniPlayerSurface';
 import { ArtworkLayout } from '../components/artwork/ArtworkLayout';
 import {
-  MORE_NAVIGATION_ITEMS,
-  MoreRoute
+  ALL_ROOT_NAVIGATION_ITEMS,
+  DEFAULT_NAVIGATION_ORDER,
+  NavigationPageItem,
+  NavigationRoute,
+  PRIMARY_NAVIGATION_COUNT,
+  SETTINGS_NAVIGATION_ITEM,
+  navigationItem,
+  navigationItemIndex,
+  normalizeNavigationOrder,
+  orderedNavigationItems
 } from '../components/navigation/MoreNavigation';
 import { ResponsiveNavigationShell } from '../components/navigation/ResponsiveNavigationShell';
 import {
@@ -43,16 +51,15 @@ import {
 } from '../appearance/AppAppearance';
 import { PaletteMotionSpec } from '../appearance/PaletteMotionSpec';
 
-const MORE_TAB_INDEX: number = 3;
-
+const MORE_TAB_INDEX: number = PRIMARY_NAVIGATION_COUNT;
 @Entry
 @Component
 struct Index {
   @State statusBarAvoidHeight: number = 0;
   @State navigationAvoidHeight: number = 0;
   @State appearancePalette: AppAppearancePalette = AppAppearancePalette.fallback();
-  @State selectedTabIndex: number = 0;
-  @State selectedMoreRouteId: string = MoreRoute.LIBRARY_MANAGEMENT;
+  @State navigationOrder: Array<string> = DEFAULT_NAVIGATION_ORDER;
+  @State selectedRouteId: string = NavigationRoute.PLAYLISTS;
   @State libraryStore: LibraryStore = new LibraryStore(playbackRuntime.repository);
   @State playerStore: PlayerStore = playbackRuntime.playerStore;
   @State miniBarExpanded: boolean = false;
@@ -103,21 +110,13 @@ struct Index {
   private readonly compactTabsController: HdsTabsController = new HdsTabsController();
   private readonly expandedTabsController: HdsTabsController = new HdsTabsController();
   private settingsRepository?: SettingsRepository;
-  private readonly primaryTitleContents: Array<ComponentContent<AppPrimaryTitleParams> | undefined> = [
-    undefined, undefined, undefined, undefined
-  ];
-  private readonly moreTitleContents: Array<ComponentContent<AppPrimaryTitleParams> | undefined> =
-    new Array<ComponentContent<AppPrimaryTitleParams> | undefined>(MORE_NAVIGATION_ITEMS.length);
-  private readonly tabPathStacks: Array<NavPathStack> = [
-    new NavPathStack(), new NavPathStack(), new NavPathStack(), new NavPathStack()
-  ];
-  private readonly expandedMorePathStacks: Array<NavPathStack> =
-    MORE_NAVIGATION_ITEMS.map(() => new NavPathStack());
-  private readonly pageScrollers: Array<Scroller> = [
-    new Scroller(), new Scroller(), new Scroller(), new Scroller()
-  ];
-  private readonly libraryManagementScroller: Scroller = new Scroller();
-  private readonly navigationLabels: Array<string> = ['播放列表', '音乐', '专辑', '更多'];
+  private readonly rootTitleContents: Array<ComponentContent<AppPrimaryTitleParams> | undefined> =
+    new Array<ComponentContent<AppPrimaryTitleParams> | undefined>(ALL_ROOT_NAVIGATION_ITEMS.length);
+  private readonly rootPathStacks: Array<NavPathStack> = ALL_ROOT_NAVIGATION_ITEMS.map(() => new NavPathStack());
+  private readonly rootScrollers: Array<Scroller> = ALL_ROOT_NAVIGATION_ITEMS.map(() => new Scroller());
+  private readonly morePathStack: NavPathStack = new NavPathStack();
+  private readonly moreScroller: Scroller = new Scroller();
+  private readonly customizationScroller: Scroller = new Scroller();
 
   aboutToAppear(): void {
     appAppearanceController.addListener(this.appearanceListener);
@@ -129,7 +128,14 @@ struct Index {
       this.avoidAreaController.start(abilityContext);
       try {
         this.settingsRepository = new SettingsRepository(abilityContext);
-        this.selectedTabIndex = this.normalizeTabIndex(this.settingsRepository.getLastTabIndex());
+        this.navigationOrder = normalizeNavigationOrder(
+          this.settingsRepository.getNavigationOrder(DEFAULT_NAVIGATION_ORDER)
+        );
+        const oldTabIndex = this.normalizeTabIndex(this.settingsRepository.getLastTabIndex());
+        const fallbackRoute = oldTabIndex < PRIMARY_NAVIGATION_COUNT ?
+          this.navigationOrder[oldTabIndex] : this.navigationOrder[PRIMARY_NAVIGATION_COUNT];
+        const storedRoute = this.settingsRepository.getLastNavigationRoute(fallbackRoute);
+        this.selectedRouteId = navigationItem(storedRoute) === undefined ? NavigationRoute.PLAYLISTS : storedRoute;
       } catch (error) {
         const businessError = error as BusinessError;
         console.warn(`Unable to initialize settings: ${businessError.code}, ${businessError.message}`);
@@ -144,33 +150,20 @@ struct Index {
   aboutToDisappear(): void {
     appAppearanceController.removeListener(this.appearanceListener);
     this.avoidAreaController.stop();
-    for (let index = 0; index < this.primaryTitleContents.length; index += 1) {
-      this.primaryTitleContents[index]?.dispose();
-      this.primaryTitleContents[index] = undefined;
-    }
-    for (let index = 0; index < this.moreTitleContents.length; index += 1) {
-      this.moreTitleContents[index]?.dispose();
-      this.moreTitleContents[index] = undefined;
+    for (let index = 0; index < this.rootTitleContents.length; index += 1) {
+      this.rootTitleContents[index]?.dispose();
+      this.rootTitleContents[index] = undefined;
     }
   }
 
   private initializePrimaryTitleContents(): void {
     const uiContext = this.getUIContext();
-    for (let index = 0; index < this.navigationLabels.length; index += 1) {
-      if (this.primaryTitleContents[index] === undefined) {
-        this.primaryTitleContents[index] = new ComponentContent(
+    for (let index = 0; index < ALL_ROOT_NAVIGATION_ITEMS.length; index += 1) {
+      if (this.rootTitleContents[index] === undefined) {
+        this.rootTitleContents[index] = new ComponentContent(
           uiContext,
           wrapBuilder(AppPrimaryTitleContent),
-          new AppPrimaryTitleParams(this.navigationLabels[index], this.appearancePalette.titlePrimary)
-        );
-      }
-    }
-    for (let index = 0; index < MORE_NAVIGATION_ITEMS.length; index += 1) {
-      if (this.moreTitleContents[index] === undefined) {
-        this.moreTitleContents[index] = new ComponentContent(
-          uiContext,
-          wrapBuilder(AppPrimaryTitleContent),
-          new AppPrimaryTitleParams(MORE_NAVIGATION_ITEMS[index].label, this.appearancePalette.titlePrimary)
+          new AppPrimaryTitleParams(ALL_ROOT_NAVIGATION_ITEMS[index].label, this.appearancePalette.titlePrimary)
         );
       }
     }
@@ -183,14 +176,9 @@ struct Index {
     }
     const palette = AppAppearancePalette.resolve(context as common.UIAbilityContext);
     this.appearancePalette = palette;
-    for (let index = 0; index < this.primaryTitleContents.length; index += 1) {
-      this.primaryTitleContents[index]?.update(
-        new AppPrimaryTitleParams(this.navigationLabels[index], palette.titlePrimary)
-      );
-    }
-    for (let index = 0; index < this.moreTitleContents.length; index += 1) {
-      this.moreTitleContents[index]?.update(
-        new AppPrimaryTitleParams(MORE_NAVIGATION_ITEMS[index].label, palette.titlePrimary)
+    for (let index = 0; index < this.rootTitleContents.length; index += 1) {
+      this.rootTitleContents[index]?.update(
+        new AppPrimaryTitleParams(ALL_ROOT_NAVIGATION_ITEMS[index].label, palette.titlePrimary)
       );
     }
   }
@@ -213,82 +201,134 @@ struct Index {
   }
 
   private normalizeTabIndex(index: number): number {
-    return Number.isInteger(index) && index >= 0 && index < this.navigationLabels.length ? index : 0;
+    return Number.isInteger(index) && index >= 0 && index <= MORE_TAB_INDEX ? index : 0;
+  }
+
+  private orderedItems(): Array<NavigationPageItem> {
+    return orderedNavigationItems(this.navigationOrder);
+  }
+
+  private primaryItems(): Array<NavigationPageItem> {
+    return this.orderedItems().slice(0, PRIMARY_NAVIGATION_COUNT);
+  }
+
+  private moreItems(): Array<NavigationPageItem> {
+    return this.orderedItems().slice(PRIMARY_NAVIGATION_COUNT).concat([SETTINGS_NAVIGATION_ITEM]);
+  }
+
+  private expandedItems(): Array<NavigationPageItem> {
+    return this.orderedItems().concat([SETTINGS_NAVIGATION_ITEM]);
+  }
+
+  private compactTabIndex(): number {
+    const primary = this.primaryItems();
+    for (let index = 0; index < primary.length; index += 1) {
+      if (primary[index].routeId === this.selectedRouteId) {
+        return index;
+      }
+    }
+    return MORE_TAB_INDEX;
+  }
+
+  private selectRoute(routeId: string): void {
+    if (navigationItem(routeId) === undefined) {
+      return;
+    }
+    this.selectedRouteId = routeId;
+    this.settingsRepository?.setLastNavigationRoute(routeId);
+    this.settingsRepository?.setLastTabIndex(this.compactTabIndex());
   }
 
   private handleCompactTabChange(index: number): void {
     const normalizedIndex = this.normalizeTabIndex(index);
-    this.selectedTabIndex = normalizedIndex;
-    this.settingsRepository?.setLastTabIndex(normalizedIndex);
+    if (normalizedIndex < PRIMARY_NAVIGATION_COUNT) {
+      this.selectRoute(this.primaryItems()[normalizedIndex].routeId);
+      return;
+    }
+    if (this.compactTabIndex() !== MORE_TAB_INDEX) {
+      this.selectRoute(this.moreItems()[0].routeId);
+    }
   }
 
   private handleCompactTabBarClick(index: number): void {
-    if (index === this.selectedTabIndex) {
-      this.tabPathStacks[index].clear(true);
+    if (index !== this.compactTabIndex()) {
+      return;
+    }
+    if (index < PRIMARY_NAVIGATION_COUNT) {
+      this.rootPathStacks[navigationItemIndex(this.selectedRouteId)].clear(true);
+    } else {
+      this.morePathStack.clear(true);
     }
   }
 
   private expandedTabIndex(): number {
-    if (this.selectedTabIndex < MORE_TAB_INDEX) {
-      return this.selectedTabIndex;
-    }
-    return MORE_TAB_INDEX + this.moreNavigationIndex();
-  }
-
-  private handleExpandedTabChange(index: number): void {
-    if (index < MORE_TAB_INDEX) {
-      const normalizedIndex = this.normalizeTabIndex(index);
-      this.selectedTabIndex = normalizedIndex;
-      this.settingsRepository?.setLastTabIndex(normalizedIndex);
-      return;
-    }
-    const moreIndex = index - MORE_TAB_INDEX;
-    if (moreIndex < 0 || moreIndex >= MORE_NAVIGATION_ITEMS.length) {
-      return;
-    }
-    this.selectedMoreRouteId = MORE_NAVIGATION_ITEMS[moreIndex].routeId;
-    this.selectedTabIndex = MORE_TAB_INDEX;
-    this.tabPathStacks[MORE_TAB_INDEX].clear(false);
-    this.settingsRepository?.setLastTabIndex(MORE_TAB_INDEX);
-  }
-
-  private handleExpandedTabBarClick(index: number): void {
-    if (index !== this.expandedTabIndex()) {
-      return;
-    }
-    if (index < MORE_TAB_INDEX) {
-      this.tabPathStacks[index].clear(true);
-      return;
-    }
-    this.expandedMorePathStacks[index - MORE_TAB_INDEX].clear(true);
-  }
-
-  private moreNavigationIndex(routeId: string = this.selectedMoreRouteId): number {
-    for (let index = 0; index < MORE_NAVIGATION_ITEMS.length; index += 1) {
-      if (MORE_NAVIGATION_ITEMS[index].routeId === routeId) {
+    const items = this.expandedItems();
+    for (let index = 0; index < items.length; index += 1) {
+      if (items[index].routeId === this.selectedRouteId) {
         return index;
       }
     }
     return 0;
   }
 
-  private openMoreDestination(routeId: string): void {
-    const routeIndex = this.moreNavigationIndex(routeId);
-    const item = MORE_NAVIGATION_ITEMS[routeIndex];
-    if (item.routeId !== routeId) {
+  private handleExpandedTabChange(index: number): void {
+    const items = this.expandedItems();
+    if (index < 0 || index >= items.length) {
       return;
     }
-    this.selectedMoreRouteId = routeId;
-    this.tabPathStacks[MORE_TAB_INDEX].pushPath({ name: routeId });
+    this.selectRoute(items[index].routeId);
+    this.morePathStack.clear(false);
+  }
+
+  private handleExpandedTabBarClick(index: number): void {
+    if (index !== this.expandedTabIndex()) {
+      return;
+    }
+    this.rootPathStacks[navigationItemIndex(this.selectedRouteId)].clear(true);
+  }
+
+  private openMoreDestination(routeId: string): void {
+    const moreItems = this.moreItems();
+    let isMoreItem = false;
+    for (let index = 0; index < moreItems.length; index += 1) {
+      if (moreItems[index].routeId === routeId) {
+        isMoreItem = true;
+        break;
+      }
+    }
+    if (!isMoreItem) {
+      return;
+    }
+    this.selectRoute(routeId);
+    this.morePathStack.pushPath({ name: routeId });
+  }
+
+  private openNavigationCustomization(): void {
+    this.selectRoute(NavigationRoute.SETTINGS);
+    const pathStack = this.usesWideLayout() ?
+      this.rootPathStacks[navigationItemIndex(NavigationRoute.SETTINGS)] : this.morePathStack;
+    pathStack.pushPath({ name: NavigationRoute.NAVIGATION_CUSTOMIZATION });
+  }
+
+  private moveNavigationItem(from: number, to: number): void {
+    const normalized = normalizeNavigationOrder(this.navigationOrder);
+    if (from < 0 || from >= normalized.length || to < 0 || to >= normalized.length || from === to) {
+      return;
+    }
+    const moved = normalized[from];
+    normalized.splice(from, 1);
+    normalized.splice(to, 0, moved);
+    this.navigationOrder = normalized;
+    this.settingsRepository?.setNavigationOrder(normalized);
   }
 
   private reconcileResponsiveNavigation(previousWideLayout: boolean, nextWideLayout: boolean): void {
-    if (previousWideLayout === nextWideLayout || this.selectedTabIndex !== MORE_TAB_INDEX) {
+    if (previousWideLayout === nextWideLayout || this.compactTabIndex() !== MORE_TAB_INDEX) {
       return;
     }
-    this.tabPathStacks[MORE_TAB_INDEX].clear(false);
+    this.morePathStack.clear(false);
     if (!nextWideLayout) {
-      this.tabPathStacks[MORE_TAB_INDEX].pushPath({ name: this.selectedMoreRouteId }, false);
+      this.morePathStack.pushPath({ name: this.selectedRouteId }, false);
     }
   }
 
@@ -774,8 +814,8 @@ struct Index {
       bottomInset: this.navigationAvoidHeight,
       rootWidth: this.rootFrame.width,
       rootHeight: this.rootFrame.height,
-      selectedTabIndex: this.selectedTabIndex,
-      selectedMoreRouteId: this.selectedMoreRouteId,
+      navigationOrder: this.navigationOrder,
+      selectedRouteId: this.selectedRouteId,
       miniBarExpanded: this.miniBarExpanded,
       miniPlayerOffsetX: this.miniPlayerOffsetX,
       morphActive: this.isMorphActive(),
@@ -783,17 +823,19 @@ struct Index {
       appearancePalette: this.appearancePalette,
       compactTabsController: this.compactTabsController,
       expandedTabsController: this.expandedTabsController,
-      primaryTitleContents: this.primaryTitleContents,
-      moreTitleContents: this.moreTitleContents,
-      tabPathStacks: this.tabPathStacks,
-      expandedMorePathStacks: this.expandedMorePathStacks,
-      pageScrollers: this.pageScrollers,
-      libraryManagementScroller: this.libraryManagementScroller,
+      rootTitleContents: this.rootTitleContents,
+      rootPathStacks: this.rootPathStacks,
+      rootScrollers: this.rootScrollers,
+      morePathStack: this.morePathStack,
+      moreScroller: this.moreScroller,
+      customizationScroller: this.customizationScroller,
       onCompactTabChange: (index: number): void => this.handleCompactTabChange(index),
       onCompactTabClick: (index: number): void => this.handleCompactTabBarClick(index),
       onExpandedTabChange: (index: number): void => this.handleExpandedTabChange(index),
       onExpandedTabClick: (index: number): void => this.handleExpandedTabBarClick(index),
       onOpenMoreDestination: (routeId: string): void => this.openMoreDestination(routeId),
+      onOpenNavigationCustomization: (): void => this.openNavigationCustomization(),
+      onNavigationItemMove: (from: number, to: number): void => this.moveNavigationItem(from, to),
       onMiniBarStyleChange: (expanded: boolean): void => {
         this.miniBarExpanded = expanded;
       },

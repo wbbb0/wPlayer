@@ -17,6 +17,10 @@ export class AppShellLayoutSpec {
   static readonly EXPANDED_TAB_ITEM_VERTICAL_GAP: number = 2;
   static readonly EXPANDED_TAB_ITEM_PORTRAIT_HEIGHT: number = 56;
   static readonly EXPANDED_TAB_ITEM_LANDSCAPE_HEIGHT: number = 48;
+  static readonly EXPANDED_TAB_SECTION_DIVIDER_WIDTH: number = 36;
+  static readonly EXPANDED_TAB_SECTION_DIVIDER_THICKNESS: number = 1;
+  static readonly EXPANDED_TAB_SECTION_DIVIDER_MARGIN: number = 8;
+  static readonly EXPANDED_TAB_SECTION_DIVIDER_OPACITY: number = 0.24;
   static readonly HIDDEN_TAB_BAR_WIDTH: number = 56;
 
   static readonly COMPACT_TAB_SMALL_WIDTH: number = 280;

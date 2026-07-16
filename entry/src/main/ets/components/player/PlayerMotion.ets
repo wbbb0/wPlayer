@@ -21,7 +21,8 @@ export enum PlayerMorphPhase {
   DRAGGING,
   OPENING,
   OPEN,
-  CLOSING
+  CLOSING,
+  BACKGROUND_HANDOFF
 }
 
 export class PlayerMotionSpec {
@@ -31,6 +32,7 @@ export class PlayerMotionSpec {
   static readonly CLOSE_DURATION: number = 340;
   static readonly CANCEL_DURATION: number = 280;
   static readonly CLOSE_CANCEL_DURATION: number = 240;
+  static readonly BACKGROUND_HANDOFF_DURATION: number = 140;
   static readonly OPEN_SPRING_RESPONSE: number = 0.48;
   static readonly OPEN_SPRING_DAMPING: number = 0.88;
   static readonly CLOSE_CURVE_X1: number = 0.2;

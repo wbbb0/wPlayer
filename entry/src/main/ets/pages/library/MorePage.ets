@@ -1,15 +1,13 @@
 import { PageLayoutSpec } from '../../components/layout/PageLayoutSpec';
 import { PageScrollBehavior, PageScrollContentBehavior } from '../../components/layout/PageScrollBehavior';
-import {
-  MORE_NAVIGATION_ITEMS,
-  MoreNavigationItem
-} from '../../components/navigation/MoreNavigation';
+import { NavigationPageItem } from '../../components/navigation/MoreNavigation';
 
 @Component
 export struct MorePage {
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   scroller: Scroller = new Scroller();
+  @Prop items: Array<NavigationPageItem> = [];
   private readonly scrollBehavior: PageScrollBehavior = new PageScrollBehavior();
   private readonly contentBehavior: PageScrollContentBehavior = new PageScrollContentBehavior();
   openDestination: (routeId: string) => void = (_routeId: string) => {};
@@ -17,7 +15,7 @@ export struct MorePage {
   build() {
     Scroll(this.scroller) {
       Column({ space: 12 }) {
-        ForEach(MORE_NAVIGATION_ITEMS, (item: MoreNavigationItem) => {
+        ForEach(this.items, (item: NavigationPageItem) => {
           Row({ space: 14 }) {
             SymbolGlyph(item.symbol)
               .fontSize(24)
@@ -44,7 +42,7 @@ export struct MorePage {
           .onClick(() => {
             this.openDestination(item.routeId);
           })
-        }, (item: MoreNavigationItem) => item.routeId)
+        }, (item: NavigationPageItem) => item.routeId)
       }
       .width('100%')
       .padding({

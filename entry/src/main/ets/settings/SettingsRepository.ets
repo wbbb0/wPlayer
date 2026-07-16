@@ -4,6 +4,8 @@ import { BusinessError } from '@kit.BasicServicesKit';
 
 const SETTINGS_FILE_NAME: string = 'wplayer_settings';
 const LAST_TAB_INDEX_KEY: string = 'navigation.last_tab_index';
+const LAST_NAVIGATION_ROUTE_KEY: string = 'navigation.last_route';
+const NAVIGATION_ORDER_KEY: string = 'navigation.page_order';
 const SONG_SORT_FIELD_KEY: string = 'library.songs.sort_field';
 const SONG_SORT_DESCENDING_KEY: string = 'library.songs.sort_descending';
 const ALBUM_SORT_FIELD_KEY: string = 'library.albums.sort_field';
@@ -30,6 +32,38 @@ export class SettingsRepository {
 
   setLastTabIndex(value: number): void {
     this.setValue(LAST_TAB_INDEX_KEY, value);
+  }
+
+  getLastNavigationRoute(defaultValue: string): string {
+    return this.getString(LAST_NAVIGATION_ROUTE_KEY, defaultValue);
+  }
+
+  setLastNavigationRoute(value: string): void {
+    this.setValue(LAST_NAVIGATION_ROUTE_KEY, value);
+  }
+
+  getNavigationOrder(defaultValue: Array<string>): Array<string> {
+    try {
+      const value = this.store.getSync(NAVIGATION_ORDER_KEY, defaultValue);
+      if (!Array.isArray(value)) {
+        return defaultValue;
+      }
+      const result: Array<string> = [];
+      for (let index = 0; index < value.length; index += 1) {
+        if (typeof value[index] === 'string') {
+          result.push(value[index] as string);
+        }
+      }
+      return result;
+    } catch (error) {
+      const businessError = error as BusinessError;
+      console.warn(`Unable to read setting ${NAVIGATION_ORDER_KEY}: ${businessError.code}, ${businessError.message}`);
+      return defaultValue;
+    }
+  }
+
+  setNavigationOrder(value: Array<string>): void {
+    this.setValue(NAVIGATION_ORDER_KEY, value);
   }
 
   getSongSortField(defaultValue: number = 0): number {
@@ -97,6 +131,17 @@ export class SettingsRepository {
     try {
       const value = this.store.getSync(key, defaultValue);
       return typeof value === 'boolean' ? value : defaultValue;
+    } catch (error) {
+      const businessError = error as BusinessError;
+      console.warn(`Unable to read setting ${key}: ${businessError.code}, ${businessError.message}`);
+      return defaultValue;
+    }
+  }
+
+  private getString(key: string, defaultValue: string): string {
+    try {
+      const value = this.store.getSync(key, defaultValue);
+      return typeof value === 'string' ? value : defaultValue;
     } catch (error) {
       const businessError = error as BusinessError;
       console.warn(`Unable to read setting ${key}: ${businessError.code}, ${businessError.message}`);

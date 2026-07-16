@@ -8,6 +8,10 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { common } from '@kit.AbilityKit';
 import { image } from '@kit.ImageKit';
 import {
+  FullPlayerPage,
+  FullPlayerPagerSpec,
+  FULL_PLAYER_HORIZONTAL_GESTURE_HOST_ID,
+  FULL_PLAYER_VERTICAL_GESTURE_HOST_ID,
   PlayerFrame,
   PlayerGestureAxis,
   PlayerLayoutSpec,
@@ -50,8 +54,33 @@ import {
   appAppearanceController
 } from '../appearance/AppAppearance';
 import { PaletteMotionSpec } from '../appearance/PaletteMotionSpec';
+import { DynamicColor } from '../appearance/DynamicColor';
 
 const MORE_TAB_INDEX: number = PRIMARY_NAVIGATION_COUNT;
+
+@Component
+struct SystemBarContentSynchronizer {
+  @Prop contentColor: string = '#FFFFFFFF';
+  onContentColorChange: (contentColor: string) => void = (_contentColor: string): void => {};
+  private lastContentColor: string = '';
+
+  onDidBuild(): void {
+    if (this.lastContentColor === this.contentColor) {
+      return;
+    }
+    this.lastContentColor = this.contentColor;
+    this.onContentColorChange(this.contentColor);
+  }
+
+  build() {
+    Stack()
+      .width(0)
+      .height(0)
+      .backgroundColor(this.contentColor)
+      .hitTestBehavior(HitTestMode.None)
+  }
+}
+
 @Entry
 @Component
 struct Index {
@@ -69,6 +98,8 @@ struct Index {
   @State swipeHapticTriggered: boolean = false;
   @State playerMorphPhase: PlayerMorphPhase = PlayerMorphPhase.IDLE;
   @State playerMorphBackgroundOpacity: number = 1;
+  @State fullPlayerPage: FullPlayerPage = FullPlayerPage.COVER;
+  @State fullPlayerPagePosition: number = FullPlayerPage.COVER;
   @State frozenMorphArtwork: image.PixelMap | undefined = undefined;
   @State frozenMorphArtworkUri: string = '';
   @State frozenMorphArtworkPreferPixelMap: boolean = false;
@@ -93,12 +124,20 @@ struct Index {
     x: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_X,
     y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y
   };
+  @State centeredArtworkTarget: PlayerPoint = {
+    x: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_X,
+    y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y
+  };
   @State frozenArtworkTarget: PlayerPoint = {
     x: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_X,
     y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y
   };
   private returnToExpandedMiniBar: boolean = false;
+  private fullPlayerGestureStartPosition: number = FullPlayerPage.COVER;
   private morphTransitionEpoch: number = 0;
+  private compactTabIndexBeforeSelection: number = 0;
+  private expandedTabIndexBeforeSelection: number = 0;
+  private mainWindow?: window.Window;
   private readonly appearanceListener: AppAppearanceListener = (_epoch: number): void => {
     this.refreshAppearance();
   };
@@ -125,6 +164,12 @@ struct Index {
     const context = this.getUIContext().getHostContext();
     if (context !== undefined) {
       const abilityContext = context as common.UIAbilityContext;
+      window.getLastWindow(abilityContext).then((mainWindow: window.Window) => {
+        this.mainWindow = mainWindow;
+      }).catch((error: Object) => {
+        const businessError = error as BusinessError;
+        console.warn(`Unable to cache main window: ${businessError.code}, ${businessError.message}`);
+      });
       this.avoidAreaController.start(abilityContext);
       try {
         this.settingsRepository = new SettingsRepository(abilityContext);
@@ -148,6 +193,7 @@ struct Index {
   }
 
   aboutToDisappear(): void {
+    this.setSystemBarContentColor(this.appearancePalette.systemBarContent);
     appAppearanceController.removeListener(this.appearanceListener);
     this.avoidAreaController.stop();
     for (let index = 0; index < this.rootTitleContents.length; index += 1) {
@@ -200,6 +246,25 @@ struct Index {
     return width >= AppShellLayoutSpec.SIDE_NAVIGATION_BREAKPOINT;
   }
 
+  private fullPlayerPaneCount(width: number = this.rootFrame.width,
+    height: number = this.rootFrame.height): number {
+    return FullPlayerPagerSpec.paneCount(width, height);
+  }
+
+  private fullPlayerPageSpan(): number {
+    return FullPlayerPagerSpec.pageSpan(this.fullPlayerFrame().width, this.renderedFullPlayerPaneCount());
+  }
+
+  private reconcileFullPlayerPager(previousPaneCount: number, nextPaneCount: number): void {
+    if (previousPaneCount === nextPaneCount) {
+      return;
+    }
+    this.fullPlayerPagePosition = FullPlayerPagerSpec.positionForPage(
+      this.fullPlayerPage,
+      nextPaneCount
+    );
+  }
+
   private normalizeTabIndex(index: number): number {
     return Number.isInteger(index) && index >= 0 && index <= MORE_TAB_INDEX ? index : 0;
   }
@@ -240,6 +305,7 @@ struct Index {
   }
 
   private handleCompactTabChange(index: number): void {
+    this.compactTabIndexBeforeSelection = this.compactTabIndex();
     const normalizedIndex = this.normalizeTabIndex(index);
     if (normalizedIndex < PRIMARY_NAVIGATION_COUNT) {
       this.selectRoute(this.primaryItems()[normalizedIndex].routeId);
@@ -251,6 +317,9 @@ struct Index {
   }
 
   private handleCompactTabBarClick(index: number): void {
+    if (index !== this.compactTabIndexBeforeSelection) {
+      return;
+    }
     if (index !== this.compactTabIndex()) {
       return;
     }
@@ -272,6 +341,7 @@ struct Index {
   }
 
   private handleExpandedTabChange(index: number): void {
+    this.expandedTabIndexBeforeSelection = this.expandedTabIndex();
     const items = this.expandedItems();
     if (index < 0 || index >= items.length) {
       return;
@@ -281,6 +351,9 @@ struct Index {
   }
 
   private handleExpandedTabBarClick(index: number): void {
+    if (index !== this.expandedTabIndexBeforeSelection) {
+      return;
+    }
     if (index !== this.expandedTabIndex()) {
       return;
     }
@@ -377,7 +450,7 @@ struct Index {
         width: uiContext.px2vp(rootRectangle.size.width),
         height: uiContext.px2vp(rootRectangle.size.height)
       };
-      this.frozenArtworkTarget = { x: this.artworkTarget.x, y: this.artworkTarget.y };
+      this.freezeArtworkTargetForCurrentPage();
     } catch (error) {
       const businessError = error as BusinessError;
       console.warn(`Unable to query mini player geometry: ${businessError.code}, ${businessError.message}`);
@@ -393,8 +466,46 @@ struct Index {
         width: this.rootFrame.width,
         height: this.rootFrame.height
       };
-      this.frozenArtworkTarget = { x: this.artworkTarget.x, y: this.artworkTarget.y };
+      this.freezeArtworkTargetForCurrentPage();
     }
+  }
+
+  private setSystemBarContentColor(contentColor: string): void {
+    const context = this.getUIContext().getHostContext();
+    if (context === undefined) {
+      return;
+    }
+    const applyContent = (mainWindow: window.Window): Promise<void> => {
+      return mainWindow.setWindowSystemBarProperties({
+        statusBarColor: '#00000000',
+        navigationBarColor: '#00000000',
+        statusBarContentColor: contentColor,
+        navigationBarContentColor: contentColor,
+        enableStatusBarAnimation: true,
+        enableNavigationBarAnimation: true
+      });
+    };
+    if (this.mainWindow !== undefined) {
+      applyContent(this.mainWindow).catch((error: Object) => {
+        const businessError = error as BusinessError;
+        console.warn(`Unable to update system-bar content: ${businessError.code}, ${businessError.message}`);
+      });
+      return;
+    }
+    window.getLastWindow(context).then((mainWindow: window.Window) => {
+      this.mainWindow = mainWindow;
+      return applyContent(mainWindow);
+    }).catch((error: Object) => {
+      const businessError = error as BusinessError;
+      console.warn(`Unable to update system-bar content: ${businessError.code}, ${businessError.message}`);
+    });
+  }
+
+  private freezeArtworkTargetForCurrentPage(): void {
+    const usesSidePageProxy = this.fullPlayerPaneCount() === 1 &&
+      Math.abs(this.fullPlayerPagePosition - FullPlayerPage.COVER) > 0.5;
+    const target = usesSidePageProxy ? this.centeredArtworkTarget : this.currentPagerArtworkTarget();
+    this.frozenArtworkTarget = { x: target.x, y: target.y };
   }
 
   private freezeMorphArtworkSource(): void {
@@ -450,12 +561,34 @@ struct Index {
     return this.appearancePalette.windowBackground.toUpperCase() === '#FF000000' ? 0.14 : 0.08;
   }
 
+  private morphCollapsedSurfaceColor(): string {
+    return this.appearancePalette.windowBackground.toUpperCase() === '#FF000000' ?
+      PlayerMotionSpec.COLLAPSED_SURFACE_DARK : PlayerMotionSpec.COLLAPSED_SURFACE_LIGHT;
+  }
+
   private fullPlayerFrame(): PlayerFrame {
     return this.playerMorphPhase === PlayerMorphPhase.OPEN ? this.rootFrame : this.frozenRootFrame;
   }
 
+  private renderedFullPlayerPaneCount(): number {
+    const frame = this.fullPlayerFrame();
+    return FullPlayerPagerSpec.paneCount(frame.width, frame.height);
+  }
+
   private fullPlayerArtworkTarget(): PlayerPoint {
-    return this.playerMorphPhase === PlayerMorphPhase.OPEN ? this.artworkTarget : this.frozenArtworkTarget;
+    return this.playerMorphPhase === PlayerMorphPhase.OPEN ?
+      this.currentPagerArtworkTarget() : this.frozenArtworkTarget;
+  }
+
+  private currentPagerArtworkTarget(): PlayerPoint {
+    return {
+      x: FullPlayerPagerSpec.pagerArtworkTargetX(
+        this.centeredArtworkTarget.x,
+        this.fullPlayerPagePosition,
+        this.fullPlayerPageSpan()
+      ),
+      y: this.centeredArtworkTarget.y
+    };
   }
 
   onBackPress(): boolean {
@@ -469,7 +602,8 @@ struct Index {
   private fullArtworkSlotSize(): number {
     const fullPlayerFrame = this.fullPlayerFrame();
     return PlayerLayoutSpec.fullArtworkSize(
-      fullPlayerFrame.width,
+      FullPlayerPagerSpec.pageSpan(fullPlayerFrame.width,
+        FullPlayerPagerSpec.paneCount(fullPlayerFrame.width, fullPlayerFrame.height)),
       fullPlayerFrame.height,
       this.statusBarAvoidHeight,
       this.navigationAvoidHeight
@@ -508,6 +642,11 @@ struct Index {
 
   private morphArtworkHeight(): number {
     return this.morphValue(PlayerLayoutSpec.MINI_ARTWORK_SIZE, this.morphTargetArtworkHeight());
+  }
+
+  private morphArtworkPlaybackScale(): number {
+    const fullPlayerScale = this.playerStore.isPlaying() ? 1 : PlayerMotionSpec.PAUSED_ARTWORK_SCALE;
+    return 1 - (1 - fullPlayerScale) * this.clamp(this.playerExpandProgress, 0, 1);
   }
 
   private isMorphActive(): boolean {
@@ -584,7 +723,6 @@ struct Index {
 
   private updateMiniPlayerGesture(event: GestureEvent): void {
     const horizontalDistance = Math.abs(event.offsetX);
-    const upwardDistance = Math.max(0, -event.offsetY);
     const verticalDistance = Math.abs(event.offsetY);
     if (this.playerGestureAxis === PlayerGestureAxis.UNDECIDED &&
       Math.max(horizontalDistance, verticalDistance) > PlayerMotionSpec.GESTURE_AXIS_LOCK_DISTANCE) {
@@ -593,8 +731,10 @@ struct Index {
     }
 
     if (this.playerGestureAxis === PlayerGestureAxis.HORIZONTAL) {
-      this.miniPlayerOffsetX = event.offsetX /
-        (1 + horizontalDistance / PlayerMotionSpec.HORIZONTAL_SWIPE_RESISTANCE);
+      const horizontalOffset = PlayerMotionSpec.distanceFromRecognitionOrigin(event.offsetX);
+      const renderDistance = Math.abs(horizontalOffset);
+      this.miniPlayerOffsetX = horizontalOffset /
+        (1 + renderDistance / PlayerMotionSpec.HORIZONTAL_SWIPE_RESISTANCE);
       const reachedActionPoint = Math.abs(this.miniPlayerOffsetX) >=
         PlayerMotionSpec.HORIZONTAL_HAPTIC_THRESHOLD;
       if (reachedActionPoint && !this.swipeHapticTriggered) {
@@ -608,9 +748,11 @@ struct Index {
       if (!this.isMorphActive()) {
         this.freezeMiniPlayerGeometry();
         this.freezeMorphArtworkSource();
-        this.beginMorphPhase(PlayerMorphPhase.DRAGGING);
+        this.beginMorphPhase(PlayerMorphPhase.OPEN_DRAGGING);
         this.playerMorphBackgroundOpacity = 1;
       }
+      const verticalOffset = PlayerMotionSpec.distanceFromRecognitionOrigin(event.offsetY);
+      const upwardDistance = Math.max(0, -verticalOffset);
       this.playerExpandProgress = this.clamp(
         upwardDistance / this.morphVerticalTravelDistance(),
         0,
@@ -746,21 +888,48 @@ struct Index {
     });
   }
 
-  private beginFullPlayerGesture(): void {
+  private beginFullPlayerHorizontalGesture(): void {
+    if (this.playerMorphPhase !== PlayerMorphPhase.OPEN) {
+      return;
+    }
+    this.fullPlayerGestureStartPosition = this.fullPlayerPagePosition;
+  }
+
+  private updateFullPlayerHorizontalGesture(event: GestureEvent): void {
+    if (this.playerMorphPhase !== PlayerMorphPhase.OPEN) {
+      return;
+    }
+    const pageSpan = Math.max(1, this.fullPlayerPageSpan());
+    const horizontalOffset = PlayerMotionSpec.distanceFromRecognitionOrigin(event.offsetX);
+    this.fullPlayerPagePosition = FullPlayerPagerSpec.clampPosition(
+      this.fullPlayerGestureStartPosition - horizontalOffset / pageSpan,
+      this.fullPlayerPaneCount()
+    );
+  }
+
+  private finishFullPlayerHorizontalGesture(): void {
+    if (this.playerMorphPhase !== PlayerMorphPhase.OPEN) {
+      return;
+    }
+    this.finishFullPlayerPageGesture();
+  }
+
+  private beginFullPlayerVerticalGesture(): void {
     if (this.playerMorphPhase !== PlayerMorphPhase.OPEN) {
       return;
     }
     this.freezeMiniPlayerGeometry(false);
     this.freezeMorphArtworkSource();
-    this.beginMorphPhase(PlayerMorphPhase.DRAGGING);
+    this.beginMorphPhase(PlayerMorphPhase.CLOSE_DRAGGING);
     this.playerMorphBackgroundOpacity = 1;
   }
 
-  private updateFullPlayerGesture(event: GestureEvent): void {
-    if (this.playerMorphPhase !== PlayerMorphPhase.DRAGGING) {
+  private updateFullPlayerVerticalGesture(event: GestureEvent): void {
+    if (this.playerMorphPhase !== PlayerMorphPhase.CLOSE_DRAGGING) {
       return;
     }
-    const downwardDistance = Math.max(0, event.offsetY);
+    const verticalOffset = PlayerMotionSpec.distanceFromRecognitionOrigin(event.offsetY);
+    const downwardDistance = Math.max(0, verticalOffset);
     this.playerExpandProgress = 1 - this.clamp(
       downwardDistance / this.morphVerticalTravelDistance(),
       0,
@@ -768,8 +937,8 @@ struct Index {
     );
   }
 
-  private finishFullPlayerGesture(): void {
-    if (this.playerMorphPhase !== PlayerMorphPhase.DRAGGING) {
+  private finishFullPlayerVerticalGesture(): void {
+    if (this.playerMorphPhase !== PlayerMorphPhase.CLOSE_DRAGGING) {
       return;
     }
     const shouldClose = this.playerExpandProgress <= 1 - this.morphGestureCompletionProgress();
@@ -794,6 +963,23 @@ struct Index {
     });
   }
 
+  private finishFullPlayerPageGesture(): void {
+    const paneCount = this.fullPlayerPaneCount();
+    const movement = this.fullPlayerPagePosition - this.fullPlayerGestureStartPosition;
+    let targetPosition = Math.round(this.fullPlayerGestureStartPosition);
+    if (Math.abs(movement) >= FullPlayerPagerSpec.SWIPE_COMPLETION_FRACTION) {
+      targetPosition += movement > 0 ? 1 : -1;
+    }
+    targetPosition = FullPlayerPagerSpec.clampPosition(targetPosition, paneCount);
+    this.fullPlayerPage = FullPlayerPagerSpec.nearestPage(targetPosition, paneCount);
+    this.getUIContext().animateTo({
+      duration: FullPlayerPagerSpec.PAGE_SETTLE_DURATION,
+      curve: Curve.EaseOut
+    }, () => {
+      this.fullPlayerPagePosition = targetPosition;
+    });
+  }
+
   private morphArtworkSourceRadius(): number {
     const fullRadius = Math.min(
       PlayerLayoutSpec.FULL_ARTWORK_RADIUS,
@@ -809,7 +995,6 @@ struct Index {
   private NavigationShell() {
     ResponsiveNavigationShell({
       libraryStore: this.libraryStore,
-      playerStore: this.playerStore,
       topInset: this.statusBarAvoidHeight,
       bottomInset: this.navigationAvoidHeight,
       rootWidth: this.rootFrame.width,
@@ -858,9 +1043,12 @@ struct Index {
       }
       .width('100%')
       .height('100%')
-      .backgroundColor(this.playerStore.themePrimary())
+      .backgroundColor(DynamicColor.blendOpaque(
+        this.morphCollapsedSurfaceColor(),
+        this.playerStore.themePrimary(),
+        this.clamp(this.playerExpandProgress, 0, 1)
+      ))
       .opacity(this.playerMorphBackgroundOpacity)
-      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
 
       Stack() {
         Stack() {
@@ -870,8 +1058,15 @@ struct Index {
             bottomInset: this.navigationAvoidHeight,
             showArtwork: false,
             rootFrame: this.fullPlayerFrame(),
+            pagePosition: this.fullPlayerPagePosition,
+            paneCount: this.renderedFullPlayerPaneCount(),
             previousArtworkTarget: this.artworkTarget,
-            onClose: () => this.hideFullPlayer()
+            previousCenteredArtworkTarget: this.centeredArtworkTarget,
+            onClose: () => this.hideFullPlayer(),
+            onPlayQueueTrack: (trackId: number): void => playbackRuntime.playQueueTrack(trackId),
+            onSeek: (positionMs: number): void => playbackRuntime.seek(positionMs),
+            onResolveQueueArtwork: (relativePath: string): string =>
+              playbackRuntime.queueArtworkUri(relativePath)
           })
         }
         .width(this.fullPlayerFrame().width)
@@ -910,37 +1105,65 @@ struct Index {
       x: this.morphValue(this.frozenMiniPlayerFrame.x, this.fullPlayerFrame().x),
       y: this.morphValue(this.frozenMiniPlayerFrame.y, this.fullPlayerFrame().y)
     })
-    .borderRadius(28 * (1 - this.clamp(this.playerExpandProgress, 0, 1)))
+    .borderRadius(PlayerLayoutSpec.MORPH_SURFACE_RADIUS *
+      (1 - this.clamp(this.playerExpandProgress, 0, 1)))
     .clip(true)
   }
 
   @Builder
   private FullPlayerOverlay() {
     Stack() {
-      this.MorphPlayer()
-
       Stack() {
-        this.MorphArtwork()
+        this.MorphPlayer()
+
+        Stack() {
+          this.MorphArtwork()
+        }
+        .width('100%')
+        .height('100%')
+        .hitTestBehavior(HitTestMode.None)
       }
       .width('100%')
       .height('100%')
-      .hitTestBehavior(HitTestMode.None)
+      .id(FULL_PLAYER_HORIZONTAL_GESTURE_HOST_ID)
+      .parallelGesture(
+        PanGesture({
+          direction: PanDirection.Horizontal,
+          distance: PlayerMotionSpec.GESTURE_AXIS_LOCK_DISTANCE
+        })
+          .onActionStart(() => {
+            this.beginFullPlayerHorizontalGesture();
+          })
+          .onActionUpdate((event: GestureEvent) => {
+            this.updateFullPlayerHorizontalGesture(event);
+          })
+          .onActionEnd(() => {
+            this.finishFullPlayerHorizontalGesture();
+          })
+          .onActionCancel(() => {
+            this.finishFullPlayerHorizontalGesture();
+          })
+      )
     }
     .width('100%')
     .height('100%')
+    .id(FULL_PLAYER_VERTICAL_GESTURE_HOST_ID)
     .parallelGesture(
-      PanGesture({ direction: PanDirection.Vertical, distance: 3 })
+      PanGesture({
+        direction: PanDirection.Vertical,
+        distance: PlayerMotionSpec.GESTURE_AXIS_LOCK_DISTANCE
+      })
         .onActionStart(() => {
-          this.beginFullPlayerGesture();
+          this.beginFullPlayerVerticalGesture();
         })
         .onActionUpdate((event: GestureEvent) => {
-          this.updateFullPlayerGesture(event);
+          this.updateFullPlayerVerticalGesture(event);
         })
         .onActionEnd(() => {
-          this.finishFullPlayerGesture();
+          this.finishFullPlayerVerticalGesture();
         })
         .onActionCancel(() => {
-          this.finishFullPlayerGesture();
+          this.finishFullPlayerVerticalGesture();
         })
     )
   }
@@ -948,35 +1171,68 @@ struct Index {
   @Builder
   private MorphArtwork() {
     Stack() {
-      Image(this.morphArtworkSource())
+      Stack() {
+        Image(this.morphArtworkSource())
+          .width('100%')
+          .height('100%')
+          .objectFit(ImageFit.Cover)
+      }
         .width('100%')
         .height('100%')
-        .objectFit(ImageFit.Cover)
+        .borderRadius(this.morphArtworkSourceRadius())
+        .clip(true)
+        .shadow({
+          radius: PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS *
+            this.clamp(this.playerExpandProgress, 0, 1),
+          color: $r('app.color.artwork_shadow'),
+          offsetY: PlayerMotionSpec.FULL_ARTWORK_SHADOW_OFFSET_Y *
+            this.clamp(this.playerExpandProgress, 0, 1)
+        })
+        .scale({
+          x: this.morphArtworkPlaybackScale(),
+          y: this.morphArtworkPlaybackScale()
+        })
+        .animation(this.playerMorphPhase === PlayerMorphPhase.OPEN ? {
+          curve: curves.springMotion(
+            PlayerMotionSpec.ARTWORK_STATE_SPRING_RESPONSE,
+            PlayerMotionSpec.ARTWORK_STATE_SPRING_DAMPING
+          )
+        } : { duration: 0 })
     }
     .width(this.morphArtworkWidth())
     .height(this.morphArtworkHeight())
-    .borderRadius(this.morphArtworkSourceRadius())
-    .clip(true)
-    .shadow({
-      radius: PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS *
-        this.clamp(this.playerExpandProgress, 0, 1),
-      color: $r('app.color.artwork_shadow'),
-      offsetY: PlayerMotionSpec.FULL_ARTWORK_SHADOW_OFFSET_Y *
-        this.clamp(this.playerExpandProgress, 0, 1)
-    })
+    .opacity(this.morphArtworkOpacity())
     .position({ x: 0, y: 0 })
-    .translate({
-      x: this.morphValue(
-        this.frozenMiniPlayerFrame.x + PlayerLayoutSpec.MINI_ARTWORK_INSET,
-        this.fullPlayerArtworkTarget().x +
-          (this.fullArtworkSlotSize() - this.morphTargetArtworkWidth()) / 2
-      ),
-      y: this.morphValue(
-        this.frozenMiniPlayerFrame.y + PlayerLayoutSpec.MINI_ARTWORK_INSET,
-        this.fullPlayerArtworkTarget().y +
-          (this.fullArtworkSlotSize() - this.morphTargetArtworkHeight()) / 2
-      )
-    })
+    .translate({ x: this.morphArtworkX(), y: this.morphArtworkY() })
+  }
+
+  private morphArtworkX(): number {
+    return this.morphValue(
+      this.frozenMiniPlayerFrame.x + PlayerLayoutSpec.MINI_ARTWORK_INSET,
+      this.fullPlayerArtworkTarget().x +
+        (this.fullArtworkSlotSize() - this.morphTargetArtworkWidth()) / 2
+    );
+  }
+
+  private morphArtworkY(): number {
+    return this.morphValue(
+      this.frozenMiniPlayerFrame.y + PlayerLayoutSpec.MINI_ARTWORK_INSET,
+      this.fullPlayerArtworkTarget().y +
+        (this.fullArtworkSlotSize() - this.morphTargetArtworkHeight()) / 2
+    );
+  }
+
+  private morphArtworkOpacity(): number {
+    if (this.renderedFullPlayerPaneCount() > 1) {
+      return 1;
+    }
+    if (this.playerMorphPhase === PlayerMorphPhase.OPEN) {
+      return this.clamp(1 - Math.abs(this.fullPlayerPagePosition - FullPlayerPage.COVER), 0, 1);
+    }
+    if (this.fullPlayerPage === FullPlayerPage.COVER) {
+      return 1;
+    }
+    return FullPlayerPagerSpec.sidePageArtworkOpacity(this.playerExpandProgress);
   }
 
   @Builder
@@ -989,10 +1245,16 @@ struct Index {
         showArtwork: false,
         measuresArtworkTarget: true,
         rootFrame: this.rootFrame,
+        pagePosition: this.fullPlayerPagePosition,
+        paneCount: this.fullPlayerPaneCount(),
         previousArtworkTarget: this.artworkTarget,
+        previousCenteredArtworkTarget: this.centeredArtworkTarget,
         onClose: () => this.hideFullPlayer(),
         onArtworkTarget: (target: PlayerPoint): void => {
           this.artworkTarget = target;
+        },
+        onCenteredArtworkTarget: (target: PlayerPoint): void => {
+          this.centeredArtworkTarget = target;
         }
       })
     }
@@ -1004,6 +1266,14 @@ struct Index {
 
   build() {
     Stack() {
+      SystemBarContentSynchronizer({
+        contentColor: this.isMorphActive() ?
+          this.playerStore.themeOnPrimary() : this.appearancePalette.systemBarContent,
+        onContentColorChange: (contentColor: string): void => {
+          this.setSystemBarContentColor(contentColor);
+        }
+      })
+
       Stack()
         .width('100%')
         .height('100%')
@@ -1035,6 +1305,7 @@ struct Index {
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     .onAreaChange((_oldValue: Area, newValue: Area) => {
       const previousWideLayout = this.usesWideLayout();
+      const previousPlayerPaneCount = this.fullPlayerPaneCount();
       const nextWidth = this.lengthToNumber(newValue.width, this.rootFrame.width);
       const nextHeight = this.lengthToNumber(newValue.height, this.rootFrame.height);
       this.rootFrame = {
@@ -1044,6 +1315,8 @@ struct Index {
         height: nextHeight
       };
       const nextWideLayout = this.usesWideLayout(nextWidth);
+      const nextPlayerPaneCount = this.fullPlayerPaneCount(nextWidth, nextHeight);
+      this.reconcileFullPlayerPager(previousPlayerPaneCount, nextPlayerPaneCount);
       if (previousWideLayout !== nextWideLayout) {
         this.miniBarExpanded = nextWideLayout;
         this.reconcileResponsiveNavigation(previousWideLayout, nextWideLayout);

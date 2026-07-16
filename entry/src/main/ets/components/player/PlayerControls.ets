@@ -21,7 +21,7 @@ export struct PlayerPlaybackButton {
     Stack() {
       SymbolGlyph(this.playerStore.isPlaying() ? $r('sys.symbol.pause') : $r('sys.symbol.play_fill'))
         .fontSize(this.buttonSize * 0.42)
-        .fontColor(['#FFFFFF'])
+        .fontColor([this.playerStore.themeOnSecondary()])
         .renderingStrategy(SymbolRenderingStrategy.MULTIPLE_OPACITY)
     }
     .width(this.buttonSize)
@@ -40,6 +40,7 @@ export struct PlayerPlaybackButton {
 
 @Component
 export struct PlayerTransportButton {
+  @ObjectLink playerStore: PlayerStore;
   @Prop action: PlayerTransportAction = PlayerTransportAction.NEXT;
   @Prop buttonSize: number = 54;
 
@@ -57,7 +58,7 @@ export struct PlayerTransportButton {
       Image(this.icon())
         .width(this.buttonSize * 0.45)
         .height(this.buttonSize * 0.45)
-        .fillColor($r('app.color.control_foreground'))
+        .fillColor(this.playerStore.themeOnPrimary())
     }
     .width(this.buttonSize)
     .height(this.buttonSize)
@@ -104,12 +105,14 @@ export struct PlayerModeButton {
     Stack() {
       SymbolGlyph(this.symbol())
         .fontSize(22)
-        .fontColor([this.active() ? this.playerStore.themeAccent() : $r('app.color.text_secondary')])
+        .fontColor([this.active() ? this.playerStore.themeOnAccent() : this.playerStore.themeOnPrimaryMedium()])
         .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
     }
     .width(44)
     .height(44)
     .borderRadius(22)
+    .backgroundColor(this.active() ? this.playerStore.themeAccent() : Color.Transparent)
+    .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
     .clickEffect({ level: ClickEffectLevel.LIGHT })
     .accessibilityText(this.accessibilityLabel())
     .onClick(() => {

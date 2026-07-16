@@ -10,6 +10,7 @@ import { PlaybackEngine, PlaybackEngineListener } from './engine/PlaybackEngine'
 import {
   PlaybackTrack,
   PlayerState,
+  PlaybackIntent,
   PlayerStore,
   QueueBuildPhase,
   QueueTrack,
@@ -37,6 +38,8 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   private initializePromise?: Promise<void>;
   private artworkEpoch: number = 0;
   private queueBuildEpoch: number = 0;
+  private seekEpoch: number = 0;
+  private pendingSeekPositionMs?: number;
   private currentPlaybackTrack?: PlaybackTrack;
   private lastPositionWriteAt: number = 0;
   private lastSessionPositionAt: number = 0;
@@ -68,6 +71,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.queue.clear();
     this.playerStore.queuePhase = QueueBuildPhase.BUILDING;
     this.playerStore.queueSize = 0;
+    this.syncQueueSnapshot();
     this.beginTrack(selectedTrack).then(() => {
       return this.buildQueueAsync(libraryItems, selected.id, buildEpoch);
     }).catch((error: Object) => {
@@ -105,16 +109,20 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     if (!this.playerStore.hasCurrentTrack()) {
       return;
     }
-    this.engine.togglePlayback().catch((error: Object) => {
-      this.onStateChanged(PlayerState.ERROR, PlaybackRuntime.messageOf(error));
-    });
+    if (this.playerStore.isPlaying()) {
+      this.pause();
+    } else {
+      this.play();
+    }
   }
 
   play(): void {
     if (!this.playerStore.hasCurrentTrack()) {
       return;
     }
+    this.playerStore.playbackIntent = PlaybackIntent.PLAYING;
     this.engine.play().catch((error: Object) => {
+      this.playerStore.playbackIntent = PlaybackIntent.PAUSED;
       this.onStateChanged(PlayerState.ERROR, PlaybackRuntime.messageOf(error));
     });
   }
@@ -123,6 +131,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     if (!this.playerStore.hasCurrentTrack()) {
       return;
     }
+    this.playerStore.playbackIntent = PlaybackIntent.PAUSED;
     this.engine.pause().catch((error: Object) => {
       this.onStateChanged(PlayerState.ERROR, PlaybackRuntime.messageOf(error));
     });
@@ -138,6 +147,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       return;
     }
     const next = this.queue.next(this.playerStore.repeatMode, false);
+    this.syncQueueSnapshot();
     if (next !== undefined) {
       this.beginTrack(next);
     }
@@ -148,13 +158,40 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       return;
     }
     const previous = this.queue.previous();
+    this.syncQueueSnapshot();
     if (previous !== undefined) {
       this.beginTrack(previous);
     }
   }
 
+  playQueueTrack(trackId: number): void {
+    if (this.playerStore.queuePhase !== QueueBuildPhase.READY ||
+      this.playerStore.currentTrack?.id === trackId) {
+      return;
+    }
+    const selected = this.queue.select(trackId);
+    this.syncQueueSnapshot();
+    if (selected !== undefined) {
+      this.beginTrack(selected);
+    }
+  }
+
   seek(positionMs: number): void {
-    this.engine.seek(positionMs).catch((error: Object) => {
+    const targetPositionMs = Math.max(0, Math.min(positionMs, this.playerStore.durationMs));
+    const seekEpoch = ++this.seekEpoch;
+    this.pendingSeekPositionMs = targetPositionMs;
+    this.playerStore.positionMs = targetPositionMs;
+    this.engine.seek(targetPositionMs).then(() => {
+      if (seekEpoch !== this.seekEpoch) {
+        return;
+      }
+      this.playerStore.positionMs = targetPositionMs;
+      this.pendingSeekPositionMs = undefined;
+    }).catch((error: Object) => {
+      if (seekEpoch !== this.seekEpoch) {
+        return;
+      }
+      this.pendingSeekPositionMs = undefined;
       this.onStateChanged(PlayerState.ERROR, PlaybackRuntime.messageOf(error));
     });
   }
@@ -163,6 +200,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.setShuffleEnabled(!this.playerStore.shuffleEnabled);
     if (this.playerStore.currentTrack !== undefined) {
       this.queue.setShuffle(this.playerStore.shuffleEnabled, this.playerStore.currentTrack.id);
+      this.syncQueueSnapshot();
       this.prefetchCurrentWindow();
     }
   }
@@ -188,6 +226,8 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.persistProgress(false);
     ++this.artworkEpoch;
     ++this.queueBuildEpoch;
+    ++this.seekEpoch;
+    this.pendingSeekPositionMs = undefined;
     await this.engine.invalidateAndStop();
     this.retireFullArtwork();
     this.artworkCache?.clear();
@@ -203,6 +243,8 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.durationMs = 0;
     this.playerStore.queuePhase = QueueBuildPhase.EMPTY;
     this.playerStore.queueSize = 0;
+    this.playerStore.playbackIntent = PlaybackIntent.PAUSED;
+    this.syncQueueSnapshot();
     this.onStateChanged(PlayerState.IDLE);
   }
 
@@ -210,6 +252,8 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.persistProgress(false);
     ++this.artworkEpoch;
     ++this.queueBuildEpoch;
+    ++this.seekEpoch;
+    this.pendingSeekPositionMs = undefined;
     await this.engine.shutdown();
     await this.session?.shutdown();
     this.playerStore.miniArtwork = undefined;
@@ -221,10 +265,12 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.positionMs = 0;
     this.playerStore.durationMs = 0;
     this.playerStore.state = PlayerState.IDLE;
+    this.playerStore.playbackIntent = PlaybackIntent.PAUSED;
     this.playerStore.errorMessage = '';
     this.playerStore.queuePhase = QueueBuildPhase.EMPTY;
     this.playerStore.queueSize = 0;
     this.queue.clear();
+    this.syncQueueSnapshot();
     this.currentPlaybackTrack = undefined;
     this.artworkCache?.releaseAll();
     this.artworkCache?.releaseFullArtwork(this.fullArtwork);
@@ -238,6 +284,11 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
 
   onStateChanged(state: PlayerState, message?: string): void {
     this.playerStore.state = state;
+    if (state === PlayerState.PLAYING) {
+      this.playerStore.playbackIntent = PlaybackIntent.PLAYING;
+    } else if (state === PlayerState.ERROR) {
+      this.playerStore.playbackIntent = PlaybackIntent.PAUSED;
+    }
     this.playerStore.errorMessage = message === undefined ? '' : message;
     if (state === PlayerState.PAUSED || state === PlayerState.ERROR) {
       this.persistProgress(false);
@@ -246,7 +297,9 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   onPositionChanged(positionMs: number): void {
-    this.playerStore.positionMs = positionMs;
+    if (this.pendingSeekPositionMs === undefined) {
+      this.playerStore.positionMs = positionMs;
+    }
     const now = Date.now();
     if (now - this.lastPositionWriteAt >= POSITION_WRITE_INTERVAL_MS) {
       this.lastPositionWriteAt = now;
@@ -265,6 +318,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   onCompleted(): void {
     this.persistProgress(true);
     const next = this.queue.next(this.playerStore.repeatMode, true);
+    this.syncQueueSnapshot();
     if (next !== undefined) {
       this.beginTrack(next);
     }
@@ -276,6 +330,10 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
 
   releaseArtwork(pixelMap?: image.PixelMap): void {
     this.artworkCache?.releaseRetained(pixelMap);
+  }
+
+  queueArtworkUri(relativePath: string): string {
+    return this.resolveArtworkUri(relativePath);
   }
 
   private async initializeInternal(context: common.UIAbilityContext,
@@ -307,6 +365,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       this.queue.append(queueItems);
     }
     this.playerStore.queueSize = this.queue.size();
+    this.syncQueueSnapshot();
     this.prefetchCurrentWindow();
   }
 
@@ -325,6 +384,8 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
 
   private beginTrack(track: QueueTrack): Promise<void> {
     this.persistProgress(false);
+    ++this.seekEpoch;
+    this.pendingSeekPositionMs = undefined;
     this.engine.invalidateAndStop().catch((error: Object) => {
       if (PlaybackRuntime.messageOf(error) !== 'Playback request superseded') {
         console.warn(`Unable to stop previous playback: ${PlaybackRuntime.messageOf(error)}`);
@@ -339,6 +400,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.palettePrimary = track.palettePrimary;
     this.playerStore.paletteSecondary = track.paletteSecondary;
     this.playerStore.paletteAccent = track.paletteAccent;
+    this.playerStore.playbackIntent = PlaybackIntent.PLAYING;
     this.playerStore.state = PlayerState.LOADING;
     this.playerStore.errorMessage = '';
     this.artworkCache?.pinCurrent(track);
@@ -378,6 +440,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
           const phase = this.queue.build(queueItems, selectedId, this.playerStore.shuffleEnabled);
           this.playerStore.queuePhase = phase;
           this.playerStore.queueSize = this.queue.size();
+          this.syncQueueSnapshot();
           this.prefetchCurrentWindow();
           resolve();
         } catch (error) {
@@ -474,6 +537,13 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.artworkCache.prefetchWindow(window.items, window.currentIndex, radius).catch((error: Object) => {
       console.warn(`Unable to prefetch artwork window: ${PlaybackRuntime.messageOf(error)}`);
     });
+  }
+
+  private syncQueueSnapshot(): void {
+    const snapshot = this.queue.snapshot();
+    this.playerStore.queueDataSource.replace(snapshot.items);
+    this.playerStore.queueItems = snapshot.items;
+    this.playerStore.queueCurrentIndex = snapshot.currentIndex;
   }
 
   private persistProgress(completed: boolean): void {

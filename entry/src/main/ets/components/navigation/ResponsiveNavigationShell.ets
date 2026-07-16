@@ -38,7 +38,6 @@ import { QueueActionMenu } from '../library/QueueActionMenu';
 import { PlayerFrame } from '../player/PlayerMotion';
 import { AlbumSortField, SortDirection, TrackSortField } from '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
-import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { AlbumsPage } from '../../pages/library/AlbumsPage';
 import { AlbumDetailPage } from '../../pages/library/AlbumDetailPage';
@@ -72,7 +71,6 @@ class AlbumDetailRouteParams {
 @Component
 export struct ResponsiveNavigationShell {
   @ObjectLink libraryStore: LibraryStore;
-  @ObjectLink playerStore: PlayerStore;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @Prop rootWidth: number = 0;
@@ -108,6 +106,7 @@ export struct ResponsiveNavigationShell {
   onMiniPlayerGestureStart: () => void = (): void => {};
   onMiniPlayerGestureUpdate: (event: GestureEvent) => void = (_event: GestureEvent): void => {};
   onMiniPlayerGestureFinish: () => void = (): void => {};
+  private readonly miniPlayerBuilder: () => void = (): void => this.MiniPlayer();
 
   private orderedItems(): Array<NavigationPageItem> {
     return orderedNavigationItems(this.navigationOrder);
@@ -182,7 +181,7 @@ export struct ResponsiveNavigationShell {
         materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
       },
       miniBar: {
-        miniBarBuilder: () => this.MiniPlayer(),
+        miniBarBuilder: this.miniPlayerBuilder,
         miniBarWidth: {
           smallWidth: AppShellLayoutSpec.MINI_PLAYER_SMALL_WIDTH,
           mediumWidth: AppShellLayoutSpec.MINI_PLAYER_MEDIUM_WIDTH,
@@ -213,7 +212,7 @@ export struct ResponsiveNavigationShell {
       },
       barOpacity: 0,
       miniBar: {
-        miniBarBuilder: () => this.MiniPlayer(),
+        miniBarBuilder: this.miniPlayerBuilder,
         miniBarWidth: { smallWidth: miniPlayerWidth, mediumWidth: miniPlayerWidth, largeWidth: miniPlayerWidth },
         miniBarStyle: HdsBarStyle.EXPAND,
         barLayoutMode: HdsBarLayoutMode.HORIZONTAL,
@@ -486,7 +485,7 @@ export struct ResponsiveNavigationShell {
   @Builder
   private MiniPlayer() {
     MiniPlayerSurface({
-      playerStore: this.playerStore,
+      playerStore: playbackRuntime.playerStore,
       expanded: this.miniBarExpanded,
       swipeOffsetX: this.miniPlayerOffsetX,
       morphActive: this.morphActive,
@@ -497,6 +496,15 @@ export struct ResponsiveNavigationShell {
       onGestureUpdate: this.onMiniPlayerGestureUpdate,
       onGestureFinish: this.onMiniPlayerGestureFinish
     })
+  }
+
+  private NativeCompactTabBar(symbol: Resource, label: string): BottomTabBarStyle {
+    return new BottomTabBarStyle({
+      normal: new SymbolGlyphModifier(symbol)
+    }, label).labelStyle({
+      maxLines: 1,
+      font: { size: 10 }
+    });
   }
 
   @Builder
@@ -515,14 +523,14 @@ export struct ResponsiveNavigationShell {
           SymbolGlyph(item.symbol)
             .fontSize(AppShellLayoutSpec.EXPANDED_TAB_ITEM_ICON_SIZE)
             .fontColor([this.expandedTabIndex() === tabIndex ?
-              this.playerStore.themeAccent() : $r('app.color.text_tertiary')])
-            .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+              $r('app.color.theme_accent') : $r('app.color.text_tertiary')])
+            .animation({ duration: AppShellLayoutSpec.TAB_SELECTION_COLOR_DURATION, curve: Curve.EaseInOut })
           Text(item.label)
             .fontSize(AppShellLayoutSpec.EXPANDED_TAB_ITEM_LABEL_SIZE)
             .fontWeight(this.expandedTabIndex() === tabIndex ? FontWeight.Medium : FontWeight.Normal)
             .fontColor(this.expandedTabIndex() === tabIndex ?
-              this.playerStore.themeAccent() : $r('app.color.text_secondary'))
-            .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+              $r('app.color.theme_accent') : $r('app.color.text_secondary'))
+            .animation({ duration: AppShellLayoutSpec.TAB_SELECTION_COLOR_DURATION, curve: Curve.EaseInOut })
             .maxLines(1)
         }
         .width('100%')
@@ -534,14 +542,14 @@ export struct ResponsiveNavigationShell {
           SymbolGlyph(item.symbol)
             .fontSize(AppShellLayoutSpec.EXPANDED_TAB_ITEM_ICON_SIZE)
             .fontColor([this.expandedTabIndex() === tabIndex ?
-              this.playerStore.themeAccent() : $r('app.color.text_tertiary')])
-            .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+              $r('app.color.theme_accent') : $r('app.color.text_tertiary')])
+            .animation({ duration: AppShellLayoutSpec.TAB_SELECTION_COLOR_DURATION, curve: Curve.EaseInOut })
           Text(item.label)
             .fontSize(AppShellLayoutSpec.EXPANDED_TAB_ITEM_LABEL_SIZE)
             .fontWeight(this.expandedTabIndex() === tabIndex ? FontWeight.Medium : FontWeight.Normal)
             .fontColor(this.expandedTabIndex() === tabIndex ?
-              this.playerStore.themeAccent() : $r('app.color.text_secondary'))
-            .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+              $r('app.color.theme_accent') : $r('app.color.text_secondary'))
+            .animation({ duration: AppShellLayoutSpec.TAB_SELECTION_COLOR_DURATION, curve: Curve.EaseInOut })
             .maxLines(1)
         }
         .width('100%')
@@ -557,18 +565,19 @@ export struct ResponsiveNavigationShell {
   @Builder
   private CompactTabsContent() {
     HdsTabs({ controller: this.compactTabsController, index: this.compactTabIndex() }) {
-      ForEach(this.primaryItems(), (item: NavigationPageItem) => {
+      ForEach(this.primaryItems(), (item: NavigationPageItem, index: number) => {
         TabContent() {
           this.RootNavigation(item)
         }
-        .tabBar(new BottomTabBarStyle({ normal: new SymbolGlyphModifier(item.symbol) }, item.label))
-      }, (_item: NavigationPageItem, index: number) => index.toString())
+        .tabBar(this.NativeCompactTabBar(item.symbol, item.label))
+      }, (item: NavigationPageItem) => item.routeId)
       TabContent() {
         this.MoreNavigation()
       }
-      .tabBar(new BottomTabBarStyle({
-        normal: new SymbolGlyphModifier($r('sys.symbol.square_fill_grid_2x2'))
-      }, '更多'))
+      .tabBar(this.NativeCompactTabBar(
+        $r('sys.symbol.square_fill_grid_2x2'),
+        '更多'
+      ))
     }
     .width('100%')
     .height('100%')
@@ -577,7 +586,7 @@ export struct ResponsiveNavigationShell {
     .vertical(false)
     .barMode(BarMode.Fixed)
     .scrollable(false)
-    .onChange(this.onCompactTabChange)
+    .onSelected(this.onCompactTabChange)
     .onTabBarClick(this.onCompactTabClick)
     .barFloatingStyle(this.compactTabsFloatingStyle())
   }
@@ -590,7 +599,7 @@ export struct ResponsiveNavigationShell {
           this.RootNavigation(item)
         }
         .tabBar(this.ExpandedTabBar(item, index))
-      }, (_item: NavigationPageItem, index: number) => index.toString())
+      }, (item: NavigationPageItem) => item.routeId)
     }
     .width('100%')
     .height('100%')
@@ -600,7 +609,7 @@ export struct ResponsiveNavigationShell {
     .barMode(BarMode.Scrollable)
     .scrollable(false)
     .animationDuration(0)
-    .onChange(this.onExpandedTabChange)
+    .onSelected(this.onExpandedTabChange)
     .onTabBarClick(this.onExpandedTabClick)
   }
 

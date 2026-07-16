@@ -13,6 +13,10 @@ import {
   probeMediaFile,
   calculateFullFingerprint
 } from '../../../main/ets/library/metadata/MediaFileTasks';
+import {
+  FullPlayerPagerSpec,
+  PlayerMotionSpec
+} from '../../../main/ets/components/player/PlayerMotion';
 
 class FakeResource {
   released: number = 0;
@@ -20,6 +24,18 @@ class FakeResource {
 
 export default function riskRegressionTest() {
   describe('RiskRegression', () => {
+    it('startsDragRenderingAtRecognitionOrigin', 0, () => {
+      expect(PlayerMotionSpec.distanceFromRecognitionOrigin(4)).assertEqual(0);
+      expect(PlayerMotionSpec.distanceFromRecognitionOrigin(10)).assertEqual(6);
+      expect(PlayerMotionSpec.distanceFromRecognitionOrigin(-10)).assertEqual(-6);
+    });
+
+    it('fadesSidePageArtworkBySixtyPercent', 0, () => {
+      expect(FullPlayerPagerSpec.sidePageArtworkOpacity(0)).assertEqual(1);
+      expect(FullPlayerPagerSpec.sidePageArtworkOpacity(0.6)).assertEqual(0);
+      expect(FullPlayerPagerSpec.sidePageArtworkOpacity(1)).assertEqual(0);
+    });
+
     it('containsLandscapeAndPortraitArtwork', 0, () => {
       const landscape = ArtworkLayout.containedSize(768, 432, 286, 286);
       const portrait = ArtworkLayout.containedSize(540, 768, 286, 286);

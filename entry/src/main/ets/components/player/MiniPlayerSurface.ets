@@ -1,4 +1,4 @@
-import { PlayerFrame, PlayerLayoutSpec } from './PlayerMotion';
+import { PlayerFrame, PlayerLayoutSpec, PlayerMotionSpec } from './PlayerMotion';
 import { PlayerMiniArtwork } from './PlayerArtworkViews';
 import { PlayerPlaybackButton } from './PlayerControls';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
@@ -113,7 +113,7 @@ export struct MiniPlayerSurface {
       });
     })
     .priorityGesture(
-      PanGesture({ direction: PanDirection.All, distance: 3 })
+      PanGesture({ direction: PanDirection.All, distance: PlayerMotionSpec.GESTURE_AXIS_LOCK_DISTANCE })
         .onActionStart(() => {
           this.onGestureStart();
         })

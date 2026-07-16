@@ -1,4 +1,5 @@
 import { image } from '@kit.ImageKit';
+import { curves } from '@kit.ArkUI';
 import { ArtworkFitMode, ArtworkView } from '../artwork/ArtworkView';
 import { ArtworkLayout } from '../artwork/ArtworkLayout';
 import { PlayerLayoutSpec, PlayerMotionSpec } from './PlayerMotion';
@@ -73,6 +74,16 @@ export struct PlayerHeroArtwork {
         radius: PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS,
         color: $r('app.color.artwork_shadow'),
         offsetY: PlayerMotionSpec.FULL_ARTWORK_SHADOW_OFFSET_Y
+      })
+      .scale({
+        x: this.playerStore.isPlaying() ? 1 : PlayerMotionSpec.PAUSED_ARTWORK_SCALE,
+        y: this.playerStore.isPlaying() ? 1 : PlayerMotionSpec.PAUSED_ARTWORK_SCALE
+      })
+      .animation({
+        curve: curves.springMotion(
+          PlayerMotionSpec.ARTWORK_STATE_SPRING_RESPONSE,
+          PlayerMotionSpec.ARTWORK_STATE_SPRING_DAMPING
+        )
       })
     }
     .width(this.slotSize)

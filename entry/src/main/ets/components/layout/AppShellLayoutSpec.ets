@@ -21,6 +21,7 @@ export class AppShellLayoutSpec {
   static readonly EXPANDED_TAB_SECTION_DIVIDER_THICKNESS: number = 1;
   static readonly EXPANDED_TAB_SECTION_DIVIDER_MARGIN: number = 8;
   static readonly EXPANDED_TAB_SECTION_DIVIDER_OPACITY: number = 0.24;
+  static readonly TAB_SELECTION_COLOR_DURATION: number = 100;
   static readonly HIDDEN_TAB_BAR_WIDTH: number = 56;
 
   static readonly COMPACT_TAB_SMALL_WIDTH: number = 280;

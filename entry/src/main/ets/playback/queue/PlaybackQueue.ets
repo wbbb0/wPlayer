@@ -5,6 +5,11 @@ export interface PlaybackQueueWindow {
   currentIndex: number;
 }
 
+export interface PlaybackQueueSnapshot {
+  items: Array<QueueTrack>;
+  currentIndex: number;
+}
+
 export class PlaybackQueue {
   private items: Array<QueueTrack> = [];
   private order: Array<number> = [];
@@ -40,6 +45,26 @@ export class PlaybackQueue {
 
   current(): QueueTrack | undefined {
     return this.itemAtCursor(this.cursor);
+  }
+
+  select(trackId: number): QueueTrack | undefined {
+    const selectedCursor = this.order.findIndex((itemIndex: number) => this.items[itemIndex].id === trackId);
+    if (selectedCursor < 0) {
+      return undefined;
+    }
+    this.cursor = selectedCursor;
+    return this.current();
+  }
+
+  snapshot(): PlaybackQueueSnapshot {
+    const snapshotItems: Array<QueueTrack> = [];
+    this.order.forEach((itemIndex: number) => {
+      snapshotItems.push(this.items[itemIndex]);
+    });
+    return {
+      items: snapshotItems,
+      currentIndex: this.cursor
+    };
   }
 
   next(repeatMode: RepeatMode, naturalCompletion: boolean): QueueTrack | undefined {

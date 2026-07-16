@@ -46,6 +46,7 @@ export default class EntryAbility extends UIAbility {
       try {
         this.mainWindow = windowStage.getMainWindowSync();
         await this.mainWindow.setWindowLayoutFullScreen(true);
+        await this.mainWindow.setWindowSystemBarEnable(['status', 'navigation']);
         await this.applyMainWindowAppearance();
       } catch (windowError) {
         const businessError = windowError as BusinessError;

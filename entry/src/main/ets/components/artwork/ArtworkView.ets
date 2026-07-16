@@ -91,30 +91,24 @@ export struct ArtworkView {
     return this.cornerRadius * (1 - progress) + circularRadius * progress;
   }
 
+  private imageSource(): image.PixelMap | ResourceStr {
+    if (this.sourcePath.length > 0) {
+      return this.sourcePath;
+    }
+    if (this.sourcePixelMap !== undefined) {
+      return this.sourcePixelMap;
+    }
+    return $r('app.media.default_album_cover');
+  }
+
   @Builder
   private ImageContent() {
-    if (this.sourcePath.length > 0) {
-      Image(this.sourcePath)
-        .width('100%')
-        .height('100%')
-        .objectFit(ImageFit.Cover)
-        .borderRadius(this.effectiveCornerRadius())
-        .clip(true)
-    } else if (this.sourcePixelMap !== undefined) {
-      Image(this.sourcePixelMap)
-        .width('100%')
-        .height('100%')
-        .objectFit(ImageFit.Cover)
-        .borderRadius(this.effectiveCornerRadius())
-        .clip(true)
-    } else {
-      Image($r('app.media.default_album_cover'))
-        .width('100%')
-        .height('100%')
-        .objectFit(ImageFit.Cover)
-        .borderRadius(this.effectiveCornerRadius())
-        .clip(true)
-    }
+    Image(this.imageSource())
+      .width('100%')
+      .height('100%')
+      .objectFit(ImageFit.Cover)
+      .borderRadius(this.effectiveCornerRadius())
+      .clip(true)
   }
 
   build() {

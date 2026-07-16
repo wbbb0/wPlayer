@@ -858,7 +858,7 @@ struct Index {
       }
       .width('100%')
       .height('100%')
-      .backgroundColor(this.playerStore.palettePrimary)
+      .backgroundColor(this.playerStore.themePrimary())
       .opacity(this.playerMorphBackgroundOpacity)
       .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
 
@@ -1014,7 +1014,7 @@ struct Index {
         Stack()
           .width('100%')
           .height('100%')
-          .backgroundColor(this.playerStore.palettePrimary)
+          .backgroundColor(this.playerStore.themePrimary())
           .opacity(this.pageThemeTintOpacity())
           .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
           .hitTestBehavior(HitTestMode.None)

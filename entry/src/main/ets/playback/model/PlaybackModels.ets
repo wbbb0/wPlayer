@@ -1,6 +1,10 @@
 import { image } from '@kit.ImageKit';
 import { AvailabilityState, MediaFormat, ParsedArtwork } from '../../library/model/LibraryModels';
 
+export const DEFAULT_PLAYER_PALETTE_PRIMARY: string = '#FF5B5CE2';
+export const DEFAULT_PLAYER_PALETTE_SECONDARY: string = '#FF5B5CE2';
+export const DEFAULT_PLAYER_PALETTE_ACCENT: string = '#FF5B5CE2';
+
 export enum PlayerState {
   IDLE = 'idle',
   LOADING = 'loading',
@@ -72,9 +76,9 @@ export class PlayerStore {
   repeatMode: RepeatMode = RepeatMode.ALL;
   queuePhase: QueueBuildPhase = QueueBuildPhase.EMPTY;
   queueSize: number = 0;
-  palettePrimary: string = '#FF7C4DFF';
-  paletteSecondary: string = '#FFFF4D8D';
-  paletteAccent: string = '#FFFFB347';
+  palettePrimary: string = DEFAULT_PLAYER_PALETTE_PRIMARY;
+  paletteSecondary: string = DEFAULT_PLAYER_PALETTE_SECONDARY;
+  paletteAccent: string = DEFAULT_PLAYER_PALETTE_ACCENT;
 
   isPlaying(): boolean {
     return this.state === PlayerState.PLAYING;
@@ -82,5 +86,17 @@ export class PlayerStore {
 
   hasCurrentTrack(): boolean {
     return this.currentTrack !== undefined;
+  }
+
+  themePrimary(): string {
+    return this.hasCurrentTrack() ? this.palettePrimary : DEFAULT_PLAYER_PALETTE_PRIMARY;
+  }
+
+  themeSecondary(): string {
+    return this.hasCurrentTrack() ? this.paletteSecondary : DEFAULT_PLAYER_PALETTE_SECONDARY;
+  }
+
+  themeAccent(): string {
+    return this.hasCurrentTrack() ? this.paletteAccent : DEFAULT_PLAYER_PALETTE_ACCENT;
   }
 }

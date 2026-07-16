@@ -1,3 +1,4 @@
+import { image } from '@kit.ImageKit';
 import { ArtworkFitMode, ArtworkView } from '../artwork/ArtworkView';
 import { ArtworkLayout } from '../artwork/ArtworkLayout';
 import { PlayerLayoutSpec, PlayerMotionSpec } from './PlayerMotion';
@@ -46,25 +47,23 @@ export struct PlayerHeroArtwork {
     ).height;
   }
 
+  private artworkSource(): image.PixelMap | ResourceStr {
+    if (this.playerStore.heroArtworkPreferPixelMap && this.playerStore.heroArtwork !== undefined) {
+      return this.playerStore.heroArtwork;
+    }
+    if (this.playerStore.heroArtworkUri.length > 0) {
+      return this.playerStore.heroArtworkUri;
+    }
+    return $r('app.media.default_album_cover');
+  }
+
   build() {
     Stack() {
       Stack() {
-        if (this.playerStore.heroArtworkPreferPixelMap && this.playerStore.heroArtwork !== undefined) {
-          Image(this.playerStore.heroArtwork)
-            .width('100%')
-            .height('100%')
-            .objectFit(ImageFit.Cover)
-        } else if (this.playerStore.heroArtworkUri.length > 0) {
-          Image(this.playerStore.heroArtworkUri)
-            .width('100%')
-            .height('100%')
-            .objectFit(ImageFit.Cover)
-        } else {
-          Image($r('app.media.default_album_cover'))
-            .width('100%')
-            .height('100%')
-            .objectFit(ImageFit.Cover)
-        }
+        Image(this.artworkSource())
+          .width('100%')
+          .height('100%')
+          .objectFit(ImageFit.Cover)
       }
       .width(this.artworkWidth())
       .height(this.artworkHeight())

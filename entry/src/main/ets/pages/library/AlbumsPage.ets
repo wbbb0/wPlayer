@@ -1,6 +1,7 @@
 import { PageLayoutSpec } from '../../components/layout/PageLayoutSpec';
 import { PageGridBehavior } from '../../components/layout/PageScrollBehavior';
 import { LibraryAlphabetIndex } from '../../components/library/LibraryAlphabetIndex';
+import { LibraryEmptyState } from '../../components/library/LibraryEmptyState';
 import { ArtworkFitMode, ArtworkView } from '../../components/artwork/ArtworkView';
 import {
   AlbumListItem,
@@ -18,8 +19,19 @@ export struct AlbumsPage {
   private readonly scrollBehavior: PageGridBehavior = new PageGridBehavior();
 
   build() {
-    Column() {
-      Stack({ alignContent: Alignment.End }) {
+    if (this.store.statistics.albumCount === 0) {
+      LibraryEmptyState({
+        symbol: $r('sys.symbol.opticaldisc'),
+        title: '还没有专辑',
+        description: '添加音乐后，专辑会显示在这里',
+        loading: this.store.loading,
+        topInset: this.topInset,
+        bottomInset: this.bottomInset,
+        scroller: this.scroller
+      })
+    } else {
+      Column() {
+        Stack({ alignContent: Alignment.End }) {
         Grid(this.scroller) {
           LazyForEach(this.store.albumDataSource, (item: AlbumListItem) => {
             GridItem() {
@@ -71,12 +83,13 @@ export struct AlbumsPage {
           })
           .margin({ right: 2, bottom: PageLayoutSpec.contentEnd(this.bottomInset) / 2 })
         }
+        }
+        .layoutWeight(1)
+        .width('100%')
       }
-      .layoutWeight(1)
       .width('100%')
+      .height('100%')
+      .backgroundColor(Color.Transparent)
     }
-    .width('100%')
-    .height('100%')
-    .backgroundColor(Color.Transparent)
   }
 }

@@ -27,8 +27,8 @@ export struct PlayerPlaybackButton {
     .width(this.buttonSize)
     .height(this.buttonSize)
     .borderRadius(this.buttonSize / 2)
-    .backgroundColor(this.playerStore.paletteSecondary)
-    .shadow({ radius: 12, color: this.playerStore.paletteSecondary, offsetY: 5 })
+    .backgroundColor(this.playerStore.themeSecondary())
+    .shadow({ radius: 12, color: this.playerStore.themeSecondary(), offsetY: 5 })
     .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
     .clickEffect({ level: ClickEffectLevel.MIDDLE })
     .accessibilityText(this.playerStore.isPlaying() ? '暂停' : '播放')
@@ -104,7 +104,7 @@ export struct PlayerModeButton {
     Stack() {
       SymbolGlyph(this.symbol())
         .fontSize(22)
-        .fontColor([this.active() ? this.playerStore.paletteAccent : $r('app.color.text_secondary')])
+        .fontColor([this.active() ? this.playerStore.themeAccent() : $r('app.color.text_secondary')])
         .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
     }
     .width(44)

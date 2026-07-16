@@ -515,13 +515,13 @@ export struct ResponsiveNavigationShell {
           SymbolGlyph(item.symbol)
             .fontSize(AppShellLayoutSpec.EXPANDED_TAB_ITEM_ICON_SIZE)
             .fontColor([this.expandedTabIndex() === tabIndex ?
-              this.playerStore.paletteAccent : $r('app.color.text_tertiary')])
+              this.playerStore.themeAccent() : $r('app.color.text_tertiary')])
             .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
           Text(item.label)
             .fontSize(AppShellLayoutSpec.EXPANDED_TAB_ITEM_LABEL_SIZE)
             .fontWeight(this.expandedTabIndex() === tabIndex ? FontWeight.Medium : FontWeight.Normal)
             .fontColor(this.expandedTabIndex() === tabIndex ?
-              this.playerStore.paletteAccent : $r('app.color.text_secondary'))
+              this.playerStore.themeAccent() : $r('app.color.text_secondary'))
             .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
             .maxLines(1)
         }
@@ -534,13 +534,13 @@ export struct ResponsiveNavigationShell {
           SymbolGlyph(item.symbol)
             .fontSize(AppShellLayoutSpec.EXPANDED_TAB_ITEM_ICON_SIZE)
             .fontColor([this.expandedTabIndex() === tabIndex ?
-              this.playerStore.paletteAccent : $r('app.color.text_tertiary')])
+              this.playerStore.themeAccent() : $r('app.color.text_tertiary')])
             .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
           Text(item.label)
             .fontSize(AppShellLayoutSpec.EXPANDED_TAB_ITEM_LABEL_SIZE)
             .fontWeight(this.expandedTabIndex() === tabIndex ? FontWeight.Medium : FontWeight.Normal)
             .fontColor(this.expandedTabIndex() === tabIndex ?
-              this.playerStore.paletteAccent : $r('app.color.text_secondary'))
+              this.playerStore.themeAccent() : $r('app.color.text_secondary'))
             .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
             .maxLines(1)
         }

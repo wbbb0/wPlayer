@@ -14,6 +14,8 @@ const PLAYBACK_SHUFFLE_KEY: string = 'playback.shuffle_enabled';
 const PLAYBACK_REPEAT_MODE_KEY: string = 'playback.repeat_mode';
 const PLAYBACK_ARTWORK_WINDOW_KEY: string = 'playback.artwork_window_radius';
 const PLAYBACK_LAST_TRACK_ID_KEY: string = 'playback.last_track_id';
+const PLAYBACK_QUEUE_TRACK_IDS_KEY: string = 'playback.queue_track_ids';
+const PLAYBACK_QUEUE_CURRENT_TRACK_ID_KEY: string = 'playback.queue_current_track_id';
 
 interface SettingUpdate {
   key: string;
@@ -123,6 +125,38 @@ export class SettingsRepository {
 
   setPlaybackLastTrackId(value: number): void {
     this.setValue(PLAYBACK_LAST_TRACK_ID_KEY, value);
+  }
+
+  getPlaybackQueueTrackIds(): Array<number> {
+    try {
+      const value = this.store.getSync(PLAYBACK_QUEUE_TRACK_IDS_KEY, []);
+      if (!Array.isArray(value)) {
+        return [];
+      }
+      const result: Array<number> = [];
+      for (let index = 0; index < value.length; index += 1) {
+        if (typeof value[index] === 'number') {
+          result.push(value[index] as number);
+        }
+      }
+      return result;
+    } catch (error) {
+      const businessError = error as BusinessError;
+      console.warn(`Unable to read setting ${PLAYBACK_QUEUE_TRACK_IDS_KEY}: ` +
+        `${businessError.code}, ${businessError.message}`);
+      return [];
+    }
+  }
+
+  getPlaybackQueueCurrentTrackId(defaultValue: number = -1): number {
+    return this.getNumber(PLAYBACK_QUEUE_CURRENT_TRACK_ID_KEY, defaultValue);
+  }
+
+  setPlaybackQueue(trackIds: Array<number>, currentTrackId: number): void {
+    this.setValues([
+      { key: PLAYBACK_QUEUE_TRACK_IDS_KEY, value: trackIds },
+      { key: PLAYBACK_QUEUE_CURRENT_TRACK_ID_KEY, value: currentTrackId }
+    ]);
   }
 
   private getNumber(key: string, defaultValue: number): number {

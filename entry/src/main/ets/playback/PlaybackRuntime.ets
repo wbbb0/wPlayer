@@ -251,6 +251,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.queueSize = 0;
     this.playerStore.playWhenReady = false;
     this.settings?.setPlaybackLastTrackId(-1);
+    this.settings?.setPlaybackQueue([], -1);
     this.syncQueueSnapshot();
     this.onStateChanged(PlayerState.IDLE);
   }
@@ -277,7 +278,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.queuePhase = QueueBuildPhase.EMPTY;
     this.playerStore.queueSize = 0;
     this.queue.clear();
-    this.syncQueueSnapshot();
+    this.syncQueueSnapshot(false);
     this.currentPlaybackTrack = undefined;
     this.artworkCache?.releaseAll();
     this.artworkCache?.releaseFullArtwork(this.fullArtwork);
@@ -391,19 +392,38 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   private async restoreLastPlayback(): Promise<void> {
-    const trackId = this.settings?.getPlaybackLastTrackId(-1) ?? -1;
+    const storedIds = this.settings?.getPlaybackQueueTrackIds() ?? [];
+    let trackId = this.settings?.getPlaybackQueueCurrentTrackId(-1) ?? -1;
+    if (trackId < 0) {
+      trackId = this.settings?.getPlaybackLastTrackId(-1) ?? -1;
+    }
     if (trackId < 0) {
       return;
     }
-    const track = await this.repository.getPlaybackTrack(trackId);
+    const ids = storedIds.length > 0 ? storedIds : [trackId];
+    const pendingTracks: Array<Promise<PlaybackTrack | undefined>> = ids.map((id: number) => {
+      return this.repository.getPlaybackTrack(id);
+    });
+    const restoredTracks = await Promise.all(pendingTracks);
+    const queueTracks: Array<QueueTrack> = [];
+    let track: PlaybackTrack | undefined;
+    restoredTracks.forEach((restored: PlaybackTrack | undefined) => {
+      if (restored !== undefined) {
+        queueTracks.push(PlaybackRuntime.queueTrackOfPlaybackTrack(restored));
+        if (restored.id === trackId) {
+          track = restored;
+        }
+      }
+    });
     if (track === undefined) {
       this.settings?.setPlaybackLastTrackId(-1);
+      this.settings?.setPlaybackQueue([], -1);
       return;
     }
     const queueTrack = PlaybackRuntime.queueTrackOfPlaybackTrack(track);
-    this.queue.build([queueTrack], track.id, false);
+    this.queue.build(queueTracks, track.id, false);
     this.playerStore.queuePhase = QueueBuildPhase.READY;
-    this.playerStore.queueSize = 1;
+    this.playerStore.queueSize = queueTracks.length;
     this.syncQueueSnapshot();
     await this.beginTrack(queueTrack, false);
   }
@@ -601,11 +621,19 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     });
   }
 
-  private syncQueueSnapshot(): void {
+  private syncQueueSnapshot(persist: boolean = true): void {
     const snapshot = this.queue.snapshot();
     this.playerStore.queueDataSource.replace(snapshot.items);
     this.playerStore.queueItems = snapshot.items;
     this.playerStore.queueCurrentIndex = snapshot.currentIndex;
+    const currentTrackId = snapshot.currentIndex >= 0 && snapshot.currentIndex < snapshot.items.length ?
+      snapshot.items[snapshot.currentIndex].id : -1;
+    if (persist) {
+      this.settings?.setPlaybackQueue(
+        snapshot.items.map((track: QueueTrack) => track.id),
+        currentTrackId
+      );
+    }
   }
 
   private persistProgress(completed: boolean): void {

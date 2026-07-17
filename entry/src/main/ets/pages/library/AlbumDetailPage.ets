@@ -7,6 +7,7 @@ import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { AppShellLayoutSpec } from '../../components/layout/AppShellLayoutSpec';
 import { QueueActionMenu } from '../../components/library/QueueActionMenu';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
+import { DynamicColor, DynamicContainerRole } from '../../appearance/DynamicColor';
 
 @Component
 export struct AlbumDetailPage {
@@ -144,17 +145,17 @@ export struct AlbumDetailPage {
   }
 
   @Builder
-  private HeaderActionIcon(symbol: Resource) {
+  private HeaderActionIcon(symbol: Resource, accent: string) {
     SymbolGlyph(symbol)
       .fontSize(20)
-      .fontColor([$r('app.color.control_on_accent')])
+      .fontColor([DynamicColor.foreground(accent, DynamicContainerRole.ACCENT)])
   }
 
   @Builder
   private PlaybackActions(detail: AlbumDetail) {
     Row({ space: 12 }) {
       Button() {
-        this.HeaderActionIcon($r('sys.symbol.shuffle'))
+        this.HeaderActionIcon($r('sys.symbol.shuffle'), detail.album.paletteAccent)
       }
       .width(44).height(44).borderRadius(22)
       .backgroundColor(this.withAlpha(detail.album.paletteAccent, '38'))
@@ -166,9 +167,13 @@ export struct AlbumDetailPage {
       Button() {
         Row({ space: 7 }) {
           SymbolGlyph($r('sys.symbol.play_fill'))
-            .fontSize(19).fontColor([$r('app.color.control_on_accent')])
+            .fontSize(19).fontColor([
+              DynamicColor.foreground(detail.album.paletteSecondary, DynamicContainerRole.SECONDARY)
+            ])
           Text('播放').fontSize(15).fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.control_on_accent'))
+            .fontColor(DynamicColor.foreground(
+              detail.album.paletteSecondary, DynamicContainerRole.SECONDARY
+            ))
         }
       }
       .width(this.usesWideHeader() ? 220 : Math.min(220, Math.max(128, this.rootWidth - 164)))
@@ -178,7 +183,7 @@ export struct AlbumDetailPage {
       .onClick(() => this.playFirst(detail))
 
       Button() {
-        this.HeaderActionIcon($r('sys.symbol.plus'))
+        this.HeaderActionIcon($r('sys.symbol.plus'), detail.album.paletteAccent)
       }
       .width(44).height(44).borderRadius(22)
       .backgroundColor(this.withAlpha(detail.album.paletteAccent, '38'))

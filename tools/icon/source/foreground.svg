@@ -1,49 +1,123 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <defs>
-    <radialGradient id="disc" cx="0" cy="0" r="1" gradientTransform="translate(642 642) rotate(-132) scale(570)" gradientUnits="userSpaceOnUse">
+    <!-- Disc body -->
+    <radialGradient id="disc" cx="0" cy="0" r="1"
+                    gradientTransform="translate(689 716) rotate(-132) scale(775)"
+                    gradientUnits="userSpaceOnUse">
       <stop stop-color="#55C8F2"/>
       <stop offset="0.30" stop-color="#278FEF"/>
       <stop offset="0.64" stop-color="#176FDF"/>
       <stop offset="1" stop-color="#294CCB"/>
     </radialGradient>
-    <linearGradient id="edge" x1="296" y1="260" x2="748" y2="786" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#E9FFFF"/>
-      <stop offset="0.25" stop-color="#83E8FF"/>
-      <stop offset="0.62" stop-color="#1677F2"/>
-      <stop offset="1" stop-color="#9588FF"/>
+
+    <!-- Merged data area -->
+    <linearGradient id="dataBand"
+                    x1="238" y1="220"
+                    x2="814" y2="826"
+                    gradientUnits="userSpaceOnUse">
+      <stop stop-color="#DDFDFF" stop-opacity="0.42"/>
+      <stop offset="0.28" stop-color="#72E6FB" stop-opacity="0.24"/>
+      <stop offset="0.58" stop-color="#2B86EB" stop-opacity="0.12"/>
+      <stop offset="0.82" stop-color="#5A57E0" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#E0D8FF" stop-opacity="0.34"/>
     </linearGradient>
-    <linearGradient id="sheen" x1="330" y1="322" x2="712" y2="690" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFFFFF" stop-opacity="0.86"/>
-      <stop offset="0.42" stop-color="#A8F3FF" stop-opacity="0.22"/>
-      <stop offset="0.72" stop-color="#B7ACFF" stop-opacity="0.08"/>
-      <stop offset="1" stop-color="#EEE8FF" stop-opacity="0.58"/>
+
+    <!-- Thick highlight ring in the middle of the data area -->
+    <linearGradient id="midHighlight"
+                    x1="236" y1="214"
+                    x2="810" y2="828"
+                    gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.96"/>
+      <stop offset="0.30" stop-color="#D8FBFF" stop-opacity="0.72"/>
+      <stop offset="0.54" stop-color="#A6E8FF" stop-opacity="0.24"/>
+      <stop offset="0.76" stop-color="#FFFFFF" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#F0EAFF" stop-opacity="0.48"/>
     </linearGradient>
-    <radialGradient id="hub" cx="0" cy="0" r="1" gradientTransform="translate(480 472) rotate(48) scale(144)" gradientUnits="userSpaceOnUse">
+
+    <!-- Outer rim highlight instead of the old thick edge ring -->
+    <linearGradient id="outerHighlight"
+                    x1="212" y1="186"
+                    x2="850" y2="920"
+                    gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.98"/>
+      <stop offset="0.26" stop-color="#D7FBFF" stop-opacity="0.72"/>
+      <stop offset="0.56" stop-color="#A4E4FF" stop-opacity="0.18"/>
+      <stop offset="0.82" stop-color="#FFFFFF" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#EAE2FF" stop-opacity="0.56"/>
+    </linearGradient>
+
+    <!-- Subtle dark rim to keep the outer highlight from floating -->
+    <linearGradient id="outerShadow"
+                    x1="210" y1="182"
+                    x2="850" y2="920"
+                    gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1B4EB7" stop-opacity="0.04"/>
+      <stop offset="0.48" stop-color="#1B4EB7" stop-opacity="0.10"/>
+      <stop offset="0.76" stop-color="#193D9F" stop-opacity="0.24"/>
+      <stop offset="1" stop-color="#472D9E" stop-opacity="0.34"/>
+    </linearGradient>
+
+    <!-- Center hub -->
+    <radialGradient id="hub" cx="0" cy="0" r="1"
+                    gradientTransform="translate(474 486) rotate(48) scale(170)"
+                    gradientUnits="userSpaceOnUse">
       <stop stop-color="#FFFFFF"/>
       <stop offset="0.55" stop-color="#E9F7FF"/>
       <stop offset="1" stop-color="#BFD5F5"/>
     </radialGradient>
-    <filter id="shadow" x="160" y="172" width="704" height="736" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="42" stdDeviation="36" flood-color="#3158B6" flood-opacity="0.30"/>
+
+    <!-- Shadow -->
+    <filter id="shadow"
+            x="40" y="84" width="944" height="972"
+            filterUnits="userSpaceOnUse"
+            color-interpolation-filters="sRGB">
+      <feDropShadow
+              dx="0"
+              dy="52"
+              stdDeviation="44"
+              flood-color="#3158B6"
+              flood-opacity="0.28"/>
     </filter>
   </defs>
 
-  <g transform="translate(512 512) scale(1.36) translate(-512 -492)">
+  <!-- Base disc -->
   <g filter="url(#shadow)">
-    <circle cx="512" cy="492" r="300" fill="url(#edge)"/>
-    <circle cx="512" cy="492" r="284" fill="url(#disc)"/>
+    <circle cx="512" cy="512" r="392" fill="url(#disc)"/>
   </g>
 
-  <circle cx="512" cy="492" r="221" fill="none" stroke="url(#sheen)" stroke-opacity="0.64" stroke-width="5"/>
-  <circle cx="512" cy="492" r="150" fill="none" stroke="#D8F7FF" stroke-opacity="0.24" stroke-width="4"/>
+  <!-- Outer rim highlight -->
+  <circle
+          cx="512" cy="512" r="400"
+          fill="none"
+          stroke="url(#outerHighlight)"
+          stroke-width="18"/>
 
-  <circle cx="512" cy="492" r="266" fill="none" stroke="#D9D0FF" stroke-opacity="0.56" stroke-width="11"
-    stroke-linecap="round" stroke-dasharray="170 1501" transform="rotate(205 512 492)"/>
-  <circle cx="512" cy="492" r="266" fill="none" stroke="#FFFFFF" stroke-opacity="0.62" stroke-width="14"
-    stroke-linecap="round" stroke-dasharray="330 1341" transform="rotate(9.5 512 492)"/>
+  <circle
+          cx="512" cy="512" r="400"
+          fill="none"
+          stroke="url(#outerShadow)"
+          stroke-width="4"/>
 
-  <circle cx="512" cy="492" r="88" fill="url(#hub)"/>
-  <circle cx="512" cy="492" r="63" fill="none" stroke="#FFFFFF" stroke-opacity="0.72" stroke-width="6"/>
-  <circle cx="512" cy="492" r="35" fill="#1C83EF"/>
-  </g>
+  <!-- Data Bands -->
+  <circle
+          cx="512" cy="512" r="180"
+          fill="none"
+          stroke="url(#dataBand)"
+          stroke-width="98"/>
+  <circle
+          cx="512" cy="512" r="300"
+          fill="none"
+          stroke="url(#dataBand)"
+          stroke-width="98"/>
+
+  <!-- One thicker highlight ring in the middle of the data band -->
+  <circle
+          cx="512" cy="512" r="245"
+          fill="none"
+          stroke="url(#midHighlight)"
+          stroke-width="30"/>
+
+  <!-- Center hub -->
+  <circle cx="512" cy="512" r="104" fill="url(#hub)"/>
+  <circle cx="512" cy="512" r="42" fill="#1C83EF"/>
 </svg>

@@ -13,7 +13,7 @@ const resourceDirs = [
 ];
 
 const iconSize = 1024;
-const startIconSize = 144;
+const startIconSize = 256;
 const backgroundSvg = path.join(sourceDir, 'background.svg');
 const foregroundSvg = path.join(sourceDir, 'foreground.svg');
 
@@ -38,9 +38,9 @@ for (const resourceDir of resourceDirs) {
 }
 
 await sharp(composite).toFile(path.join(outputDir, 'wplayer-icon-square.png'));
-await sharp(composite)
+await sharp(foreground)
   .resize(startIconSize, startIconSize)
   .png()
   .toFile(path.join(resourceDirs[1], 'startIcon.png'));
 
-console.log('Generated wPlayer layered icons and startIcon.png.');
+console.log('Generated wPlayer layered icons and transparent 256px startIcon.png.');

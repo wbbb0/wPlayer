@@ -26,7 +26,11 @@ export class AppAppearancePalette {
       AppAppearancePalette.resolveColor(context, 'navigation_action_foreground',
         darkMode ? '#FFF5F5F5' : '#FF202020'),
       AppAppearancePalette.resolveColor(context, 'system_bar_content', darkMode ? '#FFF5F5F5' : '#FF202020'),
-      AppAppearancePalette.resolveColor(context, 'start_window_background', darkMode ? '#FF000000' : '#FFFFFFFF')
+      AppAppearancePalette.resolveColor(
+        context,
+        'wplayer_start_window_background',
+        darkMode ? '#FF000000' : '#FFFFFFFF'
+      )
     );
   }
 

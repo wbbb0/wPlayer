@@ -79,9 +79,10 @@ export class MetadataReader {
 
   private static async mergeSystemMetadata(uri: string, fileSize: number,
     parsed: ParsedMetadata): Promise<ParsedMetadata> {
-    const file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+    let file: fs.File | undefined;
     let extractor: media.AVMetadataExtractor | undefined;
     try {
+      file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
       extractor = await media.createAVMetadataExtractor();
       extractor.fdSrc = { fd: file.fd, offset: 0, length: fileSize };
       const systemMetadata = await extractor.fetchMetadata();
@@ -118,7 +119,13 @@ export class MetadataReader {
           console.warn(`Metadata extractor release failed: ${MetadataReader.errorMessage(error)}`);
         }
       }
-      fs.closeSync(file);
+      if (file !== undefined) {
+        try {
+          fs.closeSync(file);
+        } catch (error) {
+          console.warn(`Metadata file close failed: ${MetadataReader.errorMessage(error)}`);
+        }
+      }
     }
     return parsed;
   }

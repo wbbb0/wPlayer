@@ -123,36 +123,40 @@ export class PlaybackEngine {
     if (track.availability !== AvailabilityState.AVAILABLE) {
       throw new Error('音乐文件当前不可用，请重新授权或重新导入');
     }
-    const player = await this.ensurePlayer();
-    this.ensureCurrent(epoch);
-    await this.resetForSource(player);
-    this.ensureCurrent(epoch);
-
-    let sourceFile: fs.File;
     try {
-      sourceFile = fs.openSync(track.uri, fs.OpenMode.READ_ONLY);
-    } catch (error) {
-      const cause = new Error(`无法打开音乐文件：${PlaybackEngine.messageOf(error)}`);
-      this.listener?.onStateChanged(PlayerState.ERROR, cause.message);
-      throw cause;
-    }
-    this.sourceFile = sourceFile;
-    const initialized = this.waitForState('initialized');
-    player.fdSrc = { fd: sourceFile.fd, offset: 0, length: track.fileSize };
-    await initialized;
-    this.ensureCurrent(epoch);
-    player.audioRendererInfo = {
-      usage: audio.StreamUsage.STREAM_USAGE_MUSIC,
-      rendererFlags: 0
-    };
-    await player.prepare();
-    this.ensureCurrent(epoch);
-    if (resumePositionMs > 0) {
-      await this.seekInternal(resumePositionMs);
+      const player = await this.ensurePlayer();
       this.ensureCurrent(epoch);
-    }
-    if (playWhenReady()) {
-      await player.play();
+      await this.resetForSource(player);
+      this.ensureCurrent(epoch);
+
+      let sourceFile: fs.File;
+      try {
+        sourceFile = fs.openSync(track.uri, fs.OpenMode.READ_ONLY);
+      } catch (error) {
+        const cause = new Error(`无法打开音乐文件：${PlaybackEngine.messageOf(error)}`);
+        this.listener?.onStateChanged(PlayerState.ERROR, cause.message);
+        throw cause;
+      }
+      this.sourceFile = sourceFile;
+      const initialized = this.waitForState('initialized');
+      player.fdSrc = { fd: sourceFile.fd, offset: 0, length: track.fileSize };
+      await initialized;
+      this.ensureCurrent(epoch);
+      player.audioRendererInfo = {
+        usage: audio.StreamUsage.STREAM_USAGE_MUSIC,
+        rendererFlags: 0
+      };
+      await player.prepare();
+      this.ensureCurrent(epoch);
+      if (resumePositionMs > 0) {
+        await this.seekInternal(resumePositionMs);
+        this.ensureCurrent(epoch);
+      }
+      if (playWhenReady()) {
+        await player.play();
+      }
+    } catch (error) {
+      throw new Error(`Unable to load playback source: ${PlaybackEngine.messageOf(error)}`);
     }
   }
 
@@ -160,7 +164,12 @@ export class PlaybackEngine {
     if (this.player !== undefined && this.rawState !== 'released') {
       return this.player;
     }
-    const player = await media.createAVPlayer();
+    let player: media.AVPlayer;
+    try {
+      player = await media.createAVPlayer();
+    } catch (error) {
+      throw new Error(`Unable to create AVPlayer: ${PlaybackEngine.messageOf(error)}`);
+    }
     player.on('stateChange', (state: string) => {
       this.rawState = state;
       if (this.pendingStateWait !== undefined && this.pendingStateWait.expected === state) {
@@ -223,8 +232,12 @@ export class PlaybackEngine {
 
   private async resetForSource(player: media.AVPlayer): Promise<void> {
     if (this.rawState !== 'idle') {
-      await player.reset();
-      this.rawState = player.state;
+      try {
+        await player.reset();
+        this.rawState = player.state;
+      } catch (error) {
+        throw new Error(`Unable to reset AVPlayer: ${PlaybackEngine.messageOf(error)}`);
+      }
     }
     this.closeSourceFile();
   }

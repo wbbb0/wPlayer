@@ -7,5 +7,10 @@ function extractArtworkPaletteTask(pixelBuffer: ArrayBuffer): ArtworkPalette {
 }
 
 export function extractArtworkPaletteAsync(pixelBuffer: ArrayBuffer): Promise<ArtworkPalette> {
-  return taskpool.execute(extractArtworkPaletteTask, pixelBuffer) as Promise<ArtworkPalette>;
+  try {
+    return taskpool.execute(extractArtworkPaletteTask, pixelBuffer) as Promise<ArtworkPalette>;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : `${error}`;
+    return Promise.reject(new Error(`Unable to submit artwork palette task: ${message}`));
+  }
 }

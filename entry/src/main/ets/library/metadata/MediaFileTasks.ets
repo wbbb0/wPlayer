@@ -15,58 +15,72 @@ export interface MediaProbeResult {
   workerDurationMs: number;
 }
 
+function errorMessage(error: Object): string {
+  return error instanceof Error ? error.message : `${error}`;
+}
+
+function operationError(operation: string, error: Object): Error {
+  return new Error(`${operation}: ${errorMessage(error)}`);
+}
+
 @Concurrent
 function probeMediaFileTask(uri: string): MediaProbeResult {
   const startedAt = Date.now();
-  const reader = new BinaryFileReader(uri);
   try {
-    const chunkSize = Math.min(64 * 1024, reader.size);
-    const digest = cryptoFramework.createMd('SHA256');
-    digest.updateSync({ data: reader.read(0, chunkSize) });
-    if (reader.size > chunkSize) {
-      digest.updateSync({ data: reader.read(reader.size - chunkSize, chunkSize) });
+    const reader = new BinaryFileReader(uri);
+    try {
+      const chunkSize = Math.min(64 * 1024, reader.size);
+      const digest = cryptoFramework.createMd('SHA256');
+      digest.updateSync({ data: reader.read(0, chunkSize) });
+      if (reader.size > chunkSize) {
+        digest.updateSync({ data: reader.read(reader.size - chunkSize, chunkSize) });
+      }
+      const sizeBytes = new Uint8Array(8);
+      let remainingSize = reader.size;
+      for (let index = 7; index >= 0; index -= 1) {
+        sizeBytes[index] = remainingSize & 0xFF;
+        remainingSize = Math.floor(remainingSize / 256);
+      }
+      digest.updateSync({ data: sizeBytes });
+      const digestResult = digest.digestSync();
+      let quickHash = '';
+      digestResult.data.forEach((value: number) => {
+        quickHash += value.toString(16).padStart(2, '0');
+      });
+      const signature = reader.read(0, Math.min(4, reader.size));
+      let metadata: ParsedMetadata;
+      if (signature.length >= 4 && signature[0] === 0x66 && signature[1] === 0x4C &&
+        signature[2] === 0x61 && signature[3] === 0x43) {
+        metadata = FlacTagReader.read(reader);
+      } else if ((signature.length >= 3 && signature[0] === 0x49 && signature[1] === 0x44 &&
+        signature[2] === 0x33) ||
+        (signature.length >= 2 && signature[0] === 0xFF && (signature[1] & 0xE0) === 0xE0)) {
+        metadata = Id3TagReader.read(reader);
+      } else {
+        throw new Error('Only MP3 and FLAC files are supported');
+      }
+      return {
+        metadata: metadata,
+        fileName: reader.name,
+        fileSize: reader.size,
+        modifiedAt: reader.modifiedAt,
+        quickFingerprint: quickHash,
+        workerDurationMs: Date.now() - startedAt
+      };
+    } finally {
+      reader.close();
     }
-    const sizeBytes = new Uint8Array(8);
-    let remainingSize = reader.size;
-    for (let index = 7; index >= 0; index -= 1) {
-      sizeBytes[index] = remainingSize & 0xFF;
-      remainingSize = Math.floor(remainingSize / 256);
-    }
-    digest.updateSync({ data: sizeBytes });
-    const digestResult = digest.digestSync();
-    let quickHash = '';
-    digestResult.data.forEach((value: number) => {
-      quickHash += value.toString(16).padStart(2, '0');
-    });
-    const signature = reader.read(0, Math.min(4, reader.size));
-    let metadata: ParsedMetadata;
-    if (signature.length >= 4 && signature[0] === 0x66 && signature[1] === 0x4C &&
-      signature[2] === 0x61 && signature[3] === 0x43) {
-      metadata = FlacTagReader.read(reader);
-    } else if ((signature.length >= 3 && signature[0] === 0x49 && signature[1] === 0x44 &&
-      signature[2] === 0x33) ||
-      (signature.length >= 2 && signature[0] === 0xFF && (signature[1] & 0xE0) === 0xE0)) {
-      metadata = Id3TagReader.read(reader);
-    } else {
-      throw new Error('Only MP3 and FLAC files are supported');
-    }
-    return {
-      metadata: metadata,
-      fileName: reader.name,
-      fileSize: reader.size,
-      modifiedAt: reader.modifiedAt,
-      quickFingerprint: quickHash,
-      workerDurationMs: Date.now() - startedAt
-    };
-  } finally {
-    reader.close();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : `${error}`;
+    throw new Error(`Unable to probe media file: ${message}`);
   }
 }
 
 @Concurrent
 function calculateFullFingerprintTask(uri: string): string {
-  const file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+  let file: fs.File | undefined;
   try {
+    file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
     const stat = fs.statSync(file.fd);
     const digest = cryptoFramework.createMd('SHA256');
     let offset = 0;
@@ -86,24 +100,39 @@ function calculateFullFingerprintTask(uri: string): string {
       hexadecimal += value.toString(16).padStart(2, '0');
     });
     return hexadecimal;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : `${error}`;
+    throw new Error(`Unable to calculate full media fingerprint: ${message}`);
   } finally {
-    fs.closeSync(file);
+    if (file !== undefined) {
+      try {
+        fs.closeSync(file);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : `${error}`;
+        console.warn(`Unable to close media file after fingerprinting: ${message}`);
+      }
+    }
   }
 }
 
 @Concurrent
 function readEmbeddedLyricsTask(uri: string, format: MediaFormat): string {
-  const reader = new BinaryFileReader(uri);
   try {
-    if (format === MediaFormat.MP3) {
-      return Id3TagReader.read(reader).lyrics;
+    const reader = new BinaryFileReader(uri);
+    try {
+      if (format === MediaFormat.MP3) {
+        return Id3TagReader.read(reader).lyrics;
+      }
+      if (format === MediaFormat.FLAC) {
+        return FlacTagReader.read(reader).lyrics;
+      }
+      return '';
+    } finally {
+      reader.close();
     }
-    if (format === MediaFormat.FLAC) {
-      return FlacTagReader.read(reader).lyrics;
-    }
-    return '';
-  } finally {
-    reader.close();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : `${error}`;
+    throw new Error(`Unable to read embedded lyrics: ${message}`);
   }
 }
 
@@ -113,8 +142,9 @@ function readArtworkBytesTask(uri: string, byteOffset: number, byteLength: numbe
   if (byteOffset < 0 || byteLength <= 0 || byteLength > 64 * 1024 * 1024) {
     throw new Error(`Invalid artwork byte range: ${byteOffset}+${byteLength}`);
   }
-  const file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+  let file: fs.File | undefined;
   try {
+    file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
     const stat = fs.statSync(file.fd);
     if (byteOffset + byteLength > stat.size) {
       throw new Error(`Artwork byte range exceeds file: ${byteOffset}+${byteLength}/${stat.size}`);
@@ -147,8 +177,18 @@ function readArtworkBytesTask(uri: string, byteOffset: number, byteLength: numbe
       throw new Error(`Invalid artwork payload offset: ${payloadOffset}/${outputLength}`);
     }
     return output.buffer.slice(payloadOffset, outputLength);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : `${error}`;
+    throw new Error(`Unable to read embedded artwork: ${message}`);
   } finally {
-    fs.closeSync(file);
+    if (file !== undefined) {
+      try {
+        fs.closeSync(file);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : `${error}`;
+        console.warn(`Unable to close media file after reading artwork: ${message}`);
+      }
+    }
   }
 }
 
@@ -177,27 +217,47 @@ function flattenArtworkPixelsTask(sourceBuffer: ArrayBuffer, width: number, heig
 }
 
 export function calculateFullFingerprint(uri: string): Promise<string> {
-  return taskpool.execute(calculateFullFingerprintTask, uri) as Promise<string>;
+  try {
+    return taskpool.execute(calculateFullFingerprintTask, uri) as Promise<string>;
+  } catch (error) {
+    return Promise.reject(operationError('Unable to submit full fingerprint task', error));
+  }
 }
 
 export function probeMediaFile(uri: string): Promise<MediaProbeResult> {
-  return taskpool.execute(probeMediaFileTask, uri) as Promise<MediaProbeResult>;
+  try {
+    return taskpool.execute(probeMediaFileTask, uri) as Promise<MediaProbeResult>;
+  } catch (error) {
+    return Promise.reject(operationError('Unable to submit media probe task', error));
+  }
 }
 
 export function readEmbeddedLyrics(uri: string, format: MediaFormat): Promise<string> {
-  return taskpool.execute(readEmbeddedLyricsTask, uri, format) as Promise<string>;
+  try {
+    return taskpool.execute(readEmbeddedLyricsTask, uri, format) as Promise<string>;
+  } catch (error) {
+    return Promise.reject(operationError('Unable to submit embedded lyrics task', error));
+  }
 }
 
 export function readArtworkBytesAsync(uri: string, byteOffset: number, byteLength: number,
   payloadOffset: number, unsynchronized: boolean): Promise<ArrayBuffer> {
-  return taskpool.execute(
-    readArtworkBytesTask, uri, byteOffset, byteLength, payloadOffset, unsynchronized
-  ) as Promise<ArrayBuffer>;
+  try {
+    return taskpool.execute(
+      readArtworkBytesTask, uri, byteOffset, byteLength, payloadOffset, unsynchronized
+    ) as Promise<ArrayBuffer>;
+  } catch (error) {
+    return Promise.reject(operationError('Unable to submit artwork read task', error));
+  }
 }
 
 export function flattenArtworkPixels(sourceBuffer: ArrayBuffer, width: number, height: number,
   premultiplied: boolean): Promise<ArrayBuffer> {
-  return taskpool.execute(
-    flattenArtworkPixelsTask, sourceBuffer, width, height, premultiplied
-  ) as Promise<ArrayBuffer>;
+  try {
+    return taskpool.execute(
+      flattenArtworkPixelsTask, sourceBuffer, width, height, premultiplied
+    ) as Promise<ArrayBuffer>;
+  } catch (error) {
+    return Promise.reject(operationError('Unable to submit artwork flattening task', error));
+  }
 }

@@ -2,6 +2,7 @@ import { relationalStore } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { SortKeyNormalizer } from '../metadata/SortKeyNormalizer';
 import { ARTWORK_PALETTE_VERSION } from '../artwork/ArtworkPaletteExtractor';
+import { RelationalStoreSafety } from './RelationalStoreSafety';
 
 const DATABASE_NAME = 'music_library.db';
 const DATABASE_VERSION = 10;
@@ -274,7 +275,11 @@ export class LibraryDatabase {
   async close(): Promise<void> {
     await this.writeTail;
     if (this.store !== undefined) {
-      await this.store.close();
+      try {
+        await this.store.close();
+      } catch (error) {
+        throw RelationalStoreSafety.operationError('Unable to close library database', error);
+      }
       this.store = undefined;
       this.initializePromise = undefined;
     }
@@ -290,21 +295,25 @@ export class LibraryDatabase {
       return rebuilt;
     } catch (error) {
       if (store !== undefined) {
-        await store.close();
+        try {
+          await store.close();
+        } catch (closeError) {
+          console.warn(`Unable to close failed library database: ${RelationalStoreSafety.errorMessage(closeError)}`);
+        }
       }
       this.initializePromise = undefined;
-      const cause = error as Error;
-      throw cause;
+      throw RelationalStoreSafety.operationError('Unable to initialize library database', error);
     }
   }
 
   private async migrate(store: relationalStore.RdbStore): Promise<boolean> {
     const hasSchemaMeta = await this.tableExists(store, 'schema_meta');
     if (!hasSchemaMeta) {
-      const transaction = await store.createTransaction({
-        transactionType: relationalStore.TransactionType.IMMEDIATE
-      });
+      let transaction: relationalStore.Transaction | undefined;
       try {
+        transaction = await store.createTransaction({
+          transactionType: relationalStore.TransactionType.IMMEDIATE
+        });
         for (let index = 0; index < CURRENT_SCHEMA.length; index += 1) {
           await transaction.execute(this.withIfNotExists(CURRENT_SCHEMA[index]));
         }
@@ -316,12 +325,13 @@ export class LibraryDatabase {
         store.version = DATABASE_VERSION;
         return false;
       } catch (error) {
-        try {
-          await transaction.rollback();
-        } catch (_) {
+        if (transaction !== undefined) {
+          try {
+            await transaction.rollback();
+          } catch (_) {
+          }
         }
-        const cause = error as Error;
-        throw cause;
+        throw RelationalStoreSafety.operationError('Unable to create library schema', error);
       }
     }
 
@@ -337,15 +347,16 @@ export class LibraryDatabase {
   }
 
   private async rebuildSchema(store: relationalStore.RdbStore): Promise<void> {
-    const transaction = await store.createTransaction({
-      transactionType: relationalStore.TransactionType.IMMEDIATE
-    });
+    let transaction: relationalStore.Transaction | undefined;
     const tables = [
       'import_error', 'import_job', 'track_playback_state', 'track_artwork', 'track_tag_extra', 'track_genre',
       'album_credit', 'track_credit', 'genre', 'person', 'track', 'media_file', 'album',
       'artwork_source', 'artwork_asset', 'schema_meta'
     ];
     try {
+      transaction = await store.createTransaction({
+        transactionType: relationalStore.TransactionType.IMMEDIATE
+      });
       for (let index = 0; index < tables.length; index += 1) {
         await transaction.execute(`DROP TABLE IF EXISTS ${tables[index]}`);
       }
@@ -359,18 +370,20 @@ export class LibraryDatabase {
       await transaction.commit();
       store.version = DATABASE_VERSION;
     } catch (error) {
-      try {
-        await transaction.rollback();
-      } catch (_) {
+      if (transaction !== undefined) {
+        try {
+          await transaction.rollback();
+        } catch (_) {
+        }
       }
-      const cause = error as Error;
-      throw cause;
+      throw RelationalStoreSafety.operationError('Unable to rebuild library schema', error);
     }
   }
 
   private async rebuildSortKeys(transaction: relationalStore.Transaction): Promise<void> {
-    await transaction.execute('DROP TABLE IF EXISTS temp_track_sort_rebuild');
-    await transaction.execute(
+    try {
+      await transaction.execute('DROP TABLE IF EXISTS temp_track_sort_rebuild');
+      await transaction.execute(
       `CREATE TEMP TABLE temp_track_sort_rebuild (
         id INTEGER PRIMARY KEY,
         title_key TEXT NOT NULL,
@@ -381,37 +394,37 @@ export class LibraryDatabase {
         artist_section TEXT NOT NULL,
         release_date_sort INTEGER NOT NULL
       )`
-    );
-    const trackBuckets: Array<relationalStore.ValuesBucket> = [];
-    const trackResults = await transaction.querySql(
+      );
+      const trackBuckets: Array<relationalStore.ValuesBucket> = [];
+      const trackResults = await transaction.querySql(
       `SELECT id, CASE WHEN sort_title = '' THEN title ELSE sort_title END,
         album_display, artist_display, COALESCE(release_year, 0),
         COALESCE(release_month, 0), COALESCE(release_day, 0)
        FROM track`
-    );
-    try {
-      while (trackResults.goToNextRow()) {
-        const title = SortKeyNormalizer.natural(trackResults.getString(1));
-        const album = SortKeyNormalizer.natural(trackResults.getString(2));
-        const artist = SortKeyNormalizer.natural(trackResults.getString(3));
-        trackBuckets.push({
-          id: trackResults.getLong(0),
-          title_key: title.key,
-          title_section: title.section,
-          album_key: album.key,
-          album_section: album.section,
-          artist_key: artist.key,
-          artist_section: artist.section,
-          release_date_sort: SortKeyNormalizer.dateParts(
-            trackResults.getLong(4), trackResults.getLong(5), trackResults.getLong(6)
-          )
-        });
+      );
+      try {
+        while (trackResults.goToNextRow()) {
+          const title = SortKeyNormalizer.natural(trackResults.getString(1));
+          const album = SortKeyNormalizer.natural(trackResults.getString(2));
+          const artist = SortKeyNormalizer.natural(trackResults.getString(3));
+          trackBuckets.push({
+            id: trackResults.getLong(0),
+            title_key: title.key,
+            title_section: title.section,
+            album_key: album.key,
+            album_section: album.section,
+            artist_key: artist.key,
+            artist_section: artist.section,
+            release_date_sort: SortKeyNormalizer.dateParts(
+              trackResults.getLong(4), trackResults.getLong(5), trackResults.getLong(6)
+            )
+          });
+        }
+      } finally {
+        RelationalStoreSafety.closeResultSet(trackResults, 'track sort rebuild');
       }
-    } finally {
-      trackResults.close();
-    }
-    await this.batchInsert(transaction, 'temp_track_sort_rebuild', trackBuckets);
-    await transaction.execute(
+      await this.batchInsert(transaction, 'temp_track_sort_rebuild', trackBuckets);
+      await transaction.execute(
       `UPDATE track SET
         title_natural_key = (SELECT title_key FROM temp_track_sort_rebuild s WHERE s.id = track.id),
         title_section = (SELECT title_section FROM temp_track_sort_rebuild s WHERE s.id = track.id),
@@ -421,11 +434,11 @@ export class LibraryDatabase {
         artist_section = (SELECT artist_section FROM temp_track_sort_rebuild s WHERE s.id = track.id),
         release_date_sort = (SELECT release_date_sort FROM temp_track_sort_rebuild s WHERE s.id = track.id)
        WHERE id IN (SELECT id FROM temp_track_sort_rebuild)`
-    );
-    await transaction.execute('DROP TABLE temp_track_sort_rebuild');
+      );
+      await transaction.execute('DROP TABLE temp_track_sort_rebuild');
 
-    await transaction.execute('DROP TABLE IF EXISTS temp_album_sort_rebuild');
-    await transaction.execute(
+      await transaction.execute('DROP TABLE IF EXISTS temp_album_sort_rebuild');
+      await transaction.execute(
       `CREATE TEMP TABLE temp_album_sort_rebuild (
         id INTEGER PRIMARY KEY,
         title_key TEXT NOT NULL,
@@ -434,33 +447,33 @@ export class LibraryDatabase {
         artist_section TEXT NOT NULL,
         release_date_sort INTEGER NOT NULL
       )`
-    );
-    const albumBuckets: Array<relationalStore.ValuesBucket> = [];
-    const albumResults = await transaction.querySql(
+      );
+      const albumBuckets: Array<relationalStore.ValuesBucket> = [];
+      const albumResults = await transaction.querySql(
       `SELECT id, title, album_artist_display, COALESCE(release_year, 0),
         COALESCE(release_month, 0), COALESCE(release_day, 0)
        FROM album`
-    );
-    try {
-      while (albumResults.goToNextRow()) {
-        const title = SortKeyNormalizer.natural(albumResults.getString(1));
-        const artist = SortKeyNormalizer.natural(albumResults.getString(2));
-        albumBuckets.push({
-          id: albumResults.getLong(0),
-          title_key: title.key,
-          title_section: title.section,
-          artist_key: artist.key,
-          artist_section: artist.section,
-          release_date_sort: SortKeyNormalizer.dateParts(
-            albumResults.getLong(3), albumResults.getLong(4), albumResults.getLong(5)
-          )
-        });
+      );
+      try {
+        while (albumResults.goToNextRow()) {
+          const title = SortKeyNormalizer.natural(albumResults.getString(1));
+          const artist = SortKeyNormalizer.natural(albumResults.getString(2));
+          albumBuckets.push({
+            id: albumResults.getLong(0),
+            title_key: title.key,
+            title_section: title.section,
+            artist_key: artist.key,
+            artist_section: artist.section,
+            release_date_sort: SortKeyNormalizer.dateParts(
+              albumResults.getLong(3), albumResults.getLong(4), albumResults.getLong(5)
+            )
+          });
+        }
+      } finally {
+        RelationalStoreSafety.closeResultSet(albumResults, 'album sort rebuild');
       }
-    } finally {
-      albumResults.close();
-    }
-    await this.batchInsert(transaction, 'temp_album_sort_rebuild', albumBuckets);
-    await transaction.execute(
+      await this.batchInsert(transaction, 'temp_album_sort_rebuild', albumBuckets);
+      await transaction.execute(
       `UPDATE album SET
         title_natural_key = (SELECT title_key FROM temp_album_sort_rebuild s WHERE s.id = album.id),
         title_section = (SELECT title_section FROM temp_album_sort_rebuild s WHERE s.id = album.id),
@@ -468,17 +481,24 @@ export class LibraryDatabase {
         artist_section = (SELECT artist_section FROM temp_album_sort_rebuild s WHERE s.id = album.id),
         release_date_sort = (SELECT release_date_sort FROM temp_album_sort_rebuild s WHERE s.id = album.id)
        WHERE id IN (SELECT id FROM temp_album_sort_rebuild)`
-    );
-    await transaction.execute('DROP TABLE temp_album_sort_rebuild');
+      );
+      await transaction.execute('DROP TABLE temp_album_sort_rebuild');
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to rebuild library sort keys', error);
+    }
   }
 
   private async batchInsert(transaction: relationalStore.Transaction, table: string,
     buckets: Array<relationalStore.ValuesBucket>): Promise<void> {
-    for (let offset = 0; offset < buckets.length; offset += SORT_REBUILD_BATCH_SIZE) {
-      await transaction.batchInsert(
-        table,
-        buckets.slice(offset, Math.min(offset + SORT_REBUILD_BATCH_SIZE, buckets.length))
-      );
+    try {
+      for (let offset = 0; offset < buckets.length; offset += SORT_REBUILD_BATCH_SIZE) {
+        await transaction.batchInsert(
+          table,
+          buckets.slice(offset, Math.min(offset + SORT_REBUILD_BATCH_SIZE, buckets.length))
+        );
+      }
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to populate ${table}`, error);
     }
   }
 
@@ -493,26 +513,32 @@ export class LibraryDatabase {
   }
 
   private async tableExists(store: relationalStore.RdbStore, tableName: string): Promise<boolean> {
-    const resultSet = await store.querySql(
-      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
-      [tableName]
-    );
+    let resultSet: relationalStore.ResultSet | undefined;
     try {
+      resultSet = await store.querySql(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+        [tableName]
+      );
       return resultSet.goToNextRow();
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to inspect table ${tableName}`, error);
     } finally {
-      resultSet.close();
+      RelationalStoreSafety.closeResultSet(resultSet, `table ${tableName}`);
     }
   }
 
   private async readSchemaVersion(store: relationalStore.RdbStore): Promise<number> {
-    const resultSet = await store.querySql('SELECT version FROM schema_meta WHERE singleton = 1 LIMIT 1');
+    let resultSet: relationalStore.ResultSet | undefined;
     try {
+      resultSet = await store.querySql('SELECT version FROM schema_meta WHERE singleton = 1 LIMIT 1');
       if (!resultSet.goToNextRow()) {
         throw new Error('Library database schema version is missing');
       }
       return resultSet.getLong(0);
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to read library schema version', error);
     } finally {
-      resultSet.close();
+      RelationalStoreSafety.closeResultSet(resultSet, 'schema version query');
     }
   }
 }

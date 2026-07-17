@@ -16,16 +16,25 @@ export class BinaryFileReader {
       this.modifiedAt = stat.mtime;
       this.name = file.name;
     } catch (error) {
-      fs.closeSync(file);
+      try {
+        fs.closeSync(file);
+      } catch (closeError) {
+        console.warn(`Unable to close uninitialized media file: ${BinaryFileReader.errorMessage(closeError)}`);
+      }
       const message = error instanceof Error ? error.message : `${error}`;
       throw new Error(`Unable to inspect media file: ${message}`);
     }
   }
 
   close(): void {
-    if (!this.closed) {
+    if (this.closed) {
+      return;
+    }
+    this.closed = true;
+    try {
       fs.closeSync(this.fd);
-      this.closed = true;
+    } catch (error) {
+      console.warn(`Unable to close media file ${this.name}: ${BinaryFileReader.errorMessage(error)}`);
     }
   }
 
@@ -35,17 +44,23 @@ export class BinaryFileReader {
     }
     const output = new Uint8Array(length);
     let totalRead = 0;
-    while (totalRead < length) {
-      const chunkBuffer = new ArrayBuffer(length - totalRead);
-      const bytesRead = fs.readSync(this.fd, chunkBuffer, {
-        offset: offset + totalRead,
-        length: length - totalRead
-      });
-      if (bytesRead <= 0) {
-        throw new Error(`Unexpected end of file at ${offset + totalRead}`);
+    try {
+      while (totalRead < length) {
+        const chunkBuffer = new ArrayBuffer(length - totalRead);
+        const bytesRead = fs.readSync(this.fd, chunkBuffer, {
+          offset: offset + totalRead,
+          length: length - totalRead
+        });
+        if (bytesRead <= 0) {
+          throw new Error(`Unexpected end of file at ${offset + totalRead}`);
+        }
+        output.set(new Uint8Array(chunkBuffer, 0, bytesRead), totalRead);
+        totalRead += bytesRead;
       }
-      output.set(new Uint8Array(chunkBuffer, 0, bytesRead), totalRead);
-      totalRead += bytesRead;
+    } catch (error) {
+      throw new Error(
+        `Unable to read media file ${this.name} at ${offset}+${length}: ${BinaryFileReader.errorMessage(error)}`
+      );
     }
     return output;
   }
@@ -68,5 +83,9 @@ export class BinaryFileReader {
 
   static syncSafe32(bytes: Uint8Array, offset: number): number {
     return (bytes[offset] << 21) | (bytes[offset + 1] << 14) | (bytes[offset + 2] << 7) | bytes[offset + 3];
+  }
+
+  private static errorMessage(error: Object): string {
+    return error instanceof Error ? error.message : `${error}`;
   }
 }

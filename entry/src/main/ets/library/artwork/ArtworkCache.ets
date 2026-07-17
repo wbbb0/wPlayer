@@ -157,46 +157,50 @@ export class ArtworkCache {
 
   private async cleanupEntries(shouldDelete: (entry: string, isFile: boolean) => boolean,
     shouldContinue?: () => boolean): Promise<number> {
-    const artworkRoot = ArtworkCache.resolvePath(this.context, ARTWORK_DIRECTORY);
-    if (!fs.accessSync(artworkRoot)) {
-      return 0;
-    }
-    let deletedCount = 0;
-    const entries = await fs.listFile(artworkRoot, { recursion: true });
-    for (let start = 0; start < entries.length;
-      start = ArtworkCleanupPolicy.batchEnd(start, entries.length)) {
-      if (shouldContinue !== undefined && !shouldContinue()) {
-        break;
+    try {
+      const artworkRoot = ArtworkCache.resolvePath(this.context, ARTWORK_DIRECTORY);
+      if (!fs.accessSync(artworkRoot)) {
+        return 0;
       }
-      const end = ArtworkCleanupPolicy.batchEnd(start, entries.length);
-      const batch = entries.slice(start, end);
-      const results = await Promise.all(batch.map(async (entry: string): Promise<boolean> => {
-        try {
-          if (shouldContinue !== undefined && !shouldContinue()) {
-            return false;
-          }
-          const relativeEntry = ArtworkCleanupPolicy.normalizedEntry(entry);
-          if (relativeEntry.length === 0) {
-            return false;
-          }
-          const path = `${artworkRoot}/${relativeEntry}`;
-          const isFile = await ArtworkCache.isFile(path);
-          if (!shouldDelete(entry, isFile) || (shouldContinue !== undefined && !shouldContinue())) {
-            return false;
-          }
-          return ArtworkCache.deleteIfPresentAsync(path);
-        } catch (error) {
-          console.warn(`Artwork cleanup skipped a file: ${ArtworkCache.errorMessage(error)}`);
-          return false;
+      let deletedCount = 0;
+      const entries = await fs.listFile(artworkRoot, { recursion: true });
+      for (let start = 0; start < entries.length;
+        start = ArtworkCleanupPolicy.batchEnd(start, entries.length)) {
+        if (shouldContinue !== undefined && !shouldContinue()) {
+          break;
         }
-      }));
-      results.forEach((deleted: boolean) => {
-        if (deleted) {
-          deletedCount += 1;
-        }
-      });
+        const end = ArtworkCleanupPolicy.batchEnd(start, entries.length);
+        const batch = entries.slice(start, end);
+        const results = await Promise.all(batch.map(async (entry: string): Promise<boolean> => {
+          try {
+            if (shouldContinue !== undefined && !shouldContinue()) {
+              return false;
+            }
+            const relativeEntry = ArtworkCleanupPolicy.normalizedEntry(entry);
+            if (relativeEntry.length === 0) {
+              return false;
+            }
+            const path = `${artworkRoot}/${relativeEntry}`;
+            const isFile = await ArtworkCache.isFile(path);
+            if (!shouldDelete(entry, isFile) || (shouldContinue !== undefined && !shouldContinue())) {
+              return false;
+            }
+            return ArtworkCache.deleteIfPresentAsync(path);
+          } catch (error) {
+            console.warn(`Artwork cleanup skipped a file: ${ArtworkCache.errorMessage(error)}`);
+            return false;
+          }
+        }));
+        results.forEach((deleted: boolean) => {
+          if (deleted) {
+            deletedCount += 1;
+          }
+        });
+      }
+      return deletedCount;
+    } catch (error) {
+      throw new Error(`Unable to enumerate artwork cache: ${ArtworkCache.errorMessage(error)}`);
     }
-    return deletedCount;
   }
 
   private enqueueMaintenance(operation: () => Promise<number>): Promise<number> {
@@ -242,7 +246,11 @@ export class ArtworkCache {
           quality: quality
         });
       } finally {
-        fs.closeSync(temporaryFile);
+        try {
+          fs.closeSync(temporaryFile);
+        } catch (error) {
+          console.warn(`Unable to close temporary artwork file: ${ArtworkCache.errorMessage(error)}`);
+        }
       }
 
       const contentHash = await hash.hash(temporaryPath, 'sha256');
@@ -275,6 +283,8 @@ export class ArtworkCache {
       ImportPerformanceTrace.mark(`artwork_${variantName}`, variantStartedAt, traceFileId,
         `width=${result.width} height=${result.height} bytes=${result.byteSize}`);
       return result;
+    } catch (error) {
+      throw new Error(`Unable to encode ${variantName} artwork: ${ArtworkCache.errorMessage(error)}`);
     } finally {
       try {
         if (temporaryPath.length > 0) {
@@ -319,14 +329,18 @@ export class ArtworkCache {
   }
 
   private static async sha256(bytes: Uint8Array): Promise<string> {
-    const digest = cryptoFramework.createMd('SHA256');
-    await digest.update({ data: bytes });
-    const result = await digest.digest();
-    let hexadecimal = '';
-    result.data.forEach((value: number) => {
-      hexadecimal += value.toString(16).padStart(2, '0');
-    });
-    return hexadecimal;
+    try {
+      const digest = cryptoFramework.createMd('SHA256');
+      await digest.update({ data: bytes });
+      const result = await digest.digest();
+      let hexadecimal = '';
+      result.data.forEach((value: number) => {
+        hexadecimal += value.toString(16).padStart(2, '0');
+      });
+      return hexadecimal;
+    } catch (error) {
+      throw new Error(`Unable to hash artwork: ${ArtworkCache.errorMessage(error)}`);
+    }
   }
 
   private static toExactArrayBuffer(bytes: Uint8Array): ArrayBuffer {
@@ -384,8 +398,12 @@ export class ArtworkCache {
   }
 
   private static ensureDirectory(path: string): void {
-    if (!fs.accessSync(path)) {
-      fs.mkdirSync(path, true);
+    try {
+      if (!fs.accessSync(path)) {
+        fs.mkdirSync(path, true);
+      }
+    } catch (error) {
+      throw new Error(`Unable to create artwork directory ${path}: ${ArtworkCache.errorMessage(error)}`);
     }
   }
 
@@ -398,8 +416,12 @@ export class ArtworkCache {
   }
 
   private static deleteIfPresent(path: string): void {
-    if (fs.accessSync(path)) {
-      fs.unlinkSync(path);
+    try {
+      if (fs.accessSync(path)) {
+        fs.unlinkSync(path);
+      }
+    } catch (error) {
+      throw new Error(`Unable to delete artwork file ${path}: ${ArtworkCache.errorMessage(error)}`);
     }
   }
 
@@ -408,8 +430,12 @@ export class ArtworkCache {
       await fs.unlink(path);
       return true;
     } catch (error) {
-      if (!fs.accessSync(path)) {
-        return false;
+      try {
+        if (!fs.accessSync(path)) {
+          return false;
+        }
+      } catch (accessError) {
+        throw new Error(`Unable to verify artwork deletion ${path}: ${ArtworkCache.errorMessage(accessError)}`);
       }
       throw new Error(`Failed to delete artwork file: ${ArtworkCache.errorMessage(error)}`);
     }

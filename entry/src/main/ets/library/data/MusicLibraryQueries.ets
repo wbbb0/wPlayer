@@ -30,6 +30,7 @@ import {
 } from './MusicRepositoryTypes';
 import { PaletteRefreshAsset } from './MusicRepositoryTypes';
 import { LibrarySortDescriptor, LibrarySortPlan } from './LibrarySortPlan';
+import { RelationalStoreSafety } from './RelationalStoreSafety';
 
 const URI_QUERY_BATCH_SIZE = 128;
 
@@ -82,20 +83,21 @@ export class MusicLibraryQueries {
     const paged = offset !== undefined && limit !== undefined;
     const paginationClause = paged ? ' LIMIT ? OFFSET ?' : '';
     const bindArgs: Array<number> = paged ? [limit as number, offset as number] : [];
-    const resultSet = await this.database.getStore().querySql(
-      `SELECT t.id, t.title, t.artist_display, t.album_display, t.duration_ms,
-        COALESCE(t.track_number, 0), COALESCE(t.disc_number, 0),
-        COALESCE(a.small_hash, ''), COALESCE(a.small_path, ''),
-        COALESCE(a.large_hash, ''), COALESCE(a.large_path, ''),
-        COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
-        COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
-        COALESCE(a.palette_accent, '#FFFFB347'), ${descriptor.sectionExpression}
-       FROM track t LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
-       ORDER BY ${descriptor.orderClause}${paginationClause}`,
-      bindArgs
-    );
+    let resultSet: relationalStore.ResultSet | undefined;
     const items: Array<TrackListItem> = [];
     try {
+      resultSet = await this.database.getStore().querySql(
+        `SELECT t.id, t.title, t.artist_display, t.album_display, t.duration_ms,
+          COALESCE(t.track_number, 0), COALESCE(t.disc_number, 0),
+          COALESCE(a.small_hash, ''), COALESCE(a.small_path, ''),
+          COALESCE(a.large_hash, ''), COALESCE(a.large_path, ''),
+          COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
+          COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
+          COALESCE(a.palette_accent, '#FFFFB347'), ${descriptor.sectionExpression}
+         FROM track t LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
+         ORDER BY ${descriptor.orderClause}${paginationClause}`,
+        bindArgs
+      );
       while (resultSet.goToNextRow()) {
         items.push({
           id: resultSet.getLong(0),
@@ -117,37 +119,40 @@ export class MusicLibraryQueries {
           sectionKey: resultSet.getString(16)
         });
       }
+      return items;
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to query tracks', error);
     } finally {
-      resultSet.close();
+      RelationalStoreSafety.closeResultSet(resultSet, 'track list');
     }
-    return items;
   }
 
   async getPlaybackTrack(trackId: number): Promise<PlaybackTrack | undefined> {
-    const resultSet = await this.database.getStore().querySql(
-      `SELECT t.id, t.title, t.artist_display, t.album_display, t.duration_ms,
-        m.uri, m.file_size, m.modified_at, m.format, m.availability_state,
-        m.authorization_persisted, COALESCE(a.small_hash, ''), COALESCE(a.small_path, ''),
-        COALESCE(a.large_hash, ''), COALESCE(a.large_path, ''),
-        COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
-        COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
-        COALESCE(a.palette_accent, '#FFFFB347'),
-        COALESCE(ta.picture_type, 0), COALESCE(ta.mime_type, ''), COALESCE(ta.description, ''),
-        COALESCE(ta.width, 0), COALESCE(ta.height, 0), COALESCE(ta.color_depth, 0),
-        COALESCE(ta.byte_offset, 0), COALESCE(ta.byte_length, 0), COALESCE(ta.payload_offset, 0),
-        COALESCE(ta.ordinal, 0), COALESCE(ta.unsynchronized, 0)
-       FROM track t
-       JOIN media_file m ON m.id = t.media_file_id
-       LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
-       LEFT JOIN track_artwork ta ON ta.id = (
-         SELECT selected.id FROM track_artwork selected
-         WHERE selected.track_id = t.id AND selected.asset_id = t.primary_artwork_id
-         ORDER BY selected.picture_type = 3 DESC, selected.ordinal ASC LIMIT 1
-       )
-       WHERE t.id = ? LIMIT 1`,
-      [trackId]
-    );
+    let resultSet: relationalStore.ResultSet | undefined;
     try {
+      resultSet = await this.database.getStore().querySql(
+        `SELECT t.id, t.title, t.artist_display, t.album_display, t.duration_ms,
+          m.uri, m.file_size, m.modified_at, m.format, m.availability_state,
+          m.authorization_persisted, COALESCE(a.small_hash, ''), COALESCE(a.small_path, ''),
+          COALESCE(a.large_hash, ''), COALESCE(a.large_path, ''),
+          COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
+          COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
+          COALESCE(a.palette_accent, '#FFFFB347'),
+          COALESCE(ta.picture_type, 0), COALESCE(ta.mime_type, ''), COALESCE(ta.description, ''),
+          COALESCE(ta.width, 0), COALESCE(ta.height, 0), COALESCE(ta.color_depth, 0),
+          COALESCE(ta.byte_offset, 0), COALESCE(ta.byte_length, 0), COALESCE(ta.payload_offset, 0),
+          COALESCE(ta.ordinal, 0), COALESCE(ta.unsynchronized, 0)
+         FROM track t
+         JOIN media_file m ON m.id = t.media_file_id
+         LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
+         LEFT JOIN track_artwork ta ON ta.id = (
+           SELECT selected.id FROM track_artwork selected
+           WHERE selected.track_id = t.id AND selected.asset_id = t.primary_artwork_id
+           ORDER BY selected.picture_type = 3 DESC, selected.ordinal ASC LIMIT 1
+         )
+         WHERE t.id = ? LIMIT 1`,
+        [trackId]
+      );
       if (!resultSet.goToNextRow()) {
         return undefined;
       }
@@ -190,24 +195,29 @@ export class MusicLibraryQueries {
         };
       }
       return track;
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to read playback track ${trackId}`, error);
     } finally {
-      resultSet.close();
+      RelationalStoreSafety.closeResultSet(resultSet, 'playback track');
     }
   }
 
   async getResumeState(trackId: number): Promise<ResumeState> {
-    const resultSet = await this.database.getStore().querySql(
-      `SELECT resume_position_ms, duration_ms, completed
-       FROM track_playback_state WHERE track_id = ? LIMIT 1`,
-      [trackId]
-    );
+    let resultSet: relationalStore.ResultSet | undefined;
     try {
+      resultSet = await this.database.getStore().querySql(
+        `SELECT resume_position_ms, duration_ms, completed
+         FROM track_playback_state WHERE track_id = ? LIMIT 1`,
+        [trackId]
+      );
       if (!resultSet.goToNextRow() || resultSet.getLong(2) === 1) {
         return { positionMs: 0, durationMs: 0 };
       }
       return { positionMs: resultSet.getLong(0), durationMs: resultSet.getLong(1) };
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to read resume state for track ${trackId}`, error);
     } finally {
-      resultSet.close();
+      RelationalStoreSafety.closeResultSet(resultSet, 'resume state');
     }
   }
 
@@ -263,39 +273,44 @@ export class MusicLibraryQueries {
     const paged = offset !== undefined && limit !== undefined;
     const paginationClause = paged ? ' LIMIT ? OFFSET ?' : '';
     const bindArgs: Array<number> = paged ? [limit as number, offset as number] : [];
-    const resultSet = await this.database.getStore().querySql(
-      `SELECT al.id, al.title, al.album_artist_display, al.track_count,
-        al.total_duration_ms, COALESCE(a.large_path, ''),
-        COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
-        COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
-        COALESCE(a.palette_accent, '#FFFFB347'), ${descriptor.sectionExpression}
-       FROM album al LEFT JOIN artwork_asset a ON a.id = al.primary_artwork_id
-       ORDER BY ${descriptor.orderClause}${paginationClause}`,
-      bindArgs
-    );
-    return this.readAlbumListItems(resultSet);
+    try {
+      const resultSet = await this.database.getStore().querySql(
+        `SELECT al.id, al.title, al.album_artist_display, al.track_count,
+          al.total_duration_ms, COALESCE(a.large_path, ''),
+          COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
+          COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
+          COALESCE(a.palette_accent, '#FFFFB347'), ${descriptor.sectionExpression}
+         FROM album al LEFT JOIN artwork_asset a ON a.id = al.primary_artwork_id
+         ORDER BY ${descriptor.orderClause}${paginationClause}`,
+        bindArgs
+      );
+      return this.readAlbumListItems(resultSet);
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to query albums', error);
+    }
   }
 
   async getAlbumDetail(albumId: number): Promise<AlbumDetail | undefined> {
-    const albumResult = await this.database.getStore().querySql(
-      `SELECT al.id, al.title, al.album_artist_display, al.track_count,
-        al.total_duration_ms, COALESCE(a.large_path, ''),
-        COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
-        COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
-        COALESCE(a.palette_accent, '#FFFFB347'), '#',
-        COALESCE(al.release_year, 0),
-        COALESCE((SELECT GROUP_CONCAT(g.name) FROM genre g WHERE g.id IN (
-          SELECT tg.genre_id FROM track_genre tg JOIN track grouped_track ON grouped_track.id = tg.track_id
-          WHERE grouped_track.album_id = al.id
-        )), '')
-       FROM album al LEFT JOIN artwork_asset a ON a.id = al.primary_artwork_id
-       WHERE al.id = ? LIMIT 1`,
-      [albumId]
-    );
+    let albumResult: relationalStore.ResultSet | undefined;
     let album: AlbumListItem | undefined;
     let releaseYear: number = 0;
     let genreDisplay: string = '';
     try {
+      albumResult = await this.database.getStore().querySql(
+        `SELECT al.id, al.title, al.album_artist_display, al.track_count,
+          al.total_duration_ms, COALESCE(a.large_path, ''),
+          COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
+          COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
+          COALESCE(a.palette_accent, '#FFFFB347'), '#',
+          COALESCE(al.release_year, 0),
+          COALESCE((SELECT GROUP_CONCAT(g.name) FROM genre g WHERE g.id IN (
+            SELECT tg.genre_id FROM track_genre tg JOIN track grouped_track ON grouped_track.id = tg.track_id
+            WHERE grouped_track.album_id = al.id
+          )), '')
+         FROM album al LEFT JOIN artwork_asset a ON a.id = al.primary_artwork_id
+         WHERE al.id = ? LIMIT 1`,
+        [albumId]
+      );
       if (albumResult.goToNextRow()) {
         album = {
           id: albumResult.getLong(0),
@@ -314,30 +329,33 @@ export class MusicLibraryQueries {
         releaseYear = albumResult.getLong(12);
         genreDisplay = albumResult.getString(13);
       }
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to read album ${albumId}`, error);
     } finally {
-      albumResult.close();
+      RelationalStoreSafety.closeResultSet(albumResult, 'album detail');
     }
     if (album === undefined) {
       return undefined;
     }
-    const trackResult = await this.database.getStore().querySql(
-      `SELECT t.id, t.title, t.artist_display, t.album_display, t.duration_ms,
-        COALESCE(t.track_number, 0), COALESCE(t.disc_number, 0),
-        COALESCE(a.small_hash, ''), COALESCE(a.small_path, ''),
-        COALESCE(a.large_hash, ''), COALESCE(a.large_path, ''),
-        COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
-        COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
-        COALESCE(a.palette_accent, '#FFFFB347'), '#'
-       FROM track t LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
-       WHERE t.album_id = ?
-       ORDER BY CASE WHEN t.disc_number IS NULL OR t.disc_number <= 0 THEN 1 ELSE 0 END,
-        t.disc_number ASC,
-        CASE WHEN t.track_number IS NULL OR t.track_number <= 0 THEN 1 ELSE 0 END,
-        t.track_number ASC, t.id ASC`,
-      [albumId]
-    );
+    let trackResult: relationalStore.ResultSet | undefined;
     const tracks: Array<TrackListItem> = [];
     try {
+      trackResult = await this.database.getStore().querySql(
+        `SELECT t.id, t.title, t.artist_display, t.album_display, t.duration_ms,
+          COALESCE(t.track_number, 0), COALESCE(t.disc_number, 0),
+          COALESCE(a.small_hash, ''), COALESCE(a.small_path, ''),
+          COALESCE(a.large_hash, ''), COALESCE(a.large_path, ''),
+          COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
+          COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
+          COALESCE(a.palette_accent, '#FFFFB347'), '#'
+         FROM track t LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
+         WHERE t.album_id = ?
+         ORDER BY CASE WHEN t.disc_number IS NULL OR t.disc_number <= 0 THEN 1 ELSE 0 END,
+          t.disc_number ASC,
+          CASE WHEN t.track_number IS NULL OR t.track_number <= 0 THEN 1 ELSE 0 END,
+          t.track_number ASC, t.id ASC`,
+        [albumId]
+      );
       while (trackResult.goToNextRow()) {
         tracks.push({
           id: trackResult.getLong(0), title: trackResult.getString(1),
@@ -351,8 +369,10 @@ export class MusicLibraryQueries {
           sectionKey: trackResult.getString(16)
         });
       }
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to read album tracks ${albumId}`, error);
     } finally {
-      trackResult.close();
+      RelationalStoreSafety.closeResultSet(trackResult, 'album tracks');
     }
     const albumArtists = await this.getAlbumArtists(albumId);
     return {
@@ -366,17 +386,18 @@ export class MusicLibraryQueries {
   }
 
   async getTrackNavigationTargets(trackId: number): Promise<TrackNavigationTargets | undefined> {
-    const albumResult = await this.database.getStore().querySql(
-      `SELECT t.album_id, COALESCE(al.title, ''), COALESCE(a.palette_primary, '#FF7C4DFF')
-       FROM track t
-       LEFT JOIN album al ON al.id = t.album_id
-       LEFT JOIN artwork_asset a ON a.id = al.primary_artwork_id
-       WHERE t.id = ? LIMIT 1`,
-      [trackId]
-    );
+    let albumResult: relationalStore.ResultSet | undefined;
     let albumId = -1;
     let album: AlbumReference | undefined;
     try {
+      albumResult = await this.database.getStore().querySql(
+        `SELECT t.album_id, COALESCE(al.title, ''), COALESCE(a.palette_primary, '#FF7C4DFF')
+         FROM track t
+         LEFT JOIN album al ON al.id = t.album_id
+         LEFT JOIN artwork_asset a ON a.id = al.primary_artwork_id
+         WHERE t.id = ? LIMIT 1`,
+        [trackId]
+      );
       if (!albumResult.goToNextRow()) {
         return undefined;
       }
@@ -388,8 +409,10 @@ export class MusicLibraryQueries {
           palettePrimary: albumResult.getString(2)
         };
       }
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to read navigation targets for track ${trackId}`, error);
     } finally {
-      albumResult.close();
+      RelationalStoreSafety.closeResultSet(albumResult, 'track navigation');
     }
     return {
       trackId: trackId,
@@ -400,20 +423,23 @@ export class MusicLibraryQueries {
   }
 
   async getArtistDetail(artistId: number): Promise<ArtistDetail | undefined> {
-    const artistResult = await this.database.getStore().querySql(
-      'SELECT id, name FROM person WHERE id = ? LIMIT 1',
-      [artistId]
-    );
+    let artistResult: relationalStore.ResultSet | undefined;
     let artist: ArtistReference | undefined;
     try {
+      artistResult = await this.database.getStore().querySql(
+        'SELECT id, name FROM person WHERE id = ? LIMIT 1',
+        [artistId]
+      );
       if (artistResult.goToNextRow()) {
         artist = {
           id: artistResult.getLong(0),
           name: artistResult.getString(1)
         };
       }
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to read artist ${artistId}`, error);
     } finally {
-      artistResult.close();
+      RelationalStoreSafety.closeResultSet(artistResult, 'artist detail');
     }
     if (artist === undefined) {
       return undefined;
@@ -435,25 +461,33 @@ export class MusicLibraryQueries {
   }
 
   private async getTrackArtists(trackId: number): Promise<Array<ArtistReference>> {
-    const resultSet = await this.database.getStore().querySql(
-      `SELECT p.id, p.name
-       FROM track_credit tc JOIN person p ON p.id = tc.person_id
-       WHERE tc.track_id = ? AND tc.role = ?
-       ORDER BY tc.ordinal`,
-      [trackId, CreditRole.TRACK_ARTIST]
-    );
-    return this.readArtistReferences(resultSet);
+    try {
+      const resultSet = await this.database.getStore().querySql(
+        `SELECT p.id, p.name
+         FROM track_credit tc JOIN person p ON p.id = tc.person_id
+         WHERE tc.track_id = ? AND tc.role = ?
+         ORDER BY tc.ordinal`,
+        [trackId, CreditRole.TRACK_ARTIST]
+      );
+      return this.readArtistReferences(resultSet);
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to read artists for track ${trackId}`, error);
+    }
   }
 
   private async getAlbumArtists(albumId: number): Promise<Array<ArtistReference>> {
-    const resultSet = await this.database.getStore().querySql(
-      `SELECT p.id, p.name
-       FROM album_credit ac JOIN person p ON p.id = ac.person_id
-       WHERE ac.album_id = ?
-       ORDER BY ac.ordinal`,
-      [albumId]
-    );
-    return this.readArtistReferences(resultSet);
+    try {
+      const resultSet = await this.database.getStore().querySql(
+        `SELECT p.id, p.name
+         FROM album_credit ac JOIN person p ON p.id = ac.person_id
+         WHERE ac.album_id = ?
+         ORDER BY ac.ordinal`,
+        [albumId]
+      );
+      return this.readArtistReferences(resultSet);
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to read artists for album ${albumId}`, error);
+    }
   }
 
   private readArtistReferences(resultSet: relationalStore.ResultSet): Array<ArtistReference> {
@@ -465,47 +499,57 @@ export class MusicLibraryQueries {
           name: resultSet.getString(1)
         });
       }
+      return artists;
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to decode artist references', error);
     } finally {
-      resultSet.close();
+      RelationalStoreSafety.closeResultSet(resultSet, 'artist references');
     }
-    return artists;
   }
 
   private async getArtistAlbums(artistId: number): Promise<Array<AlbumListItem>> {
-    const resultSet = await this.database.getStore().querySql(
-      `SELECT DISTINCT al.id, al.title, al.album_artist_display, al.track_count,
-        al.total_duration_ms, COALESCE(a.large_path, ''),
-        COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
-        COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
-        COALESCE(a.palette_accent, '#FFFFB347'), '#'
-       FROM album_credit ac
-       JOIN album al ON al.id = ac.album_id
-       LEFT JOIN artwork_asset a ON a.id = al.primary_artwork_id
-       WHERE ac.person_id = ?
-       ORDER BY al.release_date_sort DESC, al.sort_title_key, al.id`,
-      [artistId]
-    );
-    return this.readAlbumListItems(resultSet);
+    try {
+      const resultSet = await this.database.getStore().querySql(
+        `SELECT DISTINCT al.id, al.title, al.album_artist_display, al.track_count,
+          al.total_duration_ms, COALESCE(a.large_path, ''),
+          COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
+          COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
+          COALESCE(a.palette_accent, '#FFFFB347'), '#'
+         FROM album_credit ac
+         JOIN album al ON al.id = ac.album_id
+         LEFT JOIN artwork_asset a ON a.id = al.primary_artwork_id
+         WHERE ac.person_id = ?
+         ORDER BY al.release_date_sort DESC, al.sort_title_key, al.id`,
+        [artistId]
+      );
+      return this.readAlbumListItems(resultSet);
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to read albums for artist ${artistId}`, error);
+    }
   }
 
   private async getRelatedAlbums(albumId: number): Promise<Array<AlbumListItem>> {
-    const resultSet = await this.database.getStore().querySql(
-      `SELECT DISTINCT al.id, al.title, al.album_artist_display, al.track_count,
-        al.total_duration_ms, COALESCE(a.large_path, ''),
-        COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
-        COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
-        COALESCE(a.palette_accent, '#FFFFB347'), '#'
-       FROM album_credit current_credit
-       JOIN album_credit related_credit
-         ON related_credit.person_id = current_credit.person_id
-       JOIN album al ON al.id = related_credit.album_id
-       LEFT JOIN artwork_asset a ON a.id = al.primary_artwork_id
-       WHERE current_credit.album_id = ?
-         AND al.id <> ?
-       ORDER BY al.release_date_sort DESC, al.sort_title_key, al.id`,
-      [albumId, albumId]
-    );
-    return this.readAlbumListItems(resultSet);
+    try {
+      const resultSet = await this.database.getStore().querySql(
+        `SELECT DISTINCT al.id, al.title, al.album_artist_display, al.track_count,
+          al.total_duration_ms, COALESCE(a.large_path, ''),
+          COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
+          COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
+          COALESCE(a.palette_accent, '#FFFFB347'), '#'
+         FROM album_credit current_credit
+         JOIN album_credit related_credit
+           ON related_credit.person_id = current_credit.person_id
+         JOIN album al ON al.id = related_credit.album_id
+         LEFT JOIN artwork_asset a ON a.id = al.primary_artwork_id
+         WHERE current_credit.album_id = ?
+           AND al.id <> ?
+         ORDER BY al.release_date_sort DESC, al.sort_title_key, al.id`,
+        [albumId, albumId]
+      );
+      return this.readAlbumListItems(resultSet);
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to read albums related to ${albumId}`, error);
+    }
   }
 
   private readAlbumListItems(resultSet: relationalStore.ResultSet): Array<AlbumListItem> {
@@ -527,38 +571,41 @@ export class MusicLibraryQueries {
           sectionKey: resultSet.getString(11)
         });
       }
+      return albums;
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to decode album list', error);
     } finally {
-      resultSet.close();
+      RelationalStoreSafety.closeResultSet(resultSet, 'album list');
     }
-    return albums;
   }
 
   private async getArtistTracks(artistId: number): Promise<Array<TrackListItem>> {
-    const resultSet = await this.database.getStore().querySql(
-      `SELECT t.id, t.title, t.artist_display, t.album_display, t.duration_ms,
-        COALESCE(t.track_number, 0), COALESCE(t.disc_number, 0),
-        COALESCE(a.small_hash, ''), COALESCE(a.small_path, ''),
-        COALESCE(a.large_hash, ''), COALESCE(a.large_path, ''),
-        COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
-        COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
-        COALESCE(a.palette_accent, '#FFFFB347'), '#'
-       FROM track t LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
-       WHERE EXISTS (
-         SELECT 1 FROM track_credit tc
-         WHERE tc.track_id = t.id AND tc.person_id = ? AND tc.role = ?
-       ) OR EXISTS (
-         SELECT 1 FROM album_credit ac
-         WHERE ac.album_id = t.album_id AND ac.person_id = ?
-       )
-       ORDER BY t.album_natural_key,
-        CASE WHEN t.disc_number IS NULL OR t.disc_number <= 0 THEN 1 ELSE 0 END,
-        t.disc_number,
-        CASE WHEN t.track_number IS NULL OR t.track_number <= 0 THEN 1 ELSE 0 END,
-        t.track_number, t.title_natural_key, t.id`,
-      [artistId, CreditRole.TRACK_ARTIST, artistId]
-    );
+    let resultSet: relationalStore.ResultSet | undefined;
     const tracks: Array<TrackListItem> = [];
     try {
+      resultSet = await this.database.getStore().querySql(
+        `SELECT t.id, t.title, t.artist_display, t.album_display, t.duration_ms,
+          COALESCE(t.track_number, 0), COALESCE(t.disc_number, 0),
+          COALESCE(a.small_hash, ''), COALESCE(a.small_path, ''),
+          COALESCE(a.large_hash, ''), COALESCE(a.large_path, ''),
+          COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
+          COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
+          COALESCE(a.palette_accent, '#FFFFB347'), '#'
+         FROM track t LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
+         WHERE EXISTS (
+           SELECT 1 FROM track_credit tc
+           WHERE tc.track_id = t.id AND tc.person_id = ? AND tc.role = ?
+         ) OR EXISTS (
+           SELECT 1 FROM album_credit ac
+           WHERE ac.album_id = t.album_id AND ac.person_id = ?
+         )
+         ORDER BY t.album_natural_key,
+          CASE WHEN t.disc_number IS NULL OR t.disc_number <= 0 THEN 1 ELSE 0 END,
+          t.disc_number,
+          CASE WHEN t.track_number IS NULL OR t.track_number <= 0 THEN 1 ELSE 0 END,
+          t.track_number, t.title_natural_key, t.id`,
+        [artistId, CreditRole.TRACK_ARTIST, artistId]
+      );
       while (resultSet.goToNextRow()) {
         tracks.push({
           id: resultSet.getLong(0), title: resultSet.getString(1),
@@ -572,21 +619,26 @@ export class MusicLibraryQueries {
           sectionKey: resultSet.getString(16)
         });
       }
+      return tracks;
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to read tracks for artist ${artistId}`, error);
     } finally {
-      resultSet.close();
+      RelationalStoreSafety.closeResultSet(resultSet, 'artist tracks');
     }
-    return tracks;
   }
 
   async hasUri(uri: string): Promise<boolean> {
-    const resultSet = await this.database.getStore().querySql(
-      'SELECT 1 FROM media_file WHERE uri = ? LIMIT 1',
-      [uri]
-    );
+    let resultSet: relationalStore.ResultSet | undefined;
     try {
+      resultSet = await this.database.getStore().querySql(
+        'SELECT 1 FROM media_file WHERE uri = ? LIMIT 1',
+        [uri]
+      );
       return resultSet.goToNextRow();
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to check media URI ${uri}`, error);
     } finally {
-      resultSet.close();
+      RelationalStoreSafety.closeResultSet(resultSet, 'media URI lookup');
     }
   }
 
@@ -598,15 +650,20 @@ export class MusicLibraryQueries {
         continue;
       }
       const placeholders = batch.map(() => '?').join(', ');
-      const resultSet = await this.database.getStore().querySql(
-        `SELECT uri FROM media_file WHERE uri IN (${placeholders})`, batch
-      );
+      let resultSet: relationalStore.ResultSet | undefined;
       try {
+        resultSet = await this.database.getStore().querySql(
+          `SELECT uri FROM media_file WHERE uri IN (${placeholders})`, batch
+        );
         while (resultSet.goToNextRow()) {
           existingUris.push(resultSet.getString(0));
         }
+      } catch (error) {
+        throw RelationalStoreSafety.operationError(
+          `Unable to check media URI batch at offset ${offset}`, error
+        );
       } finally {
-        resultSet.close();
+        RelationalStoreSafety.closeResultSet(resultSet, 'media URI batch lookup');
       }
     }
     return existingUris;
@@ -616,14 +673,15 @@ export class MusicLibraryQueries {
     if (fileSize <= 0 || quickFingerprint.length === 0) {
       return [];
     }
-    const resultSet = await this.database.getStore().querySql(
-      `SELECT t.id, f.uri, f.content_fingerprint FROM media_file f
-       JOIN track t ON t.media_file_id = f.id
-       WHERE f.file_size = ? AND f.quick_fingerprint = ?`,
-      [fileSize, quickFingerprint]
-    );
+    let resultSet: relationalStore.ResultSet | undefined;
     const candidates: Array<DuplicateCandidate> = [];
     try {
+      resultSet = await this.database.getStore().querySql(
+        `SELECT t.id, f.uri, f.content_fingerprint FROM media_file f
+         JOIN track t ON t.media_file_id = f.id
+         WHERE f.file_size = ? AND f.quick_fingerprint = ?`,
+        [fileSize, quickFingerprint]
+      );
       while (resultSet.goToNextRow()) {
         candidates.push({
           trackId: resultSet.getLong(0),
@@ -631,10 +689,12 @@ export class MusicLibraryQueries {
           fullFingerprint: resultSet.getString(2)
         });
       }
+      return candidates;
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to find duplicate media candidates', error);
     } finally {
-      resultSet.close();
+      RelationalStoreSafety.closeResultSet(resultSet, 'duplicate media lookup');
     }
-    return candidates;
   }
 
   updateFullFingerprint(trackId: number, fullFingerprint: string): Promise<void> {
@@ -651,15 +711,16 @@ export class MusicLibraryQueries {
   }
 
   async findArtworkBySourceHash(sourceHash: string): Promise<ArtworkAssetLookup | undefined> {
-    const resultSet = await this.database.getStore().querySql(
-      `SELECT a.small_hash, a.small_path, a.small_format, a.small_width, a.small_height, a.small_byte_size,
-        a.large_hash, a.large_path, a.large_format, a.large_width, a.large_height, a.large_byte_size,
-        a.palette_primary, a.palette_secondary, a.palette_accent
-       FROM artwork_source s JOIN artwork_asset a ON a.id = s.asset_id
-       WHERE s.source_hash = ? LIMIT 1`,
-      [sourceHash]
-    );
+    let resultSet: relationalStore.ResultSet | undefined;
     try {
+      resultSet = await this.database.getStore().querySql(
+        `SELECT a.small_hash, a.small_path, a.small_format, a.small_width, a.small_height, a.small_byte_size,
+          a.large_hash, a.large_path, a.large_format, a.large_width, a.large_height, a.large_byte_size,
+          a.palette_primary, a.palette_secondary, a.palette_accent
+         FROM artwork_source s JOIN artwork_asset a ON a.id = s.asset_id
+         WHERE s.source_hash = ? LIMIT 1`,
+        [sourceHash]
+      );
       if (!resultSet.goToNextRow()) {
         return undefined;
       }
@@ -680,28 +741,31 @@ export class MusicLibraryQueries {
         paletteSecondary: resultSet.getString(13),
         paletteAccent: resultSet.getString(14)
       };
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to find artwork source ${sourceHash}`, error);
     } finally {
-      resultSet.close();
+      RelationalStoreSafety.closeResultSet(resultSet, 'artwork source lookup');
     }
   }
 
   async getUnreferencedArtworkAssets(): Promise<Array<ArtworkCleanupCandidate>> {
-    const resultSet = await this.database.getStore().querySql(
-      `SELECT candidate.id, candidate.small_path, candidate.large_path,
-        NOT EXISTS (
-          SELECT 1 FROM artwork_asset active
-          WHERE active.id <> candidate.id AND active.ref_count > 0
-            AND (active.small_path = candidate.small_path OR active.large_path = candidate.small_path)
-        ),
-        NOT EXISTS (
-          SELECT 1 FROM artwork_asset active
-          WHERE active.id <> candidate.id AND active.ref_count > 0
-            AND (active.small_path = candidate.large_path OR active.large_path = candidate.large_path)
-        )
-       FROM artwork_asset candidate WHERE candidate.ref_count = 0 ORDER BY candidate.id`
-    );
+    let resultSet: relationalStore.ResultSet | undefined;
     const candidates: Array<ArtworkCleanupCandidate> = [];
     try {
+      resultSet = await this.database.getStore().querySql(
+        `SELECT candidate.id, candidate.small_path, candidate.large_path,
+          NOT EXISTS (
+            SELECT 1 FROM artwork_asset active
+            WHERE active.id <> candidate.id AND active.ref_count > 0
+              AND (active.small_path = candidate.small_path OR active.large_path = candidate.small_path)
+          ),
+          NOT EXISTS (
+            SELECT 1 FROM artwork_asset active
+            WHERE active.id <> candidate.id AND active.ref_count > 0
+              AND (active.small_path = candidate.large_path OR active.large_path = candidate.large_path)
+          )
+         FROM artwork_asset candidate WHERE candidate.ref_count = 0 ORDER BY candidate.id`
+      );
       while (resultSet.goToNextRow()) {
         candidates.push({
           assetId: resultSet.getLong(0),
@@ -711,18 +775,21 @@ export class MusicLibraryQueries {
           deleteLarge: resultSet.getLong(4) !== 0
         });
       }
+      return candidates;
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to read unreferenced artwork assets', error);
     } finally {
-      resultSet.close();
+      RelationalStoreSafety.closeResultSet(resultSet, 'unreferenced artwork lookup');
     }
-    return candidates;
   }
 
   async getReferencedArtworkPaths(): Promise<Array<string>> {
-    const resultSet = await this.database.getStore().querySql(
-      'SELECT small_path, large_path FROM artwork_asset WHERE ref_count > 0'
-    );
+    let resultSet: relationalStore.ResultSet | undefined;
     const paths: Array<string> = [];
     try {
+      resultSet = await this.database.getStore().querySql(
+        'SELECT small_path, large_path FROM artwork_asset WHERE ref_count > 0'
+      );
       while (resultSet.goToNextRow()) {
         const smallPath = resultSet.getString(0);
         const largePath = resultSet.getString(1);
@@ -733,18 +800,21 @@ export class MusicLibraryQueries {
           paths.push(largePath);
         }
       }
+      return paths;
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to read referenced artwork paths', error);
     } finally {
-      resultSet.close();
+      RelationalStoreSafety.closeResultSet(resultSet, 'referenced artwork lookup');
     }
-    return paths;
   }
 
   async getPaletteRefreshAssets(): Promise<Array<PaletteRefreshAsset>> {
-    const resultSet = await this.database.getStore().querySql(
-      'SELECT id, small_path FROM artwork_asset WHERE ref_count > 0 ORDER BY id'
-    );
+    let resultSet: relationalStore.ResultSet | undefined;
     const assets: Array<PaletteRefreshAsset> = [];
     try {
+      resultSet = await this.database.getStore().querySql(
+        'SELECT id, small_path FROM artwork_asset WHERE ref_count > 0 ORDER BY id'
+      );
       while (resultSet.goToNextRow()) {
         const asset: PaletteRefreshAsset = {
           id: resultSet.getLong(0),
@@ -752,10 +822,12 @@ export class MusicLibraryQueries {
         };
         assets.push(asset);
       }
+      return assets;
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to read artwork palette refresh assets', error);
     } finally {
-      resultSet.close();
+      RelationalStoreSafety.closeResultSet(resultSet, 'artwork palette refresh lookup');
     }
-    return assets;
   }
 
   removeUnreferencedArtwork(assetId: number): Promise<void> {
@@ -776,15 +848,16 @@ export class MusicLibraryQueries {
         indexPresentation: descriptor.indexPresentation()
       };
     }
-    const resultSet = await this.database.getStore().querySql(
-      `SELECT ${descriptor.sectionExpression}, COUNT(*)
-       FROM ${fromClause}
-       GROUP BY ${descriptor.sectionExpression}
-       ORDER BY ${descriptor.sectionOrderClause}`
-    );
+    let resultSet: relationalStore.ResultSet | undefined;
     const sections: Array<LibrarySection> = [];
     let totalCount = 0;
     try {
+      resultSet = await this.database.getStore().querySql(
+        `SELECT ${descriptor.sectionExpression}, COUNT(*)
+         FROM ${fromClause}
+         GROUP BY ${descriptor.sectionExpression}
+         ORDER BY ${descriptor.sectionOrderClause}`
+      );
       while (resultSet.goToNextRow()) {
         sections.push({
           label: resultSet.getString(0),
@@ -792,22 +865,27 @@ export class MusicLibraryQueries {
         });
         totalCount += resultSet.getLong(1);
       }
+      return {
+        totalCount: totalCount,
+        sections: sections,
+        indexPresentation: LibraryIndexPresentation.ALPHABET
+      };
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to build catalog for ${fromClause}`, error);
     } finally {
-      resultSet.close();
+      RelationalStoreSafety.closeResultSet(resultSet, 'catalog section lookup');
     }
-    return {
-      totalCount: totalCount,
-      sections: sections,
-      indexPresentation: LibraryIndexPresentation.ALPHABET
-    };
   }
 
   private async readCount(store: relationalStore.RdbStore, sql: string): Promise<number> {
-    const resultSet = await store.querySql(sql);
+    let resultSet: relationalStore.ResultSet | undefined;
     try {
+      resultSet = await store.querySql(sql);
       return resultSet.goToNextRow() ? resultSet.getLong(0) : 0;
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to read catalog count', error);
     } finally {
-      resultSet.close();
+      RelationalStoreSafety.closeResultSet(resultSet, 'catalog count lookup');
     }
   }
 

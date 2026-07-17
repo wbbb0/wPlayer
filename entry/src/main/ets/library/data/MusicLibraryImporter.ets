@@ -16,6 +16,7 @@ import {
   TrackImportInput
 } from './MusicRepositoryTypes';
 import { ARTWORK_PALETTE_VERSION } from '../artwork/ArtworkPaletteExtractor';
+import { RelationalStoreSafety } from './RelationalStoreSafety';
 
 interface CreditGroup {
   role: CreditRole;
@@ -54,6 +55,7 @@ export class MusicLibraryImporter {
 
   private async importTrackInTransaction(transaction: relationalStore.Transaction,
     input: TrackImportInput): Promise<ImportTrackResult> {
+    try {
       const existingTrackId = await this.findTrackIdByUri(transaction, input.uri);
       if (existingTrackId !== undefined) {
         const duplicateResult: ImportTrackResult = {
@@ -160,6 +162,9 @@ export class MusicLibraryImporter {
       }
       const importedResult: ImportTrackResult = { imported: true, trackId: trackId };
       return importedResult;
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to import track ${input.displayName}`, error);
+    }
   }
 
   private async ensureAlbum(
@@ -181,37 +186,41 @@ export class MusicLibraryImporter {
     const albumArtistDisplay = metadata.albumArtists.join(', ');
     const titleSort = SortKeyNormalizer.natural(metadata.album);
     const artistSort = SortKeyNormalizer.natural(albumArtistDisplay);
-    const albumId = await transaction.insert('album', {
-      identity_key: identityKey,
-      title: metadata.album,
-      title_key: MetadataNormalizer.normalizeKey(metadata.album),
-      sort_title_key: MetadataNormalizer.normalizeKey(metadata.album),
-      title_natural_key: titleSort.key,
-      title_section: titleSort.section,
-      album_artist_display: albumArtistDisplay,
-      album_artist_key: albumArtistKey,
-      artist_natural_key: artistSort.key,
-      artist_section: artistSort.section,
-      release_date_raw: metadata.releaseDate.raw === undefined ? '' : metadata.releaseDate.raw,
-      release_year: this.numberOrNull(metadata.releaseDate.year),
-      release_month: this.numberOrNull(metadata.releaseDate.month),
-      release_day: this.numberOrNull(metadata.releaseDate.day),
-      release_date_precision: metadata.releaseDate.precision,
-      release_date_sort: SortKeyNormalizer.date(metadata.releaseDate),
-      track_count: 0,
-      total_duration_ms: 0,
-      created_at: now,
-      updated_at: now
-    });
-    for (let index = 0; index < metadata.albumArtists.length; index += 1) {
-      const personId = await this.ensurePerson(transaction, metadata.albumArtists[index]);
-      await transaction.insert('album_credit', {
-        album_id: albumId,
-        person_id: personId,
-        ordinal: index
+    try {
+      const albumId = await transaction.insert('album', {
+        identity_key: identityKey,
+        title: metadata.album,
+        title_key: MetadataNormalizer.normalizeKey(metadata.album),
+        sort_title_key: MetadataNormalizer.normalizeKey(metadata.album),
+        title_natural_key: titleSort.key,
+        title_section: titleSort.section,
+        album_artist_display: albumArtistDisplay,
+        album_artist_key: albumArtistKey,
+        artist_natural_key: artistSort.key,
+        artist_section: artistSort.section,
+        release_date_raw: metadata.releaseDate.raw === undefined ? '' : metadata.releaseDate.raw,
+        release_year: this.numberOrNull(metadata.releaseDate.year),
+        release_month: this.numberOrNull(metadata.releaseDate.month),
+        release_day: this.numberOrNull(metadata.releaseDate.day),
+        release_date_precision: metadata.releaseDate.precision,
+        release_date_sort: SortKeyNormalizer.date(metadata.releaseDate),
+        track_count: 0,
+        total_duration_ms: 0,
+        created_at: now,
+        updated_at: now
       });
+      for (let index = 0; index < metadata.albumArtists.length; index += 1) {
+        const personId = await this.ensurePerson(transaction, metadata.albumArtists[index]);
+        await transaction.insert('album_credit', {
+          album_id: albumId,
+          person_id: personId,
+          ordinal: index
+        });
+      }
+      return albumId;
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to create album ${metadata.album}`, error);
     }
-    return albumId;
   }
 
   private async insertCredits(
@@ -226,17 +235,21 @@ export class MusicLibraryImporter {
       { role: CreditRole.CONDUCTOR, names: metadata.conductors },
       { role: CreditRole.PERFORMER, names: metadata.performers }
     ];
-    for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
-      const group = groups[groupIndex];
-      for (let index = 0; index < group.names.length; index += 1) {
-        const personId = await this.ensurePerson(transaction, group.names[index]);
-        await transaction.insert('track_credit', {
-          track_id: trackId,
-          person_id: personId,
-          role: group.role,
-          ordinal: index
-        });
+    try {
+      for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
+        const group = groups[groupIndex];
+        for (let index = 0; index < group.names.length; index += 1) {
+          const personId = await this.ensurePerson(transaction, group.names[index]);
+          await transaction.insert('track_credit', {
+            track_id: trackId,
+            person_id: personId,
+            role: group.role,
+            ordinal: index
+          });
+        }
       }
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to insert credits for track ${trackId}`, error);
     }
   }
 
@@ -245,18 +258,22 @@ export class MusicLibraryImporter {
     trackId: number,
     genres: Array<string>
   ): Promise<void> {
-    for (let index = 0; index < genres.length; index += 1) {
-      const name = genres[index];
-      const key = MetadataNormalizer.normalizeKey(name);
-      let genreId = await this.findId(transaction, 'genre', 'name_key', key);
-      if (genreId === undefined) {
-        genreId = await transaction.insert('genre', { name: name, name_key: key });
+    try {
+      for (let index = 0; index < genres.length; index += 1) {
+        const name = genres[index];
+        const key = MetadataNormalizer.normalizeKey(name);
+        let genreId = await this.findId(transaction, 'genre', 'name_key', key);
+        if (genreId === undefined) {
+          genreId = await transaction.insert('genre', { name: name, name_key: key });
+        }
+        await transaction.insert('track_genre', {
+          track_id: trackId,
+          genre_id: genreId,
+          ordinal: index
+        });
       }
-      await transaction.insert('track_genre', {
-        track_id: trackId,
-        genre_id: genreId,
-        ordinal: index
-      });
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to insert genres for track ${trackId}`, error);
     }
   }
 
@@ -277,7 +294,11 @@ export class MusicLibraryImporter {
       }
     });
     if (buckets.length > 0) {
-      await transaction.batchInsert('track_tag_extra', buckets);
+      try {
+        await transaction.batchInsert('track_tag_extra', buckets);
+      } catch (error) {
+        throw RelationalStoreSafety.operationError(`Unable to insert raw tags for track ${trackId}`, error);
+      }
     }
   }
 
@@ -289,38 +310,42 @@ export class MusicLibraryImporter {
   ): Promise<number | undefined> {
     let primaryAssetId: number | undefined = undefined;
     let primaryScore = Number.MAX_SAFE_INTEGER;
-    for (let index = 0; index < artworks.length; index += 1) {
-      const artwork = artworks[index];
-      const reference = await this.ensureArtworkReference(transaction, artwork, now);
-      await transaction.insert('track_artwork', {
-        track_id: trackId,
-        source_id: reference.sourceId === undefined ? null : reference.sourceId,
-        asset_id: reference.assetId === undefined ? null : reference.assetId,
-        picture_type: artwork.metadata.pictureType,
-        ordinal: artwork.metadata.ordinal,
-        description: artwork.metadata.description,
-        mime_type: artwork.metadata.mimeType,
-        width: artwork.metadata.width,
-        height: artwork.metadata.height,
-        color_depth: artwork.metadata.colorDepth,
-        byte_offset: artwork.metadata.byteOffset,
-        byte_length: artwork.metadata.byteLength,
-        payload_offset: artwork.metadata.payloadOffset,
-        unsynchronized: artwork.metadata.unsynchronized ? 1 : 0
-      });
-      if (reference.assetId !== undefined) {
-        await transaction.execute(
-          'UPDATE artwork_asset SET ref_count = ref_count + 1, unreferenced_at = NULL WHERE id = ?',
-          [reference.assetId]
-        );
-        const score = artwork.primary === true ? -1 : this.artworkFallbackScore(artwork.metadata.pictureType);
-        if (score < primaryScore) {
-          primaryScore = score;
-          primaryAssetId = reference.assetId;
+    try {
+      for (let index = 0; index < artworks.length; index += 1) {
+        const artwork = artworks[index];
+        const reference = await this.ensureArtworkReference(transaction, artwork, now);
+        await transaction.insert('track_artwork', {
+          track_id: trackId,
+          source_id: reference.sourceId === undefined ? null : reference.sourceId,
+          asset_id: reference.assetId === undefined ? null : reference.assetId,
+          picture_type: artwork.metadata.pictureType,
+          ordinal: artwork.metadata.ordinal,
+          description: artwork.metadata.description,
+          mime_type: artwork.metadata.mimeType,
+          width: artwork.metadata.width,
+          height: artwork.metadata.height,
+          color_depth: artwork.metadata.colorDepth,
+          byte_offset: artwork.metadata.byteOffset,
+          byte_length: artwork.metadata.byteLength,
+          payload_offset: artwork.metadata.payloadOffset,
+          unsynchronized: artwork.metadata.unsynchronized ? 1 : 0
+        });
+        if (reference.assetId !== undefined) {
+          await transaction.execute(
+            'UPDATE artwork_asset SET ref_count = ref_count + 1, unreferenced_at = NULL WHERE id = ?',
+            [reference.assetId]
+          );
+          const score = artwork.primary === true ? -1 : this.artworkFallbackScore(artwork.metadata.pictureType);
+          if (score < primaryScore) {
+            primaryScore = score;
+            primaryAssetId = reference.assetId;
+          }
         }
       }
+      return primaryAssetId;
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to insert artwork for track ${trackId}`, error);
     }
-    return primaryAssetId;
   }
 
   private async ensureArtworkReference(
@@ -344,42 +369,50 @@ export class MusicLibraryImporter {
     }
     let assetId = await this.findArtworkAssetId(transaction, artwork.smallHash, artwork.largeHash);
     if (assetId === undefined) {
-      assetId = await transaction.insert('artwork_asset', {
-        small_hash: artwork.smallHash,
-        small_path: artwork.smallPath,
-        small_format: artwork.smallFormat,
-        small_width: artwork.smallWidth === undefined ? 0 : artwork.smallWidth,
-        small_height: artwork.smallHeight === undefined ? 0 : artwork.smallHeight,
-        small_byte_size: artwork.smallByteSize === undefined ? 0 : artwork.smallByteSize,
-        large_hash: artwork.largeHash,
-        large_path: artwork.largePath,
-        large_format: artwork.largeFormat,
-        large_width: artwork.largeWidth === undefined ? 0 : artwork.largeWidth,
-        large_height: artwork.largeHeight === undefined ? 0 : artwork.largeHeight,
-        large_byte_size: artwork.largeByteSize === undefined ? 0 : artwork.largeByteSize,
-        palette_primary: artwork.palettePrimary ?? '#FF7C4DFF',
-        palette_secondary: artwork.paletteSecondary ?? '#FFFF4D8D',
-        palette_accent: artwork.paletteAccent ?? '#FFFFB347',
-        palette_version: ARTWORK_PALETTE_VERSION,
-        ref_count: 0,
-        unreferenced_at: now,
-        created_at: now
-      });
+      try {
+        assetId = await transaction.insert('artwork_asset', {
+          small_hash: artwork.smallHash,
+          small_path: artwork.smallPath,
+          small_format: artwork.smallFormat,
+          small_width: artwork.smallWidth === undefined ? 0 : artwork.smallWidth,
+          small_height: artwork.smallHeight === undefined ? 0 : artwork.smallHeight,
+          small_byte_size: artwork.smallByteSize === undefined ? 0 : artwork.smallByteSize,
+          large_hash: artwork.largeHash,
+          large_path: artwork.largePath,
+          large_format: artwork.largeFormat,
+          large_width: artwork.largeWidth === undefined ? 0 : artwork.largeWidth,
+          large_height: artwork.largeHeight === undefined ? 0 : artwork.largeHeight,
+          large_byte_size: artwork.largeByteSize === undefined ? 0 : artwork.largeByteSize,
+          palette_primary: artwork.palettePrimary ?? '#FF7C4DFF',
+          palette_secondary: artwork.paletteSecondary ?? '#FFFF4D8D',
+          palette_accent: artwork.paletteAccent ?? '#FFFFB347',
+          palette_version: ARTWORK_PALETTE_VERSION,
+          ref_count: 0,
+          unreferenced_at: now,
+          created_at: now
+        });
+      } catch (error) {
+        throw RelationalStoreSafety.operationError('Unable to create artwork asset', error);
+      }
     }
     if (artwork.sourceHash === undefined || artwork.sourceHash.length === 0) {
       return { assetId: assetId };
     }
     let sourceId = await this.findId(transaction, 'artwork_source', 'source_hash', artwork.sourceHash);
     if (sourceId === undefined) {
-      sourceId = await transaction.insert('artwork_source', {
-        source_hash: artwork.sourceHash,
-        asset_id: assetId,
-        mime_type: artwork.metadata.mimeType,
-        width: artwork.metadata.width,
-        height: artwork.metadata.height,
-        byte_size: artwork.metadata.byteLength,
-        created_at: now
-      });
+      try {
+        sourceId = await transaction.insert('artwork_source', {
+          source_hash: artwork.sourceHash,
+          asset_id: assetId,
+          mime_type: artwork.metadata.mimeType,
+          width: artwork.metadata.width,
+          height: artwork.metadata.height,
+          byte_size: artwork.metadata.byteLength,
+          created_at: now
+        });
+      } catch (error) {
+        throw RelationalStoreSafety.operationError('Unable to create artwork source', error);
+      }
     }
     return { assetId: assetId, sourceId: sourceId };
   }
@@ -389,14 +422,17 @@ export class MusicLibraryImporter {
     smallHash: string,
     largeHash: string
   ): Promise<number | undefined> {
-    const resultSet = await transaction.querySql(
-      'SELECT id FROM artwork_asset WHERE small_hash = ? AND large_hash = ? LIMIT 1',
-      [smallHash, largeHash]
-    );
+    let resultSet: relationalStore.ResultSet | undefined;
     try {
+      resultSet = await transaction.querySql(
+        'SELECT id FROM artwork_asset WHERE small_hash = ? AND large_hash = ? LIMIT 1',
+        [smallHash, largeHash]
+      );
       return resultSet.goToNextRow() ? resultSet.getLong(0) : undefined;
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to find artwork asset', error);
     } finally {
-      resultSet.close();
+      RelationalStoreSafety.closeResultSet(resultSet, 'artwork asset lookup');
     }
   }
 
@@ -404,11 +440,12 @@ export class MusicLibraryImporter {
     transaction: relationalStore.Transaction,
     sourceHash: string
   ): Promise<ArtworkReference | undefined> {
-    const resultSet = await transaction.querySql(
-      'SELECT id, asset_id FROM artwork_source WHERE source_hash = ? LIMIT 1',
-      [sourceHash]
-    );
+    let resultSet: relationalStore.ResultSet | undefined;
     try {
+      resultSet = await transaction.querySql(
+        'SELECT id, asset_id FROM artwork_source WHERE source_hash = ? LIMIT 1',
+        [sourceHash]
+      );
       if (!resultSet.goToNextRow()) {
         return undefined;
       }
@@ -417,8 +454,10 @@ export class MusicLibraryImporter {
         assetId: resultSet.getLong(1)
       };
       return reference;
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to find artwork source', error);
     } finally {
-      resultSet.close();
+      RelationalStoreSafety.closeResultSet(resultSet, 'artwork source lookup');
     }
   }
 
@@ -428,27 +467,34 @@ export class MusicLibraryImporter {
     if (existingId !== undefined) {
       return existingId;
     }
-    return transaction.insert('person', {
-      name: name,
-      name_key: key,
-      sort_name_key: key
-    });
+    try {
+      return await transaction.insert('person', {
+        name: name,
+        name_key: key,
+        sort_name_key: key
+      });
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to create person ${name}`, error);
+    }
   }
 
   private async findTrackIdByUri(
     transaction: relationalStore.Transaction,
     uri: string
   ): Promise<number | undefined> {
-    const resultSet = await transaction.querySql(
-      `SELECT t.id FROM track t
-       INNER JOIN media_file f ON f.id = t.media_file_id
-       WHERE f.uri = ? LIMIT 1`,
-      [uri]
-    );
+    let resultSet: relationalStore.ResultSet | undefined;
     try {
+      resultSet = await transaction.querySql(
+        `SELECT t.id FROM track t
+         INNER JOIN media_file f ON f.id = t.media_file_id
+         WHERE f.uri = ? LIMIT 1`,
+        [uri]
+      );
       return resultSet.goToNextRow() ? resultSet.getLong(0) : undefined;
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to find track URI', error);
     } finally {
-      resultSet.close();
+      RelationalStoreSafety.closeResultSet(resultSet, 'track URI lookup');
     }
   }
 
@@ -461,21 +507,24 @@ export class MusicLibraryImporter {
     if (fileSize <= 0 || quickFingerprint.length === 0 || fullFingerprint.length === 0) {
       return undefined;
     }
-    const resultSet = await transaction.querySql(
-      `SELECT t.id, f.quick_fingerprint, f.content_fingerprint FROM track t
-       INNER JOIN media_file f ON f.id = t.media_file_id
-       WHERE f.file_size = ? AND f.content_fingerprint = ? LIMIT 1`,
-      [fileSize, fullFingerprint]
-    );
+    let resultSet: relationalStore.ResultSet | undefined;
     try {
+      resultSet = await transaction.querySql(
+        `SELECT t.id, f.quick_fingerprint, f.content_fingerprint FROM track t
+         INNER JOIN media_file f ON f.id = t.media_file_id
+         WHERE f.file_size = ? AND f.content_fingerprint = ? LIMIT 1`,
+        [fileSize, fullFingerprint]
+      );
       if (!resultSet.goToNextRow()) {
         return undefined;
       }
       return DuplicatePolicy.isConfirmedDuplicate(
         resultSet.getString(1), quickFingerprint, resultSet.getString(2), fullFingerprint
       ) ? resultSet.getLong(0) : undefined;
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to find duplicate track', error);
     } finally {
-      resultSet.close();
+      RelationalStoreSafety.closeResultSet(resultSet, 'duplicate track lookup');
     }
   }
 
@@ -485,14 +534,17 @@ export class MusicLibraryImporter {
     column: string,
     value: string
   ): Promise<number | undefined> {
-    const resultSet = await transaction.querySql(
-      `SELECT id FROM ${table} WHERE ${column} = ? LIMIT 1`,
-      [value]
-    );
+    let resultSet: relationalStore.ResultSet | undefined;
     try {
+      resultSet = await transaction.querySql(
+        `SELECT id FROM ${table} WHERE ${column} = ? LIMIT 1`,
+        [value]
+      );
       return resultSet.goToNextRow() ? resultSet.getLong(0) : undefined;
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to find ${table}.${column}`, error);
     } finally {
-      resultSet.close();
+      RelationalStoreSafety.closeResultSet(resultSet, `${table}.${column} lookup`);
     }
   }
 

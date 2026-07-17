@@ -32,6 +32,8 @@ interface PendingSeekWait {
 export class PlaybackEngine {
   private player?: media.AVPlayer;
   private sourceFile?: fs.File;
+  private audioSessionManager?: audio.AudioSessionManager;
+  private outputDeviceChangedCallback?: (event: audio.CurrentOutputDeviceChangedEvent) => void;
   private rawState: string = 'idle';
   private listener?: PlaybackEngineListener;
   private commandTail: Promise<void> = Promise.resolve();
@@ -39,6 +41,8 @@ export class PlaybackEngine {
   private activeEpoch: number = 0;
   private pendingStateWait?: PendingStateWait;
   private pendingSeekWait?: PendingSeekWait;
+  private resumeAfterOutputReconnect: boolean = false;
+  private shuttingDown: boolean = false;
 
   setListener(listener: PlaybackEngineListener): void {
     this.listener = listener;
@@ -48,6 +52,7 @@ export class PlaybackEngine {
     const epoch = this.requestEpoch.begin();
     this.listener?.onStateChanged(PlayerState.LOADING);
     return this.enqueue(async () => {
+      this.resumeAfterOutputReconnect = false;
       this.activeEpoch = epoch;
       await this.loadTrack(track, resumePositionMs, epoch, playWhenReady);
     });
@@ -57,6 +62,7 @@ export class PlaybackEngine {
     this.requestEpoch.invalidate();
     this.rejectPendingWaits(new Error('Playback request superseded'));
     return this.enqueue(async () => {
+      this.resumeAfterOutputReconnect = false;
       if (this.player !== undefined && this.rawState !== 'idle' && this.rawState !== 'released') {
         await this.resetForSource(this.player);
       }
@@ -65,12 +71,14 @@ export class PlaybackEngine {
 
   togglePlayback(): Promise<void> {
     return this.enqueue(async () => {
+      this.resumeAfterOutputReconnect = false;
       if (this.player === undefined) {
         return;
       }
       if (this.rawState === 'playing') {
         await this.player.pause();
       } else if (this.rawState === 'prepared' || this.rawState === 'paused' || this.rawState === 'completed') {
+        await this.ensureAudioSession();
         await this.player.play();
       }
     });
@@ -78,8 +86,10 @@ export class PlaybackEngine {
 
   play(): Promise<void> {
     return this.enqueue(async () => {
+      this.resumeAfterOutputReconnect = false;
       if (this.player !== undefined &&
         (this.rawState === 'prepared' || this.rawState === 'paused' || this.rawState === 'completed')) {
+        await this.ensureAudioSession();
         await this.player.play();
       }
     });
@@ -87,6 +97,7 @@ export class PlaybackEngine {
 
   pause(): Promise<void> {
     return this.enqueue(async () => {
+      this.resumeAfterOutputReconnect = false;
       if (this.player !== undefined && this.rawState === 'playing') {
         await this.player.pause();
       }
@@ -103,8 +114,11 @@ export class PlaybackEngine {
   }
 
   async shutdown(): Promise<void> {
+    this.shuttingDown = true;
+    this.resumeAfterOutputReconnect = false;
     this.requestEpoch.invalidate();
     this.rejectPendingWaits(new Error('Playback engine shut down'));
+    this.unsubscribeOutputDeviceChanges();
     await this.commandTail;
     if (this.player !== undefined && this.rawState !== 'released') {
       try {
@@ -116,6 +130,10 @@ export class PlaybackEngine {
     this.player = undefined;
     this.rawState = 'released';
     this.closeSourceFile();
+    await this.deactivateAudioSession();
+    this.audioSessionManager = undefined;
+    this.outputDeviceChangedCallback = undefined;
+    this.shuttingDown = false;
   }
 
   private async loadTrack(track: PlaybackTrack, resumePositionMs: number, epoch: number,
@@ -153,6 +171,7 @@ export class PlaybackEngine {
         this.ensureCurrent(epoch);
       }
       if (playWhenReady()) {
+        await this.ensureAudioSession();
         await player.play();
       }
     } catch (error) {
@@ -282,6 +301,99 @@ export class PlaybackEngine {
       }
     });
     return pending;
+  }
+
+  private async ensureAudioSession(): Promise<void> {
+    if (this.shuttingDown) {
+      return;
+    }
+    try {
+      if (this.audioSessionManager === undefined) {
+        this.audioSessionManager = audio.getAudioManager().getSessionManager();
+      }
+      if (this.outputDeviceChangedCallback === undefined) {
+        const callback = (event: audio.CurrentOutputDeviceChangedEvent): void => {
+          this.onOutputDeviceChanged(event);
+        };
+        this.audioSessionManager.on('currentOutputDeviceChanged', callback);
+        this.outputDeviceChangedCallback = callback;
+      }
+      if (!this.audioSessionManager.isAudioSessionActivated()) {
+        await this.audioSessionManager.activateAudioSession({
+          concurrencyMode: audio.AudioConcurrencyMode.CONCURRENCY_DEFAULT
+        });
+      }
+    } catch (error) {
+      console.warn(`Unable to initialize audio output monitoring: ${PlaybackEngine.messageOf(error)}`);
+    }
+  }
+
+  private onOutputDeviceChanged(event: audio.CurrentOutputDeviceChangedEvent): void {
+    if (event.changeReason === audio.AudioStreamDeviceChangeReason.REASON_OLD_DEVICE_UNAVAILABLE &&
+      this.rawState === 'playing') {
+      this.pauseForOutputDisconnect().catch((error: Object) => {
+        console.warn(`Unable to pause after audio output disconnect: ${PlaybackEngine.messageOf(error)}`);
+      });
+      return;
+    }
+    if (event.changeReason === audio.AudioStreamDeviceChangeReason.REASON_NEW_DEVICE_AVAILABLE) {
+      this.resumeForOutputReconnect().catch((error: Object) => {
+        console.warn(`Unable to resume after audio output reconnect: ${PlaybackEngine.messageOf(error)}`);
+      });
+    }
+  }
+
+  private pauseForOutputDisconnect(): Promise<void> {
+    return this.enqueue(async () => {
+      if (this.player === undefined || this.rawState !== 'playing') {
+        return;
+      }
+      this.resumeAfterOutputReconnect = true;
+      try {
+        await this.player.pause();
+      } catch (error) {
+        this.resumeAfterOutputReconnect = false;
+        throw error instanceof Error ? error : new Error(`${error}`);
+      }
+    });
+  }
+
+  private resumeForOutputReconnect(): Promise<void> {
+    return this.enqueue(async () => {
+      if (!this.resumeAfterOutputReconnect) {
+        return;
+      }
+      this.resumeAfterOutputReconnect = false;
+      if (this.player === undefined || this.rawState !== 'paused') {
+        return;
+      }
+      await this.ensureAudioSession();
+      await this.player.play();
+    });
+  }
+
+  private unsubscribeOutputDeviceChanges(): void {
+    if (this.audioSessionManager === undefined || this.outputDeviceChangedCallback === undefined) {
+      return;
+    }
+    try {
+      this.audioSessionManager.off('currentOutputDeviceChanged', this.outputDeviceChangedCallback);
+    } catch (error) {
+      console.warn(`Unable to stop audio output monitoring: ${PlaybackEngine.messageOf(error)}`);
+    }
+  }
+
+  private async deactivateAudioSession(): Promise<void> {
+    if (this.audioSessionManager === undefined) {
+      return;
+    }
+    try {
+      if (this.audioSessionManager.isAudioSessionActivated()) {
+        await this.audioSessionManager.deactivateAudioSession();
+      }
+    } catch (error) {
+      console.warn(`Unable to deactivate audio session: ${PlaybackEngine.messageOf(error)}`);
+    }
   }
 
   private ensureCurrent(epoch: number): void {

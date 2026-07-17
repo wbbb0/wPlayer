@@ -22,6 +22,7 @@ export struct PlayerPlaybackButton {
       SymbolGlyph(this.playerStore.isPlaying() ? $r('sys.symbol.pause') : $r('sys.symbol.play_fill'))
         .fontSize(this.buttonSize * 0.42)
         .fontColor([this.playerStore.themeOnSecondary()])
+        .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
         .renderingStrategy(SymbolRenderingStrategy.MULTIPLE_OPACITY)
     }
     .width(this.buttonSize)
@@ -59,6 +60,7 @@ export struct PlayerTransportButton {
         .width(this.buttonSize * 0.45)
         .height(this.buttonSize * 0.45)
         .fillColor(this.playerStore.themeOnPrimary())
+        .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
     }
     .width(this.buttonSize)
     .height(this.buttonSize)
@@ -115,6 +117,7 @@ export struct PlayerModeButton {
           .height(2)
           .borderRadius(1)
           .backgroundColor(this.playerStore.themeOnPrimaryMedium())
+          .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
           .rotate({ angle: -45 })
       }
     }

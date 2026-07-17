@@ -94,6 +94,7 @@ export interface ResumeState {
 }
 
 export type LyricIndexListener = (index: number) => void;
+export type QueueIndexListener = (index: number) => void;
 
 export class LyricLineDataSource implements IDataSource {
   private items: Array<TimedLyricLine> = [];
@@ -157,6 +158,7 @@ export class PlayerStore {
   queueItems: Array<QueueTrack> = [];
   readonly queueDataSource: QueueTrackDataSource = new QueueTrackDataSource();
   queueCurrentIndex: number = -1;
+  private readonly queueIndexListeners: Array<QueueIndexListener> = [];
   palettePrimary: string = DEFAULT_PLAYER_PALETTE_PRIMARY;
   paletteSecondary: string = DEFAULT_PLAYER_PALETTE_SECONDARY;
   paletteAccent: string = DEFAULT_PLAYER_PALETTE_ACCENT;
@@ -190,6 +192,27 @@ export class PlayerStore {
   setTimedLyrics(lines: Array<TimedLyricLine>): void {
     this.timedLyrics = lines;
     this.lyricDataSource.replace(lines);
+  }
+
+  addQueueIndexListener(listener: QueueIndexListener): void {
+    if (this.queueIndexListeners.indexOf(listener) < 0) {
+      this.queueIndexListeners.push(listener);
+    }
+  }
+
+  removeQueueIndexListener(listener: QueueIndexListener): void {
+    const index = this.queueIndexListeners.indexOf(listener);
+    if (index >= 0) {
+      this.queueIndexListeners.splice(index, 1);
+    }
+  }
+
+  setQueueCurrentIndex(index: number): void {
+    if (this.queueCurrentIndex === index) {
+      return;
+    }
+    this.queueCurrentIndex = index;
+    this.queueIndexListeners.slice().forEach((listener: QueueIndexListener) => listener(index));
   }
 
   hasCurrentTrack(): boolean {

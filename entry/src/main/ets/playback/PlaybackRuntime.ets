@@ -689,7 +689,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     const snapshot = this.queue.snapshot();
     this.playerStore.queueDataSource.replace(snapshot.items);
     this.playerStore.queueItems = snapshot.items;
-    this.playerStore.queueCurrentIndex = snapshot.currentIndex;
+    this.playerStore.setQueueCurrentIndex(snapshot.currentIndex);
     const currentTrackId = snapshot.currentIndex >= 0 && snapshot.currentIndex < snapshot.items.length ?
       snapshot.items[snapshot.currentIndex].id : -1;
     if (persist) {

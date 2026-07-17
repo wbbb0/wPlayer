@@ -20,11 +20,13 @@ import {
   LyricIndexListener,
   PlaybackProgressStore,
   PlayerStore,
+  QueueIndexListener,
   QueueTrack
 } from '../../playback/model/PlaybackModels';
 import { TimedLyricLine } from '../../playback/lyrics/LyricsParser';
 import { SongListItem, SongListItemLayout } from '../library/SongListItem';
 import { LayoutLength } from '../layout/LayoutLength';
+import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 
 @Component
 struct TimedLyricRow {
@@ -40,6 +42,7 @@ struct TimedLyricRow {
       .fontWeight(FontWeight.Bold)
       .fontColor(this.index === this.playerStore.activeLyricIndex ?
         this.playerStore.themeOnPrimary() : this.playerStore.themeOnPrimaryMedium())
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .opacity(this.index === this.playerStore.activeLyricIndex ? 1 : 0.72)
       .textAlign(TextAlign.Start)
       .scale({
@@ -116,10 +119,12 @@ struct PlayerProgressControl {
         Text(this.durationLabel(this.displayedPositionMs()))
           .fontSize(11)
           .fontColor(this.playerStore.themeOnPrimaryMedium())
+          .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
         Blank()
         Text(this.durationLabel(this.progressStore.durationMs))
           .fontSize(11)
           .fontColor(this.playerStore.themeOnPrimaryMedium())
+          .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       }
       .width('100%')
     }
@@ -156,8 +161,13 @@ export struct FullPlayerContent {
   private readonly queueScroller: Scroller = new Scroller();
   private readonly lyricScroller: Scroller = new Scroller();
   private lastFocusedQueueIndex: number = -1;
-  private hasFocusedQueue: boolean = false;
   private lastFocusedLyricIndex: number = -1;
+  private readonly queueIndexListener: QueueIndexListener = (index: number): void => {
+    if (this.measuresArtworkTarget || index < 0 || this.playerStore.queueItems.length === 0) {
+      return;
+    }
+    this.focusQueueIndex(index, true);
+  };
   private readonly lyricIndexListener: LyricIndexListener = (index: number): void => {
     if (this.measuresArtworkTarget || index < 0 || this.playerStore.timedLyrics.length === 0) {
       return;
@@ -190,14 +200,21 @@ export struct FullPlayerContent {
 
   aboutToAppear(): void {
     if (!this.measuresArtworkTarget) {
+      this.playerStore.addQueueIndexListener(this.queueIndexListener);
       this.playerStore.addLyricIndexListener(this.lyricIndexListener);
     }
   }
 
   aboutToDisappear(): void {
     if (!this.measuresArtworkTarget) {
+      this.playerStore.removeQueueIndexListener(this.queueIndexListener);
       this.playerStore.removeLyricIndexListener(this.lyricIndexListener);
     }
+  }
+
+  private focusQueueIndex(index: number, animated: boolean): void {
+    this.lastFocusedQueueIndex = index;
+    this.queueScroller.scrollToIndex(index, animated, ScrollAlign.START);
   }
 
   onDidBuild(): void {
@@ -206,9 +223,7 @@ export struct FullPlayerContent {
     }
     if (this.playerStore.queueCurrentIndex >= 0 &&
       this.lastFocusedQueueIndex !== this.playerStore.queueCurrentIndex) {
-      this.lastFocusedQueueIndex = this.playerStore.queueCurrentIndex;
-      this.queueScroller.scrollToIndex(this.playerStore.queueCurrentIndex, this.hasFocusedQueue, ScrollAlign.CENTER);
-      this.hasFocusedQueue = true;
+      this.focusQueueIndex(this.playerStore.queueCurrentIndex, false);
     }
     const lyricIndex = this.playerStore.activeLyricIndex;
     if (this.playerStore.timedLyrics.length === 0) {
@@ -250,11 +265,12 @@ export struct FullPlayerContent {
             .width(PlayerLayoutSpec.FULL_PLAYER_CLOSE_ICON_SIZE)
             .height(PlayerLayoutSpec.FULL_PLAYER_CLOSE_ICON_SIZE)
             .fillColor(this.playerStore.themeOnPrimary())
+            .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
         }
         .width(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE)
         .height(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE)
         .borderRadius(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE / 2)
-        .backgroundColor($r('app.color.glass_surface_strong'))
+        .backgroundColor($r('app.color.glass_surface_subtle'))
         .backgroundBlurStyle(BlurStyle.Thin)
         .clickEffect({ level: ClickEffectLevel.MIDDLE })
         .accessibilityText('收起播放器')
@@ -280,10 +296,12 @@ export struct FullPlayerContent {
         .fontSize(24)
         .fontWeight(FontWeight.Bold)
         .fontColor(this.playerStore.themeOnPrimary())
+        .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       Blank()
       Text(`${this.playerStore.queueSize} 首`)
         .fontSize(13)
         .fontColor(this.playerStore.themeOnPrimaryMedium())
+        .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
     }
     .width(this.pageWidth())
     .height(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE)
@@ -301,10 +319,12 @@ export struct FullPlayerContent {
           .fontSize(18)
           .fontWeight(FontWeight.Bold)
           .fontColor(this.playerStore.themeOnPrimary())
+          .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
           .maxLines(1)
         Text(this.currentArtistLabel())
           .fontSize(12)
           .fontColor(this.playerStore.themeOnPrimaryMedium())
+          .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
           .maxLines(1)
       }
     }
@@ -327,9 +347,11 @@ export struct FullPlayerContent {
             .fontSize(18)
             .fontWeight(FontWeight.Medium)
             .fontColor(this.playerStore.themeOnPrimary())
+            .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
           Text('从音乐库选择歌曲后会显示在这里')
             .fontSize(14)
             .fontColor(this.playerStore.themeOnPrimaryMedium())
+            .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
         }
         .justifyContent(FlexAlign.Center)
         .layoutWeight(1)
@@ -360,6 +382,7 @@ export struct FullPlayerContent {
                     primaryColor: this.playerStore.themeOnPrimary(),
                     secondaryColor: this.playerStore.themeOnPrimaryMedium(),
                     tertiaryColor: this.playerStore.themeOnPrimaryMedium(),
+                    animateColors: true,
                     active: item.id === this.playerStore.currentTrack?.id,
                     activeBackgroundColor: $r('app.color.glass_surface_strong'),
                     activeShadowColor: $r('app.color.artwork_shadow'),
@@ -472,6 +495,7 @@ export struct FullPlayerContent {
             .fontSize(PlayerLayoutSpec.FULL_PLAYER_TITLE_SIZE)
             .fontWeight(FontWeight.Bold)
             .fontColor(this.playerStore.themeOnPrimary())
+            .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
             .maxLines(1)
             .layoutWeight(1)
 
@@ -487,6 +511,7 @@ export struct FullPlayerContent {
         Text(this.currentArtistLabel())
           .fontSize(PlayerLayoutSpec.FULL_PLAYER_ARTIST_SIZE)
           .fontColor(this.playerStore.themeOnPrimaryMedium())
+          .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
           .maxLines(1)
       }
       .alignItems(HorizontalAlign.Start)
@@ -550,6 +575,7 @@ export struct FullPlayerContent {
             .lineHeight(34)
             .fontWeight(FontWeight.Medium)
             .fontColor(this.playerStore.themeOnPrimary())
+            .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
             .textAlign(TextAlign.Start)
         }
         .width('100%')
@@ -568,9 +594,11 @@ export struct FullPlayerContent {
             .fontSize(22)
             .fontWeight(FontWeight.Medium)
             .fontColor(this.playerStore.themeOnPrimary())
+            .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
           Text('当前仅读取音乐文件内部的歌词文本')
             .fontSize(14)
             .fontColor(this.playerStore.themeOnPrimaryMedium())
+            .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
             .textAlign(TextAlign.Center)
         }
         .justifyContent(FlexAlign.Center)

@@ -1,6 +1,7 @@
 import { TrackListItem } from '../../library/model/LibraryModels';
 import { ArtworkFitMode, ArtworkView } from '../artwork/ArtworkView';
 import { QueueActionMenu } from './QueueActionMenu';
+import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 
 export interface SongListItemData {
   id: number;
@@ -31,6 +32,7 @@ export struct SongListItem {
   @Prop primaryColor: ResourceColor = $r('app.color.text_primary');
   @Prop secondaryColor: ResourceColor = $r('app.color.text_secondary');
   @Prop tertiaryColor: ResourceColor = $r('app.color.text_tertiary');
+  @Prop animateColors: boolean = false;
   @Prop active: boolean = false;
   @Prop activeBackgroundColor: ResourceColor = Color.Transparent;
   @Prop activeShadowColor: ResourceColor = Color.Transparent;
@@ -95,10 +97,18 @@ export struct SongListItem {
         SymbolGlyph($r('sys.symbol.play_fill'))
           .fontSize(16)
           .fontColor([this.primaryColor])
+          .animation({
+            duration: this.animateColors ? PaletteMotionSpec.COLOR_TRANSITION_DURATION : 0,
+            curve: Curve.EaseInOut
+          })
       } else {
         Text(this.queuePositionLabel())
           .fontSize(12)
           .fontColor(this.secondaryColor)
+          .animation({
+            duration: this.animateColors ? PaletteMotionSpec.COLOR_TRANSITION_DURATION : 0,
+            curve: Curve.EaseInOut
+          })
           .textAlign(TextAlign.Center)
       }
     }
@@ -113,6 +123,10 @@ export struct SongListItem {
         .width(this.queueIndexWidth)
         .fontSize(13)
         .fontColor(this.tertiaryColor)
+        .animation({
+          duration: this.animateColors ? PaletteMotionSpec.COLOR_TRANSITION_DURATION : 0,
+          curve: Curve.EaseInOut
+        })
         .textAlign(TextAlign.End)
     } else {
       if (this.layout === SongListItemLayout.PLAYER_QUEUE) {
@@ -138,11 +152,19 @@ export struct SongListItem {
         .fontSize(this.titleSize())
         .fontWeight(this.active ? FontWeight.Bold : FontWeight.Medium)
         .fontColor(this.primaryColor)
+        .animation({
+          duration: this.animateColors ? PaletteMotionSpec.COLOR_TRANSITION_DURATION : 0,
+          curve: Curve.EaseInOut
+        })
         .maxLines(1)
       if (this.showArtist) {
         Text(this.artistLabel())
           .fontSize(this.secondarySize())
           .fontColor(this.secondaryColor)
+          .animation({
+            duration: this.animateColors ? PaletteMotionSpec.COLOR_TRANSITION_DURATION : 0,
+            curve: Curve.EaseInOut
+          })
           .maxLines(1)
       }
     }
@@ -153,6 +175,10 @@ export struct SongListItem {
     Text(this.durationLabel())
       .fontSize(this.durationSize())
       .fontColor(this.tertiaryColor)
+      .animation({
+        duration: this.animateColors ? PaletteMotionSpec.COLOR_TRANSITION_DURATION : 0,
+        curve: Curve.EaseInOut
+      })
 
     if (this.actionTrack !== undefined) {
       Button() {
@@ -160,6 +186,10 @@ export struct SongListItem {
           .width(18)
           .height(18)
           .fillColor(this.primaryColor)
+          .animation({
+            duration: this.animateColors ? PaletteMotionSpec.COLOR_TRANSITION_DURATION : 0,
+            curve: Curve.EaseInOut
+          })
       }
       .width(38)
       .height(38)

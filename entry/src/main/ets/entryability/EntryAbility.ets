@@ -4,6 +4,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { appRuntimeLifecycle } from '../application/runtime/AppRuntimeLifecycle';
 import { AppAppearancePalette, appAppearanceController } from '../appearance/AppAppearance';
+import { systemBarStyleController } from '../appearance/SystemBarStyleController';
 import { playbackRuntime } from '../playback/PlaybackRuntime';
 
 const DOMAIN = 0x0000;
@@ -59,6 +60,7 @@ export default class EntryAbility extends UIAbility {
         await this.mainWindow.setWindowLayoutFullScreen(true);
         await this.mainWindow.setWindowSystemBarEnable(['status', 'navigation']);
         await this.applyMainWindowAppearance();
+        systemBarStyleController.bindWindow(this.mainWindow);
       } catch (windowError) {
         const businessError = windowError as BusinessError;
         hilog.error(DOMAIN, TAG, 'Failed to configure main window. Cause: %{public}s', JSON.stringify(businessError));
@@ -74,18 +76,14 @@ export default class EntryAbility extends UIAbility {
     try {
       const palette = AppAppearancePalette.resolve(this.context);
       this.mainWindow.setWindowBackgroundColor(palette.windowBackground);
-      await this.mainWindow.setWindowSystemBarProperties({
-        statusBarColor: '#00000000',
-        navigationBarColor: '#00000000',
-        statusBarContentColor: palette.systemBarContent,
-        navigationBarContentColor: palette.systemBarContent
-      });
+      systemBarStyleController.setAppearanceContentColor(palette.systemBarContent);
     } catch (error) {
       hilog.error(DOMAIN, TAG, 'Failed to apply window appearance. Cause: %{public}s', JSON.stringify(error));
     }
   }
 
   onWindowStageDestroy(): void {
+    systemBarStyleController.unbindWindow(this.mainWindow);
     this.mainWindow = undefined;
     hilog.info(DOMAIN, TAG, 'Window stage destroyed');
   }

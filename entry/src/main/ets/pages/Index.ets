@@ -58,6 +58,7 @@ import {
 } from '../appearance/AppAppearance';
 import { PaletteMotionSpec } from '../appearance/PaletteMotionSpec';
 import { DynamicColor } from '../appearance/DynamicColor';
+import { systemBarStyleController } from '../appearance/SystemBarStyleController';
 
 const MORE_TAB_INDEX: number = PRIMARY_NAVIGATION_COUNT;
 
@@ -121,7 +122,6 @@ struct Index {
   private morphTransitionEpoch: number = 0;
   private compactTabIndexBeforeSelection: number = 0;
   private expandedTabIndexBeforeSelection: number = 0;
-  private mainWindow?: window.Window;
   private readonly appearanceListener: AppAppearanceListener = (_epoch: number): void => {
     this.refreshAppearance();
   };
@@ -152,13 +152,6 @@ struct Index {
     const context = this.getUIContext().getHostContext();
     if (context !== undefined) {
       const abilityContext = context as common.UIAbilityContext;
-      window.getLastWindow(abilityContext).then((mainWindow: window.Window) => {
-        this.mainWindow = mainWindow;
-        this.syncSystemBarContentColor();
-      }).catch((error: Object) => {
-        const businessError = error as BusinessError;
-        console.warn(`Unable to cache main window: ${businessError.code}, ${businessError.message}`);
-      });
       this.avoidAreaController.start(abilityContext);
       try {
         this.settingsRepository = new SettingsRepository(abilityContext);
@@ -187,7 +180,7 @@ struct Index {
   aboutToDisappear(): void {
     this.releaseMorphArtworkSource();
     playbackRuntime.setPaletteChangeListener(undefined);
-    this.setSystemBarContentColor(this.appearancePalette.systemBarContent);
+    systemBarStyleController.setPlayerContentColor(false, '');
     appAppearanceController.removeListener(this.appearanceListener);
     this.avoidAreaController.stop();
     for (let index = 0; index < this.rootTitleContents.length; index += 1) {
@@ -229,6 +222,7 @@ struct Index {
     const palette = AppAppearancePalette.resolve(context as common.UIAbilityContext);
     this.appearancePalette = palette;
     this.playerStore.themeBaseBackground = palette.windowBackground;
+    systemBarStyleController.setAppearanceContentColor(palette.systemBarContent);
     this.syncSystemBarContentColor();
     for (let index = 0; index < this.rootTitleContents.length; index += 1) {
       this.rootTitleContents[index]?.update(
@@ -480,40 +474,11 @@ struct Index {
     }
   }
 
-  private setSystemBarContentColor(contentColor: string): void {
-    const context = this.getUIContext().getHostContext();
-    if (context === undefined) {
-      return;
-    }
-    const applyContent = (mainWindow: window.Window): Promise<void> => {
-      return mainWindow.setWindowSystemBarProperties({
-        statusBarColor: '#00000000',
-        navigationBarColor: '#00000000',
-        statusBarContentColor: contentColor,
-        navigationBarContentColor: contentColor,
-        enableStatusBarAnimation: true,
-        enableNavigationBarAnimation: true
-      });
-    };
-    if (this.mainWindow !== undefined) {
-      applyContent(this.mainWindow).catch((error: Object) => {
-        const businessError = error as BusinessError;
-        console.warn(`Unable to update system-bar content: ${businessError.code}, ${businessError.message}`);
-      });
-      return;
-    }
-    window.getLastWindow(context).then((mainWindow: window.Window) => {
-      this.mainWindow = mainWindow;
-      return applyContent(mainWindow);
-    }).catch((error: Object) => {
-      const businessError = error as BusinessError;
-      console.warn(`Unable to update system-bar content: ${businessError.code}, ${businessError.message}`);
-    });
-  }
-
   private syncSystemBarContentColor(): void {
-    this.setSystemBarContentColor(this.isMorphActive() ?
-      this.playerStore.themeOnPrimary() : this.appearancePalette.systemBarContent);
+    systemBarStyleController.setPlayerContentColor(
+      this.isMorphActive(),
+      this.playerStore.themeOnPrimary()
+    );
   }
 
   private freezeArtworkTargetForCurrentPage(): void {

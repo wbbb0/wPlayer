@@ -138,6 +138,7 @@ export class PlayerStore {
   heroArtwork?: image.PixelMap;
   heroArtworkUri: string = '';
   heroArtworkPreferPixelMap: boolean = false;
+  heroArtworkRevision: number = 0;
   errorMessage: string = '';
   lyrics: string = '';
   timedLyrics: Array<TimedLyricLine> = [];

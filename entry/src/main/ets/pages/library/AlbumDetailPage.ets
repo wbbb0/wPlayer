@@ -5,7 +5,7 @@ import { AlbumDetail, TrackListItem } from '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { AppShellLayoutSpec } from '../../components/layout/AppShellLayoutSpec';
-import { QueueActionMenu } from '../../components/library/QueueActionMenu';
+import { SongListItem, SongListItemLayout } from '../../components/library/SongListItem';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import { DynamicColor, DynamicContainerRole } from '../../appearance/DynamicColor';
 
@@ -237,52 +237,6 @@ export struct AlbumDetailPage {
     .padding({ left: PageLayoutSpec.HORIZONTAL_INSET, right: PageLayoutSpec.HORIZONTAL_INSET, bottom: 14 })
   }
 
-  @Builder
-  private TrackRow(track: TrackListItem, albumArtist: string) {
-    Row({ space: 12 }) {
-      Text(track.trackNumber > 0 ? `${track.trackNumber}` : '—')
-        .width(30)
-        .fontSize(13)
-        .fontColor($r('app.color.text_tertiary'))
-        .textAlign(TextAlign.End)
-      Column({ space: 3 }) {
-        Text(track.title)
-          .fontSize(15)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_primary'))
-          .maxLines(1)
-        if (this.showTrackArtist(track, albumArtist)) {
-          Text(track.artistDisplay)
-            .fontSize(12)
-            .fontColor($r('app.color.text_secondary'))
-            .maxLines(1)
-        }
-      }
-      .alignItems(HorizontalAlign.Start)
-      .justifyContent(FlexAlign.Center)
-      .layoutWeight(1)
-      Text(this.durationLabel(track.durationMs))
-        .fontSize(12)
-        .fontColor($r('app.color.text_tertiary'))
-      Button() { Image($r('app.media.control_more')).width(18).height(18)
-        .fillColor($r('app.color.text_primary')) }
-        .width(38).height(38).borderRadius(19)
-        .backgroundColor(Color.Transparent)
-        .accessibilityText('更多歌曲操作')
-        .bindMenu(QueueActionMenu([track]))
-    }
-    .width('100%')
-    .constraintSize({ minHeight: 58 })
-    .padding({ left: PageLayoutSpec.HORIZONTAL_INSET, right: PageLayoutSpec.HORIZONTAL_INSET })
-    .borderRadius(14)
-    .onClick(() => {
-      const detail = this.detail();
-      if (detail !== undefined) {
-        playbackRuntime.playInOrder(track, detail.tracks);
-      }
-    })
-  }
-
   build() {
     List({ space: 2, scroller: this.scroller }) {
       if (this.albumId === this.store.albumDetail?.album.id && this.store.albumDetail !== undefined) {
@@ -306,7 +260,27 @@ export struct AlbumDetailPage {
                   .margin({ left: PageLayoutSpec.HORIZONTAL_INSET + 42,
                     right: PageLayoutSpec.HORIZONTAL_INSET })
               }
-              this.TrackRow(track, this.store.albumDetail!.album.albumArtistDisplay)
+              SongListItem({
+                item: track,
+                layout: SongListItemLayout.ALBUM,
+                trackNumber: track.trackNumber,
+                showArtist: this.showTrackArtist(
+                  track,
+                  this.store.albumDetail!.album.albumArtistDisplay
+                ),
+                actionTrack: track,
+                horizontalInset: PageLayoutSpec.HORIZONTAL_INSET,
+                verticalInset: 0,
+                minimumHeight: 58,
+                rowCornerRadius: 14,
+                queueIndexWidth: 30,
+                onActivate: (): void => {
+                  const detail = this.detail();
+                  if (detail !== undefined) {
+                    playbackRuntime.playInOrder(track, detail.tracks);
+                  }
+                }
+              })
             }
           }
         }, (track: TrackListItem) => `${track.id}`)

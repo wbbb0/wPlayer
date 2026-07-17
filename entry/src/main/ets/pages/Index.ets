@@ -36,6 +36,7 @@ import {
   MiniPlayerSurface
 } from '../components/player/MiniPlayerSurface';
 import { ArtworkLayout } from '../components/artwork/ArtworkLayout';
+import { ArtworkFitMode, ArtworkView } from '../components/artwork/ArtworkView';
 import {
   ALL_ROOT_NAVIGATION_ITEMS,
   DEFAULT_NAVIGATION_ORDER,
@@ -541,6 +542,21 @@ struct Index {
       }
     }
     return $r('app.media.default_album_cover');
+  }
+
+  private morphArtworkSourceWidth(): number {
+    return this.morphArtworkSourceFrozen ? this.frozenMorphArtworkWidth :
+      (this.playerStore.currentTrack?.artworkWidth ?? 0);
+  }
+
+  private morphArtworkSourceHeight(): number {
+    return this.morphArtworkSourceFrozen ? this.frozenMorphArtworkHeight :
+      (this.playerStore.currentTrack?.artworkHeight ?? 0);
+  }
+
+  private morphArtworkAspectRatio(): number {
+    const height = this.morphArtworkHeight();
+    return height > 0 ? this.morphArtworkWidth() / height : 1;
   }
 
   private morphValue(start: number, end: number): number {
@@ -1182,23 +1198,22 @@ struct Index {
   @Builder
   private MorphArtwork() {
     Stack() {
-      Stack() {
-        Image(this.morphArtworkSource())
-          .width('100%')
-          .height('100%')
-          .objectFit(ImageFit.Cover)
-      }
-        .width('100%')
-        .height('100%')
-        .borderRadius(this.morphArtworkSourceRadius())
-        .clip(true)
-        .shadow({
-          radius: PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS *
-            this.clamp(this.playerExpandProgress, 0, 1),
-          color: $r('app.color.artwork_shadow'),
-          offsetY: PlayerMotionSpec.FULL_ARTWORK_SHADOW_OFFSET_Y *
-            this.clamp(this.playerExpandProgress, 0, 1)
-        })
+      ArtworkView({
+        sourceProvider: (): image.PixelMap | ResourceStr => this.morphArtworkSource(),
+        sourceRevision: this.playerStore.heroArtworkRevision,
+        sourceWidth: this.morphArtworkSourceWidth(),
+        sourceHeight: this.morphArtworkSourceHeight(),
+        slotWidth: this.morphArtworkWidth(),
+        slotAspectRatio: this.morphArtworkAspectRatio(),
+        fitMode: ArtworkFitMode.COVER,
+        resolvedCornerRadius: this.morphArtworkSourceRadius(),
+        shadowEnabled: true,
+        shadowRadius: PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS *
+          this.clamp(this.playerExpandProgress, 0, 1),
+        shadowOffsetY: PlayerMotionSpec.FULL_ARTWORK_SHADOW_OFFSET_Y *
+          this.clamp(this.playerExpandProgress, 0, 1),
+        interpolation: ImageInterpolation.High
+      })
         .scale({
           x: this.morphArtworkPlaybackScale(),
           y: this.morphArtworkPlaybackScale()

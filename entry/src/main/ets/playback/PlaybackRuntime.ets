@@ -252,6 +252,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.heroArtwork = undefined;
     this.playerStore.heroArtworkUri = '';
     this.playerStore.heroArtworkPreferPixelMap = false;
+    this.playerStore.heroArtworkRevision += 1;
     this.playerStore.positionMs = 0;
     this.playerStore.durationMs = 0;
     this.playerStore.queuePhase = QueueBuildPhase.EMPTY;
@@ -276,6 +277,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.heroArtwork = undefined;
     this.playerStore.heroArtworkUri = '';
     this.playerStore.heroArtworkPreferPixelMap = false;
+    this.playerStore.heroArtworkRevision += 1;
     this.playerStore.currentTrack = undefined;
     this.playerStore.positionMs = 0;
     this.playerStore.durationMs = 0;
@@ -511,6 +513,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       this.playerStore.heroArtwork = this.artworkCache?.getLarge(track);
       this.playerStore.heroArtworkUri = this.resolveArtworkUri(track.largeArtworkPath);
       this.playerStore.heroArtworkPreferPixelMap = this.playerStore.heroArtwork !== undefined;
+      this.playerStore.heroArtworkRevision += 1;
       this.loadCurrentHeroArtwork(track, epoch);
     }
     const playbackStarted = this.loadAndPlayTrack(track.id, epoch);
@@ -607,6 +610,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     if (epoch === this.artworkEpoch && pixelMap !== undefined && this.fullArtwork === undefined) {
       this.playerStore.heroArtwork = pixelMap;
       this.playerStore.heroArtworkPreferPixelMap = true;
+      this.playerStore.heroArtworkRevision += 1;
     }
   }
 
@@ -642,6 +646,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       this.fullArtwork = artwork;
       this.playerStore.heroArtwork = artwork.pixelMap;
       this.playerStore.heroArtworkPreferPixelMap = true;
+      this.playerStore.heroArtworkRevision += 1;
       try {
         await this.session?.updateMetadata(track, artwork.pixelMap);
       } catch (error) {

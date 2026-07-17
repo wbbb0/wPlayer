@@ -2,7 +2,6 @@ import { PageLayoutSpec } from '../../components/layout/PageLayoutSpec';
 import { PageListBehavior } from '../../components/layout/PageScrollBehavior';
 import { LibraryAlphabetIndex } from '../../components/library/LibraryAlphabetIndex';
 import { LibraryEmptyState } from '../../components/library/LibraryEmptyState';
-import { ArtworkFitMode, ArtworkView } from '../../components/artwork/ArtworkView';
 import {
   LibraryIndexPresentation,
   TrackListItem
@@ -10,7 +9,7 @@ import {
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
 import { LibrarySlot } from '../../library/store/PagedLibraryDataSource';
-import { QueueActionMenu } from '../../components/library/QueueActionMenu';
+import { SongListItem, SongListItemLayout } from '../../components/library/SongListItem';
 
 @Component
 export struct SongsPage {
@@ -21,13 +20,6 @@ export struct SongsPage {
   onPlayTrack: (item: TrackListItem) => void = (_item: TrackListItem): void => {};
   scroller: Scroller = new Scroller();
   private readonly scrollBehavior: PageListBehavior = new PageListBehavior();
-
-  private durationLabel(durationMs: number): string {
-    const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-  }
 
   build() {
     if (this.store.statistics.trackCount === 0) {
@@ -53,51 +45,21 @@ export struct SongsPage {
                       .opacity(0.3)
                       .margin({ left: 80, right: PageLayoutSpec.HORIZONTAL_INSET })
                   }
-                  Row({ space: 12 }) {
-                    ArtworkView({
-                      sourcePath: slot.value.smallArtworkPath.length > 0 ?
-                        this.store.resolveArtworkPath(slot.value.smallArtworkPath) : '',
-                      sourceWidth: slot.value.artworkWidth,
-                      sourceHeight: slot.value.artworkHeight,
-                      slotWidth: 52,
-                      fitMode: ArtworkFitMode.CONTAIN,
-                      cornerRadius: 10
-                    })
-                    Column({ space: 4 }) {
-                      Text(slot.value.title)
-                        .fontSize(16)
-                        .fontWeight(FontWeight.Medium)
-                        .fontColor($r('app.color.text_primary'))
-                        .maxLines(1)
-                      Text(slot.value.artistDisplay.length > 0 ? slot.value.artistDisplay : '未知艺术家')
-                        .fontSize(13)
-                        .fontColor($r('app.color.text_secondary'))
-                        .maxLines(1)
-                    }
-                    .alignItems(HorizontalAlign.Start)
-                    .layoutWeight(1)
-                    Text(this.durationLabel(slot.value.durationMs))
-                      .fontSize(12)
-                      .fontColor($r('app.color.text_tertiary'))
-                    Button() {
-                      Image($r('app.media.control_more'))
-                        .width(18)
-                        .height(18)
-                        .fillColor($r('app.color.text_primary'))
-                    }
-                    .width(38)
-                    .height(38)
-                    .borderRadius(19)
-                    .backgroundColor(Color.Transparent)
-                    .accessibilityText('更多歌曲操作')
-                    .bindMenu(QueueActionMenu([slot.value]), { placement: Placement.BottomRight })
-                  }
-                  .width('100%')
-                  .padding({ left: 16, right: 16, top: 8, bottom: 8 })
-                  .hoverEffect(HoverEffect.None)
-                  .onClick(() => {
-                    if (slot.value !== undefined) {
-                      this.onPlayTrack(slot.value);
+                  SongListItem({
+                    item: slot.value,
+                    layout: SongListItemLayout.LIBRARY,
+                    artworkPath: slot.value.smallArtworkPath.length > 0 ?
+                      this.store.resolveArtworkPath(slot.value.smallArtworkPath) : '',
+                    actionTrack: slot.value,
+                    menuPlacement: Placement.BottomRight,
+                    horizontalInset: 16,
+                    verticalInset: 8,
+                    artworkSize: 52,
+                    artworkCornerRadius: 10,
+                    onActivate: (): void => {
+                      if (slot.value !== undefined) {
+                        this.onPlayTrack(slot.value);
+                      }
                     }
                   })
                 }

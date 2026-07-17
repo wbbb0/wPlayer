@@ -59,22 +59,19 @@ export struct PlayerHeroArtwork {
   }
 
   build() {
-    Stack() {
-      Stack() {
-        Image(this.artworkSource())
-          .width('100%')
-          .height('100%')
-          .objectFit(ImageFit.Cover)
-      }
-      .width(this.artworkWidth())
-      .height(this.artworkHeight())
-      .borderRadius(Math.min(this.cornerRadius, Math.min(this.artworkWidth(), this.artworkHeight()) / 2))
-      .clip(true)
-      .shadow({
-        radius: PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS,
-        color: $r('app.color.artwork_shadow'),
-        offsetY: PlayerMotionSpec.FULL_ARTWORK_SHADOW_OFFSET_Y
-      })
+    ArtworkView({
+      sourceProvider: (): image.PixelMap | ResourceStr => this.artworkSource(),
+      sourceRevision: this.playerStore.heroArtworkRevision,
+      sourceWidth: this.playerStore.currentTrack?.artworkWidth ?? 0,
+      sourceHeight: this.playerStore.currentTrack?.artworkHeight ?? 0,
+      slotWidth: this.slotSize,
+      fitMode: ArtworkFitMode.CONTAIN,
+      cornerRadius: Math.min(this.cornerRadius, Math.min(this.artworkWidth(), this.artworkHeight()) / 2),
+      shadowEnabled: true,
+      shadowRadius: PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS,
+      shadowOffsetY: PlayerMotionSpec.FULL_ARTWORK_SHADOW_OFFSET_Y,
+      interpolation: ImageInterpolation.High
+    })
       .scale({
         x: this.playerStore.isPlaying() ? 1 : PlayerMotionSpec.PAUSED_ARTWORK_SCALE,
         y: this.playerStore.isPlaying() ? 1 : PlayerMotionSpec.PAUSED_ARTWORK_SCALE
@@ -85,8 +82,5 @@ export struct PlayerHeroArtwork {
           PlayerMotionSpec.ARTWORK_STATE_SPRING_DAMPING
         )
       })
-    }
-    .width(this.slotSize)
-    .height(this.slotSize)
   }
 }

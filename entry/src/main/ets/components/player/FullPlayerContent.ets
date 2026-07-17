@@ -18,7 +18,7 @@ import {
 import { PlayerHeroArtwork } from './PlayerArtworkViews';
 import { LyricIndexListener, PlayerStore, QueueTrack } from '../../playback/model/PlaybackModels';
 import { TimedLyricLine } from '../../playback/lyrics/LyricsParser';
-import { ArtworkFitMode, ArtworkView } from '../artwork/ArtworkView';
+import { SongListItem, SongListItemLayout } from '../library/SongListItem';
 import { LayoutLength } from '../layout/LayoutLength';
 
 @Component
@@ -172,31 +172,6 @@ export struct FullPlayerContent {
     return PlayerLayoutSpec.FULL_PLAYER_PAGE_HORIZONTAL_INSET;
   }
 
-  private queuePositionLabel(index: number): string {
-    if (index <= this.playerStore.queueCurrentIndex) {
-      return '';
-    }
-    return `${index - this.playerStore.queueCurrentIndex}`;
-  }
-
-  @Builder
-  private QueuePosition(index: number) {
-    Stack({ alignContent: Alignment.Center }) {
-      if (index === this.playerStore.queueCurrentIndex) {
-        SymbolGlyph($r('sys.symbol.play_fill'))
-          .fontSize(16)
-          .fontColor([this.playerStore.themeOnPrimary()])
-      } else {
-        Text(this.queuePositionLabel(index))
-          .fontSize(12)
-          .fontColor(this.playerStore.themeOnPrimaryMedium())
-          .textAlign(TextAlign.Center)
-      }
-    }
-    .width(PlayerLayoutSpec.FULL_PLAYER_QUEUE_INDEX_WIDTH)
-    .height(PlayerLayoutSpec.FULL_PLAYER_QUEUE_ARTWORK_SIZE)
-  }
-
   @Builder
   private Header() {
     Stack({ alignContent: Alignment.TopStart }) {
@@ -315,73 +290,40 @@ export struct FullPlayerContent {
                       right: PlayerLayoutSpec.FULL_PLAYER_QUEUE_CONTENT_HORIZONTAL_INSET
                     })
                 }
-                Row({ space: 10 }) {
-                  this.QueuePosition(index)
-
-                  ArtworkView({
-                    sourcePath: this.onResolveQueueArtwork(item.smallArtworkPath),
-                    sourceWidth: item.artworkWidth,
-                    sourceHeight: item.artworkHeight,
-                    slotWidth: PlayerLayoutSpec.FULL_PLAYER_QUEUE_ARTWORK_SIZE,
-                    fitMode: ArtworkFitMode.CONTAIN,
-                    cornerRadius: PlayerLayoutSpec.FULL_ARTWORK_RADIUS
+                Row() {
+                  SongListItem({
+                    item: item,
+                    layout: SongListItemLayout.PLAYER_QUEUE,
+                    artworkPath: this.onResolveQueueArtwork(item.smallArtworkPath),
+                    queueIndex: index,
+                    currentQueueIndex: this.playerStore.queueCurrentIndex,
+                    primaryColor: this.playerStore.themeOnPrimary(),
+                    secondaryColor: this.playerStore.themeOnPrimaryMedium(),
+                    tertiaryColor: this.playerStore.themeOnPrimaryMedium(),
+                    active: item.id === this.playerStore.currentTrack?.id,
+                    activeBackgroundColor: $r('app.color.glass_surface_strong'),
+                    activeShadowColor: $r('app.color.artwork_shadow'),
+                    activeShadowRadius: PlayerLayoutSpec.FULL_PLAYER_QUEUE_SHADOW_RADIUS,
+                    activeShadowOffsetY: PlayerLayoutSpec.FULL_PLAYER_QUEUE_SHADOW_OFFSET_Y,
+                    horizontalInset: PlayerLayoutSpec.FULL_PLAYER_QUEUE_CONTENT_HORIZONTAL_INSET,
+                    verticalInset: PlayerLayoutSpec.FULL_PLAYER_QUEUE_ROW_VERTICAL_INSET,
+                    rowCornerRadius: 14,
+                    artworkSize: PlayerLayoutSpec.FULL_PLAYER_QUEUE_ARTWORK_SIZE,
+                    artworkCornerRadius: PlayerLayoutSpec.FULL_ARTWORK_RADIUS,
+                    queueIndexWidth: PlayerLayoutSpec.FULL_PLAYER_QUEUE_INDEX_WIDTH,
+                    queueGestureDistance: PlayerMotionSpec.GESTURE_AXIS_LOCK_DISTANCE,
+                    onActivate: (): void => {
+                      this.onPlayQueueTrack(item.id);
+                    }
                   })
-
-                  Column({ space: 3 }) {
-                    Text(item.title)
-                      .fontSize(16)
-                      .fontWeight(item.id === this.playerStore.currentTrack?.id ?
-                        FontWeight.Bold : FontWeight.Medium)
-                      .fontColor(this.playerStore.themeOnPrimary())
-                      .maxLines(1)
-                    Text(item.artistDisplay || '未知艺术家')
-                      .fontSize(13)
-                      .fontColor(this.playerStore.themeOnPrimaryMedium())
-                      .maxLines(1)
-                  }
-                  .alignItems(HorizontalAlign.Start)
-                  .layoutWeight(1)
-                  Text(this.durationLabel(item.durationMs))
-                    .fontSize(13)
-                    .fontColor(this.playerStore.themeOnPrimaryMedium())
                 }
                 .width('100%')
                 .padding({
-                  left: PlayerLayoutSpec.FULL_PLAYER_QUEUE_CONTENT_HORIZONTAL_INSET,
-                  right: PlayerLayoutSpec.FULL_PLAYER_QUEUE_CONTENT_HORIZONTAL_INSET,
-                  top: PlayerLayoutSpec.FULL_PLAYER_QUEUE_ROW_VERTICAL_INSET,
-                  bottom: PlayerLayoutSpec.FULL_PLAYER_QUEUE_ROW_VERTICAL_INSET
+                  left: PlayerLayoutSpec.FULL_PLAYER_QUEUE_SHADOW_CLEARANCE,
+                  right: PlayerLayoutSpec.FULL_PLAYER_QUEUE_SHADOW_CLEARANCE
                 })
-                .borderRadius(14)
-                .backgroundColor(item.id === this.playerStore.currentTrack?.id ?
-                  $r('app.color.glass_surface_strong') : Color.Transparent)
-                .shadow(item.id === this.playerStore.currentTrack?.id ? {
-                  radius: PlayerLayoutSpec.FULL_PLAYER_QUEUE_SHADOW_RADIUS,
-                  color: $r('app.color.artwork_shadow'),
-                  offsetY: PlayerLayoutSpec.FULL_PLAYER_QUEUE_SHADOW_OFFSET_Y
-                } : {
-                  radius: 0,
-                  color: Color.Transparent,
-                  offsetY: 0
-                })
-                .hoverEffect(HoverEffect.None)
-                .gesture(
-                  GestureGroup(GestureMode.Exclusive,
-                    PanGesture({
-                      direction: PanDirection.Horizontal,
-                      distance: PlayerMotionSpec.GESTURE_AXIS_LOCK_DISTANCE
-                    }),
-                    TapGesture().onAction(() => {
-                      this.onPlayQueueTrack(item.id);
-                    })
-                  )
-                )
               }
               .width('100%')
-              .padding({
-                left: PlayerLayoutSpec.FULL_PLAYER_QUEUE_SHADOW_CLEARANCE,
-                right: PlayerLayoutSpec.FULL_PLAYER_QUEUE_SHADOW_CLEARANCE
-              })
             }
           }, (item: QueueTrack) => `${item.id}`)
         }

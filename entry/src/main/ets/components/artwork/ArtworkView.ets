@@ -7,6 +7,11 @@ export enum ArtworkFitMode {
 
 @Component
 export struct ArtworkView {
+  // Keep native PixelMap references unproxied so Image receives the original resource.
+  source: image.PixelMap | ResourceStr | undefined = undefined;
+  sourceProvider: (sourceRevision: number) => image.PixelMap | ResourceStr | undefined =
+    (_sourceRevision: number): image.PixelMap | ResourceStr | undefined => undefined;
+  @Prop sourceRevision: number = 0;
   @Prop sourcePixelMap: image.PixelMap | undefined = undefined;
   @Prop sourcePath: string = '';
   @Prop sourceWidth: number = 0;
@@ -20,6 +25,7 @@ export struct ArtworkView {
   @Prop shadowEnabled: boolean = false;
   @Prop shadowRadius: number = 14;
   @Prop shadowOffsetY: number = 5;
+  @Prop interpolation: ImageInterpolation = ImageInterpolation.Medium;
 
   private containedImageWidth(): Length {
     if (this.fitMode !== ArtworkFitMode.CONTAIN || this.sourceWidth <= 0 || this.sourceHeight <= 0 ||
@@ -92,6 +98,13 @@ export struct ArtworkView {
   }
 
   private imageSource(): image.PixelMap | ResourceStr {
+    const providedSource = this.sourceProvider(this.sourceRevision);
+    if (providedSource !== undefined) {
+      return providedSource;
+    }
+    if (this.source !== undefined) {
+      return this.source;
+    }
     if (this.sourcePath.length > 0) {
       return this.sourcePath;
     }
@@ -107,6 +120,7 @@ export struct ArtworkView {
       .width('100%')
       .height('100%')
       .objectFit(ImageFit.Cover)
+      .interpolation(this.interpolation)
       .borderRadius(this.effectiveCornerRadius())
       .clip(true)
   }

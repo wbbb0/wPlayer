@@ -20,8 +20,8 @@ import {
   LyricIndexListener,
   PlaybackProgressStore,
   PlayerStore,
-  QueueIndexListener,
-  QueueTrack
+  QueueEntry,
+  QueueIndexListener
 } from '../../playback/model/PlaybackModels';
 import { TimedLyricLine } from '../../playback/lyrics/LyricsParser';
 import { SongListItem, SongListItemLayout } from '../library/SongListItem';
@@ -165,7 +165,7 @@ export struct FullPlayerContent {
   private lastFocusedQueueIndex: number = -1;
   private lastFocusedLyricIndex: number = -1;
   private readonly queueIndexListener: QueueIndexListener = (index: number): void => {
-    if (this.measuresArtworkTarget || index < 0 || this.playerStore.queueItems.length === 0) {
+    if (this.measuresArtworkTarget || index < 0 || this.playerStore.queueSize === 0) {
       return;
     }
     this.focusQueueIndex(index, true);
@@ -343,7 +343,7 @@ export struct FullPlayerContent {
   @Builder
   private QueuePage() {
     Column() {
-      if (this.playerStore.queueItems.length === 0) {
+      if (this.playerStore.queueSize === 0) {
         Column({ space: 8 }) {
           Text('队列为空')
             .fontSize(18)
@@ -360,11 +360,12 @@ export struct FullPlayerContent {
         .width('100%')
       } else {
         List({ space: 0, scroller: this.queueScroller }) {
-          LazyForEach(this.playerStore.queueDataSource, (item: QueueTrack, index: number) => {
+          LazyForEach(this.playerStore.queueDataSource, (entry: QueueEntry, index: number) => {
             ListItem() {
               Column() {
                 if (index > 0) {
                   Divider()
+                    .strokeWidth(PlayerLayoutSpec.FULL_PLAYER_QUEUE_DIVIDER_HEIGHT)
                     .color(this.playerStore.themeOnPrimaryMedium())
                     .opacity(PlayerLayoutSpec.FULL_PLAYER_QUEUE_DIVIDER_OPACITY)
                     .margin({
@@ -376,16 +377,16 @@ export struct FullPlayerContent {
                 }
                 Row() {
                   SongListItem({
-                    item: item,
+                    item: entry.track,
                     layout: SongListItemLayout.PLAYER_QUEUE,
-                    artworkPath: this.onResolveQueueArtwork(item.smallArtworkPath),
+                    artworkPath: this.onResolveQueueArtwork(entry.track.smallArtworkPath),
                     queueIndex: index,
                     currentQueueIndex: this.playerStore.queueCurrentIndex,
                     primaryColor: this.playerStore.themeOnPrimary(),
                     secondaryColor: this.playerStore.themeOnPrimaryMedium(),
                     tertiaryColor: this.playerStore.themeOnPrimaryMedium(),
                     animateColors: true,
-                    active: item.id === this.playerStore.currentTrack?.id,
+                    active: entry.track.id === this.playerStore.currentTrack?.id,
                     activeBackgroundColor: $r('app.color.glass_surface_strong'),
                     activeShadowColor: $r('app.color.artwork_shadow'),
                     activeShadowRadius: PlayerLayoutSpec.FULL_PLAYER_QUEUE_SHADOW_RADIUS,
@@ -398,7 +399,7 @@ export struct FullPlayerContent {
                     queueIndexWidth: PlayerLayoutSpec.FULL_PLAYER_QUEUE_INDEX_WIDTH,
                     queueGestureDistance: PlayerMotionSpec.GESTURE_AXIS_LOCK_DISTANCE,
                     onActivate: (): void => {
-                      this.onPlayQueueTrack(item.id);
+                      this.onPlayQueueTrack(entry.track.id);
                     }
                   })
                 }
@@ -410,7 +411,8 @@ export struct FullPlayerContent {
               }
               .width('100%')
             }
-          }, (item: QueueTrack) => `${item.id}`)
+            .height(PlayerLayoutSpec.FULL_PLAYER_QUEUE_ITEM_HEIGHT)
+          }, (entry: QueueEntry) => `${entry.queueEntryId}`)
         }
         .layoutWeight(1)
         .width('100%')

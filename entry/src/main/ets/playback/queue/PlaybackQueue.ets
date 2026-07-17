@@ -1,4 +1,4 @@
-import { QueueBuildPhase, QueueTrack, RepeatMode } from '../model/PlaybackModels';
+import { QueueBuildPhase, QueueEntry, QueueTrack, RepeatMode } from '../model/PlaybackModels';
 
 export interface PlaybackQueueWindow {
   items: Array<QueueTrack>;
@@ -6,14 +6,15 @@ export interface PlaybackQueueWindow {
 }
 
 export interface PlaybackQueueSnapshot {
-  items: Array<QueueTrack>;
+  entries: Array<QueueEntry>;
   currentIndex: number;
 }
 
 export class PlaybackQueue {
-  private items: Array<QueueTrack> = [];
+  private items: Array<QueueEntry> = [];
   private order: Array<number> = [];
   private cursor: number = -1;
+  private nextEntryId: number = 0;
   private readonly firstItemIndexById: Map<number, number> = new Map<number, number>();
   private readonly firstCursorById: Map<number, number> = new Map<number, number>();
 
@@ -22,7 +23,7 @@ export class PlaybackQueue {
       this.clear();
       return QueueBuildPhase.EMPTY;
     }
-    this.items = items.slice();
+    this.items = items.map((item: QueueTrack) => this.createEntry(item));
     this.rebuildItemIndex();
     const currentIndex = this.firstItemIndexById.get(currentTrackId);
     if (currentIndex === undefined) {
@@ -62,12 +63,12 @@ export class PlaybackQueue {
   }
 
   snapshot(): PlaybackQueueSnapshot {
-    const snapshotItems: Array<QueueTrack> = [];
+    const snapshotEntries: Array<QueueEntry> = [];
     this.order.forEach((itemIndex: number) => {
-      snapshotItems.push(this.items[itemIndex]);
+      snapshotEntries.push(this.items[itemIndex]);
     });
     return {
-      items: snapshotItems,
+      entries: snapshotEntries,
       currentIndex: this.cursor
     };
   }
@@ -109,7 +110,7 @@ export class PlaybackQueue {
     const insertedOrder: Array<number> = [];
     items.forEach((item: QueueTrack) => {
       insertedOrder.push(this.items.length);
-      this.items.push(item);
+      this.items.push(this.createEntry(item));
     });
     this.order.splice(this.cursor + 1, 0, ...insertedOrder);
     this.rebuildIndexes();
@@ -118,7 +119,7 @@ export class PlaybackQueue {
   append(items: Array<QueueTrack>): void {
     items.forEach((item: QueueTrack) => {
       this.order.push(this.items.length);
-      this.items.push(item);
+      this.items.push(this.createEntry(item));
     });
     this.rebuildIndexes();
   }
@@ -131,14 +132,14 @@ export class PlaybackQueue {
     if (repeatMode === RepeatMode.ALL && this.order.length > 1) {
       for (let offset = -radius; offset <= radius; offset += 1) {
         const index = (this.cursor + offset + this.order.length) % this.order.length;
-        result.push(this.items[this.order[index]]);
+        result.push(this.items[this.order[index]].track);
       }
       return { items: result, currentIndex: radius };
     }
     const start = Math.max(0, this.cursor - radius);
     const end = Math.min(this.order.length, this.cursor + radius + 1);
     for (let index = start; index < end; index += 1) {
-      result.push(this.items[this.order[index]]);
+      result.push(this.items[this.order[index]].track);
     }
     return {
       items: result,
@@ -158,7 +159,7 @@ export class PlaybackQueue {
     if (cursor < 0 || cursor >= this.order.length) {
       return undefined;
     }
-    return this.items[this.order[cursor]];
+    return this.items[this.order[cursor]].track;
   }
 
   private rebuildIndexes(): void {
@@ -168,9 +169,9 @@ export class PlaybackQueue {
 
   private rebuildItemIndex(): void {
     this.firstItemIndexById.clear();
-    this.items.forEach((item: QueueTrack, itemIndex: number) => {
-      if (!this.firstItemIndexById.has(item.id)) {
-        this.firstItemIndexById.set(item.id, itemIndex);
+    this.items.forEach((entry: QueueEntry, itemIndex: number) => {
+      if (!this.firstItemIndexById.has(entry.track.id)) {
+        this.firstItemIndexById.set(entry.track.id, itemIndex);
       }
     });
   }
@@ -178,11 +179,20 @@ export class PlaybackQueue {
   private rebuildCursorIndex(): void {
     this.firstCursorById.clear();
     this.order.forEach((itemIndex: number, orderCursor: number) => {
-      const trackId = this.items[itemIndex].id;
+      const trackId = this.items[itemIndex].track.id;
       if (!this.firstCursorById.has(trackId)) {
         this.firstCursorById.set(trackId, orderCursor);
       }
     });
+  }
+
+  private createEntry(track: QueueTrack): QueueEntry {
+    const entry: QueueEntry = {
+      queueEntryId: this.nextEntryId,
+      track: track
+    };
+    this.nextEntryId += 1;
+    return entry;
   }
 
   private buildOrder(currentIndex: number, shuffleEnabled: boolean): Array<number> {

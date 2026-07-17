@@ -180,6 +180,11 @@ export class PlayerLayoutSpec {
   static readonly FULL_PLAYER_QUEUE_INDEX_WIDTH: number = 28;
   static readonly FULL_PLAYER_QUEUE_ARTWORK_SIZE: number = 52;
   static readonly FULL_PLAYER_QUEUE_ROW_VERTICAL_INSET: number = 8;
+  static readonly FULL_PLAYER_QUEUE_DIVIDER_HEIGHT: number = 1;
+  static readonly FULL_PLAYER_QUEUE_ITEM_HEIGHT: number =
+    PlayerLayoutSpec.FULL_PLAYER_QUEUE_ARTWORK_SIZE +
+      PlayerLayoutSpec.FULL_PLAYER_QUEUE_ROW_VERTICAL_INSET * 2 +
+      PlayerLayoutSpec.FULL_PLAYER_QUEUE_DIVIDER_HEIGHT;
   static readonly FULL_PLAYER_QUEUE_SHADOW_CLEARANCE: number = 14;
   static readonly FULL_PLAYER_QUEUE_CONTENT_HORIZONTAL_INSET: number = 6;
   static readonly FULL_PLAYER_QUEUE_DIVIDER_OPACITY: number = 0.3;

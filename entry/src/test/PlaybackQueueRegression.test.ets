@@ -1,6 +1,7 @@
 import { describe, it, expect } from '@ohos/hypium';
 import {
   QueueBuildPhase,
+  QueueEntry,
   QueueTrack,
   RepeatMode
 } from '../main/ets/playback/model/PlaybackModels';
@@ -106,8 +107,53 @@ export default function playbackQueueRegressionTest() {
 
       const snapshot = queue.snapshot();
       expect(snapshot.currentIndex).assertEqual(0);
-      expect(snapshot.items[0].id).assertEqual(2);
-      expect(snapshot.items.length).assertEqual(3);
+      expect(snapshot.entries[0].track.id).assertEqual(2);
+      expect(snapshot.entries.length).assertEqual(3);
+    });
+
+    it('keeps stable unique entry identities while shuffling duplicate tracks', 0, () => {
+      const queue = new PlaybackQueue();
+      const items = [
+        queueTrack(5, 'first duplicate'),
+        queueTrack(6, 'middle'),
+        queueTrack(5, 'second duplicate')
+      ];
+
+      queue.build(items, 6, false);
+      const before = queue.snapshot();
+      queue.setShuffle(true, 6);
+      const after = queue.snapshot();
+      const beforeEntryIds = before.entries.map((entry: QueueEntry) => entry.queueEntryId)
+        .sort((left: number, right: number) => left - right);
+      const afterEntryIds = after.entries.map((entry: QueueEntry) => entry.queueEntryId)
+        .sort((left: number, right: number) => left - right);
+
+      expect(after.entries[0].track.id).assertEqual(6);
+      expect(afterEntryIds.length).assertEqual(3);
+      expect(afterEntryIds[0]).assertEqual(beforeEntryIds[0]);
+      expect(afterEntryIds[1]).assertEqual(beforeEntryIds[1]);
+      expect(afterEntryIds[2]).assertEqual(beforeEntryIds[2]);
+      expect(afterEntryIds[0] === afterEntryIds[1]).assertFalse();
+      expect(afterEntryIds[1] === afterEntryIds[2]).assertFalse();
+    });
+
+    it('reorders a large queue repeatedly without losing entries', 0, () => {
+      const queue = new PlaybackQueue();
+      const items: Array<QueueTrack> = [];
+      for (let index = 0; index < 4096; index += 1) {
+        items.push(queueTrack(index + 1, `track ${index + 1}`));
+      }
+
+      queue.build(items, 2048, false);
+      for (let iteration = 0; iteration < 12; iteration += 1) {
+        queue.setShuffle(iteration % 2 === 0, 2048);
+      }
+      queue.setShuffle(true, 2048);
+      const snapshot = queue.snapshot();
+
+      expect(snapshot.entries.length).assertEqual(4096);
+      expect(snapshot.currentIndex).assertEqual(0);
+      expect(snapshot.entries[0].track.id).assertEqual(2048);
     });
   });
 }

@@ -14,6 +14,7 @@ import {
   PlayerState,
   PlayerStore,
   QueueBuildPhase,
+  QueueEntry,
   QueueTrack,
   RepeatMode
 } from './model/PlaybackModels';
@@ -687,14 +688,13 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
 
   private syncQueueSnapshot(persist: boolean = true): void {
     const snapshot = this.queue.snapshot();
-    this.playerStore.queueDataSource.replace(snapshot.items);
-    this.playerStore.queueItems = snapshot.items;
+    this.playerStore.queueDataSource.replace(snapshot.entries);
     this.playerStore.setQueueCurrentIndex(snapshot.currentIndex);
-    const currentTrackId = snapshot.currentIndex >= 0 && snapshot.currentIndex < snapshot.items.length ?
-      snapshot.items[snapshot.currentIndex].id : -1;
+    const currentTrackId = snapshot.currentIndex >= 0 && snapshot.currentIndex < snapshot.entries.length ?
+      snapshot.entries[snapshot.currentIndex].track.id : -1;
     if (persist) {
       this.settings?.setPlaybackQueue(
-        snapshot.items.map((track: QueueTrack) => track.id),
+        snapshot.entries.map((entry: QueueEntry) => entry.track.id),
         currentTrackId
       );
     }

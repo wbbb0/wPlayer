@@ -47,15 +47,20 @@ export interface QueueTrack {
   paletteAccent: string;
 }
 
+export interface QueueEntry {
+  queueEntryId: number;
+  track: QueueTrack;
+}
+
 export class QueueTrackDataSource implements IDataSource {
-  private items: Array<QueueTrack> = [];
+  private items: Array<QueueEntry> = [];
   private readonly listeners: Array<DataChangeListener> = [];
 
   totalCount(): number {
     return this.items.length;
   }
 
-  getData(index: number): QueueTrack {
+  getData(index: number): QueueEntry {
     return this.items[index];
   }
 
@@ -72,9 +77,10 @@ export class QueueTrackDataSource implements IDataSource {
     }
   }
 
-  replace(items: Array<QueueTrack>): void {
+  replace(items: Array<QueueEntry>): void {
     this.items = items.slice();
-    this.listeners.forEach((listener: DataChangeListener) => listener.onDataReloaded());
+    const operations: Array<DataOperation> = [{ type: DataOperationType.RELOAD }];
+    this.listeners.forEach((listener: DataChangeListener) => listener.onDatasetChange(operations));
   }
 }
 
@@ -155,7 +161,6 @@ export class PlayerStore {
   repeatMode: RepeatMode = RepeatMode.ALL;
   queuePhase: QueueBuildPhase = QueueBuildPhase.EMPTY;
   queueSize: number = 0;
-  queueItems: Array<QueueTrack> = [];
   readonly queueDataSource: QueueTrackDataSource = new QueueTrackDataSource();
   queueCurrentIndex: number = -1;
   private readonly queueIndexListeners: Array<QueueIndexListener> = [];

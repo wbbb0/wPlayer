@@ -159,11 +159,13 @@ export class ArtworkMemoryCache {
       return undefined;
     }
     const source = image.createImageSource(buffer);
+    let pixelMap: image.PixelMap | undefined;
+    let ownershipTransferred = false;
     try {
       const info = await source.getImageInfo();
       const longest = Math.max(info.size.width, info.size.height);
       const scale = longest > FULL_ARTWORK_MAX_EDGE ? FULL_ARTWORK_MAX_EDGE / longest : 1;
-      const pixelMap = await source.createPixelMapUsingAllocator({
+      pixelMap = await source.createPixelMapUsingAllocator({
         desiredSize: {
           width: Math.max(1, Math.round(info.size.width * scale)),
           height: Math.max(1, Math.round(info.size.height * scale))
@@ -174,8 +176,15 @@ export class ArtworkMemoryCache {
       const byteSize = pixelInfo.size.width * pixelInfo.size.height * 4;
       this.fullArtworkSizes.set(pixelMap, byteSize);
       this.fullArtworkBytes += byteSize;
+      ownershipTransferred = true;
       this.evictIfNeeded();
       return { pixelMap: pixelMap, byteSize: byteSize };
+    } catch (error) {
+      if (pixelMap !== undefined && !ownershipTransferred) {
+        this.leases.requestRelease(pixelMap);
+      }
+      const cause = error as Error;
+      throw cause;
     } finally {
       await source.release();
     }
@@ -205,15 +214,19 @@ export class ArtworkMemoryCache {
     generation: number): Promise<image.PixelMap | undefined> {
     const path = ArtworkCache.resolvePath(this.context, relativePath);
     const source = image.createImageSource(path);
+    let pixelMap: image.PixelMap | undefined;
+    let ownershipTransferred = false;
     try {
-      const pixelMap = await source.createPixelMapUsingAllocator({}, image.AllocatorType.SHARE_MEMORY);
+      pixelMap = await source.createPixelMapUsingAllocator({}, image.AllocatorType.SHARE_MEMORY);
       if (this.closed || generation !== this.generation) {
         this.leases.requestRelease(pixelMap);
+        ownershipTransferred = true;
         return undefined;
       }
       const info = await pixelMap.getImageInfo();
       if (this.closed || generation !== this.generation) {
         this.leases.requestRelease(pixelMap);
+        ownershipTransferred = true;
         return undefined;
       }
       const byteSize = info.size.width * info.size.height * 4;
@@ -223,9 +236,13 @@ export class ArtworkMemoryCache {
         lastUsed: ++this.useSequence
       });
       this.totalBytes += byteSize;
+      ownershipTransferred = true;
       this.evictIfNeeded();
       return pixelMap;
     } catch (error) {
+      if (pixelMap !== undefined && !ownershipTransferred) {
+        this.leases.requestRelease(pixelMap);
+      }
       console.warn(`Unable to decode cached artwork ${relativePath}: ${ArtworkMemoryCache.messageOf(error)}`);
       return undefined;
     } finally {

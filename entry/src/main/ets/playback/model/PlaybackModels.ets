@@ -95,6 +95,37 @@ export interface ResumeState {
 
 export type LyricIndexListener = (index: number) => void;
 
+export class LyricLineDataSource implements IDataSource {
+  private items: Array<TimedLyricLine> = [];
+  private readonly listeners: Array<DataChangeListener> = [];
+
+  totalCount(): number {
+    return this.items.length;
+  }
+
+  getData(index: number): TimedLyricLine {
+    return this.items[index];
+  }
+
+  registerDataChangeListener(listener: DataChangeListener): void {
+    if (this.listeners.indexOf(listener) < 0) {
+      this.listeners.push(listener);
+    }
+  }
+
+  unregisterDataChangeListener(listener: DataChangeListener): void {
+    const index = this.listeners.indexOf(listener);
+    if (index >= 0) {
+      this.listeners.splice(index, 1);
+    }
+  }
+
+  replace(items: Array<TimedLyricLine>): void {
+    this.items = items.slice();
+    this.listeners.forEach((listener: DataChangeListener) => listener.onDataReloaded());
+  }
+}
+
 @Observed
 export class PlayerStore {
   state: PlayerState = PlayerState.IDLE;
@@ -110,6 +141,7 @@ export class PlayerStore {
   errorMessage: string = '';
   lyrics: string = '';
   timedLyrics: Array<TimedLyricLine> = [];
+  readonly lyricDataSource: LyricLineDataSource = new LyricLineDataSource();
   activeLyricIndex: number = -1;
   private readonly lyricIndexListeners: Array<LyricIndexListener> = [];
   shuffleEnabled: boolean = false;
@@ -146,8 +178,12 @@ export class PlayerStore {
       return;
     }
     this.activeLyricIndex = index;
-    console.info(`LyricTimeline active=${index} listeners=${this.lyricIndexListeners.length}`);
     this.lyricIndexListeners.slice().forEach((listener: LyricIndexListener) => listener(index));
+  }
+
+  setTimedLyrics(lines: Array<TimedLyricLine>): void {
+    this.timedLyrics = lines;
+    this.lyricDataSource.replace(lines);
   }
 
   hasCurrentTrack(): boolean {

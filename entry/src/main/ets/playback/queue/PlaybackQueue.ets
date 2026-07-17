@@ -14,6 +14,8 @@ export class PlaybackQueue {
   private items: Array<QueueTrack> = [];
   private order: Array<number> = [];
   private cursor: number = -1;
+  private readonly firstItemIndexById: Map<number, number> = new Map<number, number>();
+  private readonly firstCursorById: Map<number, number> = new Map<number, number>();
 
   build(items: Array<QueueTrack>, currentTrackId: number, shuffleEnabled: boolean): QueueBuildPhase {
     if (items.length === 0) {
@@ -21,13 +23,15 @@ export class PlaybackQueue {
       return QueueBuildPhase.EMPTY;
     }
     this.items = items.slice();
-    const currentIndex = this.items.findIndex((item: QueueTrack) => item.id === currentTrackId);
-    if (currentIndex < 0) {
+    this.rebuildItemIndex();
+    const currentIndex = this.firstItemIndexById.get(currentTrackId);
+    if (currentIndex === undefined) {
       this.clear();
       return QueueBuildPhase.FAILED;
     }
     this.order = this.buildOrder(currentIndex, shuffleEnabled);
     this.cursor = shuffleEnabled ? 0 : currentIndex;
+    this.rebuildCursorIndex();
     return QueueBuildPhase.READY;
   }
 
@@ -35,12 +39,13 @@ export class PlaybackQueue {
     if (this.items.length === 0) {
       return;
     }
-    const currentIndex = this.items.findIndex((item: QueueTrack) => item.id === currentTrackId);
-    if (currentIndex < 0) {
+    const currentIndex = this.firstItemIndexById.get(currentTrackId);
+    if (currentIndex === undefined) {
       return;
     }
     this.order = this.buildOrder(currentIndex, enabled);
     this.cursor = enabled ? 0 : currentIndex;
+    this.rebuildCursorIndex();
   }
 
   current(): QueueTrack | undefined {
@@ -48,8 +53,8 @@ export class PlaybackQueue {
   }
 
   select(trackId: number): QueueTrack | undefined {
-    const selectedCursor = this.order.findIndex((itemIndex: number) => this.items[itemIndex].id === trackId);
-    if (selectedCursor < 0) {
+    const selectedCursor = this.firstCursorById.get(trackId);
+    if (selectedCursor === undefined) {
       return undefined;
     }
     this.cursor = selectedCursor;
@@ -107,6 +112,7 @@ export class PlaybackQueue {
       this.items.push(item);
     });
     this.order.splice(this.cursor + 1, 0, ...insertedOrder);
+    this.rebuildIndexes();
   }
 
   append(items: Array<QueueTrack>): void {
@@ -114,6 +120,7 @@ export class PlaybackQueue {
       this.order.push(this.items.length);
       this.items.push(item);
     });
+    this.rebuildIndexes();
   }
 
   playbackWindow(radius: number, repeatMode: RepeatMode): PlaybackQueueWindow {
@@ -143,6 +150,8 @@ export class PlaybackQueue {
     this.items = [];
     this.order = [];
     this.cursor = -1;
+    this.firstItemIndexById.clear();
+    this.firstCursorById.clear();
   }
 
   private itemAtCursor(cursor: number): QueueTrack | undefined {
@@ -150,6 +159,30 @@ export class PlaybackQueue {
       return undefined;
     }
     return this.items[this.order[cursor]];
+  }
+
+  private rebuildIndexes(): void {
+    this.rebuildItemIndex();
+    this.rebuildCursorIndex();
+  }
+
+  private rebuildItemIndex(): void {
+    this.firstItemIndexById.clear();
+    this.items.forEach((item: QueueTrack, itemIndex: number) => {
+      if (!this.firstItemIndexById.has(item.id)) {
+        this.firstItemIndexById.set(item.id, itemIndex);
+      }
+    });
+  }
+
+  private rebuildCursorIndex(): void {
+    this.firstCursorById.clear();
+    this.order.forEach((itemIndex: number, orderCursor: number) => {
+      const trackId = this.items[itemIndex].id;
+      if (!this.firstCursorById.has(trackId)) {
+        this.firstCursorById.set(trackId, orderCursor);
+      }
+    });
   }
 
   private buildOrder(currentIndex: number, shuffleEnabled: boolean): Array<number> {

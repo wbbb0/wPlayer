@@ -18,6 +18,8 @@ export struct AlbumDetailPage {
   @Prop rootWidth: number = 0;
   @Prop showArtwork: boolean = true;
   @Prop themeBackground: string = '#FF000000';
+  private multipleDiscTracks?: Array<TrackListItem>;
+  private multipleDiscResult: boolean = false;
   scroller: Scroller = new Scroller();
   private readonly scrollBehavior: PageListBehavior = new PageListBehavior();
 
@@ -48,19 +50,28 @@ export struct AlbumDetailPage {
   }
 
   private hasMultipleDiscs(tracks: Array<TrackListItem>): boolean {
+    if (this.multipleDiscTracks === tracks) {
+      return this.multipleDiscResult;
+    }
     let firstDisc = -1;
+    let hasUnknownDisc = false;
     for (let index = 0; index < tracks.length; index += 1) {
       const disc = tracks[index].discNumber;
       if (disc <= 0) {
+        hasUnknownDisc = true;
         continue;
       }
       if (firstDisc < 0) {
         firstDisc = disc;
       } else if (disc !== firstDisc) {
-        return true;
+        this.multipleDiscTracks = tracks;
+        this.multipleDiscResult = true;
+        return this.multipleDiscResult;
       }
     }
-    return firstDisc >= 0 && tracks.some((track: TrackListItem) => track.discNumber <= 0);
+    this.multipleDiscTracks = tracks;
+    this.multipleDiscResult = firstDisc >= 0 && hasUnknownDisc;
+    return this.multipleDiscResult;
   }
 
   private isDiscStart(tracks: Array<TrackListItem>, index: number): boolean {

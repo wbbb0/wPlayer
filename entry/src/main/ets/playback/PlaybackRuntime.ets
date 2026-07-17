@@ -19,14 +19,17 @@ import {
 import { PlaybackQueue } from './queue/PlaybackQueue';
 import { PlaybackSession, PlaybackSessionCommands } from './session/PlaybackSession';
 import { LyricsParser } from './lyrics/LyricsParser';
+import { LyricTimeline } from './lyrics/LyricTimeline';
+import { LibraryPlaybackBridge } from '../library/store/LibraryPlaybackBridge';
 
 const POSITION_WRITE_INTERVAL_MS = 5000;
 const SESSION_POSITION_INTERVAL_MS = 1000;
 const RESUME_MINIMUM_MS = 5000;
 const COMPLETION_REMAINING_MS = 10000;
+const COMPLETION_POSITION_FRACTION = 0.95;
 const QUEUE_BUILD_CHUNK_SIZE = 64;
 
-class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands {
+class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands, LibraryPlaybackBridge {
   readonly repository: MusicRepository = new MusicRepository();
   readonly playerStore: PlayerStore = new PlayerStore();
 
@@ -485,7 +488,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.currentPlaybackTrack = undefined;
     this.playerStore.currentTrack = track;
     this.playerStore.lyrics = '';
-    this.playerStore.timedLyrics = [];
+    this.playerStore.setTimedLyrics([]);
     this.playerStore.setActiveLyricIndex(-1);
     this.playerStore.positionMs = 0;
     this.playerStore.durationMs = track.durationMs;
@@ -612,14 +615,14 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       const lyrics = await MetadataReader.readLyrics(track.uri, track.fileSize, track.format);
       if (epoch === this.artworkEpoch) {
         this.playerStore.lyrics = lyrics;
-        this.playerStore.timedLyrics = LyricsParser.parse(lyrics).lines;
+        this.playerStore.setTimedLyrics(LyricsParser.parse(lyrics).lines);
         this.updateActiveLyricIndex(this.playerStore.positionMs);
         this.session?.updateMetadata(track, this.playerStore.heroArtworkUri, lyrics);
       }
     } catch (error) {
       if (epoch === this.artworkEpoch) {
         this.playerStore.lyrics = '';
-        this.playerStore.timedLyrics = [];
+        this.playerStore.setTimedLyrics([]);
         this.playerStore.setActiveLyricIndex(-1);
       }
       console.warn(`Unable to read embedded lyrics: ${PlaybackRuntime.messageOf(error)}`);
@@ -684,7 +687,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     let position = this.playerStore.positionMs;
     let consideredCompleted = completed;
     if (!consideredCompleted && duration > 0 &&
-      (duration - position <= COMPLETION_REMAINING_MS || position >= duration * 0.95)) {
+      (duration - position <= COMPLETION_REMAINING_MS || position >= duration * COMPLETION_POSITION_FRACTION)) {
       consideredCompleted = true;
     }
     if (position < RESUME_MINIMUM_MS || consideredCompleted) {
@@ -735,14 +738,9 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   private updateActiveLyricIndex(positionMs: number): void {
-    let active = -1;
-    for (let index = 0; index < this.playerStore.timedLyrics.length; index += 1) {
-      if (this.playerStore.timedLyrics[index].timeMs > positionMs) {
-        break;
-      }
-      active = index;
-    }
-    this.playerStore.setActiveLyricIndex(active);
+    this.playerStore.setActiveLyricIndex(
+      LyricTimeline.activeIndexAt(this.playerStore.timedLyrics, positionMs)
+    );
   }
 
   private static queueTrackOf(item: TrackListItem): QueueTrack {
@@ -785,7 +783,8 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
 
   private static validResumePosition(positionMs: number, durationMs: number): number {
     if (positionMs < RESUME_MINIMUM_MS || durationMs <= 0 ||
-      durationMs - positionMs <= COMPLETION_REMAINING_MS || positionMs >= durationMs * 0.95) {
+      durationMs - positionMs <= COMPLETION_REMAINING_MS ||
+      positionMs >= durationMs * COMPLETION_POSITION_FRACTION) {
       return 0;
     }
     return positionMs;

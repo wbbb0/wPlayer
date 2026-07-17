@@ -2,17 +2,7 @@ import { PlayerFrame, PlayerLayoutSpec, PlayerMotionSpec } from './PlayerMotion'
 import { PlayerMiniArtwork } from './PlayerArtworkViews';
 import { PlayerPlaybackButton } from './PlayerControls';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
-
-function lengthToNumber(value: Length | undefined, fallback: number): number {
-  if (typeof value === 'number') {
-    return value;
-  }
-  if (typeof value === 'string') {
-    const parsedValue = Number.parseFloat(value);
-    return Number.isNaN(parsedValue) ? fallback : parsedValue;
-  }
-  return fallback;
-}
+import { LayoutLength } from '../layout/LayoutLength';
 
 @Component
 export struct MiniPlayerContent {
@@ -106,10 +96,10 @@ export struct MiniPlayerSurface {
     .opacity(this.morphActive ? 0 : 1)
     .onAreaChange((_oldValue: Area, newValue: Area) => {
       this.onMeasuredFrame({
-        x: lengthToNumber(newValue.globalPosition.x, this.measuredFrame.x),
-        y: lengthToNumber(newValue.globalPosition.y, this.measuredFrame.y),
-        width: lengthToNumber(newValue.width, this.measuredFrame.width),
-        height: lengthToNumber(newValue.height, this.measuredFrame.height)
+        x: LayoutLength.toNumber(newValue.globalPosition.x, this.measuredFrame.x),
+        y: LayoutLength.toNumber(newValue.globalPosition.y, this.measuredFrame.y),
+        width: LayoutLength.toNumber(newValue.width, this.measuredFrame.width),
+        height: LayoutLength.toNumber(newValue.height, this.measuredFrame.height)
       });
     })
     .priorityGesture(

@@ -281,14 +281,17 @@ export class LibraryDatabase {
   }
 
   private async openAndMigrate(context: common.Context): Promise<boolean> {
-    const store = await relationalStore.getRdbStore(context, STORE_CONFIG);
+    let store: relationalStore.RdbStore | undefined;
     try {
+      store = await relationalStore.getRdbStore(context, STORE_CONFIG);
       await store.execute('PRAGMA foreign_keys = ON');
       const rebuilt = await this.migrate(store);
       this.store = store;
       return rebuilt;
     } catch (error) {
-      await store.close();
+      if (store !== undefined) {
+        await store.close();
+      }
       this.initializePromise = undefined;
       const cause = error as Error;
       throw cause;

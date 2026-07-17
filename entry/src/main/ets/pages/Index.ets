@@ -29,6 +29,7 @@ import { PlayerStore } from '../playback/model/PlaybackModels';
 import { SettingsRepository } from '../settings/SettingsRepository';
 import { AppShellLayoutSpec } from '../components/layout/AppShellLayoutSpec';
 import { WindowAvoidAreaController } from '../components/layout/WindowAvoidAreaController';
+import { LayoutLength } from '../components/layout/LayoutLength';
 import { FullPlayerContent } from '../components/player/FullPlayerContent';
 import {
   MiniPlayerContent,
@@ -66,7 +67,7 @@ struct Index {
   @State appearancePalette: AppAppearancePalette = AppAppearancePalette.fallback();
   @State navigationOrder: Array<string> = DEFAULT_NAVIGATION_ORDER;
   @State selectedRouteId: string = NavigationRoute.PLAYLISTS;
-  @State libraryStore: LibraryStore = new LibraryStore(playbackRuntime.repository);
+  @State libraryStore: LibraryStore = new LibraryStore(playbackRuntime.repository, playbackRuntime);
   @State playerStore: PlayerStore = playbackRuntime.playerStore;
   @State animatedThemePrimary: string = '';
   @State miniBarExpanded: boolean = false;
@@ -169,13 +170,11 @@ struct Index {
         console.warn(`Unable to initialize settings: ${businessError.code}, ${businessError.message}`);
       }
       this.libraryStore.initialize(abilityContext, this.settingsRepository);
-      playbackRuntime.initialize(abilityContext, this.settingsRepository).catch((error: Object) => {
-        console.warn(`Unable to initialize playback: ${error instanceof Error ? error.message : error}`);
-      });
     }
   }
 
   aboutToDisappear(): void {
+    this.releaseMorphArtworkSource();
     playbackRuntime.setPaletteChangeListener(undefined);
     this.setSystemBarContentColor(this.appearancePalette.systemBarContent);
     appAppearanceController.removeListener(this.appearanceListener);
@@ -401,17 +400,6 @@ struct Index {
     if (!nextWideLayout) {
       this.morePathStack.pushPath({ name: this.selectedRouteId }, false);
     }
-  }
-
-  private lengthToNumber(value: Length | undefined, fallback: number): number {
-    if (typeof value === 'number') {
-      return value;
-    }
-    if (typeof value === 'string') {
-      const parsedValue = Number.parseFloat(value);
-      return Number.isNaN(parsedValue) ? fallback : parsedValue;
-    }
-    return fallback;
   }
 
   private freezeMiniPlayerGeometry(captureReturnStyle: boolean = true): void {
@@ -1320,11 +1308,11 @@ struct Index {
     .onAreaChange((_oldValue: Area, newValue: Area) => {
       const previousWideLayout = this.usesWideLayout();
       const previousPlayerPaneCount = this.fullPlayerPaneCount();
-      const nextWidth = this.lengthToNumber(newValue.width, this.rootFrame.width);
-      const nextHeight = this.lengthToNumber(newValue.height, this.rootFrame.height);
+      const nextWidth = LayoutLength.toNumber(newValue.width, this.rootFrame.width);
+      const nextHeight = LayoutLength.toNumber(newValue.height, this.rootFrame.height);
       this.rootFrame = {
-        x: this.lengthToNumber(newValue.globalPosition.x, this.rootFrame.x),
-        y: this.lengthToNumber(newValue.globalPosition.y, this.rootFrame.y),
+        x: LayoutLength.toNumber(newValue.globalPosition.x, this.rootFrame.x),
+        y: LayoutLength.toNumber(newValue.globalPosition.y, this.rootFrame.y),
         width: nextWidth,
         height: nextHeight
       };

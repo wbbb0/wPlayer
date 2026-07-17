@@ -5,6 +5,8 @@ import {
   AlbumDetail,
   AvailabilityState,
   AlbumListItem,
+  LibraryCatalog,
+  LibraryPage,
   LibrarySnapshot,
   LibraryStatistics,
   SortDirection,
@@ -89,6 +91,15 @@ export class MusicRepository {
     return this.queries.getTracks(field, direction);
   }
 
+  getTrackCatalog(field: TrackSortField, direction: SortDirection): Promise<LibraryCatalog> {
+    return this.queries.getTrackCatalog(field, direction);
+  }
+
+  getTrackPage(field: TrackSortField, direction: SortDirection,
+    offset: number, limit: number): Promise<LibraryPage<TrackListItem>> {
+    return this.queries.getTrackPage(field, direction, offset, limit);
+  }
+
   getPlaybackTrack(trackId: number): Promise<PlaybackTrack | undefined> {
     return this.queries.getPlaybackTrack(trackId);
   }
@@ -113,6 +124,15 @@ export class MusicRepository {
     direction: SortDirection
   ): Promise<LibrarySnapshot<AlbumListItem>> {
     return this.queries.getAlbums(field, direction);
+  }
+
+  getAlbumCatalog(field: AlbumSortField, direction: SortDirection): Promise<LibraryCatalog> {
+    return this.queries.getAlbumCatalog(field, direction);
+  }
+
+  getAlbumPage(field: AlbumSortField, direction: SortDirection,
+    offset: number, limit: number): Promise<LibraryPage<AlbumListItem>> {
+    return this.queries.getAlbumPage(field, direction, offset, limit);
   }
 
   getAlbumDetail(albumId: number): Promise<AlbumDetail | undefined> {

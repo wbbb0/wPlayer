@@ -26,10 +26,6 @@ export struct LibraryManagementPage {
       this.store.sortIndexError.length > 0 || this.store.errorMessage.length > 0;
   }
 
-  private visibleDetailItems(): Array<ImportItemResult> {
-    return this.store.importDetailItems;
-  }
-
   private readableUri(uri: string): string {
     try {
       return decodeURIComponent(uri);
@@ -187,14 +183,14 @@ export struct LibraryManagementPage {
           .width('100%')
       }
 
-      if (this.visibleDetailItems().length > 0) {
+      if (this.store.importDetailCount > 0) {
         Text('重复与错误明细')
           .fontSize(17)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_primary'))
           .width('100%')
         List({ space: 10 }) {
-          ForEach(this.visibleDetailItems(), (item: ImportItemResult) => {
+          LazyForEach(this.store.importDetailDataSource, (item: ImportItemResult) => {
             ListItem() {
               this.ImportDetailRow(item)
             }

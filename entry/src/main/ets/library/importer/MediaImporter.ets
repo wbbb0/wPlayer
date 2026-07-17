@@ -64,6 +64,7 @@ export class MediaImporter {
   private cancelRequested: boolean = false;
   private importing: boolean = false;
   private readonly artworkPreparations: Map<string, Promise<ArtworkCacheResult>> = new Map();
+  private artworkCleanupTail: Promise<void> = Promise.resolve();
 
   constructor(context: common.UIAbilityContext, repository: MusicRepository, artworkCache: ArtworkCache) {
     this.context = context;
@@ -90,6 +91,7 @@ export class MediaImporter {
     let completedResult: ImportResult | undefined;
     let traceStarted = false;
     try {
+      await this.artworkCleanupTail;
       const uris = await selectAudioFiles(this.context);
       if (uris.length === 0) {
         return { imported: 0, duplicates: 0, failed: 0, items: [] };
@@ -100,14 +102,8 @@ export class MediaImporter {
       completedResult = await this.importUris(uris, onProgress, onItem);
       return completedResult;
     } finally {
-      const cleanupStartedAt = Date.now();
-      try {
-        await this.cleanupArtworkFiles();
-      } catch (error) {
-        console.warn(`Artwork orphan cleanup failed: ${MediaImporter.errorMessage(error)}`);
-      }
       if (traceStarted) {
-        ImportPerformanceTrace.mark('cleanup', cleanupStartedAt);
+        ImportPerformanceTrace.event('cleanup_scheduled');
         ImportPerformanceTrace.finish(
           completedResult?.imported ?? 0,
           completedResult?.duplicates ?? 0,
@@ -117,6 +113,7 @@ export class MediaImporter {
       this.importing = false;
       this.cancelRequested = false;
       this.artworkPreparations.clear();
+      this.scheduleArtworkCleanup();
     }
   }
 
@@ -124,24 +121,24 @@ export class MediaImporter {
     if (this.importing) {
       throw new Error('Cannot clear the library during an import');
     }
+    await this.artworkCleanupTail;
     await this.repository.clearLibrary();
     const assets = await this.repository.getUnreferencedArtworkAssets();
     for (let index = 0; index < assets.length; index += 1) {
       const asset = assets[index];
       if (asset.deleteSmall) {
-        this.artworkCache.delete(asset.smallPath);
+        await this.artworkCache.deleteAsync(asset.smallPath);
       }
       if (asset.deleteLarge) {
-        this.artworkCache.delete(asset.largePath);
+        await this.artworkCache.deleteAsync(asset.largePath);
       }
       await this.repository.removeUnreferencedArtwork(asset.assetId);
     }
-    this.artworkCache.cleanupTempFiles();
-    await this.cleanupArtworkFiles();
+    this.scheduleArtworkCleanup();
   }
 
-  cleanupArtworkStorage(): Promise<void> {
-    return this.cleanupArtworkFiles();
+  async cleanupArtworkStorage(): Promise<void> {
+    this.scheduleArtworkCleanup();
   }
 
   private async importUris(uris: Array<string>, onProgress?: ImportProgressCallback,
@@ -653,9 +650,30 @@ export class MediaImporter {
   }
 
   private async cleanupArtworkFiles(): Promise<void> {
+    const shouldContinue = (): boolean => !this.importing;
+    if (!shouldContinue()) {
+      return;
+    }
     const referencedPaths = await this.repository.getReferencedArtworkPaths();
-    this.artworkCache.cleanupTempFiles();
-    this.artworkCache.cleanupOrphans(referencedPaths);
+    if (!shouldContinue()) {
+      return;
+    }
+    await this.artworkCache.cleanupTempFiles(shouldContinue);
+    if (!shouldContinue()) {
+      return;
+    }
+    await this.artworkCache.cleanupOrphans(referencedPaths, shouldContinue);
+  }
+
+  private scheduleArtworkCleanup(): void {
+    const operation = this.artworkCleanupTail.then(async (): Promise<void> => {
+      if (!this.importing) {
+        await this.cleanupArtworkFiles();
+      }
+    });
+    this.artworkCleanupTail = operation.catch((error: Object): void => {
+      console.warn(`Artwork orphan cleanup failed: ${MediaImporter.errorMessage(error)}`);
+    });
   }
 
   private static selectPrimaryArtwork(artworks: Array<ParsedArtwork>): number {

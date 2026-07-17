@@ -31,4 +31,18 @@ export class LibraryListDataSource<T> implements IDataSource {
     this.items = items.slice();
     this.listeners.forEach((listener: DataChangeListener) => listener.onDataReloaded());
   }
+
+  append(item: T): void {
+    const index = this.items.length;
+    this.items.push(item);
+    this.listeners.forEach((listener: DataChangeListener) => listener.onDataAdd(index));
+  }
+
+  clear(): void {
+    if (this.items.length === 0) {
+      return;
+    }
+    this.items = [];
+    this.listeners.forEach((listener: DataChangeListener) => listener.onDataReloaded());
+  }
 }

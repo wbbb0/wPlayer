@@ -14,6 +14,10 @@ import {
 } from '../main/ets/components/player/PlayerMotion';
 import { DynamicColor, DynamicContainerRole, ForegroundEmphasis } from
   '../main/ets/appearance/DynamicColor';
+import { LyricTimeline } from '../main/ets/playback/lyrics/LyricTimeline';
+import { TimedLyricLine } from '../main/ets/playback/lyrics/LyricsParser';
+import { LayoutLength } from '../main/ets/components/layout/LayoutLength';
+import { PlayerStore } from '../main/ets/playback/model/PlaybackModels';
 
 class FakeResource {
   released: number = 0;
@@ -50,7 +54,7 @@ export default function riskRegressionTest() {
     it('fades full-player controls between 20 and 80 percent collapse', 0, () => {
       expect(PlayerMotionSpec.fullContentOpacity(1)).assertEqual(1);
       expect(PlayerMotionSpec.fullContentOpacity(0.8)).assertEqual(1);
-      expect(PlayerMotionSpec.fullContentOpacity(0.5)).assertEqual(0.5);
+      expect(Math.abs(PlayerMotionSpec.fullContentOpacity(0.5) - 0.5) < 0.000001).assertTrue();
       expect(PlayerMotionSpec.fullContentOpacity(0.2)).assertEqual(0);
       expect(PlayerMotionSpec.fullContentOpacity(0)).assertEqual(0);
     });
@@ -127,6 +131,40 @@ export default function riskRegressionTest() {
     it('classifies an early duplicate without an import input as duplicate', 0, () => {
       expect(ImportPreparationPolicy.classify(false, true, false))
         .assertEqual(PreparedItemState.DUPLICATE);
+    });
+
+    it('finds the last active lyric line with duplicate timestamps', 0, () => {
+      const lines: Array<TimedLyricLine> = [
+        { timeMs: 1000, text: 'first' },
+        { timeMs: 2000, text: 'second' },
+        { timeMs: 2000, text: 'second duplicate' },
+        { timeMs: 5000, text: 'last' }
+      ];
+      expect(LyricTimeline.activeIndexAt(lines, 999)).assertEqual(-1);
+      expect(LyricTimeline.activeIndexAt(lines, 1000)).assertEqual(0);
+      expect(LyricTimeline.activeIndexAt(lines, 2000)).assertEqual(2);
+      expect(LyricTimeline.activeIndexAt(lines, 6000)).assertEqual(3);
+    });
+
+    it('keeps the lazy lyric data source synchronized with observable lyrics', 0, () => {
+      const store = new PlayerStore();
+      const lines: Array<TimedLyricLine> = [
+        { timeMs: 100, text: 'one' },
+        { timeMs: 200, text: 'two' }
+      ];
+      store.setTimedLyrics(lines);
+      expect(store.timedLyrics.length).assertEqual(2);
+      expect(store.lyricDataSource.totalCount()).assertEqual(2);
+      expect(store.lyricDataSource.getData(1).text).assertEqual('two');
+      store.setTimedLyrics([]);
+      expect(store.lyricDataSource.totalCount()).assertEqual(0);
+    });
+
+    it('normalizes measured layout lengths without losing the fallback', 0, () => {
+      expect(LayoutLength.toNumber(48, 12)).assertEqual(48);
+      expect(LayoutLength.toNumber('56vp', 12)).assertEqual(56);
+      expect(LayoutLength.toNumber('invalid', 12)).assertEqual(12);
+      expect(LayoutLength.toNumber(undefined, 12)).assertEqual(12);
     });
   });
 }

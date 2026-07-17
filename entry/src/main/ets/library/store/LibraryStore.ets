@@ -18,12 +18,48 @@ import {
   TrackSortField
 } from '../model/LibraryModels';
 import { SettingsRepository } from '../../settings/SettingsRepository';
+import { LibraryPageLoader, PagedLibraryDataSource } from './PagedLibraryDataSource';
+import { LibraryPagingPolicy } from './LibraryPagingPolicy';
 import { LibraryListDataSource } from './LibraryListDataSource';
-import { playbackRuntime } from '../../playback/PlaybackRuntime';
+import { LibraryPlaybackBridge } from './LibraryPlaybackBridge';
 import { ImportPerformanceTrace } from '../importer/ImportPerformanceTrace';
 import { ArtworkPaletteUpdate, PaletteRefreshAsset } from '../data/MusicRepositoryTypes';
 
 const PALETTE_REFRESH_CONCURRENCY: number = 4;
+
+class TrackPageLoader implements LibraryPageLoader<TrackListItem> {
+  private readonly repository: MusicRepository;
+  private readonly field: TrackSortField;
+  private readonly direction: SortDirection;
+
+  constructor(repository: MusicRepository, field: TrackSortField, direction: SortDirection) {
+    this.repository = repository;
+    this.field = field;
+    this.direction = direction;
+  }
+
+  async load(offset: number, limit: number): Promise<Array<TrackListItem>> {
+    const page = await this.repository.getTrackPage(this.field, this.direction, offset, limit);
+    return page.items;
+  }
+}
+
+class AlbumPageLoader implements LibraryPageLoader<AlbumListItem> {
+  private readonly repository: MusicRepository;
+  private readonly field: AlbumSortField;
+  private readonly direction: SortDirection;
+
+  constructor(repository: MusicRepository, field: AlbumSortField, direction: SortDirection) {
+    this.repository = repository;
+    this.field = field;
+    this.direction = direction;
+  }
+
+  async load(offset: number, limit: number): Promise<Array<AlbumListItem>> {
+    const page = await this.repository.getAlbumPage(this.field, this.direction, offset, limit);
+    return page.items;
+  }
+}
 
 class PaletteRefreshCursor {
   nextIndex: number = 0;
@@ -32,8 +68,12 @@ class PaletteRefreshCursor {
 
 @Observed
 export class LibraryStore {
-  readonly trackDataSource: LibraryListDataSource<TrackListItem> = new LibraryListDataSource<TrackListItem>();
-  readonly albumDataSource: LibraryListDataSource<AlbumListItem> = new LibraryListDataSource<AlbumListItem>();
+  readonly trackDataSource: PagedLibraryDataSource<TrackListItem> =
+    new PagedLibraryDataSource<TrackListItem>(LibraryPagingPolicy.TRACK_PAGE_SIZE, 7);
+  readonly albumDataSource: PagedLibraryDataSource<AlbumListItem> =
+    new PagedLibraryDataSource<AlbumListItem>(LibraryPagingPolicy.ALBUM_PAGE_SIZE, 5);
+  readonly importDetailDataSource: LibraryListDataSource<ImportItemResult> =
+    new LibraryListDataSource<ImportItemResult>();
   trackSections: Array<LibrarySection> = [];
   albumSections: Array<LibrarySection> = [];
   trackIndexPresentation: LibraryIndexPresentation = LibraryIndexPresentation.ALPHABET;
@@ -63,6 +103,7 @@ export class LibraryStore {
   errorMessage: string = '';
   lastImportResult?: ImportResult;
   importDetailItems: Array<ImportItemResult> = [];
+  importDetailCount: number = 0;
   sortIndexResult: string = '';
   sortIndexError: string = '';
   albumDetail?: AlbumDetail;
@@ -70,6 +111,7 @@ export class LibraryStore {
   albumDetailError: string = '';
 
   private readonly repository: MusicRepository;
+  private readonly playbackBridge?: LibraryPlaybackBridge;
   private importer?: MediaImporter;
   private artworkCache?: ArtworkCache;
   private settings?: SettingsRepository;
@@ -104,8 +146,9 @@ export class LibraryStore {
     }
   }
 
-  constructor(repository?: MusicRepository) {
+  constructor(repository?: MusicRepository, playbackBridge?: LibraryPlaybackBridge) {
     this.repository = repository === undefined ? new MusicRepository() : repository;
+    this.playbackBridge = playbackBridge;
   }
 
   async initialize(context: common.UIAbilityContext, settings?: SettingsRepository): Promise<void> {
@@ -155,8 +198,8 @@ export class LibraryStore {
     const albumField = this.albumSortField;
     const albumDirection = this.albumSortDirection;
     const snapshots = await Promise.all([
-      this.repository.getTracks(trackField, trackDirection),
-      this.repository.getAlbums(albumField, albumDirection),
+      this.repository.getTrackCatalog(trackField, trackDirection),
+      this.repository.getAlbumCatalog(albumField, albumDirection),
       this.repository.getStatistics()
     ]);
     if (refreshGeneration !== this.refreshGeneration || trackGeneration !== this.trackSortGeneration ||
@@ -165,13 +208,19 @@ export class LibraryStore {
     }
     const trackSnapshot = snapshots[0];
     const albumSnapshot = snapshots[1];
-    this.trackDataSource.replace(trackSnapshot.items);
+    this.trackDataSource.reset(trackSnapshot.totalCount,
+      new TrackPageLoader(this.repository, trackField, trackDirection));
     this.trackSections = trackSnapshot.sections;
     this.trackIndexPresentation = trackSnapshot.indexPresentation;
-    this.albumDataSource.replace(albumSnapshot.items);
+    this.albumDataSource.reset(albumSnapshot.totalCount,
+      new AlbumPageLoader(this.repository, albumField, albumDirection));
     this.albumSections = albumSnapshot.sections;
     this.albumIndexPresentation = albumSnapshot.indexPresentation;
     this.statistics = snapshots[2];
+    await Promise.all([
+      this.trackDataSource.ensureRange(0, LibraryPagingPolicy.TRACK_PAGE_SIZE - 1),
+      this.albumDataSource.ensureRange(0, LibraryPagingPolicy.ALBUM_PAGE_SIZE - 1)
+    ]);
   }
 
   async setTrackSort(field: TrackSortField, direction: SortDirection): Promise<void> {
@@ -181,11 +230,12 @@ export class LibraryStore {
     this.trackSortDirection = direction;
     this.settings?.setSongSort(field, direction === SortDirection.DESCENDING);
     try {
-      const snapshot = await this.repository.getTracks(field, direction);
+      const snapshot = await this.repository.getTrackCatalog(field, direction);
       if (generation === this.trackSortGeneration) {
-        this.trackDataSource.replace(snapshot.items);
+        this.trackDataSource.reset(snapshot.totalCount, new TrackPageLoader(this.repository, field, direction));
         this.trackSections = snapshot.sections;
         this.trackIndexPresentation = snapshot.indexPresentation;
+        await this.trackDataSource.ensureRange(0, LibraryPagingPolicy.TRACK_PAGE_SIZE - 1);
       }
     } catch (error) {
       this.errorMessage = LibraryStore.errorMessageOf(error);
@@ -199,11 +249,12 @@ export class LibraryStore {
     this.albumSortDirection = direction;
     this.settings?.setAlbumSort(field, direction === SortDirection.DESCENDING);
     try {
-      const snapshot = await this.repository.getAlbums(field, direction);
+      const snapshot = await this.repository.getAlbumCatalog(field, direction);
       if (generation === this.albumSortGeneration) {
-        this.albumDataSource.replace(snapshot.items);
+        this.albumDataSource.reset(snapshot.totalCount, new AlbumPageLoader(this.repository, field, direction));
         this.albumSections = snapshot.sections;
         this.albumIndexPresentation = snapshot.indexPresentation;
+        await this.albumDataSource.ensureRange(0, LibraryPagingPolicy.ALBUM_PAGE_SIZE - 1);
       }
     } catch (error) {
       this.errorMessage = LibraryStore.errorMessageOf(error);
@@ -219,17 +270,23 @@ export class LibraryStore {
     this.lastMessage = '';
     this.lastImportResult = undefined;
     this.importDetailItems = [];
+    this.importDetailCount = 0;
+    this.importDetailDataSource.clear();
     try {
       const result = await this.importer.selectAndImport((progress: ImportProgress) => {
         this.importProgress = progress;
       }, onStarted, (item: ImportItemResult) => {
         if (item.outcome !== ImportItemOutcome.IMPORTED) {
-          this.importDetailItems = this.importDetailItems.concat([item]);
+          this.importDetailItems.push(item);
+          this.importDetailCount += 1;
+          this.importDetailDataSource.append(item);
         }
       });
       this.lastImportResult = result;
       this.importDetailItems = result.items.filter((item: ImportItemResult) =>
         item.outcome !== ImportItemOutcome.IMPORTED);
+      this.importDetailCount = this.importDetailItems.length;
+      this.importDetailDataSource.replace(this.importDetailItems);
       this.lastMessage = LibraryStore.importSummary(result);
       const refreshStartedAt = Date.now();
       await this.refresh();
@@ -252,7 +309,7 @@ export class LibraryStore {
     this.loading = true;
     this.errorMessage = '';
     try {
-      await playbackRuntime.prepareForLibraryClear();
+      await this.playbackBridge?.prepareForLibraryClear();
       await this.importer.clearLibrary();
       this.lastMessage = '音乐库已清空，原始音乐文件没有被删除';
       await this.refresh();
@@ -309,7 +366,7 @@ export class LibraryStore {
       await Promise.all(workers);
       if (updates.length > 0) {
         await this.repository.updateArtworkPalettes(updates);
-        await playbackRuntime.refreshCurrentTrackPalette();
+        await this.playbackBridge?.refreshCurrentTrackPalette();
       }
       await this.refresh();
       this.paletteRefreshResult = `已刷新 ${updates.length} 张封面` +
@@ -349,8 +406,21 @@ export class LibraryStore {
     return `file://${this.artworkCache.resolvePath(relativePath)}`;
   }
 
-  trackSnapshot(): Array<TrackListItem> {
-    return this.trackDataSource.snapshot();
+  ensureTrackRange(firstIndex: number, lastIndex: number): void {
+    this.trackDataSource.ensureRange(firstIndex, lastIndex).catch((_error: Object) => {
+      // The data source keeps placeholders and retries on the next explicit visible-range request.
+    });
+  }
+
+  ensureAlbumRange(firstIndex: number, lastIndex: number): void {
+    this.albumDataSource.ensureRange(firstIndex, lastIndex).catch((_error: Object) => {
+      // The data source keeps placeholders and retries on the next explicit visible-range request.
+    });
+  }
+
+  async loadTrackSnapshot(): Promise<Array<TrackListItem>> {
+    const snapshot = await this.repository.getTracks(this.trackSortField, this.trackSortDirection);
+    return snapshot.items;
   }
 
   private restoreSortSettings(): void {

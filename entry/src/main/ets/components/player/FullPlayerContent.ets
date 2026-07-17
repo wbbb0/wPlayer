@@ -19,17 +19,7 @@ import { PlayerHeroArtwork } from './PlayerArtworkViews';
 import { LyricIndexListener, PlayerStore, QueueTrack } from '../../playback/model/PlaybackModels';
 import { TimedLyricLine } from '../../playback/lyrics/LyricsParser';
 import { ArtworkFitMode, ArtworkView } from '../artwork/ArtworkView';
-
-function lengthToNumber(value: Length | undefined, fallback: number): number {
-  if (typeof value === 'number') {
-    return value;
-  }
-  if (typeof value === 'string') {
-    const parsedValue = Number.parseFloat(value);
-    return Number.isNaN(parsedValue) ? fallback : parsedValue;
-  }
-  return fallback;
-}
+import { LayoutLength } from '../layout/LayoutLength';
 
 @Component
 struct TimedLyricRow {
@@ -53,7 +43,7 @@ struct TimedLyricRow {
         centerX: '0%',
         centerY: '50%'
       })
-      .animation({ duration: 220, curve: Curve.EaseInOut })
+      .animation({ duration: PlayerMotionSpec.LYRIC_FOCUS_DURATION, curve: Curve.EaseInOut })
   }
 }
 
@@ -92,7 +82,6 @@ export struct FullPlayerContent {
     }
     const targetIndex = Math.max(0, index - 2);
     this.lastFocusedLyricIndex = index;
-    console.info(`LyricAutoScroll active=${index} target=${targetIndex}`);
     this.lyricScroller.scrollToIndex(targetIndex, true, ScrollAlign.START);
   };
   @State private seeking: boolean = false;
@@ -448,11 +437,11 @@ export struct FullPlayerContent {
         }
         const pageWidth = this.pageWidth();
         const layoutTarget: PlayerPoint = {
-          x: lengthToNumber(
+          x: LayoutLength.toNumber(
             newValue.globalPosition.x,
             this.previousCenteredArtworkTarget.x + this.rootFrame.x
           ) - this.rootFrame.x,
-          y: lengthToNumber(
+          y: LayoutLength.toNumber(
             newValue.globalPosition.y,
             this.previousArtworkTarget.y + this.rootFrame.y
           ) - this.rootFrame.y
@@ -572,7 +561,7 @@ export struct FullPlayerContent {
     Column() {
       if (this.playerStore.timedLyrics.length > 0) {
         List({ space: 14, scroller: this.lyricScroller }) {
-          ForEach(this.playerStore.timedLyrics, (line: TimedLyricLine, index: number) => {
+          LazyForEach(this.playerStore.lyricDataSource, (line: TimedLyricLine, index: number) => {
             ListItem() {
               TimedLyricRow({ playerStore: this.playerStore, line: line, index: index })
             }

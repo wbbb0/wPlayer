@@ -4,6 +4,7 @@ import { image } from '@kit.ImageKit';
 import { flattenArtworkPixels } from '../metadata/MediaFileTasks';
 import { ImportPerformanceTrace } from '../importer/ImportPerformanceTrace';
 import { ArtworkEncodingPolicy } from './ArtworkEncodingPolicy';
+import { ArtworkCleanupPolicy } from './ArtworkCleanupPolicy';
 import { ArtworkPalette, ArtworkPaletteExtractor } from './ArtworkPaletteExtractor';
 import { extractArtworkPaletteAsync } from './ArtworkPaletteTasks';
 
@@ -35,6 +36,7 @@ export interface ArtworkCacheResult {
 
 export class ArtworkCache {
   private readonly context: Context;
+  private maintenanceTail: Promise<void> = Promise.resolve();
 
   constructor(context: Context) {
     this.context = context;
@@ -115,6 +117,10 @@ export class ArtworkCache {
     ArtworkCache.deleteIfPresent(this.resolvePath(relativePath));
   }
 
+  async deleteAsync(relativePath: string): Promise<void> {
+    await ArtworkCache.deleteIfPresentAsync(this.resolvePath(relativePath));
+  }
+
   exists(relativePath: string): boolean {
     if (relativePath.length === 0) {
       return false;
@@ -126,66 +132,79 @@ export class ArtworkCache {
     }
   }
 
-  cleanupOrphans(referencedPaths: Array<string>): number {
-    const artworkRoot = ArtworkCache.resolvePath(this.context, ARTWORK_DIRECTORY);
-    if (!fs.accessSync(artworkRoot)) {
-      return 0;
-    }
+  cleanupOrphans(referencedPaths: Array<string>, shouldContinue?: () => boolean): Promise<number> {
     const referenced = new Set<string>(referencedPaths);
-    let deletedCount = 0;
-    const entries = fs.listFileSync(artworkRoot, { recursion: true });
-    entries.forEach((entry: string) => {
-      const relativeEntry = entry.startsWith('/') ? entry.substring(1) : entry;
-      const fullPath = `${artworkRoot}/${relativeEntry}`;
-      if (!fs.statSync(fullPath).isFile() || relativeEntry.endsWith(TEMP_FILE_SUFFIX)) {
-        return;
-      }
-      const relativePath = `${ARTWORK_DIRECTORY}/${relativeEntry}`;
-      if (!referenced.has(relativePath)) {
-        ArtworkCache.deleteIfPresent(fullPath);
-        deletedCount += 1;
-      }
+    return this.enqueueMaintenance(async (): Promise<number> => {
+      return this.cleanupEntries((entry: string, isFile: boolean): boolean =>
+        ArtworkCleanupPolicy.shouldDeleteOrphan(entry, isFile, referenced), shouldContinue);
     });
-    return deletedCount;
   }
 
-  clearAll(): number {
+  clearAll(): void {
+    this.enqueueMaintenance(async (): Promise<number> => {
+      return this.cleanupEntries((_entry: string, isFile: boolean): boolean => isFile);
+    }).catch((error: Object) => {
+      console.warn(`Artwork cache clear failed: ${ArtworkCache.errorMessage(error)}`);
+    });
+  }
+
+  cleanupTempFiles(shouldContinue?: () => boolean): Promise<number> {
+    return this.enqueueMaintenance(async (): Promise<number> => {
+      return this.cleanupEntries((entry: string, isFile: boolean): boolean =>
+        ArtworkCleanupPolicy.shouldDeleteTemporary(entry, isFile), shouldContinue);
+    });
+  }
+
+  private async cleanupEntries(shouldDelete: (entry: string, isFile: boolean) => boolean,
+    shouldContinue?: () => boolean): Promise<number> {
     const artworkRoot = ArtworkCache.resolvePath(this.context, ARTWORK_DIRECTORY);
     if (!fs.accessSync(artworkRoot)) {
       return 0;
     }
     let deletedCount = 0;
-    const entries = fs.listFileSync(artworkRoot, { recursion: true });
-    entries.forEach((entry: string) => {
-      const relativeEntry = entry.startsWith('/') ? entry.substring(1) : entry;
-      const path = `${artworkRoot}/${relativeEntry}`;
-      if (fs.statSync(path).isFile()) {
-        ArtworkCache.deleteIfPresent(path);
-        deletedCount++;
+    const entries = await fs.listFile(artworkRoot, { recursion: true });
+    for (let start = 0; start < entries.length;
+      start = ArtworkCleanupPolicy.batchEnd(start, entries.length)) {
+      if (shouldContinue !== undefined && !shouldContinue()) {
+        break;
       }
-    });
+      const end = ArtworkCleanupPolicy.batchEnd(start, entries.length);
+      const batch = entries.slice(start, end);
+      const results = await Promise.all(batch.map(async (entry: string): Promise<boolean> => {
+        try {
+          if (shouldContinue !== undefined && !shouldContinue()) {
+            return false;
+          }
+          const relativeEntry = ArtworkCleanupPolicy.normalizedEntry(entry);
+          if (relativeEntry.length === 0) {
+            return false;
+          }
+          const path = `${artworkRoot}/${relativeEntry}`;
+          const isFile = await ArtworkCache.isFile(path);
+          if (!shouldDelete(entry, isFile) || (shouldContinue !== undefined && !shouldContinue())) {
+            return false;
+          }
+          return ArtworkCache.deleteIfPresentAsync(path);
+        } catch (error) {
+          console.warn(`Artwork cleanup skipped a file: ${ArtworkCache.errorMessage(error)}`);
+          return false;
+        }
+      }));
+      results.forEach((deleted: boolean) => {
+        if (deleted) {
+          deletedCount += 1;
+        }
+      });
+    }
     return deletedCount;
   }
 
-  cleanupTempFiles(): number {
-    const artworkRoot = ArtworkCache.resolvePath(this.context, ARTWORK_DIRECTORY);
-    if (!fs.accessSync(artworkRoot)) {
-      return 0;
-    }
-    let deletedCount = 0;
-    const entries = fs.listFileSync(artworkRoot, { recursion: true });
-    entries.forEach((entry: string) => {
-      if (!entry.endsWith(TEMP_FILE_SUFFIX)) {
-        return;
-      }
-      const relativeEntry = entry.startsWith('/') ? entry.substring(1) : entry;
-      const path = `${artworkRoot}/${relativeEntry}`;
-      if (fs.statSync(path).isFile()) {
-        ArtworkCache.deleteIfPresent(path);
-        deletedCount++;
-      }
+  private enqueueMaintenance(operation: () => Promise<number>): Promise<number> {
+    const result = this.maintenanceTail.then(operation);
+    this.maintenanceTail = result.then((): void => {}, (error: Object): void => {
+      console.warn(`Artwork maintenance failed: ${ArtworkCache.errorMessage(error)}`);
     });
-    return deletedCount;
+    return result;
   }
 
   private async encodeVariant(
@@ -382,6 +401,31 @@ export class ArtworkCache {
     if (fs.accessSync(path)) {
       fs.unlinkSync(path);
     }
+  }
+
+  private static async deleteIfPresentAsync(path: string): Promise<boolean> {
+    try {
+      await fs.unlink(path);
+      return true;
+    } catch (error) {
+      if (!fs.accessSync(path)) {
+        return false;
+      }
+      throw new Error(`Failed to delete artwork file: ${ArtworkCache.errorMessage(error)}`);
+    }
+  }
+
+  private static async isFile(path: string): Promise<boolean> {
+    try {
+      const stat = await fs.stat(path);
+      return stat.isFile();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  private static errorMessage(error: Object): string {
+    return error instanceof Error ? error.message : `${error}`;
   }
 
   private static nextTemporaryId(): string {

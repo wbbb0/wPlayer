@@ -5,7 +5,9 @@ import {
   AlbumSortField,
   AvailabilityState,
   ArtworkPictureType,
+  LibraryCatalog,
   LibraryIndexPresentation,
+  LibraryPage,
   LibrarySection,
   LibrarySnapshot,
   LibraryStatistics,
@@ -22,6 +24,7 @@ import {
   DuplicateCandidate
 } from './MusicRepositoryTypes';
 import { PaletteRefreshAsset } from './MusicRepositoryTypes';
+import { LibrarySortDescriptor, LibrarySortPlan } from './LibrarySortPlan';
 
 const URI_QUERY_BATCH_SIZE = 128;
 
@@ -46,23 +49,34 @@ export class MusicLibraryQueries {
   }
 
   async getTracks(field: TrackSortField, direction: SortDirection): Promise<LibrarySnapshot<TrackListItem>> {
-    const alphabetic = field === TrackSortField.TITLE || field === TrackSortField.ALBUM ||
-      field === TrackSortField.ARTIST;
-    const order = direction === SortDirection.ASCENDING ? 'ASC' : 'DESC';
-    let sectionColumn = "'#'";
-    let orderClause = `t.created_at ${order}, t.id ${order}`;
-    if (field === TrackSortField.TITLE) {
-      sectionColumn = 't.title_section';
-      orderClause = `t.title_section = '#' ASC, t.title_natural_key ${order}, t.id ${order}`;
-    } else if (field === TrackSortField.ALBUM) {
-      sectionColumn = 't.album_section';
-      orderClause = `t.album_section = '#' ASC, t.album_natural_key ${order}, t.id ${order}`;
-    } else if (field === TrackSortField.ARTIST) {
-      sectionColumn = 't.artist_section';
-      orderClause = `t.artist_section = '#' ASC, t.artist_natural_key ${order}, t.id ${order}`;
-    } else if (field === TrackSortField.RELEASE_DATE) {
-      orderClause = `t.release_date_sort = 0 ASC, t.release_date_sort ${order}, t.id ${order}`;
-    }
+    const descriptor = LibrarySortPlan.track(field, direction);
+    const items = await this.queryTrackItems(descriptor);
+    return {
+      items: items,
+      sections: descriptor.alphabetic ? this.buildSections(items) : [],
+      indexPresentation: descriptor.indexPresentation()
+    };
+  }
+
+  getTrackCatalog(field: TrackSortField, direction: SortDirection): Promise<LibraryCatalog> {
+    return this.queryCatalog('track t', LibrarySortPlan.track(field, direction));
+  }
+
+  async getTrackPage(field: TrackSortField, direction: SortDirection,
+    offset: number, limit: number): Promise<LibraryPage<TrackListItem>> {
+    const safeOffset = MusicLibraryQueries.pageOffset(offset);
+    const safeLimit = MusicLibraryQueries.pageLimit(limit);
+    return {
+      offset: safeOffset,
+      items: await this.queryTrackItems(LibrarySortPlan.track(field, direction), safeOffset, safeLimit)
+    };
+  }
+
+  private async queryTrackItems(descriptor: LibrarySortDescriptor,
+    offset?: number, limit?: number): Promise<Array<TrackListItem>> {
+    const paged = offset !== undefined && limit !== undefined;
+    const paginationClause = paged ? ' LIMIT ? OFFSET ?' : '';
+    const bindArgs: Array<number> = paged ? [limit as number, offset as number] : [];
     const resultSet = await this.database.getStore().querySql(
       `SELECT t.id, t.title, t.artist_display, t.album_display, t.duration_ms,
         COALESCE(t.track_number, 0), COALESCE(t.disc_number, 0),
@@ -70,9 +84,10 @@ export class MusicLibraryQueries {
         COALESCE(a.large_hash, ''), COALESCE(a.large_path, ''),
         COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
         COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
-        COALESCE(a.palette_accent, '#FFFFB347'), ${sectionColumn}
+        COALESCE(a.palette_accent, '#FFFFB347'), ${descriptor.sectionExpression}
        FROM track t LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
-       ORDER BY ${orderClause}`
+       ORDER BY ${descriptor.orderClause}${paginationClause}`,
+      bindArgs
     );
     const items: Array<TrackListItem> = [];
     try {
@@ -100,11 +115,7 @@ export class MusicLibraryQueries {
     } finally {
       resultSet.close();
     }
-    return {
-      items: items,
-      sections: alphabetic ? this.buildSections(items) : [],
-      indexPresentation: alphabetic ? LibraryIndexPresentation.ALPHABET : LibraryIndexPresentation.SCROLLBAR
-    };
+    return items;
   }
 
   async getPlaybackTrack(trackId: number): Promise<PlaybackTrack | undefined> {
@@ -219,27 +230,43 @@ export class MusicLibraryQueries {
   }
 
   async getAlbums(field: AlbumSortField, direction: SortDirection): Promise<LibrarySnapshot<AlbumListItem>> {
-    const alphabetic = field === AlbumSortField.TITLE || field === AlbumSortField.ALBUM_ARTIST;
-    const order = direction === SortDirection.ASCENDING ? 'ASC' : 'DESC';
-    let sectionColumn = "'#'";
-    let orderClause = `al.created_at ${order}, al.id ${order}`;
-    if (field === AlbumSortField.TITLE) {
-      sectionColumn = 'al.title_section';
-      orderClause = `al.title_section = '#' ASC, al.title_natural_key ${order}, al.id ${order}`;
-    } else if (field === AlbumSortField.ALBUM_ARTIST) {
-      sectionColumn = 'al.artist_section';
-      orderClause = `al.artist_section = '#' ASC, al.artist_natural_key ${order}, al.id ${order}`;
-    } else if (field === AlbumSortField.RELEASE_DATE) {
-      orderClause = `al.release_date_sort = 0 ASC, al.release_date_sort ${order}, al.id ${order}`;
-    }
+    const descriptor = LibrarySortPlan.album(field, direction);
+    const items = await this.queryAlbumItems(descriptor);
+    return {
+      items: items,
+      sections: descriptor.alphabetic ? this.buildSections(items) : [],
+      indexPresentation: descriptor.indexPresentation()
+    };
+  }
+
+  getAlbumCatalog(field: AlbumSortField, direction: SortDirection): Promise<LibraryCatalog> {
+    return this.queryCatalog('album al', LibrarySortPlan.album(field, direction));
+  }
+
+  async getAlbumPage(field: AlbumSortField, direction: SortDirection,
+    offset: number, limit: number): Promise<LibraryPage<AlbumListItem>> {
+    const safeOffset = MusicLibraryQueries.pageOffset(offset);
+    const safeLimit = MusicLibraryQueries.pageLimit(limit);
+    return {
+      offset: safeOffset,
+      items: await this.queryAlbumItems(LibrarySortPlan.album(field, direction), safeOffset, safeLimit)
+    };
+  }
+
+  private async queryAlbumItems(descriptor: LibrarySortDescriptor,
+    offset?: number, limit?: number): Promise<Array<AlbumListItem>> {
+    const paged = offset !== undefined && limit !== undefined;
+    const paginationClause = paged ? ' LIMIT ? OFFSET ?' : '';
+    const bindArgs: Array<number> = paged ? [limit as number, offset as number] : [];
     const resultSet = await this.database.getStore().querySql(
       `SELECT al.id, al.title, al.album_artist_display, al.track_count,
         al.total_duration_ms, COALESCE(a.large_path, ''),
         COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
         COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
-        COALESCE(a.palette_accent, '#FFFFB347'), ${sectionColumn}
+        COALESCE(a.palette_accent, '#FFFFB347'), ${descriptor.sectionExpression}
        FROM album al LEFT JOIN artwork_asset a ON a.id = al.primary_artwork_id
-       ORDER BY ${orderClause}`
+       ORDER BY ${descriptor.orderClause}${paginationClause}`,
+      bindArgs
     );
     const items: Array<AlbumListItem> = [];
     try {
@@ -262,11 +289,7 @@ export class MusicLibraryQueries {
     } finally {
       resultSet.close();
     }
-    return {
-      items: items,
-      sections: alphabetic ? this.buildSections(items) : [],
-      indexPresentation: alphabetic ? LibraryIndexPresentation.ALPHABET : LibraryIndexPresentation.SCROLLBAR
-    };
+    return items;
   }
 
   async getAlbumDetail(albumId: number): Promise<AlbumDetail | undefined> {
@@ -539,6 +562,41 @@ export class MusicLibraryQueries {
     });
   }
 
+  private async queryCatalog(fromClause: string,
+    descriptor: LibrarySortDescriptor): Promise<LibraryCatalog> {
+    if (!descriptor.alphabetic) {
+      return {
+        totalCount: await this.readCount(this.database.getStore(), `SELECT COUNT(*) FROM ${fromClause}`),
+        sections: [],
+        indexPresentation: descriptor.indexPresentation()
+      };
+    }
+    const resultSet = await this.database.getStore().querySql(
+      `SELECT ${descriptor.sectionExpression}, COUNT(*)
+       FROM ${fromClause}
+       GROUP BY ${descriptor.sectionExpression}
+       ORDER BY ${descriptor.sectionOrderClause}`
+    );
+    const sections: Array<LibrarySection> = [];
+    let totalCount = 0;
+    try {
+      while (resultSet.goToNextRow()) {
+        sections.push({
+          label: resultSet.getString(0),
+          startIndex: totalCount
+        });
+        totalCount += resultSet.getLong(1);
+      }
+    } finally {
+      resultSet.close();
+    }
+    return {
+      totalCount: totalCount,
+      sections: sections,
+      indexPresentation: LibraryIndexPresentation.ALPHABET
+    };
+  }
+
   private async readCount(store: relationalStore.RdbStore, sql: string): Promise<number> {
     const resultSet = await store.querySql(sql);
     try {
@@ -559,5 +617,16 @@ export class MusicLibraryQueries {
       }
     }
     return sections;
+  }
+
+  private static pageOffset(offset: number): number {
+    return offset > 0 ? Math.floor(offset) : 0;
+  }
+
+  private static pageLimit(limit: number): number {
+    if (!(limit > 0)) {
+      return 1;
+    }
+    return Math.min(256, Math.floor(limit));
   }
 }

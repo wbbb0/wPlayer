@@ -8,12 +8,15 @@ import {
   LibraryIndexPresentation
 } from '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
+import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
+import { LibrarySlot } from '../../library/store/PagedLibraryDataSource';
 
 @Component
 export struct AlbumsPage {
   @ObjectLink store: LibraryStore;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
+  @State selectedSectionIndex: number = 0;
   scroller: Scroller = new Scroller();
   onOpenAlbum: (item: AlbumListItem) => void = (_item: AlbumListItem): void => {};
   private readonly scrollBehavior: PageGridBehavior = new PageGridBehavior();
@@ -33,33 +36,66 @@ export struct AlbumsPage {
       Column() {
         Stack({ alignContent: Alignment.End }) {
         Grid(this.scroller) {
-          LazyForEach(this.store.albumDataSource, (item: AlbumListItem) => {
-            GridItem() {
-              Column({ space: 7 }) {
-                ArtworkView({
-                  sourcePath: item.artworkPath.length > 0 ? this.store.resolveArtworkPath(item.artworkPath) : '',
-                  sourceWidth: item.artworkWidth,
-                  sourceHeight: item.artworkHeight,
-                  fitMode: ArtworkFitMode.CONTAIN,
-                  cornerRadius: 18,
-                  shadowEnabled: item.artworkPath.length > 0
+          LazyForEach(this.store.albumDataSource, (slot: LibrarySlot<AlbumListItem>) => {
+            if (slot.value !== undefined) {
+              GridItem() {
+                Column({ space: 7 }) {
+                  ArtworkView({
+                    sourcePath: slot.value.artworkPath.length > 0 ?
+                      this.store.resolveArtworkPath(slot.value.artworkPath) : '',
+                    sourceWidth: slot.value.artworkWidth,
+                    sourceHeight: slot.value.artworkHeight,
+                    fitMode: ArtworkFitMode.CONTAIN,
+                    cornerRadius: 18,
+                    shadowEnabled: slot.value.artworkPath.length > 0
+                  })
+                  Text(slot.value.title)
+                    .fontSize(15)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor($r('app.color.text_primary'))
+                    .maxLines(1)
+                    .width('100%')
+                  Text(slot.value.albumArtistDisplay.length > 0 ?
+                    slot.value.albumArtistDisplay : `${slot.value.trackCount} 首`)
+                    .fontSize(12)
+                    .fontColor($r('app.color.text_secondary'))
+                    .maxLines(1)
+                    .width('100%')
+                }
+                .alignItems(HorizontalAlign.Start)
+                .onClick(() => {
+                  if (slot.value !== undefined) {
+                    this.onOpenAlbum(slot.value);
+                  }
                 })
-                Text(item.title)
-                  .fontSize(15)
-                  .fontWeight(FontWeight.Medium)
-                  .fontColor($r('app.color.text_primary'))
-                  .maxLines(1)
-                  .width('100%')
-                Text(item.albumArtistDisplay.length > 0 ? item.albumArtistDisplay : `${item.trackCount} 首`)
-                  .fontSize(12)
-                  .fontColor($r('app.color.text_secondary'))
-                  .maxLines(1)
-                  .width('100%')
               }
-              .alignItems(HorizontalAlign.Start)
-              .onClick(() => this.onOpenAlbum(item))
+            } else {
+              GridItem() {
+                Column({ space: 7 }) {
+                  Row()
+                    .width('100%')
+                    .aspectRatio(1)
+                    .borderRadius(18)
+                    .backgroundColor($r('app.color.text_tertiary'))
+                    .opacity(0.12)
+                  Row()
+                    .width('68%')
+                    .height(12)
+                    .borderRadius(6)
+                    .backgroundColor($r('app.color.text_tertiary'))
+                    .opacity(0.14)
+                  Row()
+                    .width('46%')
+                    .height(10)
+                    .borderRadius(5)
+                    .backgroundColor($r('app.color.text_tertiary'))
+                    .opacity(0.1)
+                }
+                .alignItems(HorizontalAlign.Start)
+              }
             }
-          }, (item: AlbumListItem) => `${item.id}`)
+          }, (slot: LibrarySlot<AlbumListItem>) =>
+            `${slot.generation}:${slot.index}:${slot.revision}`)
         }
         .columnsTemplate(PageLayoutSpec.albumColumnsTemplate())
         .columnsGap(16)
@@ -71,14 +107,27 @@ export struct AlbumsPage {
         .contentEndOffset(PageLayoutSpec.contentEnd(this.bottomInset))
         .scrollBar(this.store.albumIndexPresentation === LibraryIndexPresentation.ALPHABET ?
           BarState.Off : BarState.Auto)
+        .onScrollIndex((firstIndex: number, lastIndex: number) => {
+          if (firstIndex < 0) {
+            return;
+          }
+          const sectionIndex = LibraryPagingPolicy.selectedSectionIndex(this.store.albumSections, firstIndex);
+          if (sectionIndex >= 0 && sectionIndex !== this.selectedSectionIndex) {
+            this.selectedSectionIndex = sectionIndex;
+          }
+          this.store.ensureAlbumRange(firstIndex, lastIndex);
+        })
         .attributeModifier(this.scrollBehavior)
 
         if (this.store.albumIndexPresentation === LibraryIndexPresentation.ALPHABET &&
           this.store.albumSections.length > 0) {
           LibraryAlphabetIndex({
             sections: this.store.albumSections,
-            onSelect: (itemIndex: number) => {
+            selectedIndex: this.selectedSectionIndex,
+            onSelect: (itemIndex: number, sectionIndex: number) => {
+              this.selectedSectionIndex = sectionIndex;
               this.scroller.scrollToIndex(itemIndex, false, ScrollAlign.START);
+              this.store.ensureAlbumRange(itemIndex, itemIndex);
             }
           })
           .margin({ right: 2, bottom: PageLayoutSpec.contentEnd(this.bottomInset) / 2 })

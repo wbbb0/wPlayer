@@ -18,6 +18,7 @@ import { ComponentContent, SymbolGlyphModifier } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { AppAppearancePalette } from '../../appearance/AppAppearance';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
+import { DynamicColor } from '../../appearance/DynamicColor';
 import { AppShellLayoutSpec } from '../layout/AppShellLayoutSpec';
 import { AppNavigationStyle } from './AppNavigationStyle';
 import { AppPrimaryTitleParams } from './AppPrimaryTitleContent';
@@ -35,8 +36,9 @@ import {
 import { LibrarySortMenu, LibrarySortMenuParams } from '../library/LibrarySortMenu';
 import { MiniPlayerSurface } from '../player/MiniPlayerSurface';
 import { QueueActionMenu } from '../library/QueueActionMenu';
-import { PlayerFrame } from '../player/PlayerMotion';
-import { AlbumSortField, SortDirection, TrackSortField } from '../../library/model/LibraryModels';
+import { PlayerFrame, PlayerLayoutSpec } from '../player/PlayerMotion';
+import { AlbumSortField, SortDirection, TrackListItem, TrackSortField } from
+  '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
@@ -82,7 +84,12 @@ export struct ResponsiveNavigationShell {
   @Prop miniBarExpanded: boolean = false;
   @Prop miniPlayerOffsetX: number = 0;
   @Prop morphActive: boolean = false;
-  @Prop measuredMiniPlayerFrame: PlayerFrame = { x: 0, y: 0, width: 56, height: 56 };
+  @Prop measuredMiniPlayerFrame: PlayerFrame = {
+    x: 0,
+    y: 0,
+    width: PlayerLayoutSpec.DEFAULT_MINI_PLAYER_SIZE,
+    height: PlayerLayoutSpec.DEFAULT_MINI_PLAYER_SIZE
+  };
   @Prop appearancePalette: AppAppearancePalette = AppAppearancePalette.fallback();
   @Prop themePageBackground: string = '#FF000000';
 
@@ -178,7 +185,10 @@ export struct ResponsiveNavigationShell {
         largeWidth: AppShellLayoutSpec.COMPACT_TAB_LARGE_WIDTH
       },
       barBottomMargin: AppShellLayoutSpec.FLOATING_BAR_BOTTOM_MARGIN,
-      gradientMask: { maskColor: $r('app.color.float_bar_gradient_mask'), maskHeight: 84 },
+      gradientMask: {
+        maskColor: $r('app.color.float_bar_gradient_mask'),
+        maskHeight: AppShellLayoutSpec.FLOATING_BAR_GRADIENT_MASK_HEIGHT
+      },
       systemMaterialEffect: {
         materialType: hdsMaterial.MaterialType.ADAPTIVE,
         materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
@@ -266,6 +276,18 @@ export struct ResponsiveNavigationShell {
       });
   }
 
+  private shuffleAllTracks(): void {
+    this.libraryStore.loadTrackSnapshot()
+      .then((items: Array<TrackListItem>) => playbackRuntime.shuffleAll(items))
+      .catch((error: Object) => console.warn(`Unable to load shuffle queue: ${error}`));
+  }
+
+  private playLibraryTrack(item: TrackListItem): void {
+    this.libraryStore.loadTrackSnapshot()
+      .then((items: Array<TrackListItem>) => playbackRuntime.playFromLibrary(item, items))
+      .catch((error: Object) => console.warn(`Unable to load playback queue: ${error}`));
+  }
+
   private libraryTitleMenu(routeId: string): HdsNavigationMenuContentOptions | undefined {
     if (routeId !== NavigationRoute.SONGS && routeId !== NavigationRoute.ALBUMS) {
       return undefined;
@@ -280,7 +302,7 @@ export struct ResponsiveNavigationShell {
         label: '随机播放全部音乐',
         type: IconStyleMode.NORMAL,
         isEnabled: this.libraryStore.statistics.trackCount > 0,
-        action: () => playbackRuntime.shuffleAll(this.libraryStore.trackSnapshot())
+        action: () => this.shuffleAllTracks()
       }
     }, {
       content: {
@@ -302,22 +324,11 @@ export struct ResponsiveNavigationShell {
 
   private albumDetailBackground(params: AlbumDetailRouteParams): string {
     const darkMode = this.appearancePalette.windowBackground.toUpperCase() === '#FF000000';
-    return this.blendOpaque(this.appearancePalette.windowBackground, params.palettePrimary, darkMode ? 0.50 : 0.36);
-  }
-
-  private blendOpaque(base: string, tint: string, opacity: number): string {
-    if (base.length !== 9 || tint.length !== 9 || !base.startsWith('#') || !tint.startsWith('#')) {
-      return base;
-    }
-    let result = '#FF';
-    for (let channel = 0; channel < 3; channel += 1) {
-      const offset = 3 + channel * 2;
-      const baseValue = Number.parseInt(base.substring(offset, offset + 2), 16);
-      const tintValue = Number.parseInt(tint.substring(offset, offset + 2), 16);
-      const mixed = Math.round(baseValue * (1 - opacity) + tintValue * opacity);
-      result += mixed.toString(16).padStart(2, '0').toUpperCase();
-    }
-    return result;
+    return DynamicColor.blendOpaque(
+      this.appearancePalette.windowBackground,
+      params.palettePrimary,
+      darkMode ? 0.50 : 0.36
+    );
   }
 
   private albumDetailTitleMenu(albumId: number): HdsNavigationMenuContentOptions {
@@ -360,7 +371,7 @@ export struct ResponsiveNavigationShell {
         topInset: this.topInset,
         bottomInset: this.bottomInset,
         scroller: this.routeScroller(routeId),
-        onPlayTrack: (item) => playbackRuntime.playFromLibrary(item, this.libraryStore.trackSnapshot())
+        onPlayTrack: (item) => this.playLibraryTrack(item)
       })
     } else if (navigationPageKind(routeId) === NavigationPageKind.ALBUMS) {
       AlbumsPage({ store: this.libraryStore, topInset: this.topInset, bottomInset: this.bottomInset,
@@ -493,7 +504,7 @@ export struct ResponsiveNavigationShell {
   @Builder
   private MiniPlayer() {
     MiniPlayerSurface({
-      playerStore: playbackRuntime.playerStore,
+      playerStore: this.playerStore,
       expanded: this.miniBarExpanded,
       swipeOffsetX: this.miniPlayerOffsetX,
       morphActive: this.morphActive,

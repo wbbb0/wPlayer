@@ -173,6 +173,40 @@ export interface TrackListItem {
   sectionKey: string;
 }
 
+export interface ArtistReference {
+  id: number;
+  name: string;
+}
+
+export interface AlbumReference {
+  id: number;
+  title: string;
+  palettePrimary: string;
+}
+
+export enum LibraryEntityKind {
+  ARTIST = 0,
+  ALBUM = 1
+}
+
+export interface LibraryEntityIdentity {
+  kind: LibraryEntityKind;
+  id: number;
+}
+
+export interface LibraryNavigationTarget {
+  identity: LibraryEntityIdentity;
+  title: string;
+  palettePrimary: string;
+}
+
+export interface TrackNavigationTargets {
+  trackId: number;
+  trackArtists: Array<ArtistReference>;
+  albumArtists: Array<ArtistReference>;
+  album?: AlbumReference;
+}
+
 export interface AlbumListItem {
   id: number;
   title: string;
@@ -190,8 +224,19 @@ export interface AlbumListItem {
 
 export interface AlbumDetail {
   album: AlbumListItem;
+  albumArtists: Array<ArtistReference>;
+  relatedAlbums: Array<AlbumListItem>;
   releaseYear: number;
   genreDisplay: string;
+  tracks: Array<TrackListItem>;
+}
+
+export interface ArtistDetail {
+  artist: ArtistReference;
+  albumCount: number;
+  trackCount: number;
+  totalDurationMs: number;
+  albums: Array<AlbumListItem>;
   tracks: Array<TrackListItem>;
 }
 

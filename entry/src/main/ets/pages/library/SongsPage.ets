@@ -18,6 +18,8 @@ export struct SongsPage {
   @Prop bottomInset: number = 0;
   @State selectedSectionIndex: number = 0;
   onPlayTrack: (item: TrackListItem) => void = (_item: TrackListItem): void => {};
+  onOpenTrackActions: (item: TrackListItem, anchorId: string) => void =
+    (_item: TrackListItem, _anchorId: string): void => {};
   scroller: Scroller = new Scroller();
   private readonly scrollBehavior: PageListBehavior = new PageListBehavior();
 
@@ -51,6 +53,7 @@ export struct SongsPage {
                     artworkPath: slot.value.smallArtworkPath.length > 0 ?
                       this.store.resolveArtworkPath(slot.value.smallArtworkPath) : '',
                     actionTrack: slot.value,
+                    actionAnchorPrefix: 'songs',
                     menuPlacement: Placement.BottomRight,
                     horizontalInset: 16,
                     verticalInset: 8,
@@ -60,7 +63,8 @@ export struct SongsPage {
                       if (slot.value !== undefined) {
                         this.onPlayTrack(slot.value);
                       }
-                    }
+                    },
+                    onOpenActions: this.onOpenTrackActions
                   })
                 }
                 .width('100%')

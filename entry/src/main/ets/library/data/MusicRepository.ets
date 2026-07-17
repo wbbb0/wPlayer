@@ -3,6 +3,7 @@ import { common } from '@kit.AbilityKit';
 import {
   AlbumSortField,
   AlbumDetail,
+  ArtistDetail,
   AvailabilityState,
   AlbumListItem,
   LibraryCatalog,
@@ -11,6 +12,7 @@ import {
   LibraryStatistics,
   SortDirection,
   TrackListItem,
+  TrackNavigationTargets,
   TrackSortField
 } from '../model/LibraryModels';
 import { PlaybackTrack, ResumeState } from '../../playback/model/PlaybackModels';
@@ -137,6 +139,14 @@ export class MusicRepository {
 
   getAlbumDetail(albumId: number): Promise<AlbumDetail | undefined> {
     return this.queries.getAlbumDetail(albumId);
+  }
+
+  getArtistDetail(artistId: number): Promise<ArtistDetail | undefined> {
+    return this.queries.getArtistDetail(artistId);
+  }
+
+  getTrackNavigationTargets(trackId: number): Promise<TrackNavigationTargets | undefined> {
+    return this.queries.getTrackNavigationTargets(trackId);
   }
 
   hasUri(uri: string): Promise<boolean> {

@@ -1,18 +1,22 @@
 import { PageLayoutSpec } from '../../components/layout/PageLayoutSpec';
 import { PageListBehavior } from '../../components/layout/PageScrollBehavior';
 import { ArtworkFitMode, ArtworkView } from '../../components/artwork/ArtworkView';
-import { AlbumDetail, TrackListItem } from '../../library/model/LibraryModels';
+import { AlbumDetail, AlbumListItem, TrackListItem } from '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
+import { AlbumDetailState } from '../../library/store/LibraryDetailState';
+import { ArtistReference } from '../../library/model/LibraryModels';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { AppShellLayoutSpec } from '../../components/layout/AppShellLayoutSpec';
 import { SongListItem, SongListItemLayout } from '../../components/library/SongListItem';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import { DynamicColor, DynamicContainerRole } from '../../appearance/DynamicColor';
+import { AlbumGridSection } from '../../components/library/AlbumGridItem';
 
 @Component
 export struct AlbumDetailPage {
   @ObjectLink store: LibraryStore;
-  @Prop albumId: number = -1;
+  @ObjectLink state: AlbumDetailState;
+  @Prop actionAnchorPrefix: string = 'album';
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @Prop rootWidth: number = 0;
@@ -22,14 +26,17 @@ export struct AlbumDetailPage {
   private multipleDiscResult: boolean = false;
   scroller: Scroller = new Scroller();
   private readonly scrollBehavior: PageListBehavior = new PageListBehavior();
+  onOpenArtist: (artist: ArtistReference) => void = (_artist: ArtistReference): void => {};
+  onOpenAlbum: (album: AlbumListItem) => void = (_album: AlbumListItem): void => {};
+  onOpenTrackActions: (track: TrackListItem, anchorId: string) => void =
+    (_track: TrackListItem, _anchorId: string): void => {};
 
   aboutToAppear(): void {
-    this.store.loadAlbumDetail(this.albumId);
+    this.state.load(this.store);
   }
 
   private detail(): AlbumDetail | undefined {
-    const detail = this.store.albumDetail;
-    return detail !== undefined && detail.album.id === this.albumId ? detail : undefined;
+    return this.state.detail;
   }
 
   private durationLabel(durationMs: number): string {
@@ -100,6 +107,48 @@ export struct AlbumDetailPage {
   }
 
   @Builder
+  private AlbumArtistMenu(artists: Array<ArtistReference>) {
+    Menu() {
+      ForEach(artists, (artist: ArtistReference) => {
+        MenuItem({ content: artist.name, labelInfo: '专辑艺术家' })
+          .onClick(() => this.onOpenArtist(artist))
+      }, (artist: ArtistReference) => `${artist.id}`)
+    }
+    .width(240)
+  }
+
+  @Builder
+  private AlbumArtistText(detail: AlbumDetail, centered: boolean) {
+    if (detail.albumArtists.length === 1) {
+      Text(detail.album.albumArtistDisplay.length > 0 ?
+        detail.album.albumArtistDisplay : detail.albumArtists[0].name)
+        .fontSize(14)
+        .fontColor($r('app.color.text_secondary'))
+        .textAlign(centered ? TextAlign.Center : TextAlign.Start)
+        .maxLines(2)
+        .width('100%')
+        .accessibilityText('前往专辑艺术家')
+        .onClick(() => this.onOpenArtist(detail.albumArtists[0]))
+    } else if (detail.albumArtists.length > 1) {
+      Text(detail.album.albumArtistDisplay)
+        .fontSize(14)
+        .fontColor($r('app.color.text_secondary'))
+        .textAlign(centered ? TextAlign.Center : TextAlign.Start)
+        .maxLines(2)
+        .width('100%')
+        .accessibilityText('选择专辑艺术家')
+        .bindMenu(this.AlbumArtistMenu(detail.albumArtists), { placement: Placement.Bottom })
+    } else {
+      Text('未知专辑艺术家')
+        .fontSize(14)
+        .fontColor($r('app.color.text_secondary'))
+        .textAlign(centered ? TextAlign.Center : TextAlign.Start)
+        .maxLines(2)
+        .width('100%')
+    }
+  }
+
+  @Builder
   private AlbumText(detail: AlbumDetail, centered: boolean) {
     Column({ space: 7 }) {
       Text(detail.album.title)
@@ -109,12 +158,7 @@ export struct AlbumDetailPage {
         .textAlign(centered ? TextAlign.Center : TextAlign.Start)
         .maxLines(3)
         .width('100%')
-      Text(detail.album.albumArtistDisplay.length > 0 ? detail.album.albumArtistDisplay : '未知专辑艺术家')
-        .fontSize(14)
-        .fontColor($r('app.color.text_secondary'))
-        .textAlign(centered ? TextAlign.Center : TextAlign.Start)
-        .maxLines(2)
-        .width('100%')
+      this.AlbumArtistText(detail, centered)
       Text(this.albumInformation(detail))
         .fontSize(12)
         .fontColor($r('app.color.text_tertiary'))
@@ -237,14 +281,47 @@ export struct AlbumDetailPage {
     .padding({ left: PageLayoutSpec.HORIZONTAL_INSET, right: PageLayoutSpec.HORIZONTAL_INSET, bottom: 14 })
   }
 
+  private relatedAlbumsTitle(detail: AlbumDetail): string {
+    if (detail.albumArtists.length === 1) {
+      return `${detail.albumArtists[0].name}的其他专辑`;
+    }
+    if (detail.album.albumArtistDisplay.trim().length > 0) {
+      return `${detail.album.albumArtistDisplay}的其他专辑`;
+    }
+    return '其他专辑';
+  }
+
+  @Builder
+  private RelatedAlbums(detail: AlbumDetail) {
+    Column({ space: 10 }) {
+      Text(this.relatedAlbumsTitle(detail))
+        .fontSize(20)
+        .fontWeight(FontWeight.Bold)
+        .fontColor($r('app.color.text_primary'))
+        .width('100%')
+        .padding({
+          left: PageLayoutSpec.HORIZONTAL_INSET,
+          right: PageLayoutSpec.HORIZONTAL_INSET,
+          top: 20
+        })
+      AlbumGridSection({
+        store: this.store,
+        albums: detail.relatedAlbums,
+        containerWidth: this.rootWidth,
+        onOpenAlbum: this.onOpenAlbum
+      })
+    }
+    .width('100%')
+  }
+
   build() {
     List({ space: 2, scroller: this.scroller }) {
-      if (this.albumId === this.store.albumDetail?.album.id && this.store.albumDetail !== undefined) {
-        ListItem() { this.Header(this.store.albumDetail) }
-        ForEach(this.store.albumDetail.tracks, (track: TrackListItem, index: number) => {
+      if (this.state.detail !== undefined) {
+        ListItem() { this.Header(this.state.detail) }
+        ForEach(this.state.detail.tracks, (track: TrackListItem, index: number) => {
           ListItem() {
             Column() {
-              if (this.isDiscStart(this.store.albumDetail!.tracks, index)) {
+              if (this.isDiscStart(this.state.detail!.tracks, index)) {
                 Row({ space: 10 }) {
                   Text(this.discLabel(track.discNumber))
                     .fontSize(12)
@@ -266,9 +343,10 @@ export struct AlbumDetailPage {
                 trackNumber: track.trackNumber,
                 showArtist: this.showTrackArtist(
                   track,
-                  this.store.albumDetail!.album.albumArtistDisplay
+                  this.state.detail!.album.albumArtistDisplay
                 ),
                 actionTrack: track,
+                actionAnchorPrefix: this.actionAnchorPrefix,
                 horizontalInset: PageLayoutSpec.HORIZONTAL_INSET,
                 verticalInset: 0,
                 minimumHeight: 58,
@@ -279,16 +357,22 @@ export struct AlbumDetailPage {
                   if (detail !== undefined) {
                     playbackRuntime.playInOrder(track, detail.tracks);
                   }
-                }
+                },
+                onOpenActions: this.onOpenTrackActions
               })
             }
           }
         }, (track: TrackListItem) => `${track.id}`)
-      } else if (this.store.albumDetailLoading) {
+        if (this.state.detail.relatedAlbums.length > 0) {
+          ListItem() {
+            this.RelatedAlbums(this.state.detail)
+          }
+        }
+      } else if (this.state.loading) {
         ListItem() { LoadingProgress().width(40).height(40).margin({ top: 72 }) }
       } else {
         ListItem() {
-          Text(this.store.albumDetailError.length > 0 ? this.store.albumDetailError : '正在载入专辑…')
+          Text(this.state.error.length > 0 ? this.state.error : '正在载入专辑…')
             .fontSize(15)
             .fontColor($r('app.color.text_secondary'))
             .width('100%')

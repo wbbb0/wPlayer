@@ -2,7 +2,7 @@ import { PageLayoutSpec } from '../../components/layout/PageLayoutSpec';
 import { PageGridBehavior } from '../../components/layout/PageScrollBehavior';
 import { LibraryAlphabetIndex } from '../../components/library/LibraryAlphabetIndex';
 import { LibraryEmptyState } from '../../components/library/LibraryEmptyState';
-import { ArtworkFitMode, ArtworkView } from '../../components/artwork/ArtworkView';
+import { AlbumGridItem, AlbumGridItemPlaceholder } from '../../components/library/AlbumGridItem';
 import {
   AlbumListItem,
   LibraryIndexPresentation
@@ -39,67 +39,23 @@ export struct AlbumsPage {
           LazyForEach(this.store.albumDataSource, (slot: LibrarySlot<AlbumListItem>) => {
             if (slot.value !== undefined) {
               GridItem() {
-                Column({ space: 7 }) {
-                  ArtworkView({
-                    sourcePath: slot.value.artworkPath.length > 0 ?
-                      this.store.resolveArtworkPath(slot.value.artworkPath) : '',
-                    sourceWidth: slot.value.artworkWidth,
-                    sourceHeight: slot.value.artworkHeight,
-                    fitMode: ArtworkFitMode.CONTAIN,
-                    cornerRadius: 18,
-                    shadowEnabled: slot.value.artworkPath.length > 0
-                  })
-                  Text(slot.value.title)
-                    .fontSize(15)
-                    .fontWeight(FontWeight.Medium)
-                    .fontColor($r('app.color.text_primary'))
-                    .maxLines(1)
-                    .width('100%')
-                  Text(slot.value.albumArtistDisplay.length > 0 ?
-                    slot.value.albumArtistDisplay : `${slot.value.trackCount} 首`)
-                    .fontSize(12)
-                    .fontColor($r('app.color.text_secondary'))
-                    .maxLines(1)
-                    .width('100%')
-                }
-                .alignItems(HorizontalAlign.Start)
-                .onClick(() => {
-                  if (slot.value !== undefined) {
-                    this.onOpenAlbum(slot.value);
-                  }
+                AlbumGridItem({
+                  store: this.store,
+                  album: slot.value,
+                  onActivate: this.onOpenAlbum
                 })
               }
             } else {
               GridItem() {
-                Column({ space: 7 }) {
-                  Row()
-                    .width('100%')
-                    .aspectRatio(1)
-                    .borderRadius(18)
-                    .backgroundColor($r('app.color.text_tertiary'))
-                    .opacity(0.12)
-                  Row()
-                    .width('68%')
-                    .height(12)
-                    .borderRadius(6)
-                    .backgroundColor($r('app.color.text_tertiary'))
-                    .opacity(0.14)
-                  Row()
-                    .width('46%')
-                    .height(10)
-                    .borderRadius(5)
-                    .backgroundColor($r('app.color.text_tertiary'))
-                    .opacity(0.1)
-                }
-                .alignItems(HorizontalAlign.Start)
+                AlbumGridItemPlaceholder()
               }
             }
           }, (slot: LibrarySlot<AlbumListItem>) =>
             `${slot.generation}:${slot.index}:${slot.revision}`)
         }
         .columnsTemplate(PageLayoutSpec.albumColumnsTemplate())
-        .columnsGap(16)
-        .rowsGap(20)
+        .columnsGap(PageLayoutSpec.ALBUM_COLUMN_GAP)
+        .rowsGap(PageLayoutSpec.ALBUM_ROW_GAP)
         .width('100%')
         .height('100%')
         .padding({ left: PageLayoutSpec.HORIZONTAL_INSET, right: PageLayoutSpec.HORIZONTAL_INSET })

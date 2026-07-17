@@ -1,10 +1,14 @@
 import { relationalStore } from '@kit.ArkData';
 import {
+  AlbumReference,
   AlbumListItem,
   AlbumDetail,
   AlbumSortField,
+  ArtistDetail,
+  ArtistReference,
   AvailabilityState,
   ArtworkPictureType,
+  CreditRole,
   LibraryCatalog,
   LibraryIndexPresentation,
   LibraryPage,
@@ -13,6 +17,7 @@ import {
   LibraryStatistics,
   MediaFormat,
   TrackListItem,
+  TrackNavigationTargets,
   TrackSortField,
   SortDirection
 } from '../model/LibraryModels';
@@ -268,28 +273,7 @@ export class MusicLibraryQueries {
        ORDER BY ${descriptor.orderClause}${paginationClause}`,
       bindArgs
     );
-    const items: Array<AlbumListItem> = [];
-    try {
-      while (resultSet.goToNextRow()) {
-        items.push({
-          id: resultSet.getLong(0),
-          title: resultSet.getString(1),
-          albumArtistDisplay: resultSet.getString(2),
-          trackCount: resultSet.getLong(3),
-          totalDurationMs: resultSet.getLong(4),
-          artworkPath: resultSet.getString(5),
-          artworkWidth: resultSet.getLong(6),
-          artworkHeight: resultSet.getLong(7),
-          palettePrimary: resultSet.getString(8),
-          paletteSecondary: resultSet.getString(9),
-          paletteAccent: resultSet.getString(10),
-          sectionKey: resultSet.getString(11)
-        });
-      }
-    } finally {
-      resultSet.close();
-    }
-    return items;
+    return this.readAlbumListItems(resultSet);
   }
 
   async getAlbumDetail(albumId: number): Promise<AlbumDetail | undefined> {
@@ -370,7 +354,228 @@ export class MusicLibraryQueries {
     } finally {
       trackResult.close();
     }
-    return { album: album, releaseYear: releaseYear, genreDisplay: genreDisplay, tracks: tracks };
+    const albumArtists = await this.getAlbumArtists(albumId);
+    return {
+      album: album,
+      albumArtists: albumArtists,
+      relatedAlbums: albumArtists.length > 0 ? await this.getRelatedAlbums(albumId) : [],
+      releaseYear: releaseYear,
+      genreDisplay: genreDisplay,
+      tracks: tracks
+    };
+  }
+
+  async getTrackNavigationTargets(trackId: number): Promise<TrackNavigationTargets | undefined> {
+    const albumResult = await this.database.getStore().querySql(
+      `SELECT t.album_id, COALESCE(al.title, ''), COALESCE(a.palette_primary, '#FF7C4DFF')
+       FROM track t
+       LEFT JOIN album al ON al.id = t.album_id
+       LEFT JOIN artwork_asset a ON a.id = al.primary_artwork_id
+       WHERE t.id = ? LIMIT 1`,
+      [trackId]
+    );
+    let albumId = -1;
+    let album: AlbumReference | undefined;
+    try {
+      if (!albumResult.goToNextRow()) {
+        return undefined;
+      }
+      if (!albumResult.isColumnNull(0)) {
+        albumId = albumResult.getLong(0);
+        album = {
+          id: albumId,
+          title: albumResult.getString(1),
+          palettePrimary: albumResult.getString(2)
+        };
+      }
+    } finally {
+      albumResult.close();
+    }
+    return {
+      trackId: trackId,
+      trackArtists: await this.getTrackArtists(trackId),
+      albumArtists: albumId >= 0 ? await this.getAlbumArtists(albumId) : [],
+      album: album
+    };
+  }
+
+  async getArtistDetail(artistId: number): Promise<ArtistDetail | undefined> {
+    const artistResult = await this.database.getStore().querySql(
+      'SELECT id, name FROM person WHERE id = ? LIMIT 1',
+      [artistId]
+    );
+    let artist: ArtistReference | undefined;
+    try {
+      if (artistResult.goToNextRow()) {
+        artist = {
+          id: artistResult.getLong(0),
+          name: artistResult.getString(1)
+        };
+      }
+    } finally {
+      artistResult.close();
+    }
+    if (artist === undefined) {
+      return undefined;
+    }
+    const albums = await this.getArtistAlbums(artistId);
+    const tracks = await this.getArtistTracks(artistId);
+    let totalDurationMs = 0;
+    for (let index = 0; index < tracks.length; index += 1) {
+      totalDurationMs += tracks[index].durationMs;
+    }
+    return {
+      artist: artist,
+      albumCount: albums.length,
+      trackCount: tracks.length,
+      totalDurationMs: totalDurationMs,
+      albums: albums,
+      tracks: tracks
+    };
+  }
+
+  private async getTrackArtists(trackId: number): Promise<Array<ArtistReference>> {
+    const resultSet = await this.database.getStore().querySql(
+      `SELECT p.id, p.name
+       FROM track_credit tc JOIN person p ON p.id = tc.person_id
+       WHERE tc.track_id = ? AND tc.role = ?
+       ORDER BY tc.ordinal`,
+      [trackId, CreditRole.TRACK_ARTIST]
+    );
+    return this.readArtistReferences(resultSet);
+  }
+
+  private async getAlbumArtists(albumId: number): Promise<Array<ArtistReference>> {
+    const resultSet = await this.database.getStore().querySql(
+      `SELECT p.id, p.name
+       FROM album_credit ac JOIN person p ON p.id = ac.person_id
+       WHERE ac.album_id = ?
+       ORDER BY ac.ordinal`,
+      [albumId]
+    );
+    return this.readArtistReferences(resultSet);
+  }
+
+  private readArtistReferences(resultSet: relationalStore.ResultSet): Array<ArtistReference> {
+    const artists: Array<ArtistReference> = [];
+    try {
+      while (resultSet.goToNextRow()) {
+        artists.push({
+          id: resultSet.getLong(0),
+          name: resultSet.getString(1)
+        });
+      }
+    } finally {
+      resultSet.close();
+    }
+    return artists;
+  }
+
+  private async getArtistAlbums(artistId: number): Promise<Array<AlbumListItem>> {
+    const resultSet = await this.database.getStore().querySql(
+      `SELECT DISTINCT al.id, al.title, al.album_artist_display, al.track_count,
+        al.total_duration_ms, COALESCE(a.large_path, ''),
+        COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
+        COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
+        COALESCE(a.palette_accent, '#FFFFB347'), '#'
+       FROM album_credit ac
+       JOIN album al ON al.id = ac.album_id
+       LEFT JOIN artwork_asset a ON a.id = al.primary_artwork_id
+       WHERE ac.person_id = ?
+       ORDER BY al.release_date_sort DESC, al.sort_title_key, al.id`,
+      [artistId]
+    );
+    return this.readAlbumListItems(resultSet);
+  }
+
+  private async getRelatedAlbums(albumId: number): Promise<Array<AlbumListItem>> {
+    const resultSet = await this.database.getStore().querySql(
+      `SELECT DISTINCT al.id, al.title, al.album_artist_display, al.track_count,
+        al.total_duration_ms, COALESCE(a.large_path, ''),
+        COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
+        COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
+        COALESCE(a.palette_accent, '#FFFFB347'), '#'
+       FROM album_credit current_credit
+       JOIN album_credit related_credit
+         ON related_credit.person_id = current_credit.person_id
+       JOIN album al ON al.id = related_credit.album_id
+       LEFT JOIN artwork_asset a ON a.id = al.primary_artwork_id
+       WHERE current_credit.album_id = ?
+         AND al.id <> ?
+       ORDER BY al.release_date_sort DESC, al.sort_title_key, al.id`,
+      [albumId, albumId]
+    );
+    return this.readAlbumListItems(resultSet);
+  }
+
+  private readAlbumListItems(resultSet: relationalStore.ResultSet): Array<AlbumListItem> {
+    const albums: Array<AlbumListItem> = [];
+    try {
+      while (resultSet.goToNextRow()) {
+        albums.push({
+          id: resultSet.getLong(0),
+          title: resultSet.getString(1),
+          albumArtistDisplay: resultSet.getString(2),
+          trackCount: resultSet.getLong(3),
+          totalDurationMs: resultSet.getLong(4),
+          artworkPath: resultSet.getString(5),
+          artworkWidth: resultSet.getLong(6),
+          artworkHeight: resultSet.getLong(7),
+          palettePrimary: resultSet.getString(8),
+          paletteSecondary: resultSet.getString(9),
+          paletteAccent: resultSet.getString(10),
+          sectionKey: resultSet.getString(11)
+        });
+      }
+    } finally {
+      resultSet.close();
+    }
+    return albums;
+  }
+
+  private async getArtistTracks(artistId: number): Promise<Array<TrackListItem>> {
+    const resultSet = await this.database.getStore().querySql(
+      `SELECT t.id, t.title, t.artist_display, t.album_display, t.duration_ms,
+        COALESCE(t.track_number, 0), COALESCE(t.disc_number, 0),
+        COALESCE(a.small_hash, ''), COALESCE(a.small_path, ''),
+        COALESCE(a.large_hash, ''), COALESCE(a.large_path, ''),
+        COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
+        COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
+        COALESCE(a.palette_accent, '#FFFFB347'), '#'
+       FROM track t LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
+       WHERE EXISTS (
+         SELECT 1 FROM track_credit tc
+         WHERE tc.track_id = t.id AND tc.person_id = ? AND tc.role = ?
+       ) OR EXISTS (
+         SELECT 1 FROM album_credit ac
+         WHERE ac.album_id = t.album_id AND ac.person_id = ?
+       )
+       ORDER BY t.album_natural_key,
+        CASE WHEN t.disc_number IS NULL OR t.disc_number <= 0 THEN 1 ELSE 0 END,
+        t.disc_number,
+        CASE WHEN t.track_number IS NULL OR t.track_number <= 0 THEN 1 ELSE 0 END,
+        t.track_number, t.title_natural_key, t.id`,
+      [artistId, CreditRole.TRACK_ARTIST, artistId]
+    );
+    const tracks: Array<TrackListItem> = [];
+    try {
+      while (resultSet.goToNextRow()) {
+        tracks.push({
+          id: resultSet.getLong(0), title: resultSet.getString(1),
+          artistDisplay: resultSet.getString(2), albumDisplay: resultSet.getString(3),
+          durationMs: resultSet.getLong(4), trackNumber: resultSet.getLong(5),
+          discNumber: resultSet.getLong(6), smallArtworkHash: resultSet.getString(7),
+          smallArtworkPath: resultSet.getString(8), artworkHash: resultSet.getString(9),
+          artworkPath: resultSet.getString(10), artworkWidth: resultSet.getLong(11),
+          artworkHeight: resultSet.getLong(12), palettePrimary: resultSet.getString(13),
+          paletteSecondary: resultSet.getString(14), paletteAccent: resultSet.getString(15),
+          sectionKey: resultSet.getString(16)
+        });
+      }
+    } finally {
+      resultSet.close();
+    }
+    return tracks;
   }
 
   async hasUri(uri: string): Promise<boolean> {

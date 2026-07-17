@@ -156,6 +156,8 @@ export struct FullPlayerContent {
   onPlayQueueTrack: (trackId: number) => void = (_trackId: number): void => {};
   onSeek: (positionMs: number) => void = (_positionMs: number): void => {};
   onResolveQueueArtwork: (relativePath: string) => string = (_relativePath: string): string => '';
+  onOpenTrackActions: (trackId: number, anchorId: string) => void =
+    (_trackId: number, _anchorId: string): void => {};
   onArtworkTarget: (target: PlayerPoint) => void = (_target: PlayerPoint): void => {};
   onCenteredArtworkTarget: (target: PlayerPoint) => void = (_target: PlayerPoint): void => {};
   private readonly queueScroller: Scroller = new Scroller();
@@ -508,11 +510,28 @@ export struct FullPlayerContent {
         .width('100%')
         .alignItems(VerticalAlign.Center)
 
-        Text(this.currentArtistLabel())
-          .fontSize(PlayerLayoutSpec.FULL_PLAYER_ARTIST_SIZE)
-          .fontColor(this.playerStore.themeOnPrimaryMedium())
-          .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
-          .maxLines(1)
+        if (this.measuresArtworkTarget) {
+          Text(this.currentArtistLabel())
+            .fontSize(PlayerLayoutSpec.FULL_PLAYER_ARTIST_SIZE)
+            .fontColor(this.playerStore.themeOnPrimaryMedium())
+            .maxLines(1)
+        } else {
+          Text(this.currentArtistLabel())
+            .fontSize(PlayerLayoutSpec.FULL_PLAYER_ARTIST_SIZE)
+            .fontColor(this.playerStore.themeOnPrimaryMedium())
+            .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+            .maxLines(1)
+            .id('full_player_artist_action')
+            .accessibilityText('查看艺术家、专辑艺术家或专辑')
+            .onClick(() => {
+              if (this.playerStore.currentTrack !== undefined) {
+                this.onOpenTrackActions(
+                  this.playerStore.currentTrack.id,
+                  'full_player_artist_action'
+                );
+              }
+            })
+        }
       }
       .alignItems(HorizontalAlign.Start)
       .width('100%')

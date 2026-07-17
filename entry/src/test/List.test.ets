@@ -5,6 +5,8 @@ import appRuntimeLifecycleTest from './AppRuntimeLifecycle.test';
 import playbackQueueRegressionTest from './PlaybackQueueRegression.test';
 import artworkCleanupRegressionTest from './ArtworkCleanupRegression.test';
 import playbackPowerPolicyTest from './PlaybackPowerPolicy.test';
+import libraryNavigationTest from './LibraryNavigation.test';
+import albumGridLayoutTest from './AlbumGridLayout.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -14,4 +16,6 @@ export default function testsuite() {
   playbackQueueRegressionTest();
   artworkCleanupRegressionTest();
   playbackPowerPolicyTest();
+  libraryNavigationTest();
+  albumGridLayoutTest();
 }

@@ -6,6 +6,7 @@ import {
   AlbumListItem,
   AlbumDetail,
   AlbumSortField,
+  ArtistDetail,
   ImportProgress,
   ImportResult,
   ImportItemResult,
@@ -15,6 +16,7 @@ import {
   LibrarySection,
   SortDirection,
   TrackListItem,
+  TrackNavigationTargets,
   TrackSortField
 } from '../model/LibraryModels';
 import { SettingsRepository } from '../../settings/SettingsRepository';
@@ -107,10 +109,6 @@ export class LibraryStore {
   importDetailCount: number = 0;
   sortIndexResult: string = '';
   sortIndexError: string = '';
-  albumDetail?: AlbumDetail;
-  albumDetailLoading: boolean = false;
-  albumDetailError: string = '';
-
   private readonly repository: MusicRepository;
   private readonly playbackBridge?: LibraryPlaybackBridge;
   private importer?: MediaImporter;
@@ -120,32 +118,8 @@ export class LibraryStore {
   private refreshGeneration: number = 0;
   private trackSortGeneration: number = 0;
   private albumSortGeneration: number = 0;
-  private albumDetailGeneration: number = 0;
-
-  async loadAlbumDetail(albumId: number): Promise<void> {
-    const generation = ++this.albumDetailGeneration;
-    this.albumDetailLoading = true;
-    this.albumDetailError = '';
-    this.albumDetail = undefined;
-    try {
-      const detail = await this.repository.getAlbumDetail(albumId);
-      if (generation !== this.albumDetailGeneration) {
-        return;
-      }
-      this.albumDetail = detail;
-      if (detail === undefined) {
-        this.albumDetailError = '专辑不存在或已从音乐库移除';
-      }
-    } catch (error) {
-      if (generation === this.albumDetailGeneration) {
-        this.albumDetailError = LibraryStore.errorMessageOf(error);
-      }
-    } finally {
-      if (generation === this.albumDetailGeneration) {
-        this.albumDetailLoading = false;
-      }
-    }
-  }
+  private readonly trackNavigationCache: Map<number, TrackNavigationTargets> =
+    new Map<number, TrackNavigationTargets>();
 
   constructor(repository?: MusicRepository, playbackBridge?: LibraryPlaybackBridge) {
     this.repository = repository === undefined ? new MusicRepository() : repository;
@@ -191,6 +165,7 @@ export class LibraryStore {
   }
 
   async refresh(): Promise<void> {
+    this.trackNavigationCache.clear();
     const refreshGeneration = ++this.refreshGeneration;
     const trackGeneration = ++this.trackSortGeneration;
     const albumGeneration = ++this.albumSortGeneration;
@@ -426,6 +401,26 @@ export class LibraryStore {
   async loadTrackSnapshot(): Promise<Array<TrackListItem>> {
     const snapshot = await this.repository.getTracks(this.trackSortField, this.trackSortDirection);
     return snapshot.items;
+  }
+
+  getAlbumDetail(albumId: number): Promise<AlbumDetail | undefined> {
+    return this.repository.getAlbumDetail(albumId);
+  }
+
+  getArtistDetail(artistId: number): Promise<ArtistDetail | undefined> {
+    return this.repository.getArtistDetail(artistId);
+  }
+
+  async getTrackNavigationTargets(trackId: number): Promise<TrackNavigationTargets | undefined> {
+    const cached = this.trackNavigationCache.get(trackId);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const targets = await this.repository.getTrackNavigationTargets(trackId);
+    if (targets !== undefined) {
+      this.trackNavigationCache.set(trackId, targets);
+    }
+    return targets;
   }
 
   setRememberSort(value: boolean): void {

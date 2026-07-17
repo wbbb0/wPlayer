@@ -36,14 +36,23 @@ import {
 import { LibrarySortMenu, LibrarySortMenuParams } from '../library/LibrarySortMenu';
 import { MiniPlayerSurface } from '../player/MiniPlayerSurface';
 import { QueueActionMenu } from '../library/QueueActionMenu';
+import { TrackActionMenuPresenter } from '../library/TrackActionMenu';
 import { PlayerFrame, PlayerLayoutSpec } from '../player/PlayerMotion';
-import { AlbumSortField, SortDirection, TrackListItem, TrackSortField } from
+import {
+  AlbumSortField,
+  LibraryEntityIdentity,
+  LibraryNavigationTarget,
+  SortDirection,
+  TrackListItem,
+  TrackSortField
+} from
   '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { AlbumsPage } from '../../pages/library/AlbumsPage';
 import { AlbumDetailPage } from '../../pages/library/AlbumDetailPage';
+import { ArtistDetailPage } from '../../pages/library/ArtistDetailPage';
 import { MaterialDebugPage } from '../../pages/debug/MaterialDebugPage';
 import { LibraryManagementPage } from '../../pages/library/LibraryManagementPage';
 import { MorePage } from '../../pages/library/MorePage';
@@ -52,26 +61,19 @@ import { SongsPage } from '../../pages/library/SongsPage';
 import { SettingsPage } from '../../pages/settings/SettingsPage';
 import { NavigationCustomizationPage } from '../../pages/settings/NavigationCustomizationPage';
 import { AppSettingsStore } from '../../settings/AppSettingsStore';
+import {
+  AlbumDetailRouteParams,
+  ArtistDetailRouteParams,
+  LibraryDetailRoute,
+  albumTarget,
+  artistTarget
+} from './LibraryNavigation';
 
 const TRACK_SORT_LABELS: Array<string> = ['名称', '专辑', '艺术家', '发行日期', '添加时间'];
 const ALBUM_SORT_LABELS: Array<string> = ['名称', '艺术家', '发行日期', '添加时间'];
 const TRACK_SORT_MENU_ID: string = 'track_sort_menu';
 const ALBUM_SORT_MENU_ID: string = 'album_sort_menu';
 const MORE_TAB_INDEX: number = PRIMARY_NAVIGATION_COUNT;
-const ALBUM_DETAIL_ROUTE: string = 'album_detail';
-
-class AlbumDetailRouteParams {
-  albumId: number;
-  title: string;
-  palettePrimary: string;
-
-  constructor(albumId: number, title: string, palettePrimary: string) {
-    this.albumId = albumId;
-    this.title = title;
-    this.palettePrimary = palettePrimary;
-  }
-}
-
 @Component
 export struct ResponsiveNavigationShell {
   @ObjectLink libraryStore: LibraryStore;
@@ -103,7 +105,6 @@ export struct ResponsiveNavigationShell {
   morePathStack: NavPathStack = new NavPathStack();
   moreScroller: Scroller = new Scroller();
   customizationScroller: Scroller = new Scroller();
-  albumDetailScroller: Scroller = new Scroller();
 
   onCompactTabChange: (index: number) => void = (_index: number): void => {};
   onCompactTabClick: (index: number) => void = (_index: number): void => {};
@@ -116,6 +117,8 @@ export struct ResponsiveNavigationShell {
   onNavigationItemMove: (from: number, to: number) => void = (_from: number, _to: number): void => {};
   onMiniBarStyleChange: (expanded: boolean) => void = (_expanded: boolean): void => {};
   onShowFullPlayer: () => void = (): void => {};
+  onNavigateLibrary: (target: LibraryNavigationTarget) => void =
+    (_target: LibraryNavigationTarget): void => {};
   onMeasuredMiniPlayerFrame: (frame: PlayerFrame) => void = (_frame: PlayerFrame): void => {};
   onMiniPlayerGestureStart: () => void = (): void => {};
   onMiniPlayerGestureUpdate: (event: GestureEvent) => void = (_event: GestureEvent): void => {};
@@ -335,8 +338,8 @@ export struct ResponsiveNavigationShell {
     );
   }
 
-  private albumDetailTitleMenu(albumId: number): HdsNavigationMenuContentOptions {
-    const targetId = `album_detail_more_${albumId}`;
+  private albumDetailTitleMenu(params: AlbumDetailRouteParams): HdsNavigationMenuContentOptions {
+    const targetId = `album_detail_more_${params.instanceId}`;
     return {
       maxCount: 1,
       value: [{
@@ -346,8 +349,8 @@ export struct ResponsiveNavigationShell {
           type: IconStyleMode.NORMAL,
           componentId: targetId,
           action: () => {
-            const detail = this.libraryStore.albumDetail;
-            if (detail === undefined || detail.album.id !== albumId) {
+            const detail = params.state.detail;
+            if (detail === undefined) {
               return;
             }
             const content = new ComponentContent(
@@ -364,6 +367,22 @@ export struct ResponsiveNavigationShell {
     };
   }
 
+  private openTrackActions(
+    item: TrackListItem,
+    anchorId: string,
+    current?: LibraryEntityIdentity
+  ): void {
+    TrackActionMenuPresenter.open(
+      this.getUIContext(),
+      this.libraryStore,
+      item.id,
+      anchorId,
+      [item],
+      current,
+      this.onNavigateLibrary
+    );
+  }
+
   @Builder
   private PageContent(routeId: string) {
     if (navigationPageKind(routeId) === NavigationPageKind.PLAYLISTS) {
@@ -375,16 +394,19 @@ export struct ResponsiveNavigationShell {
         topInset: this.topInset,
         bottomInset: this.bottomInset,
         scroller: this.routeScroller(routeId),
-        onPlayTrack: (item) => this.playLibraryTrack(item)
+        onPlayTrack: (item) => this.playLibraryTrack(item),
+        onOpenTrackActions: (item: TrackListItem, anchorId: string): void =>
+          this.openTrackActions(item, anchorId)
       })
     } else if (navigationPageKind(routeId) === NavigationPageKind.ALBUMS) {
       AlbumsPage({ store: this.libraryStore, topInset: this.topInset, bottomInset: this.bottomInset,
         scroller: this.routeScroller(routeId),
         onOpenAlbum: (item) => {
-          this.rootPathStacks[navigationItemIndex(routeId)].pushPath({
-            name: ALBUM_DETAIL_ROUTE,
-            param: new AlbumDetailRouteParams(item.id, item.title, item.palettePrimary)
-          });
+          this.onNavigateLibrary(albumTarget({
+            id: item.id,
+            title: item.title,
+            palettePrimary: item.palettePrimary
+          }));
         } })
     } else if (navigationPageKind(routeId) === NavigationPageKind.LIBRARY_MANAGEMENT) {
       LibraryManagementPage({ store: this.libraryStore, topInset: this.topInset, bottomInset: this.bottomInset,
@@ -407,16 +429,25 @@ export struct ResponsiveNavigationShell {
 
   @Builder
   private DestinationBuilder(name: string, _param: Object) {
-    if (name === ALBUM_DETAIL_ROUTE) {
+    if (name === LibraryDetailRoute.ALBUM) {
       HdsNavDestination() {
         AlbumDetailPage({
           store: this.libraryStore,
-          albumId: (_param as AlbumDetailRouteParams).albumId,
+          state: (_param as AlbumDetailRouteParams).state,
           topInset: this.topInset,
           bottomInset: this.bottomInset,
           rootWidth: this.rootWidth,
           themeBackground: this.albumDetailBackground(_param as AlbumDetailRouteParams),
-          scroller: this.albumDetailScroller
+          scroller: (_param as AlbumDetailRouteParams).scroller,
+          actionAnchorPrefix: (_param as AlbumDetailRouteParams).anchorPrefix(),
+          onOpenArtist: (artist): void => this.onNavigateLibrary(artistTarget(artist)),
+          onOpenAlbum: (album): void => this.onNavigateLibrary(albumTarget({
+            id: album.id,
+            title: album.title,
+            palettePrimary: album.palettePrimary
+          })),
+          onOpenTrackActions: (item: TrackListItem, anchorId: string): void =>
+            this.openTrackActions(item, anchorId, (_param as AlbumDetailRouteParams).identity())
         })
       }
       .width('100%')
@@ -426,9 +457,38 @@ export struct ResponsiveNavigationShell {
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryBackOnlyTitleBar(
         this.appearancePalette,
-        this.albumDetailTitleMenu((_param as AlbumDetailRouteParams).albumId)
+        this.albumDetailTitleMenu(_param as AlbumDetailRouteParams)
       ))
-      .bindToScrollable([this.albumDetailScroller])
+      .bindToScrollable([(_param as AlbumDetailRouteParams).scroller])
+    } else if (name === LibraryDetailRoute.ARTIST) {
+      HdsNavDestination() {
+        ArtistDetailPage({
+          store: this.libraryStore,
+          state: (_param as ArtistDetailRouteParams).state,
+          topInset: this.topInset,
+          bottomInset: this.bottomInset,
+          rootWidth: this.rootWidth,
+          scroller: (_param as ArtistDetailRouteParams).scroller,
+          actionAnchorPrefix: (_param as ArtistDetailRouteParams).anchorPrefix(),
+          onOpenAlbum: (album): void => this.onNavigateLibrary(albumTarget({
+            id: album.id,
+            title: album.title,
+            palettePrimary: album.palettePrimary
+          })),
+          onOpenTrackActions: (item: TrackListItem, anchorId: string): void =>
+            this.openTrackActions(item, anchorId, (_param as ArtistDetailRouteParams).identity())
+        })
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(this.themePageBackground)
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        (_param as ArtistDetailRouteParams).name,
+        this.appearancePalette
+      ))
+      .bindToScrollable([(_param as ArtistDetailRouteParams).scroller])
     } else if (name === NavigationRoute.NAVIGATION_CUSTOMIZATION) {
       HdsNavDestination() {
         NavigationCustomizationPage({

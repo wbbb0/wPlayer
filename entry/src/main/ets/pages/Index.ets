@@ -24,6 +24,10 @@ import {
   AppPrimaryTitleParams
 } from '../components/navigation/AppPrimaryTitleContent';
 import { LibraryStore } from '../library/store/LibraryStore';
+import {
+  LibraryEntityKind,
+  LibraryNavigationTarget
+} from '../library/model/LibraryModels';
 import { playbackRuntime } from '../playback/PlaybackRuntime';
 import { PlayerStore } from '../playback/model/PlaybackModels';
 import { SettingsRepository } from '../settings/SettingsRepository';
@@ -51,6 +55,12 @@ import {
   orderedNavigationItems
 } from '../components/navigation/MoreNavigation';
 import { ResponsiveNavigationShell } from '../components/navigation/ResponsiveNavigationShell';
+import { TrackActionMenuPresenter } from '../components/library/TrackActionMenu';
+import {
+  AlbumDetailRouteParams,
+  ArtistDetailRouteParams,
+  LibraryDetailRoute
+} from '../components/navigation/LibraryNavigation';
 import {
   AppAppearanceListener,
   AppAppearancePalette,
@@ -364,6 +374,46 @@ struct Index {
     this.rootPathStacks[navigationItemIndex(this.selectedRouteId)].clear(true);
   }
 
+  private activeNavigationStack(): NavPathStack {
+    if (!this.usesWideLayout() && this.compactTabIndex() === MORE_TAB_INDEX) {
+      return this.morePathStack;
+    }
+    return this.rootPathStacks[navigationItemIndex(this.selectedRouteId)];
+  }
+
+  private navigateLibrary(target: LibraryNavigationTarget): void {
+    if (target.identity.kind === LibraryEntityKind.ARTIST) {
+      this.activeNavigationStack().pushPath({
+        name: LibraryDetailRoute.ARTIST,
+        param: new ArtistDetailRouteParams(target.identity.id, target.title)
+      });
+    } else if (target.identity.kind === LibraryEntityKind.ALBUM) {
+      this.activeNavigationStack().pushPath({
+        name: LibraryDetailRoute.ALBUM,
+        param: new AlbumDetailRouteParams(
+          target.identity.id,
+          target.title,
+          target.palettePrimary
+        )
+      });
+    }
+    if (this.isMorphActive()) {
+      this.hideFullPlayer();
+    }
+  }
+
+  private openFullPlayerTrackActions(trackId: number, anchorId: string): void {
+    TrackActionMenuPresenter.open(
+      this.getUIContext(),
+      this.libraryStore,
+      trackId,
+      anchorId,
+      [],
+      undefined,
+      (target: LibraryNavigationTarget): void => this.navigateLibrary(target)
+    );
+  }
+
   private openMoreDestination(routeId: string): void {
     const moreItems = this.moreItems();
     let isMoreItem = false;
@@ -414,10 +464,30 @@ struct Index {
     if (previousWideLayout === nextWideLayout || this.compactTabIndex() !== MORE_TAB_INDEX) {
       return;
     }
-    this.morePathStack.clear(false);
-    if (!nextWideLayout) {
-      this.morePathStack.pushPath({ name: this.selectedRouteId }, false);
+    const rootStack = this.rootPathStacks[navigationItemIndex(this.selectedRouteId)];
+    if (nextWideLayout) {
+      rootStack.clear(false);
+      const names = this.morePathStack.getAllPathName();
+      const firstDetailIndex = names.length > 0 && names[0] === this.selectedRouteId ? 1 : 0;
+      for (let index = firstDetailIndex; index < names.length; index += 1) {
+        rootStack.pushPath({
+          name: names[index],
+          param: this.morePathStack.getParamByIndex(index)
+        }, false);
+      }
+      this.morePathStack.clear(false);
+      return;
     }
+    this.morePathStack.clear(false);
+    this.morePathStack.pushPath({ name: this.selectedRouteId }, false);
+    const names = rootStack.getAllPathName();
+    for (let index = 0; index < names.length; index += 1) {
+      this.morePathStack.pushPath({
+        name: names[index],
+        param: rootStack.getParamByIndex(index)
+      }, false);
+    }
+    rootStack.clear(false);
   }
 
   private freezeMiniPlayerGeometry(captureReturnStyle: boolean = true): void {
@@ -1056,7 +1126,8 @@ struct Index {
         this.playerGestureAxis = PlayerGestureAxis.UNDECIDED;
       },
       onMiniPlayerGestureUpdate: (event: GestureEvent): void => this.updateMiniPlayerGesture(event),
-      onMiniPlayerGestureFinish: (): void => this.finishMiniPlayerGesture()
+      onMiniPlayerGestureFinish: (): void => this.finishMiniPlayerGesture(),
+      onNavigateLibrary: (target: LibraryNavigationTarget): void => this.navigateLibrary(target)
     })
   }
 
@@ -1091,7 +1162,9 @@ struct Index {
             onPlayQueueTrack: (trackId: number): void => playbackRuntime.playQueueTrack(trackId),
             onSeek: (positionMs: number): void => playbackRuntime.seek(positionMs),
             onResolveQueueArtwork: (relativePath: string): string =>
-              playbackRuntime.queueArtworkUri(relativePath)
+              playbackRuntime.queueArtworkUri(relativePath),
+            onOpenTrackActions: (trackId: number, anchorId: string): void =>
+              this.openFullPlayerTrackActions(trackId, anchorId)
           })
         }
         .width(this.fullPlayerFrame().width)

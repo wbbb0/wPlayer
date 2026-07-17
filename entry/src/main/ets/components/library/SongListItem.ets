@@ -1,6 +1,5 @@
 import { TrackListItem } from '../../library/model/LibraryModels';
 import { ArtworkFitMode, ArtworkView } from '../artwork/ArtworkView';
-import { QueueActionMenu } from './QueueActionMenu';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 
 export interface SongListItemData {
@@ -28,6 +27,7 @@ export struct SongListItem {
   @Prop currentQueueIndex: number = -1;
   @Prop showArtist: boolean = true;
   @Prop actionTrack: TrackListItem | undefined = undefined;
+  @Prop actionAnchorPrefix: string = 'library';
   @Prop menuPlacement: Placement = Placement.Bottom;
   @Prop primaryColor: ResourceColor = $r('app.color.text_primary');
   @Prop secondaryColor: ResourceColor = $r('app.color.text_secondary');
@@ -47,6 +47,8 @@ export struct SongListItem {
   @Prop queueIndexWidth: number = 28;
   @Prop queueGestureDistance: number = 8;
   onActivate: () => void = (): void => {};
+  onOpenActions: (track: TrackListItem, anchorId: string) => void =
+    (_track: TrackListItem, _anchorId: string): void => {};
 
   private durationLabel(): string {
     const totalSeconds = Math.max(0, Math.floor(this.item.durationMs / 1000));
@@ -86,8 +88,8 @@ export struct SongListItem {
     return `${this.queueIndex - this.currentQueueIndex}`;
   }
 
-  private menuItems(): Array<TrackListItem> {
-    return this.actionTrack === undefined ? [] : [this.actionTrack];
+  private actionAnchorId(): string {
+    return `track_more_${this.actionAnchorPrefix}_${this.item.id}`;
   }
 
   @Builder
@@ -196,7 +198,12 @@ export struct SongListItem {
       .borderRadius(19)
       .backgroundColor(Color.Transparent)
       .accessibilityText('更多歌曲操作')
-      .bindMenu(QueueActionMenu(this.menuItems()), { placement: this.menuPlacement })
+      .id(this.actionAnchorId())
+      .onClick(() => {
+        if (this.actionTrack !== undefined) {
+          this.onOpenActions(this.actionTrack, this.actionAnchorId());
+        }
+      })
     }
   }
 

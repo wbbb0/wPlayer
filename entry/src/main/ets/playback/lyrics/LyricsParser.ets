@@ -26,8 +26,14 @@ export class LyricsParser {
       let match: RegExpExecArray | null = timestamp.exec(row);
       while (match !== null) {
         const fraction = match[3] ?? '';
-        const fractionMs = fraction.length === 1 ? Number.parseInt(fraction, 10) * 100 :
-          fraction.length === 2 ? Number.parseInt(fraction, 10) * 10 : Number.parseInt(fraction, 10);
+        let fractionMs = 0;
+        if (fraction.length === 1) {
+          fractionMs = Number.parseInt(fraction, 10) * 100;
+        } else if (fraction.length === 2) {
+          fractionMs = Number.parseInt(fraction, 10) * 10;
+        } else if (fraction.length === 3) {
+          fractionMs = Number.parseInt(fraction, 10);
+        }
         times.push(Number.parseInt(match[1], 10) * 60000 + Number.parseInt(match[2], 10) * 1000 + fractionMs + offsetMs);
         match = timestamp.exec(row);
       }

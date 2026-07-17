@@ -15,7 +15,7 @@ import {
 import { DynamicColor, DynamicContainerRole, ForegroundEmphasis } from
   '../main/ets/appearance/DynamicColor';
 import { LyricTimeline } from '../main/ets/playback/lyrics/LyricTimeline';
-import { TimedLyricLine } from '../main/ets/playback/lyrics/LyricsParser';
+import { LyricsParser, TimedLyricLine } from '../main/ets/playback/lyrics/LyricsParser';
 import { LayoutLength } from '../main/ets/components/layout/LayoutLength';
 import { PlayerStore } from '../main/ets/playback/model/PlaybackModels';
 
@@ -144,6 +144,17 @@ export default function riskRegressionTest() {
       expect(LyricTimeline.activeIndexAt(lines, 1000)).assertEqual(0);
       expect(LyricTimeline.activeIndexAt(lines, 2000)).assertEqual(2);
       expect(LyricTimeline.activeIndexAt(lines, 6000)).assertEqual(3);
+    });
+
+    it('parses whole-second and fractional lyric timestamps in milliseconds', 0, () => {
+      const parsed = LyricsParser.parse(
+        '[00:01]whole\n[00:02.3]tenths\n[00:03.45]hundredths\n[00:04.678]milliseconds'
+      );
+      expect(parsed.lines.length).assertEqual(4);
+      expect(parsed.lines[0].timeMs).assertEqual(1000);
+      expect(parsed.lines[1].timeMs).assertEqual(2300);
+      expect(parsed.lines[2].timeMs).assertEqual(3450);
+      expect(parsed.lines[3].timeMs).assertEqual(4678);
     });
 
     it('keeps the lazy lyric data source synchronized with observable lyrics', 0, () => {

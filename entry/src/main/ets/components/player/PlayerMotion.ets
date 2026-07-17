@@ -141,7 +141,7 @@ export class PlayerMotionSpec {
   static readonly PAUSED_ARTWORK_SCALE: number = 0.90;
   static readonly ARTWORK_STATE_SPRING_RESPONSE: number = 0.38;
   static readonly ARTWORK_STATE_SPRING_DAMPING: number = 0.76;
-  static readonly LYRIC_FOCUS_DURATION: number = 220;
+  static readonly LYRIC_FOCUS_DURATION: number = 100;
 
   static distanceFromRecognitionOrigin(offset: number): number {
     const magnitude = Math.max(0, Math.abs(offset) - PlayerMotionSpec.GESTURE_AXIS_LOCK_DISTANCE);

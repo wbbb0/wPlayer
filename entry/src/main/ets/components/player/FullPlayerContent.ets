@@ -42,7 +42,7 @@ struct TimedLyricRow {
       .fontWeight(FontWeight.Bold)
       .fontColor(this.index === this.playerStore.activeLyricIndex ?
         this.playerStore.themeOnPrimary() : this.playerStore.themeOnPrimaryMedium())
-      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+      .animation({ duration: PlayerMotionSpec.LYRIC_FOCUS_DURATION, curve: Curve.EaseInOut })
       .opacity(this.index === this.playerStore.activeLyricIndex ? 1 : 0.72)
       .textAlign(TextAlign.Start)
       .scale({
@@ -628,6 +628,9 @@ export struct FullPlayerContent {
     .width(this.pageWidth())
     .height('100%')
     .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) => {
+      if (this.playerStore.timedLyrics.length === 0 && this.playerStore.lyrics.length === 0) {
+        return;
+      }
       recognizers.forEach((recognizer: GestureRecognizer) => {
         if (recognizer.getEventTargetInfo().getId() === FULL_PLAYER_VERTICAL_GESTURE_HOST_ID) {
           recognizer.preventBegin();

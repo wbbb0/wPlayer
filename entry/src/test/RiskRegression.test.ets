@@ -160,6 +160,14 @@ export default function riskRegressionTest() {
       expect(store.lyricDataSource.totalCount()).assertEqual(0);
     });
 
+    it('keeps high-frequency playback progress in an isolated state object', 0, () => {
+      const store = new PlayerStore();
+      store.progress.positionMs = 1500;
+      store.progress.durationMs = 3000;
+      expect(store.progress.positionMs).assertEqual(1500);
+      expect(store.progress.durationMs).assertEqual(3000);
+    });
+
     it('normalizes measured layout lengths without losing the fallback', 0, () => {
       expect(LayoutLength.toNumber(48, 12)).assertEqual(48);
       expect(LayoutLength.toNumber('56vp', 12)).assertEqual(56);

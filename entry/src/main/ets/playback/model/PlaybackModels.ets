@@ -127,12 +127,17 @@ export class LyricLineDataSource implements IDataSource {
 }
 
 @Observed
+export class PlaybackProgressStore {
+  positionMs: number = 0;
+  durationMs: number = 0;
+}
+
+@Observed
 export class PlayerStore {
   state: PlayerState = PlayerState.IDLE;
   playWhenReady: boolean = false;
   currentTrack?: QueueTrack;
-  positionMs: number = 0;
-  durationMs: number = 0;
+  readonly progress: PlaybackProgressStore = new PlaybackProgressStore();
   miniArtwork?: image.PixelMap;
   miniArtworkUri: string = '';
   heroArtwork?: image.PixelMap;

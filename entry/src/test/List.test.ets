@@ -4,6 +4,7 @@ import libraryPagingTest from './LibraryPaging.test';
 import appRuntimeLifecycleTest from './AppRuntimeLifecycle.test';
 import playbackQueueRegressionTest from './PlaybackQueueRegression.test';
 import artworkCleanupRegressionTest from './ArtworkCleanupRegression.test';
+import playbackPowerPolicyTest from './PlaybackPowerPolicy.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -12,4 +13,5 @@ export default function testsuite() {
   appRuntimeLifecycleTest();
   playbackQueueRegressionTest();
   artworkCleanupRegressionTest();
+  playbackPowerPolicyTest();
 }

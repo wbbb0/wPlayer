@@ -71,6 +71,8 @@ struct Index {
   @State selectedRouteId: string = NavigationRoute.PLAYLISTS;
   @State libraryStore: LibraryStore = new LibraryStore(playbackRuntime.repository, playbackRuntime);
   @State playerStore: PlayerStore = playbackRuntime.playerStore;
+  // The invisible geometry probe must not react to playback position or lyric updates.
+  @State geometryPlayerStore: PlayerStore = new PlayerStore();
   @State settingsStore: AppSettingsStore = appSettings;
   @State animatedThemePrimary: string = '';
   @State miniBarExpanded: boolean = false;
@@ -1296,14 +1298,14 @@ struct Index {
   private FullPlayerGeometryProbe() {
     Stack() {
       FullPlayerContent({
-        playerStore: this.playerStore,
+        playerStore: this.geometryPlayerStore,
         topInset: this.statusBarAvoidHeight,
         bottomInset: this.navigationAvoidHeight,
         showArtwork: false,
         heroArtworkInterpolation: this.heroArtworkInterpolation(),
         measuresArtworkTarget: true,
         rootFrame: this.rootFrame,
-        pagePosition: this.fullPlayerPagePosition,
+        pagePosition: FullPlayerPage.COVER,
         paneCount: this.fullPlayerPaneCount(),
         previousArtworkTarget: this.artworkTarget,
         previousCenteredArtworkTarget: this.centeredArtworkTarget,

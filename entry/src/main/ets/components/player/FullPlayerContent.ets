@@ -16,7 +16,12 @@ import {
   PlayerTransportButton
 } from './PlayerControls';
 import { PlayerHeroArtwork } from './PlayerArtworkViews';
-import { LyricIndexListener, PlayerStore, QueueTrack } from '../../playback/model/PlaybackModels';
+import {
+  LyricIndexListener,
+  PlaybackProgressStore,
+  PlayerStore,
+  QueueTrack
+} from '../../playback/model/PlaybackModels';
 import { TimedLyricLine } from '../../playback/lyrics/LyricsParser';
 import { SongListItem, SongListItemLayout } from '../library/SongListItem';
 import { LayoutLength } from '../layout/LayoutLength';
@@ -44,6 +49,82 @@ struct TimedLyricRow {
         centerY: '50%'
       })
       .animation({ duration: PlayerMotionSpec.LYRIC_FOCUS_DURATION, curve: Curve.EaseInOut })
+  }
+}
+
+@Component
+struct PlayerProgressControl {
+  @ObjectLink playerStore: PlayerStore;
+  @ObjectLink progressStore: PlaybackProgressStore;
+  onSeek: (positionMs: number) => void = (_positionMs: number): void => {};
+  @State private seeking: boolean = false;
+  @State private seekPreviewMs: number = 0;
+
+  private durationLabel(durationMs: number): string {
+    const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+  }
+
+  private displayedPositionMs(): number {
+    if (this.seeking) {
+      return this.seekPreviewMs;
+    }
+    return Math.max(0, Math.min(this.progressStore.positionMs, this.progressStore.durationMs));
+  }
+
+  private updateSeek(value: number, mode: SliderChangeMode): void {
+    this.seekPreviewMs = Math.max(0, Math.min(value, this.progressStore.durationMs));
+    if (mode === SliderChangeMode.Begin || mode === SliderChangeMode.Moving) {
+      this.seeking = true;
+      return;
+    }
+    this.seeking = false;
+    this.onSeek(Math.round(this.seekPreviewMs));
+  }
+
+  build() {
+    Column({ space: 2 }) {
+      Slider({
+        value: this.displayedPositionMs(),
+        min: 0,
+        max: Math.max(1, this.progressStore.durationMs),
+        step: 1000,
+        style: SliderStyle.OutSet
+      })
+        .width('100%')
+        .selectedColor(this.playerStore.themeOnPrimary())
+        .trackColor(this.playerStore.themeOnPrimaryMedium())
+        .blockColor(this.playerStore.themeOnPrimary())
+        .trackThickness(PlayerLayoutSpec.FULL_PLAYER_PROGRESS_TRACK_THICKNESS)
+        .enabled(this.progressStore.durationMs > 0)
+        .onChange((value: number, mode: SliderChangeMode) => {
+          this.updateSeek(value, mode);
+        })
+        .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) => {
+          recognizers.forEach((recognizer: GestureRecognizer) => {
+            const targetId = recognizer.getEventTargetInfo().getId();
+            if (targetId === FULL_PLAYER_HORIZONTAL_GESTURE_HOST_ID ||
+              targetId === FULL_PLAYER_VERTICAL_GESTURE_HOST_ID) {
+              recognizer.preventBegin();
+            }
+          });
+        })
+
+      Row() {
+        Text(this.durationLabel(this.displayedPositionMs()))
+          .fontSize(11)
+          .fontColor(this.playerStore.themeOnPrimaryMedium())
+        Blank()
+        Text(this.durationLabel(this.progressStore.durationMs))
+          .fontSize(11)
+          .fontColor(this.playerStore.themeOnPrimaryMedium())
+      }
+      .width('100%')
+    }
+    .width('100%')
+    .margin({ top: 8 })
   }
 }
 
@@ -85,8 +166,6 @@ export struct FullPlayerContent {
     this.lastFocusedLyricIndex = index;
     this.lyricScroller.scrollToIndex(targetIndex, true, ScrollAlign.START);
   };
-  @State private seeking: boolean = false;
-  @State private seekPreviewMs: number = 0;
 
   private pageWidth(): number {
     return FullPlayerPagerSpec.pageSpan(this.rootFrame.width, this.paneCount);
@@ -101,20 +180,6 @@ export struct FullPlayerContent {
     );
   }
 
-  private durationLabel(durationMs: number): string {
-    const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-  }
-
-  private displayedPositionMs(): number {
-    if (this.seeking) {
-      return this.seekPreviewMs;
-    }
-    return Math.max(0, Math.min(this.playerStore.positionMs, this.playerStore.durationMs));
-  }
-
   private currentArtistLabel(): string {
     if (this.playerStore.currentTrack === undefined) {
       return '选择一首音乐开始播放';
@@ -123,22 +188,16 @@ export struct FullPlayerContent {
       this.playerStore.currentTrack.artistDisplay : '未知艺术家';
   }
 
-  private updateSeek(value: number, mode: SliderChangeMode): void {
-    this.seekPreviewMs = Math.max(0, Math.min(value, this.playerStore.durationMs));
-    if (mode === SliderChangeMode.Begin || mode === SliderChangeMode.Moving) {
-      this.seeking = true;
-      return;
-    }
-    this.seeking = false;
-    this.onSeek(Math.round(this.seekPreviewMs));
-  }
-
   aboutToAppear(): void {
-    this.playerStore.addLyricIndexListener(this.lyricIndexListener);
+    if (!this.measuresArtworkTarget) {
+      this.playerStore.addLyricIndexListener(this.lyricIndexListener);
+    }
   }
 
   aboutToDisappear(): void {
-    this.playerStore.removeLyricIndexListener(this.lyricIndexListener);
+    if (!this.measuresArtworkTarget) {
+      this.playerStore.removeLyricIndexListener(this.lyricIndexListener);
+    }
   }
 
   onDidBuild(): void {
@@ -433,7 +492,11 @@ export struct FullPlayerContent {
       .alignItems(HorizontalAlign.Start)
       .width('100%')
 
-      this.ProgressControl()
+      PlayerProgressControl({
+        playerStore: this.playerStore,
+        progressStore: this.playerStore.progress,
+        onSeek: (positionMs: number): void => this.onSeek(positionMs)
+      })
 
       Row({ space: 16 }) {
         PlayerTransportButton({ playerStore: this.playerStore,
@@ -454,50 +517,6 @@ export struct FullPlayerContent {
       right: PlayerLayoutSpec.FULL_PLAYER_PAGE_HORIZONTAL_INSET,
       bottom: this.bottomInset + PlayerLayoutSpec.FULL_PLAYER_BOTTOM_INSET
     })
-  }
-
-  @Builder
-  private ProgressControl() {
-    Column({ space: 2 }) {
-      Slider({
-        value: this.displayedPositionMs(),
-        min: 0,
-        max: Math.max(1, this.playerStore.durationMs),
-        step: 1000,
-        style: SliderStyle.OutSet
-      })
-        .width('100%')
-        .selectedColor(this.playerStore.themeOnPrimary())
-        .trackColor(this.playerStore.themeOnPrimaryMedium())
-        .blockColor(this.playerStore.themeOnPrimary())
-        .trackThickness(PlayerLayoutSpec.FULL_PLAYER_PROGRESS_TRACK_THICKNESS)
-        .enabled(this.playerStore.durationMs > 0)
-        .onChange((value: number, mode: SliderChangeMode) => {
-          this.updateSeek(value, mode);
-        })
-        .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) => {
-          recognizers.forEach((recognizer: GestureRecognizer) => {
-            const targetId = recognizer.getEventTargetInfo().getId();
-            if (targetId === FULL_PLAYER_HORIZONTAL_GESTURE_HOST_ID ||
-              targetId === FULL_PLAYER_VERTICAL_GESTURE_HOST_ID) {
-              recognizer.preventBegin();
-            }
-          });
-        })
-
-      Row() {
-        Text(this.durationLabel(this.displayedPositionMs()))
-          .fontSize(11)
-          .fontColor(this.playerStore.themeOnPrimaryMedium())
-        Blank()
-        Text(this.durationLabel(this.playerStore.durationMs))
-          .fontSize(11)
-          .fontColor(this.playerStore.themeOnPrimaryMedium())
-      }
-      .width('100%')
-    }
-    .width('100%')
-    .margin({ top: 8 })
   }
 
   @Builder

@@ -427,32 +427,68 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     if (trackId < 0) {
       return;
     }
-    const ids = storedIds.length > 0 ? storedIds : [trackId];
-    const pendingTracks: Array<Promise<PlaybackTrack | undefined>> = ids.map((id: number) => {
-      return this.repository.getPlaybackTrack(id);
-    });
-    const restoredTracks = await Promise.all(pendingTracks);
-    const queueTracks: Array<QueueTrack> = [];
-    let track: PlaybackTrack | undefined;
-    restoredTracks.forEach((restored: PlaybackTrack | undefined) => {
-      if (restored !== undefined) {
-        queueTracks.push(PlaybackRuntime.queueTrackOfPlaybackTrack(restored));
-        if (restored.id === trackId) {
-          track = restored;
-        }
-      }
-    });
-    if (track === undefined) {
+    const ids = storedIds.length > 0 ? storedIds.slice() : [trackId];
+    if (ids.indexOf(trackId) < 0) {
+      ids.unshift(trackId);
+    }
+    const currentTracks = await this.repository.getPlaybackQueueTracks([trackId]);
+    if (currentTracks.length === 0) {
       this.persistResumeState(-1, 0);
       this.settings?.setPlaybackQueue([], -1);
       return;
     }
-    const queueTrack = PlaybackRuntime.queueTrackOfPlaybackTrack(track);
-    this.queue.build(queueTracks, track.id, this.playerStore.shuffleEnabled);
-    this.playerStore.queuePhase = QueueBuildPhase.READY;
-    this.playerStore.queueSize = queueTracks.length;
-    this.syncQueueSnapshot();
-    await this.beginTrack(queueTrack, false, true);
+    const currentTrack = currentTracks[0];
+    const buildEpoch = ++this.queueBuildEpoch;
+    this.queue.clear();
+    this.playerStore.queuePhase = QueueBuildPhase.BUILDING;
+    this.playerStore.queueSize = 0;
+    this.playerStore.queueDataSource.replace([]);
+    this.playerStore.setQueueCurrentIndex(-1);
+    await this.beginTrack(currentTrack, false, true);
+    this.schedulePlaybackQueueRestore(ids, currentTrack, buildEpoch);
+  }
+
+  private schedulePlaybackQueueRestore(ids: Array<number>, currentTrack: QueueTrack, buildEpoch: number): void {
+    setTimeout(() => {
+      if (buildEpoch !== this.queueBuildEpoch) {
+        return;
+      }
+      this.restorePlaybackQueue(ids, currentTrack, buildEpoch).catch((error: Object) => {
+        if (buildEpoch !== this.queueBuildEpoch) {
+          return;
+        }
+        this.playerStore.queuePhase = QueueBuildPhase.FAILED;
+        console.warn(`Unable to restore playback queue: ${PlaybackRuntime.messageOf(error)}`);
+      });
+    }, 0);
+  }
+
+  private async restorePlaybackQueue(ids: Array<number>, currentTrack: QueueTrack,
+    buildEpoch: number): Promise<void> {
+    const remainingIds = ids.filter((id: number) => id !== currentTrack.id);
+    const restoredTracks = await this.repository.getPlaybackQueueTracks(remainingIds);
+    if (buildEpoch !== this.queueBuildEpoch) {
+      return;
+    }
+    const tracksById: Map<number, QueueTrack> = new Map<number, QueueTrack>();
+    restoredTracks.forEach((track: QueueTrack) => {
+      tracksById.set(track.id, track);
+    });
+    tracksById.set(currentTrack.id, currentTrack);
+    const queueTracks: Array<QueueTrack> = [];
+    ids.forEach((id: number) => {
+      const track = tracksById.get(id);
+      if (track !== undefined) {
+        queueTracks.push(track);
+      }
+    });
+    const phase = this.queue.build(queueTracks, currentTrack.id, this.playerStore.shuffleEnabled);
+    this.playerStore.queuePhase = phase;
+    this.playerStore.queueSize = this.queue.size();
+    if (phase === QueueBuildPhase.READY) {
+      this.syncQueueSnapshot();
+      this.prefetchCurrentWindow();
+    }
   }
 
   private enqueueLibraryItems(items: Array<TrackListItem>, insertNext: boolean): void {

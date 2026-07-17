@@ -2,8 +2,8 @@ import { LibrarySection } from '../model/LibraryModels';
 
 /** Paging and index-location rules shared by the store, UI and tests. */
 export class LibraryPagingPolicy {
-  static readonly TRACK_PAGE_SIZE: number = 24;
-  static readonly ALBUM_PAGE_SIZE: number = 48;
+  static readonly TRACK_PAGE_SIZE: number = 16;
+  static readonly ALBUM_PAGE_SIZE: number = 16;
 
   static pageStartForIndex(index: number, pageSize: number): number {
     if (index <= 0 || pageSize <= 0) {

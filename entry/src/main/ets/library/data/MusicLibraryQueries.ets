@@ -21,7 +21,7 @@ import {
   TrackSortField,
   SortDirection
 } from '../model/LibraryModels';
-import { PlaybackTrack, ResumeState } from '../../playback/model/PlaybackModels';
+import { PlaybackTrack, QueueTrack, ResumeState } from '../../playback/model/PlaybackModels';
 import { LibraryDatabase } from './LibraryDatabase';
 import {
   ArtworkAssetLookup,
@@ -33,6 +33,7 @@ import { LibrarySortDescriptor, LibrarySortPlan } from './LibrarySortPlan';
 import { RelationalStoreSafety } from './RelationalStoreSafety';
 
 const URI_QUERY_BATCH_SIZE = 128;
+const PLAYBACK_QUEUE_QUERY_BATCH_SIZE = 128;
 
 /**
  * Read-only and maintenance queries for the local library.
@@ -199,6 +200,82 @@ export class MusicLibraryQueries {
       throw RelationalStoreSafety.operationError(`Unable to read playback track ${trackId}`, error);
     } finally {
       RelationalStoreSafety.closeResultSet(resultSet, 'playback track');
+    }
+  }
+
+  async getPlaybackQueueTracks(trackIds: Array<number>): Promise<Array<QueueTrack>> {
+    if (trackIds.length === 0) {
+      return [];
+    }
+    const uniqueTrackIds: Array<number> = [];
+    const seenTrackIds: Set<number> = new Set<number>();
+    trackIds.forEach((trackId: number) => {
+      if (!seenTrackIds.has(trackId)) {
+        seenTrackIds.add(trackId);
+        uniqueTrackIds.push(trackId);
+      }
+    });
+    const tracksById: Map<number, QueueTrack> = new Map<number, QueueTrack>();
+    for (let offset = 0; offset < uniqueTrackIds.length; offset += PLAYBACK_QUEUE_QUERY_BATCH_SIZE) {
+      const batch = uniqueTrackIds.slice(
+        offset,
+        Math.min(offset + PLAYBACK_QUEUE_QUERY_BATCH_SIZE, uniqueTrackIds.length)
+      );
+      await this.queryPlaybackQueueTrackBatch(batch, tracksById);
+    }
+    const tracks: Array<QueueTrack> = [];
+    trackIds.forEach((trackId: number) => {
+      const track = tracksById.get(trackId);
+      if (track !== undefined) {
+        tracks.push(track);
+      }
+    });
+    return tracks;
+  }
+
+  private async queryPlaybackQueueTrackBatch(trackIds: Array<number>,
+    tracksById: Map<number, QueueTrack>): Promise<void> {
+    if (trackIds.length === 0) {
+      return;
+    }
+    let resultSet: relationalStore.ResultSet | undefined;
+    try {
+      const placeholders = trackIds.map((_trackId: number) => '?').join(', ');
+      resultSet = await this.database.getStore().querySql(
+        `SELECT t.id, t.title, t.artist_display, t.album_display, t.duration_ms,
+          COALESCE(a.small_hash, ''), COALESCE(a.small_path, ''),
+          COALESCE(a.large_hash, ''), COALESCE(a.large_path, ''),
+          COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
+          COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
+          COALESCE(a.palette_accent, '#FFFFB347')
+         FROM track t
+         LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
+         WHERE t.id IN (${placeholders})`,
+        trackIds
+      );
+      while (resultSet.goToNextRow()) {
+        const track: QueueTrack = {
+          id: resultSet.getLong(0),
+          title: resultSet.getString(1),
+          artistDisplay: resultSet.getString(2),
+          albumDisplay: resultSet.getString(3),
+          durationMs: resultSet.getLong(4),
+          smallArtworkHash: resultSet.getString(5),
+          smallArtworkPath: resultSet.getString(6),
+          largeArtworkHash: resultSet.getString(7),
+          largeArtworkPath: resultSet.getString(8),
+          artworkWidth: resultSet.getLong(9),
+          artworkHeight: resultSet.getLong(10),
+          palettePrimary: resultSet.getString(11),
+          paletteSecondary: resultSet.getString(12),
+          paletteAccent: resultSet.getString(13)
+        };
+        tracksById.set(track.id, track);
+      }
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to restore playback queue', error);
+    } finally {
+      RelationalStoreSafety.closeResultSet(resultSet, 'playback queue');
     }
   }
 

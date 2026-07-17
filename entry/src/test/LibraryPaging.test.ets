@@ -41,11 +41,11 @@ const CHARACTERIZED_SECTIONS: Array<LibrarySection> = [
 
 export default function libraryPagingTest() {
   describe('Library paging and alphabet index', () => {
-    it('uses a smaller page for the row-based songs list than the album grid', 0, () => {
-      expect(LibraryPagingPolicy.TRACK_PAGE_SIZE).assertEqual(24);
-      expect(LibraryPagingPolicy.ALBUM_PAGE_SIZE).assertEqual(48);
+    it('uses a bounded initial page for songs and albums', 0, () => {
+      expect(LibraryPagingPolicy.TRACK_PAGE_SIZE).assertEqual(16);
+      expect(LibraryPagingPolicy.ALBUM_PAGE_SIZE).assertEqual(16);
       expect(LibraryPagingPolicy.TRACK_PAGE_SIZE)
-        .assertLess(LibraryPagingPolicy.ALBUM_PAGE_SIZE);
+        .assertEqual(LibraryPagingPolicy.ALBUM_PAGE_SIZE);
     });
 
     it('maps global item indexes to stable page starts', 0, () => {

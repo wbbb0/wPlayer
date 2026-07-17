@@ -15,7 +15,7 @@ import {
   TrackNavigationTargets,
   TrackSortField
 } from '../model/LibraryModels';
-import { PlaybackTrack, ResumeState } from '../../playback/model/PlaybackModels';
+import { PlaybackTrack, QueueTrack, ResumeState } from '../../playback/model/PlaybackModels';
 import { LibraryDatabase } from './LibraryDatabase';
 import { MusicLibraryImporter } from './MusicLibraryImporter';
 import { MusicLibraryQueries } from './MusicLibraryQueries';
@@ -104,6 +104,10 @@ export class MusicRepository {
 
   getPlaybackTrack(trackId: number): Promise<PlaybackTrack | undefined> {
     return this.queries.getPlaybackTrack(trackId);
+  }
+
+  getPlaybackQueueTracks(trackIds: Array<number>): Promise<Array<QueueTrack>> {
+    return this.queries.getPlaybackQueueTracks(trackIds);
   }
 
   getResumeState(trackId: number): Promise<ResumeState> {

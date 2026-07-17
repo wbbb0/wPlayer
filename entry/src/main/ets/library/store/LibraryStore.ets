@@ -18,6 +18,7 @@ import {
   TrackSortField
 } from '../model/LibraryModels';
 import { SettingsRepository } from '../../settings/SettingsRepository';
+import { appSettings } from '../../settings/AppSettingsStore';
 import { LibraryPageLoader, PagedLibraryDataSource } from './PagedLibraryDataSource';
 import { LibraryPagingPolicy } from './LibraryPagingPolicy';
 import { LibraryListDataSource } from './LibraryListDataSource';
@@ -228,7 +229,9 @@ export class LibraryStore {
     const generation = ++this.trackSortGeneration;
     this.trackSortField = field;
     this.trackSortDirection = direction;
-    this.settings?.setSongSort(field, direction === SortDirection.DESCENDING);
+    if (appSettings.rememberLibrarySort) {
+      this.settings?.setSongSort(field, direction === SortDirection.DESCENDING);
+    }
     try {
       const snapshot = await this.repository.getTrackCatalog(field, direction);
       if (generation === this.trackSortGeneration) {
@@ -247,7 +250,9 @@ export class LibraryStore {
     const generation = ++this.albumSortGeneration;
     this.albumSortField = field;
     this.albumSortDirection = direction;
-    this.settings?.setAlbumSort(field, direction === SortDirection.DESCENDING);
+    if (appSettings.rememberLibrarySort) {
+      this.settings?.setAlbumSort(field, direction === SortDirection.DESCENDING);
+    }
     try {
       const snapshot = await this.repository.getAlbumCatalog(field, direction);
       if (generation === this.albumSortGeneration) {
@@ -423,8 +428,29 @@ export class LibraryStore {
     return snapshot.items;
   }
 
+  setRememberSort(value: boolean): void {
+    appSettings.setRememberLibrarySort(value);
+    if (value) {
+      this.settings?.setSongSort(
+        this.trackSortField,
+        this.trackSortDirection === SortDirection.DESCENDING
+      );
+      this.settings?.setAlbumSort(
+        this.albumSortField,
+        this.albumSortDirection === SortDirection.DESCENDING
+      );
+    }
+  }
+
   private restoreSortSettings(): void {
     if (this.settings === undefined) {
+      return;
+    }
+    if (!appSettings.rememberLibrarySort) {
+      this.trackSortField = TrackSortField.TITLE;
+      this.trackSortDirection = SortDirection.ASCENDING;
+      this.albumSortField = AlbumSortField.TITLE;
+      this.albumSortDirection = SortDirection.ASCENDING;
       return;
     }
     const trackField = this.settings.getSongSortField(TrackSortField.TITLE);

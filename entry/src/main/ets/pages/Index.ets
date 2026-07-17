@@ -27,6 +27,7 @@ import { LibraryStore } from '../library/store/LibraryStore';
 import { playbackRuntime } from '../playback/PlaybackRuntime';
 import { PlayerStore } from '../playback/model/PlaybackModels';
 import { SettingsRepository } from '../settings/SettingsRepository';
+import { AppSettingsStore, appSettings } from '../settings/AppSettingsStore';
 import { AppShellLayoutSpec } from '../components/layout/AppShellLayoutSpec';
 import { WindowAvoidAreaController } from '../components/layout/WindowAvoidAreaController';
 import { LayoutLength } from '../components/layout/LayoutLength';
@@ -70,6 +71,7 @@ struct Index {
   @State selectedRouteId: string = NavigationRoute.PLAYLISTS;
   @State libraryStore: LibraryStore = new LibraryStore(playbackRuntime.repository, playbackRuntime);
   @State playerStore: PlayerStore = playbackRuntime.playerStore;
+  @State settingsStore: AppSettingsStore = appSettings;
   @State animatedThemePrimary: string = '';
   @State miniBarExpanded: boolean = false;
   @State miniPlayerOffsetX: number = 0;
@@ -158,14 +160,20 @@ struct Index {
       this.avoidAreaController.start(abilityContext);
       try {
         this.settingsRepository = new SettingsRepository(abilityContext);
+        this.settingsStore.initialize(this.settingsRepository);
         this.navigationOrder = normalizeNavigationOrder(
           this.settingsRepository.getNavigationOrder(DEFAULT_NAVIGATION_ORDER)
         );
-        const oldTabIndex = this.normalizeTabIndex(this.settingsRepository.getLastTabIndex());
-        const fallbackRoute = oldTabIndex < PRIMARY_NAVIGATION_COUNT ?
-          this.navigationOrder[oldTabIndex] : this.navigationOrder[PRIMARY_NAVIGATION_COUNT];
-        const storedRoute = this.settingsRepository.getLastNavigationRoute(fallbackRoute);
-        this.selectedRouteId = navigationItem(storedRoute) === undefined ? NavigationRoute.PLAYLISTS : storedRoute;
+        if (this.settingsStore.rememberLastTab) {
+          const oldTabIndex = this.normalizeTabIndex(this.settingsRepository.getLastTabIndex());
+          const fallbackRoute = oldTabIndex < PRIMARY_NAVIGATION_COUNT ?
+            this.navigationOrder[oldTabIndex] : this.navigationOrder[PRIMARY_NAVIGATION_COUNT];
+          const storedRoute = this.settingsRepository.getLastNavigationRoute(fallbackRoute);
+          this.selectedRouteId = navigationItem(storedRoute) === undefined ?
+            NavigationRoute.PLAYLISTS : storedRoute;
+        } else {
+          this.selectedRouteId = this.navigationOrder[0] ?? NavigationRoute.PLAYLISTS;
+        }
       } catch (error) {
         const businessError = error as BusinessError;
         console.warn(`Unable to initialize settings: ${businessError.code}, ${businessError.message}`);
@@ -298,8 +306,10 @@ struct Index {
       return;
     }
     this.selectedRouteId = routeId;
-    this.settingsRepository?.setLastNavigationRoute(routeId);
-    this.settingsRepository?.setLastTabIndex(this.compactTabIndex());
+    if (this.settingsStore.rememberLastTab) {
+      this.settingsRepository?.setLastNavigationRoute(routeId);
+      this.settingsRepository?.setLastTabIndex(this.compactTabIndex());
+    }
   }
 
   private handleCompactTabChange(index: number): void {
@@ -379,6 +389,17 @@ struct Index {
     const pathStack = this.usesWideLayout() ?
       this.rootPathStacks[navigationItemIndex(NavigationRoute.SETTINGS)] : this.morePathStack;
     pathStack.pushPath({ name: NavigationRoute.NAVIGATION_CUSTOMIZATION });
+  }
+
+  private setRememberLastTab(value: boolean): void {
+    this.settingsStore.setRememberLastTab(value);
+    if (value) {
+      this.settingsRepository?.setLastNavigationRoute(this.selectedRouteId);
+      this.settingsRepository?.setLastTabIndex(this.compactTabIndex());
+      return;
+    }
+    this.settingsRepository?.setLastNavigationRoute(this.navigationOrder[0] ?? NavigationRoute.PLAYLISTS);
+    this.settingsRepository?.setLastTabIndex(0);
   }
 
   private moveNavigationItem(from: number, to: number): void {
@@ -569,7 +590,8 @@ struct Index {
   }
 
   private animatedPageBackground(): string {
-    if (this.animatedThemePrimary.length === 0 || !this.playerStore.hasCurrentTrack()) {
+    if (!this.settingsStore.followPlaybackTheme ||
+      this.animatedThemePrimary.length === 0 || !this.playerStore.hasCurrentTrack()) {
       return this.appearancePalette.windowBackground;
     }
     return DynamicColor.blendOpaque(
@@ -582,6 +604,11 @@ struct Index {
   private playerThemeBackground(): string {
     return this.animatedThemePrimary.length > 0 ?
       this.animatedThemePrimary : this.appearancePalette.windowBackground;
+  }
+
+  private heroArtworkInterpolation(): ImageInterpolation {
+    return this.settingsStore.highQualityHeroArtwork ?
+      ImageInterpolation.High : ImageInterpolation.Medium;
   }
 
   private morphCollapsedSurfaceColor(): string {
@@ -1021,6 +1048,7 @@ struct Index {
     ResponsiveNavigationShell({
       libraryStore: this.libraryStore,
       playerStore: this.playerStore,
+      settingsStore: this.settingsStore,
       topInset: this.statusBarAvoidHeight,
       bottomInset: this.navigationAvoidHeight,
       rootWidth: this.rootFrame.width,
@@ -1047,6 +1075,8 @@ struct Index {
       onExpandedTabClick: (index: number): void => this.handleExpandedTabBarClick(index),
       onOpenMoreDestination: (routeId: string): void => this.openMoreDestination(routeId),
       onOpenNavigationCustomization: (): void => this.openNavigationCustomization(),
+      onRememberLastTabChange: (value: boolean): void => this.setRememberLastTab(value),
+      onRememberSortChange: (value: boolean): void => this.libraryStore.setRememberSort(value),
       onNavigationItemMove: (from: number, to: number): void => this.moveNavigationItem(from, to),
       onMiniBarStyleChange: (expanded: boolean): void => {
         this.miniBarExpanded = expanded;
@@ -1084,6 +1114,7 @@ struct Index {
             topInset: this.statusBarAvoidHeight,
             bottomInset: this.navigationAvoidHeight,
             showArtwork: false,
+            heroArtworkInterpolation: this.heroArtworkInterpolation(),
             rootFrame: this.fullPlayerFrame(),
             pagePosition: this.fullPlayerPagePosition,
             paneCount: this.renderedFullPlayerPaneCount(),
@@ -1212,7 +1243,7 @@ struct Index {
           this.clamp(this.playerExpandProgress, 0, 1),
         shadowOffsetY: PlayerMotionSpec.FULL_ARTWORK_SHADOW_OFFSET_Y *
           this.clamp(this.playerExpandProgress, 0, 1),
-        interpolation: ImageInterpolation.High
+        interpolation: this.heroArtworkInterpolation()
       })
         .scale({
           x: this.morphArtworkPlaybackScale(),
@@ -1269,6 +1300,7 @@ struct Index {
         topInset: this.statusBarAvoidHeight,
         bottomInset: this.navigationAvoidHeight,
         showArtwork: false,
+        heroArtworkInterpolation: this.heroArtworkInterpolation(),
         measuresArtworkTarget: true,
         rootFrame: this.rootFrame,
         pagePosition: this.fullPlayerPagePosition,
@@ -1298,7 +1330,7 @@ struct Index {
         .backgroundColor(this.appearancePalette.windowBackground)
         .hitTestBehavior(HitTestMode.None)
 
-      if (this.playerStore.hasCurrentTrack()) {
+      if (this.settingsStore.followPlaybackTheme && this.playerStore.hasCurrentTrack()) {
         Stack()
           .width('100%')
           .height('100%')

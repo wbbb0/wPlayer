@@ -51,6 +51,7 @@ import { PlaylistsPage } from '../../pages/library/PlaylistsPage';
 import { SongsPage } from '../../pages/library/SongsPage';
 import { SettingsPage } from '../../pages/settings/SettingsPage';
 import { NavigationCustomizationPage } from '../../pages/settings/NavigationCustomizationPage';
+import { AppSettingsStore } from '../../settings/AppSettingsStore';
 
 const TRACK_SORT_LABELS: Array<string> = ['名称', '专辑', '艺术家', '发行日期', '添加时间'];
 const ALBUM_SORT_LABELS: Array<string> = ['名称', '艺术家', '发行日期', '添加时间'];
@@ -75,6 +76,7 @@ class AlbumDetailRouteParams {
 export struct ResponsiveNavigationShell {
   @ObjectLink libraryStore: LibraryStore;
   @ObjectLink playerStore: PlayerStore;
+  @ObjectLink settingsStore: AppSettingsStore;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @Prop rootWidth: number = 0;
@@ -109,6 +111,8 @@ export struct ResponsiveNavigationShell {
   onExpandedTabClick: (index: number) => void = (_index: number): void => {};
   onOpenMoreDestination: (routeId: string) => void = (_routeId: string): void => {};
   onOpenNavigationCustomization: () => void = (): void => {};
+  onRememberLastTabChange: (value: boolean) => void = (_value: boolean): void => {};
+  onRememberSortChange: (value: boolean) => void = (_value: boolean): void => {};
   onNavigationItemMove: (from: number, to: number) => void = (_from: number, _to: number): void => {};
   onMiniBarStyleChange: (expanded: boolean) => void = (_expanded: boolean): void => {};
   onShowFullPlayer: () => void = (): void => {};
@@ -390,10 +394,13 @@ export struct ResponsiveNavigationShell {
         scroller: this.routeScroller(routeId) })
     } else if (navigationPageKind(routeId) === NavigationPageKind.SETTINGS) {
       SettingsPage({
+        settingsStore: this.settingsStore,
         topInset: this.topInset,
         bottomInset: this.bottomInset,
         scroller: this.routeScroller(routeId),
-        openNavigationCustomization: this.onOpenNavigationCustomization
+        openNavigationCustomization: this.onOpenNavigationCustomization,
+        onRememberLastTabChange: this.onRememberLastTabChange,
+        onRememberSortChange: this.onRememberSortChange
       })
     }
   }

@@ -29,6 +29,7 @@ export struct PlayerHeroArtwork {
   @ObjectLink playerStore: PlayerStore;
   @Prop slotSize: number = PlayerLayoutSpec.FULL_ARTWORK_SIZE;
   @Prop cornerRadius: number = PlayerLayoutSpec.FULL_ARTWORK_RADIUS;
+  @Prop interpolation: ImageInterpolation = ImageInterpolation.High;
 
   private artworkWidth(): number {
     return ArtworkLayout.containedSize(
@@ -70,7 +71,7 @@ export struct PlayerHeroArtwork {
       shadowEnabled: true,
       shadowRadius: PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS,
       shadowOffsetY: PlayerMotionSpec.FULL_ARTWORK_SHADOW_OFFSET_Y,
-      interpolation: ImageInterpolation.High
+      interpolation: this.interpolation
     })
       .scale({
         x: this.playerStore.isPlaying() ? 1 : PlayerMotionSpec.PAUSED_ARTWORK_SCALE,

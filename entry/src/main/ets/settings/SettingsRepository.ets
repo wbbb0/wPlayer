@@ -17,6 +17,12 @@ const PLAYBACK_LAST_TRACK_ID_KEY: string = 'playback.last_track_id';
 const PLAYBACK_QUEUE_TRACK_IDS_KEY: string = 'playback.queue_track_ids';
 const PLAYBACK_QUEUE_CURRENT_TRACK_ID_KEY: string = 'playback.queue_current_track_id';
 const PLAYBACK_LAST_POSITION_MS_KEY: string = 'playback.last_position_ms';
+const HIGH_QUALITY_HERO_ARTWORK_KEY: string = 'appearance.high_quality_hero_artwork';
+const FOLLOW_PLAYBACK_THEME_KEY: string = 'appearance.follow_playback_theme';
+const REMEMBER_PLAYBACK_POSITION_KEY: string = 'playback.remember_position';
+const REMEMBER_LAST_TAB_KEY: string = 'navigation.remember_last_tab';
+const REMEMBER_LIBRARY_SORT_KEY: string = 'library.remember_sort';
+const PRESERVE_SHUFFLE_ON_MANUAL_PLAY_KEY: string = 'playback.preserve_shuffle_on_manual_play';
 
 interface SettingUpdate {
   key: string;
@@ -169,6 +175,54 @@ export class SettingsRepository {
       { key: PLAYBACK_QUEUE_TRACK_IDS_KEY, value: trackIds },
       { key: PLAYBACK_QUEUE_CURRENT_TRACK_ID_KEY, value: currentTrackId }
     ]);
+  }
+
+  getHighQualityHeroArtworkEnabled(defaultValue: boolean = true): boolean {
+    return this.getBoolean(HIGH_QUALITY_HERO_ARTWORK_KEY, defaultValue);
+  }
+
+  setHighQualityHeroArtworkEnabled(value: boolean): void {
+    this.setValue(HIGH_QUALITY_HERO_ARTWORK_KEY, value);
+  }
+
+  getFollowPlaybackThemeEnabled(defaultValue: boolean = true): boolean {
+    return this.getBoolean(FOLLOW_PLAYBACK_THEME_KEY, defaultValue);
+  }
+
+  setFollowPlaybackThemeEnabled(value: boolean): void {
+    this.setValue(FOLLOW_PLAYBACK_THEME_KEY, value);
+  }
+
+  getRememberPlaybackPositionEnabled(defaultValue: boolean = true): boolean {
+    return this.getBoolean(REMEMBER_PLAYBACK_POSITION_KEY, defaultValue);
+  }
+
+  setRememberPlaybackPositionEnabled(value: boolean): void {
+    this.setValue(REMEMBER_PLAYBACK_POSITION_KEY, value);
+  }
+
+  getRememberLastTabEnabled(defaultValue: boolean = true): boolean {
+    return this.getBoolean(REMEMBER_LAST_TAB_KEY, defaultValue);
+  }
+
+  setRememberLastTabEnabled(value: boolean): void {
+    this.setValue(REMEMBER_LAST_TAB_KEY, value);
+  }
+
+  getRememberLibrarySortEnabled(defaultValue: boolean = true): boolean {
+    return this.getBoolean(REMEMBER_LIBRARY_SORT_KEY, defaultValue);
+  }
+
+  setRememberLibrarySortEnabled(value: boolean): void {
+    this.setValue(REMEMBER_LIBRARY_SORT_KEY, value);
+  }
+
+  getPreserveShuffleOnManualPlayEnabled(defaultValue: boolean = false): boolean {
+    return this.getBoolean(PRESERVE_SHUFFLE_ON_MANUAL_PLAY_KEY, defaultValue);
+  }
+
+  setPreserveShuffleOnManualPlayEnabled(value: boolean): void {
+    this.setValue(PRESERVE_SHUFFLE_ON_MANUAL_PLAY_KEY, value);
   }
 
   private getNumber(key: string, defaultValue: number): number {

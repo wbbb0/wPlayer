@@ -6,6 +6,7 @@ import { ensureReadPermission } from '../library/importer/MediaPickerService';
 import { MetadataReader } from '../library/metadata/MetadataReader';
 import { AvailabilityState, TrackListItem } from '../library/model/LibraryModels';
 import { SettingsRepository } from '../settings/SettingsRepository';
+import { appSettings } from '../settings/AppSettingsStore';
 import { ArtworkMemoryCache, DecodedFullArtwork } from './artwork/ArtworkMemoryCache';
 import { PlaybackEngine, PlaybackEngineListener } from './engine/PlaybackEngine';
 import {
@@ -71,6 +72,13 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   playFromLibrary(selected: TrackListItem, libraryItems: Array<TrackListItem>): void {
+    if (!appSettings.preserveShuffleOnManualPlay && this.playerStore.shuffleEnabled) {
+      this.setShuffleEnabled(false);
+    }
+    this.startLibraryPlayback(selected, libraryItems);
+  }
+
+  private startLibraryPlayback(selected: TrackListItem, libraryItems: Array<TrackListItem>): void {
     const selectedTrack = PlaybackRuntime.queueTrackOf(selected);
     const buildEpoch = ++this.queueBuildEpoch;
     this.queue.clear();
@@ -89,7 +97,6 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   playInOrder(selected: TrackListItem, libraryItems: Array<TrackListItem>): void {
-    this.setShuffleEnabled(false);
     this.playFromLibrary(selected, libraryItems);
   }
 
@@ -99,7 +106,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     }
     this.setShuffleEnabled(true);
     const selected = libraryItems[Math.floor(Math.random() * libraryItems.length)];
-    this.playFromLibrary(selected, libraryItems);
+    this.startLibraryPlayback(selected, libraryItems);
   }
 
   insertNext(items: Array<TrackListItem>): void {
@@ -390,6 +397,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     providedSettings?: SettingsRepository): Promise<void> {
     this.context = context;
     this.settings = providedSettings === undefined ? new SettingsRepository(context) : providedSettings;
+    appSettings.initialize(this.settings);
     await this.repository.initialize(context);
     const repeatMode = this.settings.getPlaybackRepeatMode(RepeatMode.ALL);
     this.playerStore.repeatMode = repeatMode >= RepeatMode.OFF && repeatMode <= RepeatMode.ONE ?
@@ -431,7 +439,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       return;
     }
     const queueTrack = PlaybackRuntime.queueTrackOfPlaybackTrack(track);
-    this.queue.build(queueTracks, track.id, false);
+    this.queue.build(queueTracks, track.id, this.playerStore.shuffleEnabled);
     this.playerStore.queuePhase = QueueBuildPhase.READY;
     this.playerStore.queueSize = queueTracks.length;
     this.syncQueueSnapshot();
@@ -585,7 +593,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       }
       this.loadCurrentLyrics(track, epoch);
       const storedTrackId = this.settings?.getPlaybackLastTrackId(-1) ?? -1;
-      const storedPosition = storedTrackId === trackId ?
+      const storedPosition = appSettings.rememberPlaybackPosition && storedTrackId === trackId ?
         this.settings?.getPlaybackLastPositionMs(0) ?? 0 : 0;
       const resumePosition = PlaybackRuntime.validResumePosition(storedPosition, track.durationMs);
       await this.engine.playTrack(track, resumePosition, () => this.playerStore.playWhenReady);
@@ -696,6 +704,9 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       consideredCompleted = true;
     }
     if (position < RESUME_MINIMUM_MS || consideredCompleted) {
+      position = 0;
+    }
+    if (!appSettings.rememberPlaybackPosition) {
       position = 0;
     }
     this.settings?.setPlaybackResumeState(track.id, position);

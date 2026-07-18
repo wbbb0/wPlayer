@@ -45,6 +45,38 @@ export enum AlbumSortField {
   ADDED_AT = 3
 }
 
+export enum PlaylistKind {
+  USER = 0,
+  COMPLETED_HISTORY = 1
+}
+
+export enum PlaylistItemSource {
+  MANUAL = 0,
+  IMPORT = 1,
+  AUTO_COMPLETED = 2
+}
+
+export enum PlaylistSortField {
+  NAME = 0,
+  LAST_PLAYED = 1,
+  UPDATED_AT = 2,
+  CREATED_AT = 3,
+  TRACK_COUNT = 4,
+  TOTAL_DURATION = 5
+}
+
+export enum PlaylistTrackSortField {
+  MANUAL = 0,
+  ADDED_AT = 1,
+  TITLE = 2,
+  ARTIST = 3,
+  ALBUM = 4,
+  RELEASE_DATE = 5,
+  DURATION = 6,
+  LAST_PLAYED = 7,
+  LAST_COMPLETED = 8
+}
+
 export enum LibraryIndexPresentation {
   ALPHABET = 0,
   SCROLLBAR = 1
@@ -238,6 +270,60 @@ export interface ArtistDetail {
   totalDurationMs: number;
   albums: Array<AlbumListItem>;
   tracks: Array<TrackListItem>;
+}
+
+export interface PlaylistSummary {
+  id: number;
+  kind: PlaylistKind;
+  name: string;
+  itemSortField: PlaylistTrackSortField;
+  itemSortDirection: SortDirection;
+  trackCount: number;
+  totalDurationMs: number;
+  createdAt: number;
+  updatedAt: number;
+  lastPlayedAt: number;
+}
+
+export interface PlaylistTrackItem extends TrackListItem {
+  position: number;
+  addedAt: number;
+  source: PlaylistItemSource;
+  firstQualifiedAt: number;
+  lastQualifiedAt: number;
+  lastPlayedAt: number;
+  lastCompletedAt: number;
+}
+
+export interface PlaylistDetail {
+  playlist: PlaylistSummary;
+  items: Array<PlaylistTrackItem>;
+  offset: number;
+  totalCount: number;
+}
+
+export interface PlaylistItemInput {
+  trackId: number;
+  source: PlaylistItemSource;
+  qualifiedAt?: number;
+}
+
+export interface PlaylistMutationResult {
+  requested: number;
+  inserted: number;
+  alreadyPresent: number;
+  unavailable: number;
+}
+
+export interface PlaylistTransferTrack {
+  trackId: number;
+  uri: string;
+  displayName: string;
+  title: string;
+  artistDisplay: string;
+  durationMs: number;
+  firstQualifiedAt: number;
+  lastQualifiedAt: number;
 }
 
 export interface LibraryStatistics {

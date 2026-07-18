@@ -2,10 +2,15 @@ import { PageLayoutSpec } from '../../components/layout/PageLayoutSpec';
 import { PageGridBehavior } from '../../components/layout/PageScrollBehavior';
 import { LibraryAlphabetIndex } from '../../components/library/LibraryAlphabetIndex';
 import { LibraryEmptyState } from '../../components/library/LibraryEmptyState';
-import { AlbumGridItem, AlbumGridItemPlaceholder } from '../../components/library/AlbumGridItem';
+import {
+  AlbumAction,
+  AlbumGridItem,
+  AlbumGridItemPlaceholder
+} from '../../components/library/AlbumGridItem';
 import {
   AlbumListItem,
-  LibraryIndexPresentation
+  LibraryIndexPresentation,
+  LibraryNavigationTarget
 } from '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
@@ -19,6 +24,10 @@ export struct AlbumsPage {
   @State selectedSectionIndex: number = 0;
   scroller: Scroller = new Scroller();
   onOpenAlbum: (item: AlbumListItem) => void = (_item: AlbumListItem): void => {};
+  onAlbumAction: (item: AlbumListItem, action: AlbumAction) => void =
+    (_item: AlbumListItem, _action: AlbumAction): void => {};
+  onNavigateAlbumAction: (target: LibraryNavigationTarget) => void =
+    (_target: LibraryNavigationTarget): void => {};
   private readonly scrollBehavior: PageGridBehavior = new PageGridBehavior();
 
   build() {
@@ -42,7 +51,11 @@ export struct AlbumsPage {
                 AlbumGridItem({
                   store: this.store,
                   album: slot.value,
-                  onActivate: this.onOpenAlbum
+                  actionsEnabled: true,
+                  actionAnchorPrefix: 'albums',
+                  onActivate: this.onOpenAlbum,
+                  onAction: this.onAlbumAction,
+                  onNavigate: this.onNavigateAlbumAction
                 })
               }
             } else {

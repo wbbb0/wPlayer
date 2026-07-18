@@ -5,6 +5,8 @@ import { SongListItem, SongListItemLayout } from '../../components/library/SongL
 import {
   AlbumListItem,
   ArtistDetail,
+  LibraryEntityIdentity,
+  LibraryNavigationTarget,
   TrackListItem
 } from '../../library/model/LibraryModels';
 import { ArtistDetailState } from '../../library/store/LibraryDetailState';
@@ -19,10 +21,15 @@ export struct ArtistDetailPage {
   @Prop bottomInset: number = 0;
   @Prop rootWidth: number = 0;
   @Prop actionAnchorPrefix: string = 'artist';
+  @Prop currentIdentity: LibraryEntityIdentity | undefined = undefined;
   scroller: Scroller = new Scroller();
   onOpenAlbum: (album: AlbumListItem) => void = (_album: AlbumListItem): void => {};
   onOpenTrackActions: (track: TrackListItem, anchorId: string) => void =
     (_track: TrackListItem, _anchorId: string): void => {};
+  onNavigateTrackAction: (target: LibraryNavigationTarget) => void =
+    (_target: LibraryNavigationTarget): void => {};
+  onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
+    (_items: Array<TrackListItem>): void => {};
   private readonly scrollBehavior: PageListBehavior = new PageListBehavior();
 
   aboutToAppear(): void {
@@ -159,6 +166,8 @@ export struct ArtistDetailPage {
             ListItem() {
               SongListItem({
                 item: track,
+                libraryStore: this.store,
+                currentIdentity: this.currentIdentity,
                 layout: SongListItemLayout.LIBRARY,
                 artworkPath: track.smallArtworkPath.length > 0 ?
                   this.store.resolveArtworkPath(track.smallArtworkPath) : '',
@@ -173,7 +182,9 @@ export struct ArtistDetailPage {
                     playbackRuntime.playInOrder(track, this.state.detail.tracks);
                   }
                 },
-                onOpenActions: this.onOpenTrackActions
+                onOpenActions: this.onOpenTrackActions,
+                onNavigateAction: this.onNavigateTrackAction,
+                onRequestAddToPlaylist: this.onRequestAddToPlaylist
               })
             }
           }, (track: TrackListItem) => `${track.id}`)

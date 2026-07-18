@@ -17,8 +17,9 @@ export class AppNavigationStyle {
     return AppNavigationStyle.createTitleBar(title, palette, true, true, menu, titleContent);
   }
 
-  static secondaryTitleBar(title: string, palette: AppAppearancePalette): HdsNavigationTitleBarOptions {
-    return AppNavigationStyle.createTitleBar(title, palette, true, true);
+  static secondaryTitleBar(title: string, palette: AppAppearancePalette,
+    menu?: HdsNavigationMenuContentOptions): HdsNavigationTitleBarOptions {
+    return AppNavigationStyle.createTitleBar(title, palette, true, true, menu);
   }
 
   static secondaryBackOnlyTitleBar(palette: AppAppearancePalette,

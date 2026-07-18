@@ -119,6 +119,7 @@ export struct ArtworkView {
     Image(this.imageSource())
       .width('100%')
       .height('100%')
+      .draggable(false)
       .objectFit(ImageFit.Cover)
       .interpolation(this.interpolation)
       .borderRadius(this.effectiveCornerRadius())

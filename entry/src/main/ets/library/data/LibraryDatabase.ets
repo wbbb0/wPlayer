@@ -5,7 +5,7 @@ import { ARTWORK_PALETTE_VERSION } from '../artwork/ArtworkPaletteExtractor';
 import { RelationalStoreSafety } from './RelationalStoreSafety';
 
 const DATABASE_NAME = 'music_library.db';
-const DATABASE_VERSION = 10;
+const DATABASE_VERSION = 11;
 const SORT_REBUILD_BATCH_SIZE = 500;
 
 const STORE_CONFIG: relationalStore.StoreConfig = {
@@ -192,6 +192,41 @@ const CURRENT_SCHEMA: Array<string> = [
     unsynchronized INTEGER NOT NULL DEFAULT 0,
     UNIQUE (track_id, ordinal)
   )`,
+  `CREATE TABLE playlist (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind INTEGER NOT NULL DEFAULT 0 CHECK (kind IN (0, 1)),
+    fixed_key TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL,
+    normalized_name TEXT NOT NULL,
+    item_sort_field INTEGER NOT NULL DEFAULT 0,
+    item_sort_direction INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    last_played_at INTEGER NOT NULL DEFAULT 0,
+    CHECK (
+      (kind = 0 AND fixed_key = '') OR
+      (kind = 1 AND fixed_key = 'completed_history' AND name = '完整听过' AND normalized_name = '完整听过')
+    ),
+    UNIQUE (normalized_name)
+  )`,
+  `CREATE TABLE playlist_item (
+    playlist_id INTEGER NOT NULL REFERENCES playlist(id) ON DELETE CASCADE,
+    track_id INTEGER NOT NULL REFERENCES track(id) ON DELETE CASCADE,
+    manual_position INTEGER NOT NULL,
+    added_at INTEGER NOT NULL,
+    add_source INTEGER NOT NULL DEFAULT 0 CHECK (add_source IN (0, 1, 2)),
+    first_qualified_at INTEGER NOT NULL DEFAULT 0,
+    last_qualified_at INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (playlist_id, track_id)
+  )`,
+  `CREATE TABLE track_playback_stats (
+    track_id INTEGER PRIMARY KEY REFERENCES track(id) ON DELETE CASCADE,
+    play_count INTEGER NOT NULL DEFAULT 0,
+    completed_count INTEGER NOT NULL DEFAULT 0,
+    last_started_at INTEGER NOT NULL DEFAULT 0,
+    last_played_at INTEGER NOT NULL DEFAULT 0,
+    last_completed_at INTEGER NOT NULL DEFAULT 0
+  )`,
   `CREATE TABLE track_playback_state (
     track_id INTEGER PRIMARY KEY REFERENCES track(id) ON DELETE CASCADE,
     resume_position_ms INTEGER NOT NULL DEFAULT 0,
@@ -219,7 +254,36 @@ const CURRENT_SCHEMA: Array<string> = [
   'CREATE INDEX idx_track_credit_person_role ON track_credit(person_id, role, track_id)',
   'CREATE INDEX idx_track_genre_genre ON track_genre(genre_id, track_id)',
   'CREATE INDEX idx_track_artwork_fallback ON track_artwork(track_id, picture_type, ordinal)',
-  'CREATE INDEX idx_artwork_asset_gc ON artwork_asset(ref_count, unreferenced_at)'
+  'CREATE INDEX idx_artwork_asset_gc ON artwork_asset(ref_count, unreferenced_at)',
+  `CREATE UNIQUE INDEX idx_playlist_fixed_key ON playlist(fixed_key)
+   WHERE fixed_key <> ''`,
+  'CREATE INDEX idx_playlist_name ON playlist(normalized_name, id)',
+  'CREATE INDEX idx_playlist_last_played ON playlist(last_played_at, id)',
+  'CREATE INDEX idx_playlist_updated ON playlist(updated_at, id)',
+  'CREATE INDEX idx_playlist_created ON playlist(created_at, id)',
+  'CREATE INDEX idx_playlist_item_manual ON playlist_item(playlist_id, manual_position, track_id)',
+  'CREATE INDEX idx_playlist_item_added ON playlist_item(playlist_id, added_at, track_id)',
+  'CREATE INDEX idx_playlist_item_track ON playlist_item(track_id, playlist_id)',
+  'CREATE INDEX idx_playback_stats_played ON track_playback_stats(last_played_at, track_id)',
+  'CREATE INDEX idx_playback_stats_completed ON track_playback_stats(last_completed_at, track_id)',
+  `INSERT OR IGNORE INTO playlist(
+    kind, fixed_key, name, normalized_name, item_sort_field, item_sort_direction,
+    created_at, updated_at, last_played_at
+  ) VALUES(1, 'completed_history', '完整听过', '完整听过', 1, 1,
+    CAST(strftime('%s', 'now') AS INTEGER) * 1000,
+    CAST(strftime('%s', 'now') AS INTEGER) * 1000, 0)`,
+  `CREATE TRIGGER IF NOT EXISTS protect_completed_playlist_update
+   BEFORE UPDATE OF kind, fixed_key, name, normalized_name ON playlist
+   WHEN OLD.fixed_key = 'completed_history' OR NEW.kind = 1
+   BEGIN
+     SELECT RAISE(ABORT, 'completed-history playlist is fixed');
+   END`,
+  `CREATE TRIGGER IF NOT EXISTS protect_completed_playlist_delete
+   BEFORE DELETE ON playlist
+   WHEN OLD.fixed_key = 'completed_history'
+   BEGIN
+     SELECT RAISE(ABORT, 'completed-history playlist cannot be deleted');
+   END`
 ];
 
 export class LibraryDatabase {
@@ -349,7 +413,8 @@ export class LibraryDatabase {
   private async rebuildSchema(store: relationalStore.RdbStore): Promise<void> {
     let transaction: relationalStore.Transaction | undefined;
     const tables = [
-      'import_error', 'import_job', 'track_playback_state', 'track_artwork', 'track_tag_extra', 'track_genre',
+      'import_error', 'import_job', 'playlist_item', 'track_playback_stats', 'track_playback_state',
+      'playlist', 'track_artwork', 'track_tag_extra', 'track_genre',
       'album_credit', 'track_credit', 'genre', 'person', 'track', 'media_file', 'album',
       'artwork_source', 'artwork_asset', 'schema_meta'
     ];

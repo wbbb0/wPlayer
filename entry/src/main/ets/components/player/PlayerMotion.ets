@@ -154,7 +154,8 @@ export class PlayerMotionSpec {
     const fadeProgress = (collapseProgress - PlayerMotionSpec.FULL_CONTENT_COLLAPSE_FADE_START) /
       (PlayerMotionSpec.FULL_CONTENT_COLLAPSE_FADE_END -
         PlayerMotionSpec.FULL_CONTENT_COLLAPSE_FADE_START);
-    return 1 - Math.max(0, Math.min(1, fadeProgress));
+    const opacity = 1 - Math.max(0, Math.min(1, fadeProgress));
+    return Math.round(opacity * 1000000) / 1000000;
   }
 }
 

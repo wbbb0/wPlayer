@@ -6,6 +6,7 @@ import {
   AlbumListItem,
   AlbumDetail,
   AlbumSortField,
+  ArtistReference,
   ArtistDetail,
   ImportProgress,
   ImportResult,
@@ -405,6 +406,10 @@ export class LibraryStore {
 
   getAlbumDetail(albumId: number): Promise<AlbumDetail | undefined> {
     return this.repository.getAlbumDetail(albumId);
+  }
+
+  getAlbumArtists(albumId: number): Promise<Array<ArtistReference>> {
+    return this.repository.getAlbumArtists(albumId);
   }
 
   getArtistDetail(artistId: number): Promise<ArtistDetail | undefined> {

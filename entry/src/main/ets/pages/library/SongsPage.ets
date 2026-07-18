@@ -4,6 +4,7 @@ import { LibraryAlphabetIndex } from '../../components/library/LibraryAlphabetIn
 import { LibraryEmptyState } from '../../components/library/LibraryEmptyState';
 import {
   LibraryIndexPresentation,
+  LibraryNavigationTarget,
   TrackListItem
 } from '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
@@ -20,6 +21,10 @@ export struct SongsPage {
   onPlayTrack: (item: TrackListItem) => void = (_item: TrackListItem): void => {};
   onOpenTrackActions: (item: TrackListItem, anchorId: string) => void =
     (_item: TrackListItem, _anchorId: string): void => {};
+  onNavigateTrackAction: (target: LibraryNavigationTarget) => void =
+    (_target: LibraryNavigationTarget): void => {};
+  onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
+    (_items: Array<TrackListItem>): void => {};
   scroller: Scroller = new Scroller();
   private readonly scrollBehavior: PageListBehavior = new PageListBehavior();
 
@@ -49,12 +54,13 @@ export struct SongsPage {
                   }
                   SongListItem({
                     item: slot.value,
+                    libraryStore: this.store,
                     layout: SongListItemLayout.LIBRARY,
                     artworkPath: slot.value.smallArtworkPath.length > 0 ?
                       this.store.resolveArtworkPath(slot.value.smallArtworkPath) : '',
                     actionTrack: slot.value,
                     actionAnchorPrefix: 'songs',
-                    menuPlacement: Placement.BottomRight,
+                    menuPlacement: Placement.Right,
                     horizontalInset: 16,
                     verticalInset: 8,
                     artworkSize: 52,
@@ -64,7 +70,9 @@ export struct SongsPage {
                         this.onPlayTrack(slot.value);
                       }
                     },
-                    onOpenActions: this.onOpenTrackActions
+                    onOpenActions: this.onOpenTrackActions,
+                    onNavigateAction: this.onNavigateTrackAction,
+                    onRequestAddToPlaylist: this.onRequestAddToPlaylist
                   })
                 }
                 .width('100%')

@@ -10,6 +10,8 @@ import { appSettings } from '../settings/AppSettingsStore';
 import { ArtworkMemoryCache, DecodedFullArtwork } from './artwork/ArtworkMemoryCache';
 import { PlaybackEngine, PlaybackEngineListener } from './engine/PlaybackEngine';
 import {
+  CompletedCollectionMode,
+  PlaybackOriginKind,
   PlaybackTrack,
   PlayerState,
   PlayerStore,
@@ -24,6 +26,7 @@ import { LyricsParser } from './lyrics/LyricsParser';
 import { LyricTimeline } from './lyrics/LyricTimeline';
 import { LibraryPlaybackBridge } from '../library/store/LibraryPlaybackBridge';
 import { PlaybackPowerPolicy } from './support/PlaybackPowerPolicy';
+import { PlaybackCoverageTracker } from './history/PlaybackCoverageTracker';
 
 const RESUME_MINIMUM_MS = 5000;
 const COMPLETION_REMAINING_MS = 10000;
@@ -36,6 +39,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
 
   private readonly engine: PlaybackEngine = new PlaybackEngine();
   private readonly queue: PlaybackQueue = new PlaybackQueue();
+  private readonly coverageTracker: PlaybackCoverageTracker = new PlaybackCoverageTracker();
   private context?: common.UIAbilityContext;
   private settings?: SettingsRepository;
   private session?: PlaybackSession;
@@ -49,6 +53,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   private lastPositionWriteAt: number = 0;
   private lastPersistedTrackId: number = -2;
   private lastPersistedPositionMs: number = -1;
+  private coverageNeedsRestart: boolean = false;
   private fullArtwork?: DecodedFullArtwork;
   private paletteChangeListener?: (primary: string, secondary: string, accent: string) => void;
 
@@ -72,7 +77,9 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     return this.initializePromise;
   }
 
-  playFromLibrary(selected: TrackListItem, libraryItems: Array<TrackListItem>): void {
+  playFromLibrary(selected: TrackListItem, libraryItems: Array<TrackListItem>,
+    origin: PlaybackOriginKind = PlaybackOriginKind.LIBRARY): void {
+    this.applyCompletedCollectionDefault(origin);
     if (!appSettings.preserveShuffleOnManualPlay && this.playerStore.shuffleEnabled) {
       this.setShuffleEnabled(false);
     }
@@ -97,14 +104,17 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     });
   }
 
-  playInOrder(selected: TrackListItem, libraryItems: Array<TrackListItem>): void {
-    this.playFromLibrary(selected, libraryItems);
+  playInOrder(selected: TrackListItem, libraryItems: Array<TrackListItem>,
+    origin: PlaybackOriginKind = PlaybackOriginKind.LIBRARY): void {
+    this.playFromLibrary(selected, libraryItems, origin);
   }
 
-  shuffleAll(libraryItems: Array<TrackListItem>): void {
+  shuffleAll(libraryItems: Array<TrackListItem>,
+    origin: PlaybackOriginKind = PlaybackOriginKind.LIBRARY): void {
     if (libraryItems.length === 0) {
       return;
     }
+    this.applyCompletedCollectionDefault(origin);
     this.setShuffleEnabled(true);
     const selected = libraryItems[Math.floor(Math.random() * libraryItems.length)];
     this.startLibraryPlayback(selected, libraryItems);
@@ -116,6 +126,20 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
 
   appendToQueue(items: Array<TrackListItem>): void {
     this.enqueueLibraryItems(items, false);
+  }
+
+  insertCurrentNext(): void {
+    const current = this.playerStore.currentTrack;
+    if (current !== undefined) {
+      this.enqueueQueueItems([current], true);
+    }
+  }
+
+  appendCurrentToQueue(): void {
+    const current = this.playerStore.currentTrack;
+    if (current !== undefined) {
+      this.enqueueQueueItems([current], false);
+    }
   }
 
   togglePlayback(): void {
@@ -137,6 +161,8 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     if (this.playerStore.state === PlayerState.LOADING) {
       return;
     }
+    this.restartCoverageAfterInterruption();
+    this.coverageTracker.recordResume(this.playerStore.progress.positionMs);
     this.engine.play().catch((error: Object) => {
       this.playerStore.playWhenReady = false;
       this.onStateChanged(PlayerState.ERROR, PlaybackRuntime.messageOf(error));
@@ -148,6 +174,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       return;
     }
     this.playerStore.playWhenReady = false;
+    this.coverageTracker.recordPause(this.playerStore.progress.positionMs);
     if (this.playerStore.state === PlayerState.LOADING || this.playerStore.state === PlayerState.READY) {
       return;
     }
@@ -158,6 +185,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
 
   stop(): void {
     this.pause();
+    this.interruptCoverage();
     this.persistProgress(false);
   }
 
@@ -199,6 +227,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     const targetPositionMs = Math.max(0, Math.min(positionMs, this.playerStore.progress.durationMs));
     const seekEpoch = ++this.seekEpoch;
     this.pendingSeekPositionMs = targetPositionMs;
+    this.coverageTracker.seekTo(targetPositionMs);
     this.playerStore.progress.positionMs = targetPositionMs;
     this.updateActiveLyricIndex(targetPositionMs);
     this.engine.seek(targetPositionMs).then(() => {
@@ -248,6 +277,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   async prepareForLibraryClear(): Promise<void> {
+    this.interruptCoverage();
     this.persistProgress(false);
     ++this.artworkEpoch;
     ++this.queueBuildEpoch;
@@ -277,6 +307,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   async shutdown(): Promise<void> {
+    this.interruptCoverage();
     this.persistProgress(false);
     ++this.artworkEpoch;
     ++this.queueBuildEpoch;
@@ -304,6 +335,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.lastPositionWriteAt = 0;
     this.lastPersistedTrackId = -2;
     this.lastPersistedPositionMs = -1;
+    this.coverageNeedsRestart = false;
     this.artworkCache?.releaseAll();
     this.artworkCache?.releaseFullArtwork(this.fullArtwork);
     this.fullArtwork = undefined;
@@ -318,6 +350,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.state = state;
     if (state === PlayerState.ERROR) {
       this.playerStore.playWhenReady = false;
+      this.interruptCoverage();
     }
     this.playerStore.errorMessage = message === undefined ? '' : message;
     if (state === PlayerState.PAUSED || state === PlayerState.ERROR) {
@@ -330,6 +363,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   onPositionChanged(positionMs: number): void {
     if (this.pendingSeekPositionMs === undefined) {
       this.playerStore.progress.positionMs = positionMs;
+      this.coverageTracker.advanceTo(positionMs);
       this.updateActiveLyricIndex(positionMs);
     }
     const now = Date.now();
@@ -349,6 +383,17 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
 
   onCompleted(): void {
     this.persistProgress(true);
+    const completion = this.coverageTracker.finishNaturally(this.playerStore.progress.durationMs);
+    this.coverageNeedsRestart = true;
+    if (completion.qualifies && completion.trackId >= 0) {
+      this.repository.recordCompletedPlayback(
+        completion.trackId,
+        Date.now(),
+        this.playerStore.completedCollectionEnabled
+      ).catch((error: Object) => {
+        console.warn(`Unable to record completed playback: ${PlaybackRuntime.messageOf(error)}`);
+      });
+    }
     const next = this.queue.next(this.playerStore.repeatMode, true);
     this.syncQueueSnapshot();
     if (next !== undefined) {
@@ -369,6 +414,19 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
 
   queueArtworkUri(relativePath: string): string {
     return this.resolveArtworkUri(relativePath);
+  }
+
+  setCompletedCollectionEnabled(enabled: boolean): void {
+    if (this.playerStore.completedCollectionEnabled === enabled) {
+      return;
+    }
+    this.playerStore.completedCollectionEnabled = enabled;
+    this.settings?.setCompletedCollectionCurrentEnabled(enabled);
+  }
+
+  setCompletedCollectionMode(mode: CompletedCollectionMode): void {
+    appSettings.setCompletedCollectionMode(mode);
+    this.playerStore.completedCollectionMode = appSettings.completedCollectionMode;
   }
 
   setPaletteChangeListener(listener?: (primary: string, secondary: string, accent: string) => void): void {
@@ -412,6 +470,9 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.repeatMode = repeatMode >= RepeatMode.OFF && repeatMode <= RepeatMode.ONE ?
       repeatMode as RepeatMode : RepeatMode.ALL;
     this.playerStore.shuffleEnabled = this.settings.getPlaybackShuffleEnabled(false);
+    this.playerStore.completedCollectionMode = appSettings.completedCollectionMode;
+    this.playerStore.completedCollectionEnabled =
+      this.settings.getCompletedCollectionCurrentEnabled(true);
     this.artworkCache = new ArtworkMemoryCache(context);
     this.session = new PlaybackSession(context, this);
     await this.session.initialize();
@@ -500,6 +561,13 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       return;
     }
     const queueItems = items.map((item: TrackListItem) => PlaybackRuntime.queueTrackOf(item));
+    this.enqueueQueueItems(queueItems, insertNext);
+  }
+
+  private enqueueQueueItems(queueItems: Array<QueueTrack>, insertNext: boolean): void {
+    if (queueItems.length === 0 || this.playerStore.queuePhase !== QueueBuildPhase.READY) {
+      return;
+    }
     if (insertNext) {
       this.queue.insertNext(queueItems);
     } else {
@@ -525,6 +593,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
 
   private beginTrack(track: QueueTrack, playWhenReady: boolean = true,
     preserveStoredPosition: boolean = false): Promise<void> {
+    this.interruptCoverage();
     this.persistProgress(false);
     ++this.seekEpoch;
     this.pendingSeekPositionMs = undefined;
@@ -642,6 +711,8 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       const storedPosition = appSettings.rememberPlaybackPosition && storedTrackId === trackId ?
         this.settings?.getPlaybackLastPositionMs(0) ?? 0 : 0;
       const resumePosition = PlaybackRuntime.validResumePosition(storedPosition, track.durationMs);
+      this.coverageTracker.begin(track.id, track.durationMs, resumePosition);
+      this.coverageNeedsRestart = false;
       await this.engine.playTrack(track, resumePosition, () => this.playerStore.playWhenReady);
       if (epoch !== this.artworkEpoch) {
         return;
@@ -785,6 +856,42 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.shuffleEnabled = enabled;
     this.settings?.setPlaybackShuffleEnabled(enabled);
     this.syncSessionState();
+  }
+
+  private applyCompletedCollectionDefault(origin: PlaybackOriginKind): void {
+    const mode = appSettings.completedCollectionMode;
+    this.playerStore.completedCollectionMode = mode;
+    if (mode === CompletedCollectionMode.DEFAULT_ON) {
+      this.setCompletedCollectionEnabled(true);
+      return;
+    }
+    if (mode === CompletedCollectionMode.DEFAULT_OFF) {
+      this.setCompletedCollectionEnabled(false);
+      return;
+    }
+    this.setCompletedCollectionEnabled(origin !== PlaybackOriginKind.COMPLETED_PLAYLIST);
+  }
+
+  private interruptCoverage(): void {
+    this.coverageTracker.finishInterrupted(this.playerStore.progress.positionMs);
+    this.coverageNeedsRestart = true;
+  }
+
+  private restartCoverageAfterInterruption(): void {
+    const track = this.currentPlaybackTrack;
+    if (!this.coverageNeedsRestart || track === undefined) {
+      return;
+    }
+    const initialPosition = this.playerStore.state === PlayerState.COMPLETED ?
+      0 : this.playerStore.progress.positionMs;
+    if (initialPosition === 0 && this.playerStore.state === PlayerState.COMPLETED) {
+      this.playerStore.progress.positionMs = 0;
+      this.updateActiveLyricIndex(0);
+    }
+    const duration = this.playerStore.progress.durationMs > 0 ?
+      this.playerStore.progress.durationMs : track.durationMs;
+    this.coverageTracker.begin(track.id, duration, initialPosition);
+    this.coverageNeedsRestart = false;
   }
 
   private resolveArtworkUri(relativePath: string): string {

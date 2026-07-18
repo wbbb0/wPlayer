@@ -552,7 +552,7 @@ export class MusicLibraryQueries {
     }
   }
 
-  private async getAlbumArtists(albumId: number): Promise<Array<ArtistReference>> {
+  async getAlbumArtists(albumId: number): Promise<Array<ArtistReference>> {
     try {
       const resultSet = await this.database.getStore().querySql(
         `SELECT p.id, p.name

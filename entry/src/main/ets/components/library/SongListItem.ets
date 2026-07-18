@@ -1,6 +1,14 @@
-import { TrackListItem } from '../../library/model/LibraryModels';
+import {
+  LibraryEntityIdentity,
+  LibraryNavigationTarget,
+  TrackListItem
+} from '../../library/model/LibraryModels';
+import { LibraryStore } from '../../library/store/LibraryStore';
 import { ArtworkFitMode, ArtworkView } from '../artwork/ArtworkView';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
+import { TrackContextMenu } from './TrackActionMenu';
+
+const CONTEXT_PREVIEW_TEXT_MAX_WIDTH = 280;
 
 export interface SongListItemData {
   id: number;
@@ -19,6 +27,7 @@ export enum SongListItemLayout {
 
 @Component
 export struct SongListItem {
+  @State contextMenuShown: boolean = false;
   @Prop item: SongListItemData;
   @Prop layout: SongListItemLayout = SongListItemLayout.LIBRARY;
   @Prop artworkPath: string = '';
@@ -26,9 +35,12 @@ export struct SongListItem {
   @Prop queueIndex: number = -1;
   @Prop currentQueueIndex: number = -1;
   @Prop showArtist: boolean = true;
+  @Prop libraryStore: LibraryStore | undefined = undefined;
+  @Prop currentIdentity: LibraryEntityIdentity | undefined = undefined;
   @Prop actionTrack: TrackListItem | undefined = undefined;
+  @Prop removeActionLabel: string = '';
   @Prop actionAnchorPrefix: string = 'library';
-  @Prop menuPlacement: Placement = Placement.Bottom;
+  @Prop menuPlacement: Placement = Placement.Right;
   @Prop primaryColor: ResourceColor = $r('app.color.text_primary');
   @Prop secondaryColor: ResourceColor = $r('app.color.text_secondary');
   @Prop tertiaryColor: ResourceColor = $r('app.color.text_tertiary');
@@ -49,6 +61,12 @@ export struct SongListItem {
   onActivate: () => void = (): void => {};
   onOpenActions: (track: TrackListItem, anchorId: string) => void =
     (_track: TrackListItem, _anchorId: string): void => {};
+  onNavigateAction: (target: LibraryNavigationTarget) => void =
+    (_target: LibraryNavigationTarget): void => {};
+  onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
+    (_items: Array<TrackListItem>): void => {};
+  onRemoveAction: (() => void) | undefined = undefined;
+  private suppressActivationUntil: number = 0;
 
   private durationLabel(): string {
     const totalSeconds = Math.max(0, Math.floor(this.item.durationMs / 1000));
@@ -146,34 +164,42 @@ export struct SongListItem {
   }
 
   @Builder
-  private RowContent() {
-    this.LeadingContent()
+  private IdentityContent() {
+    Row({ space: this.rowSpace() }) {
+      this.LeadingContent()
 
-    Column({ space: this.textSpace() }) {
-      Text(this.item.title)
-        .fontSize(this.titleSize())
-        .fontWeight(this.active ? FontWeight.Bold : FontWeight.Medium)
-        .fontColor(this.primaryColor)
-        .animation({
-          duration: this.animateColors ? PaletteMotionSpec.COLOR_TRANSITION_DURATION : 0,
-          curve: Curve.EaseInOut
-        })
-        .maxLines(1)
-      if (this.showArtist) {
-        Text(this.artistLabel())
-          .fontSize(this.secondarySize())
-          .fontColor(this.secondaryColor)
+      Column({ space: this.textSpace() }) {
+        Text(this.item.title)
+          .fontSize(this.titleSize())
+          .fontWeight(this.active ? FontWeight.Bold : FontWeight.Medium)
+          .fontColor(this.primaryColor)
           .animation({
             duration: this.animateColors ? PaletteMotionSpec.COLOR_TRANSITION_DURATION : 0,
             curve: Curve.EaseInOut
           })
           .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        if (this.showArtist) {
+          Text(this.artistLabel())
+            .fontSize(this.secondarySize())
+            .fontColor(this.secondaryColor)
+            .animation({
+              duration: this.animateColors ? PaletteMotionSpec.COLOR_TRANSITION_DURATION : 0,
+              curve: Curve.EaseInOut
+            })
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
       }
+      .alignItems(HorizontalAlign.Start)
+      .justifyContent(FlexAlign.Center)
+      .flexShrink(1)
     }
-    .alignItems(HorizontalAlign.Start)
-    .justifyContent(FlexAlign.Center)
-    .layoutWeight(1)
+    .flexShrink(1)
+  }
 
+  @Builder
+  private TrailingContent() {
     Text(this.durationLabel())
       .fontSize(this.durationSize())
       .fontColor(this.tertiaryColor)
@@ -228,6 +254,115 @@ export struct SongListItem {
   }
 
   @Builder
+  private ContextMenu() {
+    if (this.libraryStore !== undefined && this.actionTrack !== undefined) {
+      TrackContextMenu({
+        store: this.libraryStore,
+        track: this.actionTrack,
+        current: this.currentIdentity,
+        onNavigate: this.onNavigateAction,
+        onRequestAddToPlaylist: this.onRequestAddToPlaylist,
+        removeLabel: this.removeActionLabel,
+        onRemove: this.onRemoveAction
+      })
+    }
+  }
+
+  @Builder
+  private RowContent() {
+    Row() {
+      this.IdentityContent()
+      Blank()
+        .layoutWeight(1)
+    }
+    .layoutWeight(1)
+
+    this.TrailingContent()
+  }
+
+  @Builder
+  private ContextMenuPreview() {
+    Row({ space: this.rowSpace() }) {
+      this.LeadingContent()
+
+      Column({ space: this.textSpace() }) {
+        Text(this.item.title)
+          .fontSize(this.titleSize())
+          .fontWeight(this.active ? FontWeight.Bold : FontWeight.Medium)
+          .fontColor(this.primaryColor)
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        if (this.showArtist) {
+          Text(this.artistLabel())
+            .fontSize(this.secondarySize())
+            .fontColor(this.secondaryColor)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+      }
+      .alignItems(HorizontalAlign.Start)
+      .justifyContent(FlexAlign.Center)
+      .constraintSize({ maxWidth: CONTEXT_PREVIEW_TEXT_MAX_WIDTH })
+    }
+  }
+
+  @Builder
+  private ContextMenuIdentity() {
+    Row() {
+      this.IdentityContent()
+    }
+    .bindContextMenu(
+      this.contextMenuShown,
+      this.ContextMenu(),
+      {
+        preview: this.ContextMenuPreview,
+        placement: this.menuPlacement,
+        previewBorderRadius: 0,
+        onDisappear: (): void => {
+          this.contextMenuShown = false;
+        }
+      }
+    )
+  }
+
+  @Builder
+  private StandardRowWithContextMenu() {
+    Row({ space: this.rowSpace() }) {
+      Row() {
+        this.ContextMenuIdentity()
+        Blank()
+          .layoutWeight(1)
+      }
+      .layoutWeight(1)
+
+      this.TrailingContent()
+    }
+    .width('100%')
+    .constraintSize({ minHeight: this.minimumHeight })
+    .padding({
+      left: this.horizontalInset,
+      right: this.horizontalInset,
+      top: this.verticalInset,
+      bottom: this.verticalInset
+    })
+    .borderRadius(this.rowCornerRadius)
+    .hoverEffect(HoverEffect.None)
+    .onClick(() => {
+      if (Date.now() < this.suppressActivationUntil) {
+        return;
+      }
+      this.onActivate();
+    })
+    .gesture(
+      LongPressGesture({ repeat: false })
+        .onAction(() => {
+          this.suppressActivationUntil = Date.now() + 800;
+          this.contextMenuShown = true;
+        })
+    )
+  }
+
+  @Builder
   private PlayerQueueRow() {
     Row({ space: this.rowSpace() }) {
       this.RowContent()
@@ -268,6 +403,8 @@ export struct SongListItem {
   build() {
     if (this.layout === SongListItemLayout.PLAYER_QUEUE) {
       this.PlayerQueueRow()
+    } else if (this.actionTrack !== undefined && this.libraryStore !== undefined) {
+      this.StandardRowWithContextMenu()
     } else {
       this.StandardRow()
     }

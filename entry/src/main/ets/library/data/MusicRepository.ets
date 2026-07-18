@@ -3,11 +3,19 @@ import { common } from '@kit.AbilityKit';
 import {
   AlbumSortField,
   AlbumDetail,
+  ArtistReference,
   ArtistDetail,
   AvailabilityState,
   AlbumListItem,
   LibraryCatalog,
   LibraryPage,
+  PlaylistDetail,
+  PlaylistItemInput,
+  PlaylistMutationResult,
+  PlaylistSortField,
+  PlaylistSummary,
+  PlaylistTrackSortField,
+  PlaylistTransferTrack,
   LibrarySnapshot,
   LibraryStatistics,
   SortDirection,
@@ -28,6 +36,7 @@ import {
 } from './MusicRepositoryTypes';
 import { ArtworkPaletteUpdate, PaletteRefreshAsset } from './MusicRepositoryTypes';
 import { ARTWORK_PALETTE_VERSION } from '../artwork/ArtworkPaletteExtractor';
+import { PlaylistRepository } from '../../playlist/data/PlaylistRepository';
 
 export {
   ArtworkAssetLookup,
@@ -48,6 +57,7 @@ export class MusicRepository {
   private readonly database: LibraryDatabase = new LibraryDatabase();
   private readonly queries: MusicLibraryQueries = new MusicLibraryQueries(this.database);
   private readonly importer: MusicLibraryImporter = new MusicLibraryImporter(this.database);
+  private readonly playlists: PlaylistRepository = new PlaylistRepository(this.database);
 
   initialize(context: common.Context): Promise<boolean> {
     return this.database.initialize(context);
@@ -145,12 +155,115 @@ export class MusicRepository {
     return this.queries.getAlbumDetail(albumId);
   }
 
+  getAlbumArtists(albumId: number): Promise<Array<ArtistReference>> {
+    return this.queries.getAlbumArtists(albumId);
+  }
+
   getArtistDetail(artistId: number): Promise<ArtistDetail | undefined> {
     return this.queries.getArtistDetail(artistId);
   }
 
   getTrackNavigationTargets(trackId: number): Promise<TrackNavigationTargets | undefined> {
     return this.queries.getTrackNavigationTargets(trackId);
+  }
+
+  getPlaylists(field: PlaylistSortField, direction: SortDirection): Promise<Array<PlaylistSummary>> {
+    return this.playlists.getPlaylists(field, direction);
+  }
+
+  getPlaylist(playlistId: number): Promise<PlaylistSummary | undefined> {
+    return this.playlists.getPlaylist(playlistId);
+  }
+
+  getCompletedPlaylist(): Promise<PlaylistSummary> {
+    return this.playlists.getCompletedPlaylist();
+  }
+
+  createPlaylist(name: string): Promise<PlaylistSummary> {
+    return this.playlists.createPlaylist(name);
+  }
+
+  renamePlaylist(playlistId: number, name: string): Promise<PlaylistSummary> {
+    return this.playlists.renamePlaylist(playlistId, name);
+  }
+
+  deletePlaylist(playlistId: number): Promise<void> {
+    return this.playlists.deletePlaylist(playlistId);
+  }
+
+  updatePlaylistItemSort(
+    playlistId: number,
+    field: PlaylistTrackSortField,
+    direction: SortDirection
+  ): Promise<void> {
+    return this.playlists.updateItemSort(playlistId, field, direction);
+  }
+
+  markPlaylistPlayed(playlistId: number, playedAt: number = Date.now()): Promise<void> {
+    return this.playlists.markPlayed(playlistId, playedAt);
+  }
+
+  getPlaylistDetail(
+    playlistId: number,
+    offset: number = 0,
+    limit: number = 100,
+    field?: PlaylistTrackSortField,
+    direction?: SortDirection
+  ): Promise<PlaylistDetail | undefined> {
+    return this.playlists.getPlaylistDetail(playlistId, offset, limit, field, direction);
+  }
+
+  getPlaylistTrackIds(
+    playlistId: number,
+    field?: PlaylistTrackSortField,
+    direction?: SortDirection
+  ): Promise<Array<number>> {
+    return this.playlists.getPlaylistTrackIds(playlistId, field, direction);
+  }
+
+  getPlaylistTransferCatalog(): Promise<Array<PlaylistTransferTrack>> {
+    return this.playlists.getTransferCatalog();
+  }
+
+  getPlaylistTransferTracks(playlistId: number): Promise<Array<PlaylistTransferTrack>> {
+    return this.playlists.getPlaylistTransferTracks(playlistId);
+  }
+
+  addPlaylistItems(
+    playlistId: number,
+    items: Array<PlaylistItemInput>
+  ): Promise<PlaylistMutationResult> {
+    return this.playlists.addItems(playlistId, items);
+  }
+
+  mergePlaylistItems(
+    playlistId: number,
+    items: Array<PlaylistItemInput>
+  ): Promise<PlaylistMutationResult> {
+    return this.playlists.mergeItems(playlistId, items);
+  }
+
+  replacePlaylistItems(
+    playlistId: number,
+    items: Array<PlaylistItemInput>
+  ): Promise<PlaylistMutationResult> {
+    return this.playlists.replaceItems(playlistId, items);
+  }
+
+  removePlaylistItems(playlistId: number, trackIds: Array<number>): Promise<number> {
+    return this.playlists.removeItems(playlistId, trackIds);
+  }
+
+  reorderPlaylistItems(playlistId: number, reorderedTrackIds: Array<number>): Promise<void> {
+    return this.playlists.reorderItems(playlistId, reorderedTrackIds);
+  }
+
+  recordCompletedPlayback(
+    trackId: number,
+    completedAt: number = Date.now(),
+    collectInPlaylist: boolean = true
+  ): Promise<void> {
+    return this.playlists.recordCompletedPlayback(trackId, completedAt, collectInPlaylist);
   }
 
   hasUri(uri: string): Promise<boolean> {

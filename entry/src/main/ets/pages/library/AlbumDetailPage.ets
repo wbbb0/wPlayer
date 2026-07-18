@@ -1,7 +1,13 @@
 import { PageLayoutSpec } from '../../components/layout/PageLayoutSpec';
 import { PageListBehavior } from '../../components/layout/PageScrollBehavior';
 import { ArtworkFitMode, ArtworkView } from '../../components/artwork/ArtworkView';
-import { AlbumDetail, AlbumListItem, TrackListItem } from '../../library/model/LibraryModels';
+import {
+  AlbumDetail,
+  AlbumListItem,
+  LibraryEntityIdentity,
+  LibraryNavigationTarget,
+  TrackListItem
+} from '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { AlbumDetailState } from '../../library/store/LibraryDetailState';
 import { ArtistReference } from '../../library/model/LibraryModels';
@@ -10,13 +16,14 @@ import { AppShellLayoutSpec } from '../../components/layout/AppShellLayoutSpec';
 import { SongListItem, SongListItemLayout } from '../../components/library/SongListItem';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import { DynamicColor, DynamicContainerRole } from '../../appearance/DynamicColor';
-import { AlbumGridSection } from '../../components/library/AlbumGridItem';
+import { AlbumAction, AlbumGridSection } from '../../components/library/AlbumGridItem';
 
 @Component
 export struct AlbumDetailPage {
   @ObjectLink store: LibraryStore;
   @ObjectLink state: AlbumDetailState;
   @Prop actionAnchorPrefix: string = 'album';
+  @Prop currentIdentity: LibraryEntityIdentity | undefined = undefined;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @Prop rootWidth: number = 0;
@@ -28,8 +35,14 @@ export struct AlbumDetailPage {
   private readonly scrollBehavior: PageListBehavior = new PageListBehavior();
   onOpenArtist: (artist: ArtistReference) => void = (_artist: ArtistReference): void => {};
   onOpenAlbum: (album: AlbumListItem) => void = (_album: AlbumListItem): void => {};
+  onAlbumAction: (album: AlbumListItem, action: AlbumAction) => void =
+    (_album: AlbumListItem, _action: AlbumAction): void => {};
   onOpenTrackActions: (track: TrackListItem, anchorId: string) => void =
     (_track: TrackListItem, _anchorId: string): void => {};
+  onNavigateTrackAction: (target: LibraryNavigationTarget) => void =
+    (_target: LibraryNavigationTarget): void => {};
+  onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
+    (_items: Array<TrackListItem>): void => {};
 
   aboutToAppear(): void {
     this.state.load(this.store);
@@ -308,7 +321,11 @@ export struct AlbumDetailPage {
         store: this.store,
         albums: detail.relatedAlbums,
         containerWidth: this.rootWidth,
-        onOpenAlbum: this.onOpenAlbum
+        actionsEnabled: true,
+        actionAnchorPrefix: this.actionAnchorPrefix,
+        onOpenAlbum: this.onOpenAlbum,
+        onAlbumAction: this.onAlbumAction,
+        onNavigate: this.onNavigateTrackAction
       })
     }
     .width('100%')
@@ -339,6 +356,8 @@ export struct AlbumDetailPage {
               }
               SongListItem({
                 item: track,
+                libraryStore: this.store,
+                currentIdentity: this.currentIdentity,
                 layout: SongListItemLayout.ALBUM,
                 trackNumber: track.trackNumber,
                 showArtist: this.showTrackArtist(
@@ -358,7 +377,9 @@ export struct AlbumDetailPage {
                     playbackRuntime.playInOrder(track, detail.tracks);
                   }
                 },
-                onOpenActions: this.onOpenTrackActions
+                onOpenActions: this.onOpenTrackActions,
+                onNavigateAction: this.onNavigateTrackAction,
+                onRequestAddToPlaylist: this.onRequestAddToPlaylist
               })
             }
           }

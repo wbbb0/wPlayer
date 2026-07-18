@@ -1,4 +1,6 @@
 import { SettingsRepository } from './SettingsRepository';
+import { CompletedCollectionMode } from '../playback/model/PlaybackModels';
+import { CompletedCollectionSettingPolicy } from './CompletedCollectionSettingPolicy';
 
 @Observed
 export class AppSettingsStore {
@@ -8,6 +10,7 @@ export class AppSettingsStore {
   rememberLastTab: boolean = true;
   rememberLibrarySort: boolean = true;
   preserveShuffleOnManualPlay: boolean = false;
+  completedCollectionMode: CompletedCollectionMode = CompletedCollectionMode.SMART;
 
   private repository?: SettingsRepository;
   private initialized: boolean = false;
@@ -23,6 +26,9 @@ export class AppSettingsStore {
     this.rememberLastTab = repository.getRememberLastTabEnabled(true);
     this.rememberLibrarySort = repository.getRememberLibrarySortEnabled(true);
     this.preserveShuffleOnManualPlay = repository.getPreserveShuffleOnManualPlayEnabled(false);
+    this.completedCollectionMode = CompletedCollectionSettingPolicy.normalize(
+      repository.getCompletedCollectionMode(CompletedCollectionMode.SMART)
+    );
     this.initialized = true;
   }
 
@@ -62,6 +68,11 @@ export class AppSettingsStore {
   setPreserveShuffleOnManualPlay(value: boolean): void {
     this.preserveShuffleOnManualPlay = value;
     this.repository?.setPreserveShuffleOnManualPlayEnabled(value);
+  }
+
+  setCompletedCollectionMode(value: CompletedCollectionMode): void {
+    this.completedCollectionMode = CompletedCollectionSettingPolicy.normalize(value);
+    this.repository?.setCompletedCollectionMode(this.completedCollectionMode);
   }
 }
 

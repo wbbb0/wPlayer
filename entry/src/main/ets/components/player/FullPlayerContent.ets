@@ -27,6 +27,8 @@ import { TimedLyricLine } from '../../playback/lyrics/LyricsParser';
 import { SongListItem, SongListItemLayout } from '../library/SongListItem';
 import { LayoutLength } from '../layout/LayoutLength';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
+import { SymbolGlyphModifier } from '@kit.ArkUI';
+import { playbackRuntime } from '../../playback/PlaybackRuntime';
 
 @Component
 struct TimedLyricRow {
@@ -158,6 +160,10 @@ export struct FullPlayerContent {
   onResolveQueueArtwork: (relativePath: string) => string = (_relativePath: string): string => '';
   onOpenTrackActions: (trackId: number, anchorId: string) => void =
     (_trackId: number, _anchorId: string): void => {};
+  onRequestAddToPlaylist: (trackIds: Array<number>) => void =
+    (_trackIds: Array<number>): void => {};
+  onCompletedCollectionChange: (enabled: boolean) => void =
+    (_enabled: boolean): void => {};
   onArtworkTarget: (target: PlayerPoint) => void = (_target: PlayerPoint): void => {};
   onCenteredArtworkTarget: (target: PlayerPoint) => void = (_target: PlayerPoint): void => {};
   private readonly queueScroller: Scroller = new Scroller();
@@ -178,6 +184,34 @@ export struct FullPlayerContent {
     this.lastFocusedLyricIndex = index;
     this.lyricScroller.scrollToIndex(targetIndex, true, ScrollAlign.START);
   };
+
+  @Builder
+  private CurrentTrackMenu() {
+    Menu() {
+      MenuItem({ content: '插播', labelInfo: '下一首开始' })
+        .enabled(this.playerStore.currentTrack !== undefined)
+        .onClick(() => playbackRuntime.insertCurrentNext())
+      MenuItem({ content: '追加到队列' })
+        .enabled(this.playerStore.currentTrack !== undefined)
+        .onClick(() => playbackRuntime.appendCurrentToQueue())
+      MenuItem({ content: '添加到播放列表' })
+        .enabled(this.playerStore.currentTrack !== undefined)
+        .onClick(() => {
+          if (this.playerStore.currentTrack !== undefined) {
+            this.onRequestAddToPlaylist([this.playerStore.currentTrack.id]);
+          }
+        })
+      MenuItem({
+        content: '收集完整听过的音乐',
+        symbolEndIcon: this.playerStore.completedCollectionEnabled ?
+          new SymbolGlyphModifier($r('sys.symbol.checkmark')) : undefined
+      })
+        .onClick(() => {
+          this.onCompletedCollectionChange(!this.playerStore.completedCollectionEnabled);
+        })
+    }
+    .width(260)
+  }
 
   private pageWidth(): number {
     return FullPlayerPagerSpec.pageSpan(this.rootFrame.width, this.paneCount);
@@ -506,6 +540,20 @@ export struct FullPlayerContent {
           Row({ space: 2 }) {
             PlayerModeButton({ playerStore: this.playerStore, action: PlayerModeAction.SHUFFLE })
             PlayerModeButton({ playerStore: this.playerStore, action: PlayerModeAction.REPEAT })
+            Stack() {
+              Image($r('app.media.control_more'))
+                .width(20)
+                .height(20)
+                .fillColor(this.playerStore.themeOnPrimary())
+                .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+            }
+            .width(40)
+            .height(40)
+            .borderRadius(20)
+            .backgroundColor($r('app.color.glass_surface_subtle'))
+            .clickEffect({ level: ClickEffectLevel.MIDDLE })
+            .accessibilityText('更多操作')
+            .bindMenu(this.CurrentTrackMenu(), { placement: Placement.BottomRight })
           }
           .alignItems(VerticalAlign.Center)
         }

@@ -1,6 +1,7 @@
 import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { CompletedCollectionSettingPolicy } from './CompletedCollectionSettingPolicy';
 
 const SETTINGS_FILE_NAME: string = 'wplayer_settings';
 const LAST_TAB_INDEX_KEY: string = 'navigation.last_tab_index';
@@ -23,6 +24,9 @@ const REMEMBER_PLAYBACK_POSITION_KEY: string = 'playback.remember_position';
 const REMEMBER_LAST_TAB_KEY: string = 'navigation.remember_last_tab';
 const REMEMBER_LIBRARY_SORT_KEY: string = 'library.remember_sort';
 const PRESERVE_SHUFFLE_ON_MANUAL_PLAY_KEY: string = 'playback.preserve_shuffle_on_manual_play';
+const COMPLETED_COLLECTION_MODE_KEY: string = 'playback.completed_collection.mode';
+const COMPLETED_COLLECTION_CURRENT_KEY: string = 'playback.completed_collection.current_enabled';
+const RECENT_PLAYLIST_TARGET_IDS_KEY: string = 'playlist.recent_target_ids';
 
 interface SettingUpdate {
   key: string;
@@ -34,6 +38,7 @@ export class SettingsRepository {
 
   constructor(context: common.Context) {
     this.store = preferences.getPreferencesSync(context, { name: SETTINGS_FILE_NAME });
+    this.ensureDefaults();
   }
 
   getLastTabIndex(defaultValue: number = 0): number {
@@ -223,6 +228,71 @@ export class SettingsRepository {
 
   setPreserveShuffleOnManualPlayEnabled(value: boolean): void {
     this.setValue(PRESERVE_SHUFFLE_ON_MANUAL_PLAY_KEY, value);
+  }
+
+  getCompletedCollectionMode(defaultValue: number = 0): number {
+    return this.getNumber(COMPLETED_COLLECTION_MODE_KEY, defaultValue);
+  }
+
+  setCompletedCollectionMode(value: number): void {
+    this.setValue(COMPLETED_COLLECTION_MODE_KEY, value);
+  }
+
+  getCompletedCollectionCurrentEnabled(defaultValue: boolean = true): boolean {
+    return this.getBoolean(COMPLETED_COLLECTION_CURRENT_KEY, defaultValue);
+  }
+
+  setCompletedCollectionCurrentEnabled(value: boolean): void {
+    this.setValue(COMPLETED_COLLECTION_CURRENT_KEY, value);
+  }
+
+  getRecentPlaylistTargetIds(): Array<number> {
+    try {
+      const value = this.store.getSync(RECENT_PLAYLIST_TARGET_IDS_KEY, []);
+      if (!Array.isArray(value)) {
+        return [];
+      }
+      const result: Array<number> = [];
+      for (let index = 0; index < value.length; index += 1) {
+        if (typeof value[index] === 'number') {
+          result.push(value[index] as number);
+        }
+      }
+      return result;
+    } catch (error) {
+      const businessError = error as BusinessError;
+      console.warn(`Unable to read setting ${RECENT_PLAYLIST_TARGET_IDS_KEY}: ` +
+        `${businessError.code}, ${businessError.message}`);
+      return [];
+    }
+  }
+
+  setRecentPlaylistTargetIds(value: Array<number>): void {
+    this.setValue(RECENT_PLAYLIST_TARGET_IDS_KEY, value);
+  }
+
+  private ensureDefaults(): void {
+    try {
+      const updates: Array<SettingUpdate> = [];
+      const storedMode = this.store.getSync(COMPLETED_COLLECTION_MODE_KEY, 0);
+      const completedMode = CompletedCollectionSettingPolicy.normalize(
+        typeof storedMode === 'number' ? storedMode : 0
+      );
+      if (!this.store.hasSync(COMPLETED_COLLECTION_MODE_KEY) ||
+        typeof storedMode !== 'number' || storedMode !== completedMode) {
+        updates.push({ key: COMPLETED_COLLECTION_MODE_KEY, value: completedMode });
+      }
+      const storedEnabled = this.store.getSync(COMPLETED_COLLECTION_CURRENT_KEY, true);
+      if (!this.store.hasSync(COMPLETED_COLLECTION_CURRENT_KEY) || typeof storedEnabled !== 'boolean') {
+        updates.push({ key: COMPLETED_COLLECTION_CURRENT_KEY, value: true });
+      }
+      if (updates.length > 0) {
+        this.setValues(updates);
+      }
+    } catch (error) {
+      const businessError = error as BusinessError;
+      console.warn(`Unable to initialize settings defaults: ${businessError.code}, ${businessError.message}`);
+    }
   }
 
   private getNumber(key: string, defaultValue: number): number {

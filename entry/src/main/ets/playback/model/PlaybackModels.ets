@@ -99,6 +99,20 @@ export interface ResumeState {
   durationMs: number;
 }
 
+export enum CompletedCollectionMode {
+  SMART = 0,
+  DEFAULT_ON = 1,
+  DEFAULT_OFF = 2
+}
+
+export enum PlaybackOriginKind {
+  LIBRARY = 0,
+  ALBUM = 1,
+  PLAYLIST = 2,
+  COMPLETED_PLAYLIST = 3,
+  RESTORED_QUEUE = 4
+}
+
 export type LyricIndexListener = (index: number) => void;
 export type QueueIndexListener = (index: number) => void;
 
@@ -164,6 +178,8 @@ export class PlayerStore {
   readonly queueDataSource: QueueTrackDataSource = new QueueTrackDataSource();
   queueCurrentIndex: number = -1;
   private readonly queueIndexListeners: Array<QueueIndexListener> = [];
+  completedCollectionEnabled: boolean = true;
+  completedCollectionMode: CompletedCollectionMode = CompletedCollectionMode.SMART;
   palettePrimary: string = DEFAULT_PLAYER_PALETTE_PRIMARY;
   paletteSecondary: string = DEFAULT_PLAYER_PALETTE_SECONDARY;
   paletteAccent: string = DEFAULT_PLAYER_PALETTE_ACCENT;

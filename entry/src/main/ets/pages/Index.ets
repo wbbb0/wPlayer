@@ -26,8 +26,12 @@ import {
 import { LibraryStore } from '../library/store/LibraryStore';
 import {
   LibraryEntityKind,
-  LibraryNavigationTarget
+  LibraryNavigationTarget,
+  PlaylistSummary,
+  TrackListItem
 } from '../library/model/LibraryModels';
+import { PlaylistStore } from '../playlist/store/PlaylistStore';
+import { PlaylistSelectionPolicy } from '../playlist/ui/PlaylistSelectionPolicy';
 import { playbackRuntime } from '../playback/PlaybackRuntime';
 import { PlayerStore } from '../playback/model/PlaybackModels';
 import { SettingsRepository } from '../settings/SettingsRepository';
@@ -42,6 +46,7 @@ import {
 } from '../components/player/MiniPlayerSurface';
 import { ArtworkLayout } from '../components/artwork/ArtworkLayout';
 import { ArtworkFitMode, ArtworkView } from '../components/artwork/ArtworkView';
+import { PlaylistSelectionSheet } from '../components/library/PlaylistSelectionSheet';
 import {
   ALL_ROOT_NAVIGATION_ITEMS,
   DEFAULT_NAVIGATION_ORDER,
@@ -72,6 +77,12 @@ import { systemBarStyleController } from '../appearance/SystemBarStyleController
 
 const MORE_TAB_INDEX: number = PRIMARY_NAVIGATION_COUNT;
 
+enum PlaylistSheetKind {
+  CREATE = 0,
+  PICKER = 1,
+  RENAME = 2
+}
+
 @Entry
 @Component
 struct Index {
@@ -81,10 +92,18 @@ struct Index {
   @State navigationOrder: Array<string> = DEFAULT_NAVIGATION_ORDER;
   @State selectedRouteId: string = NavigationRoute.PLAYLISTS;
   @State libraryStore: LibraryStore = new LibraryStore(playbackRuntime.repository, playbackRuntime);
+  @State playlistStore: PlaylistStore = new PlaylistStore(playbackRuntime.repository);
   @State playerStore: PlayerStore = playbackRuntime.playerStore;
   // The invisible geometry probe must not react to playback position or lyric updates.
   @State geometryPlayerStore: PlayerStore = new PlayerStore();
   @State settingsStore: AppSettingsStore = appSettings;
+  @State playlistSheetVisible: boolean = false;
+  @State playlistSheetKind: PlaylistSheetKind = PlaylistSheetKind.CREATE;
+  @State playlistCreateName: string = '';
+  @State playlistPickerTrackIds: Array<number> = [];
+  @State playlistRenameId: number = -1;
+  @State playlistRenameName: string = '';
+  @State recentPlaylistTargetIds: Array<number> = [];
   @State animatedThemePrimary: string = '';
   @State miniBarExpanded: boolean = false;
   @State miniPlayerOffsetX: number = 0;
@@ -166,6 +185,10 @@ struct Index {
       try {
         this.settingsRepository = new SettingsRepository(abilityContext);
         this.settingsStore.initialize(this.settingsRepository);
+        this.recentPlaylistTargetIds = PlaylistSelectionPolicy.recordRecentTarget(
+          this.settingsRepository.getRecentPlaylistTargetIds(),
+          -1
+        );
         this.navigationOrder = normalizeNavigationOrder(
           this.settingsRepository.getNavigationOrder(DEFAULT_NAVIGATION_ORDER)
         );
@@ -183,7 +206,21 @@ struct Index {
         const businessError = error as BusinessError;
         console.warn(`Unable to initialize settings: ${businessError.code}, ${businessError.message}`);
       }
-      this.libraryStore.initialize(abilityContext, this.settingsRepository);
+      this.initializeApplicationData(abilityContext, this.settingsRepository);
+    }
+  }
+
+  private async initializeApplicationData(context: common.UIAbilityContext,
+    settings?: SettingsRepository): Promise<void> {
+    try {
+      await playbackRuntime.repository.initialize(context);
+      await Promise.all([
+        this.libraryStore.initialize(context, settings),
+        this.playlistStore.initialize(),
+        playbackRuntime.initialize(context)
+      ]);
+    } catch (error) {
+      console.warn(`Unable to initialize application data: ${error instanceof Error ? error.message : error}`);
     }
   }
 
@@ -1080,10 +1117,173 @@ struct Index {
     );
   }
 
+  private openPlaylistCreator(): void {
+    this.playlistCreateName = '';
+    this.openPlaylistSheet(PlaylistSheetKind.CREATE);
+  }
+
+  private saveNewPlaylist(): void {
+    const name = this.playlistCreateName.trim();
+    if (name.length === 0 || this.playlistStore.mutating) {
+      return;
+    }
+    this.playlistStore.create(name).then((created) => {
+      if (created !== undefined) {
+        this.closePlaylistSheet();
+      }
+    });
+  }
+
+  private requestAddToPlaylist(items: Array<TrackListItem>): void {
+    this.requestTrackIdsAddToPlaylist(
+      items.map((item: TrackListItem): number => item.id)
+    );
+  }
+
+  private requestTrackIdsAddToPlaylist(ids: Array<number>): void {
+    const trackIds = PlaylistSelectionPolicy.uniqueTrackIds(ids);
+    if (trackIds.length === 0) {
+      return;
+    }
+    this.playlistPickerTrackIds = trackIds;
+    this.openPlaylistSheet(PlaylistSheetKind.PICKER);
+  }
+
+  private recordRecentPlaylistTarget(playlistId: number): void {
+    this.recentPlaylistTargetIds = PlaylistSelectionPolicy.recordRecentTarget(
+      this.recentPlaylistTargetIds,
+      playlistId
+    );
+    this.settingsRepository?.setRecentPlaylistTargetIds(this.recentPlaylistTargetIds);
+  }
+
+  private openPlaylistRenamer(playlist: PlaylistSummary): void {
+    this.playlistRenameId = playlist.id;
+    this.playlistRenameName = playlist.name;
+    this.openPlaylistSheet(PlaylistSheetKind.RENAME);
+  }
+
+  private savePlaylistRename(): void {
+    const name = this.playlistRenameName.trim();
+    if (name.length === 0 || this.playlistRenameId < 0 || this.playlistStore.mutating) {
+      return;
+    }
+    this.playlistStore.rename(this.playlistRenameId, name).then((renamed) => {
+      if (renamed !== undefined) {
+        this.closePlaylistSheet();
+      }
+    });
+  }
+
+  private openPlaylistSheet(kind: PlaylistSheetKind): void {
+    this.playlistSheetKind = kind;
+    this.playlistSheetVisible = true;
+  }
+
+  private closePlaylistSheet(): void {
+    this.playlistSheetVisible = false;
+  }
+
+  private playlistSheetHeight(): SheetSize {
+    return this.playlistSheetKind === PlaylistSheetKind.PICKER ?
+      SheetSize.LARGE : SheetSize.FIT_CONTENT;
+  }
+
+  @Builder
+  private PlaylistCreatorSheet() {
+    Column({ space: 18 }) {
+      Text('新建播放列表')
+        .fontSize(22)
+        .fontWeight(FontWeight.Bold)
+        .fontColor($r('app.color.text_primary'))
+        .width('100%')
+      TextInput({
+        text: this.playlistCreateName,
+        placeholder: '播放列表名称'
+      })
+        .width('100%')
+        .onChange((value: string) => {
+          this.playlistCreateName = value;
+        })
+      Row({ space: 12 }) {
+        Button('取消')
+          .layoutWeight(1)
+          .onClick(() => {
+            this.closePlaylistSheet();
+          })
+        Button('创建')
+          .layoutWeight(1)
+          .enabled(this.playlistCreateName.trim().length > 0 && !this.playlistStore.mutating)
+          .onClick(() => this.saveNewPlaylist())
+      }
+      .width('100%')
+    }
+    .padding(24)
+    .width('100%')
+  }
+
+  @Builder
+  private PlaylistPickerSheet() {
+    PlaylistSelectionSheet({
+      store: this.playlistStore,
+      trackIds: this.playlistPickerTrackIds,
+      recentPlaylistIds: this.recentPlaylistTargetIds,
+      onAddedToPlaylist: (playlistId: number): void => this.recordRecentPlaylistTarget(playlistId),
+      onClose: (): void => {
+        this.closePlaylistSheet();
+      }
+    })
+  }
+
+  @Builder
+  private PlaylistRenameSheet() {
+    Column({ space: 18 }) {
+      Text('播放列表改名')
+        .fontSize(22)
+        .fontWeight(FontWeight.Bold)
+        .fontColor($r('app.color.text_primary'))
+        .width('100%')
+      TextInput({
+        text: this.playlistRenameName,
+        placeholder: '播放列表名称'
+      })
+        .width('100%')
+        .onChange((value: string) => {
+          this.playlistRenameName = value;
+        })
+      Row({ space: 12 }) {
+        Button('取消')
+          .layoutWeight(1)
+          .onClick(() => {
+            this.closePlaylistSheet();
+          })
+        Button('保存')
+          .layoutWeight(1)
+          .enabled(this.playlistRenameName.trim().length > 0 && !this.playlistStore.mutating)
+          .onClick(() => this.savePlaylistRename())
+      }
+      .width('100%')
+    }
+    .padding(24)
+    .width('100%')
+  }
+
+  @Builder
+  private PlaylistSheet() {
+    if (this.playlistSheetKind === PlaylistSheetKind.PICKER) {
+      this.PlaylistPickerSheet()
+    } else if (this.playlistSheetKind === PlaylistSheetKind.RENAME) {
+      this.PlaylistRenameSheet()
+    } else {
+      this.PlaylistCreatorSheet()
+    }
+  }
+
   @Builder
   private NavigationShell() {
     ResponsiveNavigationShell({
       libraryStore: this.libraryStore,
+      playlistStore: this.playlistStore,
       playerStore: this.playerStore,
       settingsStore: this.settingsStore,
       topInset: this.statusBarAvoidHeight,
@@ -1115,6 +1315,9 @@ struct Index {
       onRememberLastTabChange: (value: boolean): void => this.setRememberLastTab(value),
       onRememberSortChange: (value: boolean): void => this.libraryStore.setRememberSort(value),
       onNavigationItemMove: (from: number, to: number): void => this.moveNavigationItem(from, to),
+      onRequestCreatePlaylist: (): void => this.openPlaylistCreator(),
+      onRequestRenamePlaylist: (playlist: PlaylistSummary): void => this.openPlaylistRenamer(playlist),
+      onRequestAddToPlaylist: (items: Array<TrackListItem>): void => this.requestAddToPlaylist(items),
       onMiniBarStyleChange: (expanded: boolean): void => {
         this.miniBarExpanded = expanded;
       },
@@ -1161,6 +1364,10 @@ struct Index {
             onClose: () => this.hideFullPlayer(),
             onPlayQueueTrack: (trackId: number): void => playbackRuntime.playQueueTrack(trackId),
             onSeek: (positionMs: number): void => playbackRuntime.seek(positionMs),
+            onCompletedCollectionChange: (enabled: boolean): void =>
+              playbackRuntime.setCompletedCollectionEnabled(enabled),
+            onRequestAddToPlaylist: (trackIds: Array<number>): void =>
+              this.requestTrackIdsAddToPlaylist(trackIds),
             onResolveQueueArtwork: (relativePath: string): string =>
               playbackRuntime.queueArtworkUri(relativePath),
             onOpenTrackActions: (trackId: number, anchorId: string): void =>
@@ -1392,6 +1599,11 @@ struct Index {
     .id('player_page_root')
     .backgroundColor(this.animatedPageBackground())
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+    .bindSheet($$this.playlistSheetVisible, this.PlaylistSheet(), {
+      height: this.playlistSheetHeight(),
+      dragBar: true,
+      showClose: this.playlistSheetKind === PlaylistSheetKind.PICKER
+    })
     .onAreaChange((_oldValue: Area, newValue: Area) => {
       const previousWideLayout = this.usesWideLayout();
       const previousPlayerPaneCount = this.fullPlayerPaneCount();

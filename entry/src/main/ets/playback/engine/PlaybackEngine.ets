@@ -8,12 +8,14 @@ import { RequestEpoch } from '../support/RequestEpoch';
 
 const STATE_WAIT_TIMEOUT_MS = 10000;
 const SEEK_WAIT_TIMEOUT_MS = 8000;
+const PLAYBACK_REQUEST_SUPERSEDED: Error = new Error('Playback request superseded');
 
 export interface PlaybackEngineListener {
   onStateChanged(state: PlayerState, message?: string): void;
   onPositionChanged(positionMs: number): void;
   onDurationChanged(durationMs: number): void;
   onCompleted(): void;
+  onOutputDeviceUnavailable(): void;
 }
 
 interface PendingStateWait {
@@ -41,7 +43,6 @@ export class PlaybackEngine {
   private activeEpoch: number = 0;
   private pendingStateWait?: PendingStateWait;
   private pendingSeekWait?: PendingSeekWait;
-  private resumeAfterOutputReconnect: boolean = false;
   private shuttingDown: boolean = false;
 
   setListener(listener: PlaybackEngineListener): void {
@@ -52,7 +53,6 @@ export class PlaybackEngine {
     const epoch = this.requestEpoch.begin();
     this.listener?.onStateChanged(PlayerState.LOADING);
     return this.enqueue(async () => {
-      this.resumeAfterOutputReconnect = false;
       this.activeEpoch = epoch;
       await this.loadTrack(track, resumePositionMs, epoch, playWhenReady);
     });
@@ -60,9 +60,8 @@ export class PlaybackEngine {
 
   invalidateAndStop(): Promise<void> {
     this.requestEpoch.invalidate();
-    this.rejectPendingWaits(new Error('Playback request superseded'));
+    this.rejectPendingWaits(PLAYBACK_REQUEST_SUPERSEDED);
     return this.enqueue(async () => {
-      this.resumeAfterOutputReconnect = false;
       if (this.player !== undefined && this.rawState !== 'idle' && this.rawState !== 'released') {
         await this.resetForSource(this.player);
       }
@@ -70,36 +69,45 @@ export class PlaybackEngine {
   }
 
   togglePlayback(): Promise<void> {
+    const epoch = this.activeEpoch;
     return this.enqueue(async () => {
-      this.resumeAfterOutputReconnect = false;
       if (this.player === undefined) {
         return;
       }
       if (this.rawState === 'playing') {
         await this.player.pause();
+        this.publishConfirmedState(epoch, PlayerState.PAUSED);
       } else if (this.rawState === 'prepared' || this.rawState === 'paused' || this.rawState === 'completed') {
         await this.ensureAudioSession();
+        this.ensureCurrent(epoch);
         await this.player.play();
+        this.ensureCurrent(epoch);
+        this.publishConfirmedState(epoch, PlayerState.PLAYING);
       }
     });
   }
 
   play(): Promise<void> {
+    const epoch = this.activeEpoch;
     return this.enqueue(async () => {
-      this.resumeAfterOutputReconnect = false;
-      if (this.player !== undefined &&
-        (this.rawState === 'prepared' || this.rawState === 'paused' || this.rawState === 'completed')) {
-        await this.ensureAudioSession();
-        await this.player.play();
+      if (this.player === undefined ||
+        (this.rawState !== 'prepared' && this.rawState !== 'paused' && this.rawState !== 'completed')) {
+        throw new Error(`Playback source is not ready: ${this.rawState}`);
       }
+      await this.ensureAudioSession();
+      this.ensureCurrent(epoch);
+      await this.player.play();
+      this.ensureCurrent(epoch);
+      this.publishConfirmedState(epoch, PlayerState.PLAYING);
     });
   }
 
   pause(): Promise<void> {
+    const epoch = this.activeEpoch;
     return this.enqueue(async () => {
-      this.resumeAfterOutputReconnect = false;
       if (this.player !== undefined && this.rawState === 'playing') {
         await this.player.pause();
+        this.publishConfirmedState(epoch, PlayerState.PAUSED);
       }
     });
   }
@@ -115,7 +123,6 @@ export class PlaybackEngine {
 
   async shutdown(): Promise<void> {
     this.shuttingDown = true;
-    this.resumeAfterOutputReconnect = false;
     this.requestEpoch.invalidate();
     this.rejectPendingWaits(new Error('Playback engine shut down'));
     this.unsubscribeOutputDeviceChanges();
@@ -172,9 +179,23 @@ export class PlaybackEngine {
       }
       if (playWhenReady()) {
         await this.ensureAudioSession();
+        this.ensureCurrent(epoch);
+        if (!playWhenReady()) {
+          return;
+        }
         await player.play();
+        this.ensureCurrent(epoch);
+        if (!playWhenReady()) {
+          await player.pause();
+          this.publishConfirmedState(epoch, PlayerState.PAUSED);
+          return;
+        }
+        this.publishConfirmedState(epoch, PlayerState.PLAYING);
       }
     } catch (error) {
+      if (error === PLAYBACK_REQUEST_SUPERSEDED) {
+        throw PLAYBACK_REQUEST_SUPERSEDED;
+      }
       throw new Error(`Unable to load playback source: ${PlaybackEngine.messageOf(error)}`);
     }
   }
@@ -296,7 +317,7 @@ export class PlaybackEngine {
   private enqueue(operation: () => Promise<void>): Promise<void> {
     const pending = this.commandTail.then(operation);
     this.commandTail = pending.catch((error: Object) => {
-      if (PlaybackEngine.messageOf(error) !== 'Playback request superseded') {
+      if (error !== PLAYBACK_REQUEST_SUPERSEDED) {
         this.listener?.onStateChanged(PlayerState.ERROR, PlaybackEngine.messageOf(error));
       }
     });
@@ -313,7 +334,10 @@ export class PlaybackEngine {
       }
       if (this.outputDeviceChangedCallback === undefined) {
         const callback = (event: audio.CurrentOutputDeviceChangedEvent): void => {
-          this.onOutputDeviceChanged(event);
+          if (event.changeReason ===
+            audio.AudioStreamDeviceChangeReason.REASON_OLD_DEVICE_UNAVAILABLE) {
+            this.listener?.onOutputDeviceUnavailable();
+          }
         };
         this.audioSessionManager.on('currentOutputDeviceChanged', callback);
         this.outputDeviceChangedCallback = callback;
@@ -324,52 +348,8 @@ export class PlaybackEngine {
         });
       }
     } catch (error) {
-      console.warn(`Unable to initialize audio output monitoring: ${PlaybackEngine.messageOf(error)}`);
+      console.warn(`Unable to activate audio session: ${PlaybackEngine.messageOf(error)}`);
     }
-  }
-
-  private onOutputDeviceChanged(event: audio.CurrentOutputDeviceChangedEvent): void {
-    if (event.changeReason === audio.AudioStreamDeviceChangeReason.REASON_OLD_DEVICE_UNAVAILABLE &&
-      this.rawState === 'playing') {
-      this.pauseForOutputDisconnect().catch((error: Object) => {
-        console.warn(`Unable to pause after audio output disconnect: ${PlaybackEngine.messageOf(error)}`);
-      });
-      return;
-    }
-    if (event.changeReason === audio.AudioStreamDeviceChangeReason.REASON_NEW_DEVICE_AVAILABLE) {
-      this.resumeForOutputReconnect().catch((error: Object) => {
-        console.warn(`Unable to resume after audio output reconnect: ${PlaybackEngine.messageOf(error)}`);
-      });
-    }
-  }
-
-  private pauseForOutputDisconnect(): Promise<void> {
-    return this.enqueue(async () => {
-      if (this.player === undefined || this.rawState !== 'playing') {
-        return;
-      }
-      this.resumeAfterOutputReconnect = true;
-      try {
-        await this.player.pause();
-      } catch (error) {
-        this.resumeAfterOutputReconnect = false;
-        throw error instanceof Error ? error : new Error(`${error}`);
-      }
-    });
-  }
-
-  private resumeForOutputReconnect(): Promise<void> {
-    return this.enqueue(async () => {
-      if (!this.resumeAfterOutputReconnect) {
-        return;
-      }
-      this.resumeAfterOutputReconnect = false;
-      if (this.player === undefined || this.rawState !== 'paused') {
-        return;
-      }
-      await this.ensureAudioSession();
-      await this.player.play();
-    });
   }
 
   private unsubscribeOutputDeviceChanges(): void {
@@ -381,6 +361,7 @@ export class PlaybackEngine {
     } catch (error) {
       console.warn(`Unable to stop audio output monitoring: ${PlaybackEngine.messageOf(error)}`);
     }
+    this.outputDeviceChangedCallback = undefined;
   }
 
   private async deactivateAudioSession(): Promise<void> {
@@ -398,7 +379,13 @@ export class PlaybackEngine {
 
   private ensureCurrent(epoch: number): void {
     if (!this.requestEpoch.isCurrent(epoch)) {
-      throw new Error('Playback request superseded');
+      throw PLAYBACK_REQUEST_SUPERSEDED;
+    }
+  }
+
+  private publishConfirmedState(epoch: number, state: PlayerState): void {
+    if (this.requestEpoch.isCurrent(epoch) && epoch === this.activeEpoch) {
+      this.listener?.onStateChanged(state);
     }
   }
 

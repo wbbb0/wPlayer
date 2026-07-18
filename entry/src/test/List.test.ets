@@ -12,6 +12,7 @@ import m3uImportMatcherTest from './M3uImportMatcher.test';
 import playbackCoverageTest from './PlaybackCoverage.test';
 import playlistInteractionPolicyTest from './PlaylistInteractionPolicy.test';
 import playlistPolicyTest from './PlaylistPolicy.test';
+import playbackStateReducerTest from './PlaybackStateReducer.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -28,4 +29,5 @@ export default function testsuite() {
   playbackCoverageTest();
   playlistInteractionPolicyTest();
   playlistPolicyTest();
+  playbackStateReducerTest();
 }

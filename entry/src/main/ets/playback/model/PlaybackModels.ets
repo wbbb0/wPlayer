@@ -17,6 +17,15 @@ export enum PlayerState {
   ERROR = 'error'
 }
 
+export enum PlaybackTransportState {
+  IDLE = 'idle',
+  PREPARING = 'preparing',
+  PLAYING = 'playing',
+  PAUSED = 'paused',
+  COMPLETED = 'completed',
+  ERROR = 'error'
+}
+
 export enum RepeatMode {
   OFF = 0,
   ALL = 1,
@@ -156,11 +165,13 @@ export class PlaybackProgressStore {
 @Observed
 export class PlayerStore {
   state: PlayerState = PlayerState.IDLE;
+  transportState: PlaybackTransportState = PlaybackTransportState.IDLE;
   playWhenReady: boolean = false;
   currentTrack?: QueueTrack;
   readonly progress: PlaybackProgressStore = new PlaybackProgressStore();
   miniArtwork?: image.PixelMap;
   miniArtworkUri: string = '';
+  miniArtworkRevision: number = 0;
   heroArtwork?: image.PixelMap;
   heroArtworkUri: string = '';
   heroArtworkPreferPixelMap: boolean = false;
@@ -186,7 +197,22 @@ export class PlayerStore {
   themeBaseBackground: string = '#FFFFFFFF';
 
   isPlaying(): boolean {
-    return this.playWhenReady;
+    return this.transportState === PlaybackTransportState.PLAYING;
+  }
+
+  showsPauseControl(): boolean {
+    return this.transportState === PlaybackTransportState.PLAYING ||
+      this.transportState === PlaybackTransportState.PREPARING;
+  }
+
+  keepsActivePlaybackVisual(): boolean {
+    return this.showsPauseControl();
+  }
+
+  setMiniArtwork(artwork: image.PixelMap | undefined, uri: string): void {
+    this.miniArtwork = artwork;
+    this.miniArtworkUri = uri;
+    this.miniArtworkRevision += 1;
   }
 
   addLyricIndexListener(listener: LyricIndexListener): void {

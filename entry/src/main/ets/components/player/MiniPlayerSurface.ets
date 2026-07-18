@@ -1,18 +1,54 @@
-import { PlayerFrame, PlayerLayoutSpec, PlayerMotionSpec } from './PlayerMotion';
+import { PlayerMotionSpec } from './PlayerMotion';
+import { MiniPlayerBinding } from './MiniPlayerBinding';
 import { PlayerMiniArtwork } from './PlayerArtworkViews';
 import { PlayerPlaybackButton } from './PlayerControls';
 import { PlayerMarqueeMotionStore, PlayerTrackMarquee } from './PlayerTrackMarquee';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { LayoutLength } from '../layout/LayoutLength';
 
+export class MiniPlayerHostParams {
+  playerStore: PlayerStore;
+  marqueeMotionStore: PlayerMarqueeMotionStore;
+  binding: MiniPlayerBinding;
+  onShowFullPlayer: () => void;
+  onGestureStart: () => void;
+  onGestureUpdate: (event: GestureEvent) => void;
+  onGestureFinish: () => void;
+
+  constructor(playerStore: PlayerStore, marqueeMotionStore: PlayerMarqueeMotionStore,
+    binding: MiniPlayerBinding, onShowFullPlayer: () => void,
+    onGestureStart: () => void, onGestureUpdate: (event: GestureEvent) => void,
+    onGestureFinish: () => void) {
+    this.playerStore = playerStore;
+    this.marqueeMotionStore = marqueeMotionStore;
+    this.binding = binding;
+    this.onShowFullPlayer = onShowFullPlayer;
+    this.onGestureStart = onGestureStart;
+    this.onGestureUpdate = onGestureUpdate;
+    this.onGestureFinish = onGestureFinish;
+  }
+}
+
+@Builder
+export function MiniPlayerHost(params: MiniPlayerHostParams) {
+  MiniPlayerSurface({
+    playerStore: params.playerStore,
+    marqueeMotionStore: params.marqueeMotionStore,
+    binding: params.binding,
+    onShowFullPlayer: params.onShowFullPlayer,
+    onGestureStart: params.onGestureStart,
+    onGestureUpdate: params.onGestureUpdate,
+    onGestureFinish: params.onGestureFinish
+  })
+}
+
 @Component
 export struct MiniPlayerContent {
   @ObjectLink playerStore: PlayerStore;
   @ObjectLink marqueeMotionStore: PlayerMarqueeMotionStore;
-  @Prop expanded: boolean = false;
+  @ObjectLink binding: MiniPlayerBinding;
   @Prop showArtwork: boolean = true;
   @Prop followsSwipeOffset: boolean = true;
-  @Prop swipeOffsetX: number = 0;
   onShowFullPlayer: () => void = (): void => {};
 
   build() {
@@ -29,12 +65,12 @@ export struct MiniPlayerContent {
         this.onShowFullPlayer();
       })
 
-      if (this.expanded) {
+      if (this.binding.expanded) {
         Column({ space: 2 }) {
           PlayerTrackMarquee({
             motionStore: this.marqueeMotionStore,
+            playerStore: this.playerStore,
             trackId: this.playerStore.currentTrack?.id ?? -1,
-            title: this.playerStore.currentTrack?.title ?? '尚未播放',
             titleColor: $r('app.color.text_primary'),
             titleSize: 15,
             titleWeight: FontWeight.Medium
@@ -47,7 +83,7 @@ export struct MiniPlayerContent {
         }
         .alignItems(HorizontalAlign.Start)
         .layoutWeight(1)
-        .translate({ x: this.followsSwipeOffset ? this.swipeOffsetX : 0 })
+        .translate({ x: this.followsSwipeOffset ? this.binding.offsetX : 0 })
         .onClick(() => {
           this.onShowFullPlayer();
         })
@@ -57,7 +93,7 @@ export struct MiniPlayerContent {
     }
     .height(56)
     .width('100%')
-    .padding({ left: 4, right: this.expanded ? 8 : 4 })
+    .padding({ left: 4, right: this.binding.expanded ? 8 : 4 })
     .alignItems(VerticalAlign.Center)
     .borderRadius(28)
     .clip(true)
@@ -68,17 +104,8 @@ export struct MiniPlayerContent {
 export struct MiniPlayerSurface {
   @ObjectLink playerStore: PlayerStore;
   @ObjectLink marqueeMotionStore: PlayerMarqueeMotionStore;
-  @Prop expanded: boolean = false;
-  @Prop swipeOffsetX: number = 0;
-  @Prop morphActive: boolean = false;
-  @Prop measuredFrame: PlayerFrame = {
-    x: 0,
-    y: 0,
-    width: PlayerLayoutSpec.DEFAULT_MINI_PLAYER_SIZE,
-    height: PlayerLayoutSpec.DEFAULT_MINI_PLAYER_SIZE
-  };
+  @ObjectLink binding: MiniPlayerBinding;
   onShowFullPlayer: () => void = (): void => {};
-  onMeasuredFrame: (frame: PlayerFrame) => void = (_frame: PlayerFrame): void => {};
   onGestureStart: () => void = (): void => {};
   onGestureUpdate: (event: GestureEvent) => void = (_event: GestureEvent): void => {};
   onGestureFinish: () => void = (): void => {};
@@ -88,10 +115,9 @@ export struct MiniPlayerSurface {
       MiniPlayerContent({
         playerStore: this.playerStore,
         marqueeMotionStore: this.marqueeMotionStore,
-        expanded: this.expanded,
+        binding: this.binding,
         showArtwork: true,
         followsSwipeOffset: true,
-        swipeOffsetX: this.swipeOffsetX,
         onShowFullPlayer: this.onShowFullPlayer
       })
     }
@@ -100,16 +126,21 @@ export struct MiniPlayerSurface {
     .id('mini_player_surface')
     .borderRadius(28)
     .clip(true)
-    .opacity(this.morphActive ? 0 : 1)
-    .onAreaChange((_oldValue: Area, newValue: Area) => {
-      this.onMeasuredFrame({
-        x: LayoutLength.toNumber(newValue.globalPosition.x, this.measuredFrame.x),
-        y: LayoutLength.toNumber(newValue.globalPosition.y, this.measuredFrame.y),
-        width: LayoutLength.toNumber(newValue.width, this.measuredFrame.width),
-        height: LayoutLength.toNumber(newValue.height, this.measuredFrame.height)
-      });
+    .onClick(() => {
+      if (!this.binding.expanded) {
+        this.onShowFullPlayer();
+      }
     })
-    .priorityGesture(
+    .opacity(this.binding.sourceVisible ? 1 : 0)
+    .onAreaChange((_oldValue: Area, newValue: Area) => {
+      this.binding.measuredFrame = {
+        x: LayoutLength.toNumber(newValue.globalPosition.x, this.binding.measuredFrame.x),
+        y: LayoutLength.toNumber(newValue.globalPosition.y, this.binding.measuredFrame.y),
+        width: LayoutLength.toNumber(newValue.width, this.binding.measuredFrame.width),
+        height: LayoutLength.toNumber(newValue.height, this.binding.measuredFrame.height)
+      };
+    })
+    .parallelGesture(
       PanGesture({ direction: PanDirection.All, distance: PlayerMotionSpec.GESTURE_AXIS_LOCK_DISTANCE })
         .onActionStart(() => {
           this.onGestureStart();
@@ -122,8 +153,7 @@ export struct MiniPlayerSurface {
         })
         .onActionCancel(() => {
           this.onGestureFinish();
-        }),
-      GestureMask.Normal
+        })
     )
   }
 }

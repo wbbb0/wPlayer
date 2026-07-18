@@ -2,7 +2,7 @@ import { common, wantAgent } from '@kit.AbilityKit';
 import { avSession } from '@kit.AVSessionKit';
 import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
 import { image } from '@kit.ImageKit';
-import { PlaybackTrack, PlayerState, RepeatMode } from '../model/PlaybackModels';
+import { PlaybackTrack, PlaybackTransportState, RepeatMode } from '../model/PlaybackModels';
 
 export interface PlaybackSessionCommands {
   play(): void;
@@ -21,7 +21,8 @@ export class PlaybackSession {
   private backgroundRunning: boolean = false;
   private backgroundDesired: boolean = false;
   private backgroundTail: Promise<void> = Promise.resolve();
-  private sessionUpdateTail: Promise<void> = Promise.resolve();
+  private metadataUpdateTail: Promise<void> = Promise.resolve();
+  private playbackStateUpdateTail: Promise<void> = Promise.resolve();
   private metadataUpdateEpoch: number = 0;
   private metadataTrackId: number = -1;
   private metadataLyrics: string = '';
@@ -51,7 +52,7 @@ export class PlaybackSession {
       this.metadataLyrics = lyrics;
     }
     const epoch = ++this.metadataUpdateEpoch;
-    return this.enqueueSessionUpdate(async () => {
+    return this.enqueueMetadataUpdate(async () => {
       await this.initialize();
       if (this.session === undefined || epoch !== this.metadataUpdateEpoch) {
         return;
@@ -79,9 +80,10 @@ export class PlaybackSession {
     });
   }
 
-  updatePlaybackState(state: PlayerState, positionMs: number, repeatMode: RepeatMode,
+  updatePlaybackState(state: PlaybackTransportState, positionMs: number, repeatMode: RepeatMode,
     shuffleEnabled: boolean): Promise<void> {
-    return this.enqueueSessionUpdate(async () => {
+    this.setBackgroundDesired(state === PlaybackTransportState.PLAYING);
+    return this.enqueuePlaybackStateUpdate(async () => {
       await this.initialize();
       if (this.session !== undefined) {
         await this.session.setAVPlaybackState({
@@ -92,13 +94,12 @@ export class PlaybackSession {
           loopMode: PlaybackSession.loopModeOf(repeatMode, shuffleEnabled)
         });
       }
-      this.setBackgroundDesired(state === PlayerState.PLAYING);
     });
   }
 
   async shutdown(): Promise<void> {
     this.shuttingDown = true;
-    await this.sessionUpdateTail;
+    await Promise.all([this.metadataUpdateTail, this.playbackStateUpdateTail]);
     this.setBackgroundDesired(false);
     await this.backgroundTail;
     if (this.session !== undefined) {
@@ -130,19 +131,31 @@ export class PlaybackSession {
     }
   }
 
-  private enqueueSessionUpdate(operation: () => Promise<void>): Promise<void> {
+  private enqueueMetadataUpdate(operation: () => Promise<void>): Promise<void> {
+    const pending = this.enqueueUpdate(this.metadataUpdateTail, operation);
+    this.metadataUpdateTail = pending.catch((error: Object) => {
+      console.warn(`Unable to update AVSession metadata: ${PlaybackSession.messageOf(error)}`);
+    });
+    return pending;
+  }
+
+  private enqueuePlaybackStateUpdate(operation: () => Promise<void>): Promise<void> {
+    const pending = this.enqueueUpdate(this.playbackStateUpdateTail, operation);
+    this.playbackStateUpdateTail = pending.catch((error: Object) => {
+      console.warn(`Unable to update AVSession playback state: ${PlaybackSession.messageOf(error)}`);
+    });
+    return pending;
+  }
+
+  private enqueueUpdate(tail: Promise<void>, operation: () => Promise<void>): Promise<void> {
     if (this.shuttingDown) {
       return Promise.resolve();
     }
-    const pending = this.sessionUpdateTail.then(async () => {
+    return tail.then(async () => {
       if (!this.shuttingDown) {
         await operation();
       }
     });
-    this.sessionUpdateTail = pending.catch((error: Object) => {
-      console.warn(`Unable to update AVSession: ${PlaybackSession.messageOf(error)}`);
-    });
-    return pending;
   }
 
   private setBackgroundDesired(desired: boolean): void {
@@ -176,20 +189,20 @@ export class PlaybackSession {
     });
   }
 
-  private static sessionStateOf(state: PlayerState): avSession.PlaybackState {
-    if (state === PlayerState.LOADING) {
+  private static sessionStateOf(state: PlaybackTransportState): avSession.PlaybackState {
+    if (state === PlaybackTransportState.PREPARING) {
       return avSession.PlaybackState.PLAYBACK_STATE_PREPARE;
     }
-    if (state === PlayerState.PLAYING) {
+    if (state === PlaybackTransportState.PLAYING) {
       return avSession.PlaybackState.PLAYBACK_STATE_PLAY;
     }
-    if (state === PlayerState.PAUSED || state === PlayerState.READY) {
+    if (state === PlaybackTransportState.PAUSED) {
       return avSession.PlaybackState.PLAYBACK_STATE_PAUSE;
     }
-    if (state === PlayerState.COMPLETED) {
+    if (state === PlaybackTransportState.COMPLETED) {
       return avSession.PlaybackState.PLAYBACK_STATE_COMPLETED;
     }
-    if (state === PlayerState.ERROR) {
+    if (state === PlaybackTransportState.ERROR) {
       // Some system controllers reject ERROR as a publishable media-control state.
       return avSession.PlaybackState.PLAYBACK_STATE_STOP;
     }

@@ -239,6 +239,10 @@ export struct FullPlayerContent {
       this.playerStore.currentTrack.artistDisplay : '未知艺术家';
   }
 
+  private currentTitleLabel(): string {
+    return this.playerStore.currentTrack?.title ?? '尚未播放';
+  }
+
   private contentColor(): string {
     return this.primaryContentColor.length > 0 ?
       this.primaryContentColor : this.playerStore.themeOnPrimary();
@@ -580,16 +584,25 @@ export struct FullPlayerContent {
 
       Column({ space: 5 }) {
         Row({ space: 8 }) {
-          PlayerTrackMarquee({
-            motionStore: this.marqueeMotionStore,
-            trackId: this.playerStore.currentTrack?.id ?? -1,
-            title: this.playerStore.currentTrack?.title ?? '尚未播放',
-            titleColor: this.contentColor(),
-            titleSize: PlayerLayoutSpec.FULL_PLAYER_TITLE_SIZE,
-            titleWeight: FontWeight.Bold,
-            animateColor: true
-          })
-            .layoutWeight(1)
+          if (this.measuresArtworkTarget) {
+            Text(this.currentTitleLabel())
+              .fontSize(PlayerLayoutSpec.FULL_PLAYER_TITLE_SIZE)
+              .fontWeight(FontWeight.Bold)
+              .fontColor(this.contentColor())
+              .maxLines(1)
+              .layoutWeight(1)
+          } else {
+            PlayerTrackMarquee({
+              motionStore: this.marqueeMotionStore,
+              playerStore: this.playerStore,
+              trackId: this.playerStore.currentTrack?.id ?? -1,
+              titleColor: this.contentColor(),
+              titleSize: PlayerLayoutSpec.FULL_PLAYER_TITLE_SIZE,
+              titleWeight: FontWeight.Bold,
+              animateColor: true
+            })
+              .layoutWeight(1)
+          }
 
           Stack() {
             Image($r('app.media.control_more'))

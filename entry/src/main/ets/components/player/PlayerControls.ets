@@ -19,7 +19,8 @@ export struct PlayerPlaybackButton {
 
   build() {
     Stack() {
-      SymbolGlyph(this.playerStore.isPlaying() ? $r('sys.symbol.pause') : $r('sys.symbol.play_fill'))
+      SymbolGlyph(this.playerStore.showsPauseControl() ?
+        $r('sys.symbol.pause') : $r('sys.symbol.play_fill'))
         .fontSize(this.buttonSize * 0.42)
         .fontColor([this.playerStore.themeOnSecondary()])
         .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
@@ -32,7 +33,7 @@ export struct PlayerPlaybackButton {
     .shadow({ radius: 12, color: this.playerStore.themeSecondary(), offsetY: 5 })
     .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
     .clickEffect({ level: ClickEffectLevel.MIDDLE })
-    .accessibilityText(this.playerStore.isPlaying() ? '暂停' : '播放')
+    .accessibilityText(this.playerStore.showsPauseControl() ? '暂停' : '播放')
     .onClick(() => {
       playbackRuntime.togglePlayback();
     })

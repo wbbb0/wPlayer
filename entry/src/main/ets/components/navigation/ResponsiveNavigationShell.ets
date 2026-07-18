@@ -41,11 +41,11 @@ import {
   PlaylistTransferMenu,
   PlaylistTransferMenuParams
 } from '../library/PlaylistNavigationMenus';
-import { MiniPlayerSurface } from '../player/MiniPlayerSurface';
+import { MiniPlayerHostParams, MiniPlayerSurface } from '../player/MiniPlayerSurface';
+import { MiniPlayerBinding } from '../player/MiniPlayerBinding';
 import { PlayerMarqueeMotionStore } from '../player/PlayerTrackMarquee';
 import { QueueActionMenu, QueueActionMenuParams } from '../library/QueueActionMenu';
 import { TrackActionMenuPresenter } from '../library/TrackActionMenu';
-import { PlayerFrame, PlayerLayoutSpec } from '../player/PlayerMotion';
 import {
   AlbumSortField,
   LibraryEntityIdentity,
@@ -123,21 +123,15 @@ export struct ResponsiveNavigationShell {
   @ObjectLink playerStore: PlayerStore;
   @ObjectLink marqueeMotionStore: PlayerMarqueeMotionStore;
   @ObjectLink settingsStore: AppSettingsStore;
+  @ObjectLink miniPlayerBinding: MiniPlayerBinding;
+  compactMiniPlayerContent?: ComponentContent<MiniPlayerHostParams>;
+  wideMiniPlayerContent?: ComponentContent<MiniPlayerHostParams>;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @Prop rootWidth: number = 0;
   @Prop rootHeight: number = 0;
   @Prop navigationOrder: Array<string> = [];
   @Prop selectedRouteId: string = NavigationRoute.PLAYLISTS;
-  @Prop miniBarExpanded: boolean = false;
-  @Prop miniPlayerOffsetX: number = 0;
-  @Prop morphActive: boolean = false;
-  @Prop measuredMiniPlayerFrame: PlayerFrame = {
-    x: 0,
-    y: 0,
-    width: PlayerLayoutSpec.DEFAULT_MINI_PLAYER_SIZE,
-    height: PlayerLayoutSpec.DEFAULT_MINI_PLAYER_SIZE
-  };
   @Prop appearancePalette: AppAppearancePalette = AppAppearancePalette.fallback();
   @Prop themePageBackground: string = '#FF000000';
 
@@ -164,14 +158,8 @@ export struct ResponsiveNavigationShell {
     (_playlist: PlaylistSummary): void => {};
   onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
     (_items: Array<TrackListItem>): void => {};
-  onMiniBarStyleChange: (expanded: boolean) => void = (_expanded: boolean): void => {};
-  onShowFullPlayer: () => void = (): void => {};
   onNavigateLibrary: (target: LibraryNavigationTarget) => void =
     (_target: LibraryNavigationTarget): void => {};
-  onMeasuredMiniPlayerFrame: (frame: PlayerFrame) => void = (_frame: PlayerFrame): void => {};
-  onMiniPlayerGestureStart: () => void = (): void => {};
-  onMiniPlayerGestureUpdate: (event: GestureEvent) => void = (_event: GestureEvent): void => {};
-  onMiniPlayerGestureFinish: () => void = (): void => {};
   private readonly miniPlayerBuilder: () => void = (): void => this.MiniPlayer();
   private readonly playlistTransferService: M3uTransferService =
     new M3uTransferService(playbackRuntime.repository);
@@ -260,15 +248,18 @@ export struct ResponsiveNavigationShell {
         materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
       },
       miniBar: {
-        miniBarBuilder: this.miniPlayerBuilder,
+        miniBarBuilder: this.compactMiniPlayerContent ?? this.miniPlayerBuilder,
         miniBarWidth: {
           smallWidth: AppShellLayoutSpec.MINI_PLAYER_SMALL_WIDTH,
           mediumWidth: AppShellLayoutSpec.MINI_PLAYER_MEDIUM_WIDTH,
           largeWidth: AppShellLayoutSpec.MINI_PLAYER_LARGE_WIDTH
         },
-        miniBarStyle: HdsBarStyle.COLLAPSE,
+        miniBarStyle: this.miniPlayerBinding.expanded ?
+          HdsBarStyle.EXPAND : HdsBarStyle.COLLAPSE,
         barLayoutMode: HdsBarLayoutMode.HORIZONTAL,
-        onBarStyleChange: (style: HdsBarStyle) => this.onMiniBarStyleChange(style === HdsBarStyle.EXPAND),
+        onBarStyleChange: (style: HdsBarStyle) => {
+          this.miniPlayerBinding.expanded = style === HdsBarStyle.EXPAND;
+        },
         enableMiniBarBackground: true,
         enableMiniBarClip: true
       }
@@ -291,11 +282,13 @@ export struct ResponsiveNavigationShell {
       },
       barOpacity: 0,
       miniBar: {
-        miniBarBuilder: this.miniPlayerBuilder,
+        miniBarBuilder: this.wideMiniPlayerContent ?? this.miniPlayerBuilder,
         miniBarWidth: { smallWidth: miniPlayerWidth, mediumWidth: miniPlayerWidth, largeWidth: miniPlayerWidth },
         miniBarStyle: HdsBarStyle.EXPAND,
         barLayoutMode: HdsBarLayoutMode.HORIZONTAL,
-        onBarStyleChange: (style: HdsBarStyle) => this.onMiniBarStyleChange(style === HdsBarStyle.EXPAND),
+        onBarStyleChange: (style: HdsBarStyle) => {
+          this.miniPlayerBinding.expanded = style === HdsBarStyle.EXPAND;
+        },
         enableMiniBarBackground: true,
         enableMiniBarClip: true
       }
@@ -964,15 +957,7 @@ export struct ResponsiveNavigationShell {
     MiniPlayerSurface({
       playerStore: this.playerStore,
       marqueeMotionStore: this.marqueeMotionStore,
-      expanded: this.miniBarExpanded,
-      swipeOffsetX: this.miniPlayerOffsetX,
-      morphActive: this.morphActive,
-      measuredFrame: this.measuredMiniPlayerFrame,
-      onShowFullPlayer: this.onShowFullPlayer,
-      onMeasuredFrame: this.onMeasuredMiniPlayerFrame,
-      onGestureStart: this.onMiniPlayerGestureStart,
-      onGestureUpdate: this.onMiniPlayerGestureUpdate,
-      onGestureFinish: this.onMiniPlayerGestureFinish
+      binding: this.miniPlayerBinding
     })
   }
 

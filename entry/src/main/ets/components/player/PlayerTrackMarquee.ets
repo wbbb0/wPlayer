@@ -1,4 +1,5 @@
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
+import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { LayoutLength } from '../layout/LayoutLength';
 
 export class PlayerMarqueeMotionSpec {
@@ -11,10 +12,17 @@ export class PlayerMarqueeMotionSpec {
 export class PlayerMarqueeMotionStore {
   progress: number = 0;
   private trackId: number = Number.MIN_SAFE_INTEGER;
+  private nextConsumerId: number = 0;
+  private readonly scrollingConsumers: Set<number> = new Set<number>();
   private trackChangeListener?: (trackId: number) => void;
+  private activityChangeListener?: (active: boolean) => void;
 
   bindTrackChangeListener(listener?: (trackId: number) => void): void {
     this.trackChangeListener = listener;
+  }
+
+  bindActivityChangeListener(listener?: (active: boolean) => void): void {
+    this.activityChangeListener = listener;
   }
 
   requestTrack(trackId: number): void {
@@ -24,44 +32,93 @@ export class PlayerMarqueeMotionStore {
     this.trackId = trackId;
     this.trackChangeListener?.(trackId);
   }
+
+  registerConsumer(): number {
+    this.nextConsumerId += 1;
+    return this.nextConsumerId;
+  }
+
+  setConsumerScrolling(consumerId: number, scrolling: boolean): void {
+    const wasActive = this.hasScrollingConsumers();
+    if (scrolling) {
+      this.scrollingConsumers.add(consumerId);
+    } else {
+      this.scrollingConsumers.delete(consumerId);
+    }
+    const active = this.hasScrollingConsumers();
+    if (active !== wasActive) {
+      this.activityChangeListener?.(active);
+    }
+  }
+
+  unregisterConsumer(consumerId: number): void {
+    this.setConsumerScrolling(consumerId, false);
+  }
+
+  hasScrollingConsumers(): boolean {
+    return this.scrollingConsumers.size > 0;
+  }
 }
 
 @Component
 export struct PlayerTrackMarquee {
   @ObjectLink motionStore: PlayerMarqueeMotionStore;
+  @ObjectLink playerStore: PlayerStore;
   @Prop @Watch('handleTrackChange') trackId: number = -1;
-  @Prop title: string = '';
   @Prop titleColor: ResourceColor = '#FFFFFFFF';
   @Prop titleSize: number = 15;
   @Prop titleWeight: FontWeight = FontWeight.Medium;
   @Prop animateColor: boolean = false;
   @State private viewportWidth: number = 0;
+  @State private textWidth: number = 0;
+  private consumerId: number = -1;
 
   aboutToAppear(): void {
+    this.consumerId = this.motionStore.registerConsumer();
+    this.refreshTextMetrics();
     this.motionStore.requestTrack(this.trackId);
+  }
+
+  aboutToDisappear(): void {
+    if (this.consumerId >= 0) {
+      this.motionStore.unregisterConsumer(this.consumerId);
+      this.consumerId = -1;
+    }
   }
 
   private handleTrackChange(): void {
+    this.refreshTextMetrics();
     this.motionStore.requestTrack(this.trackId);
   }
 
-  private measuredTextWidth(): number {
+  private refreshTextMetrics(): void {
     const widthPx = this.getUIContext().getMeasureUtils().measureText({
-      textContent: this.title,
+      textContent: this.currentTitle(),
       fontSize: this.titleSize,
       fontWeight: this.titleWeight
     });
-    return this.getUIContext().px2vp(widthPx);
+    this.textWidth = this.getUIContext().px2vp(widthPx);
+    this.updateScrollingState();
+  }
+
+  private currentTitle(): string {
+    return this.playerStore.currentTrack?.title ?? '尚未播放';
   }
 
   private shouldScroll(): boolean {
-    return this.viewportWidth > 0 && this.measuredTextWidth() > this.viewportWidth;
+    return this.viewportWidth > 0 && this.textWidth > this.viewportWidth;
+  }
+
+  private updateScrollingState(): void {
+    if (this.consumerId >= 0) {
+      this.motionStore.setConsumerScrolling(this.consumerId, this.shouldScroll());
+    }
   }
 
   @Builder
   private TitleText() {
-    Text(this.title)
-      .width(this.measuredTextWidth())
+    Text(this.currentTitle())
+      .width(this.textWidth)
       .fontSize(this.titleSize)
       .fontWeight(this.titleWeight)
       .fontColor(this.titleColor)
@@ -81,7 +138,7 @@ export struct PlayerTrackMarquee {
         }
         .translate({
           x: -this.motionStore.progress *
-            (this.measuredTextWidth() + PlayerMarqueeMotionSpec.CONTENT_GAP)
+            (this.textWidth + PlayerMarqueeMotionSpec.CONTENT_GAP)
         })
       } else {
         this.TitleText()
@@ -91,6 +148,7 @@ export struct PlayerTrackMarquee {
     .clip(true)
     .onAreaChange((_oldValue: Area, newValue: Area) => {
       this.viewportWidth = LayoutLength.toNumber(newValue.width, this.viewportWidth);
+      this.updateScrollingState();
     })
   }
 }

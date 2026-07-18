@@ -27,6 +27,7 @@ import { LyricTimeline } from './lyrics/LyricTimeline';
 import { LibraryPlaybackBridge } from '../library/store/LibraryPlaybackBridge';
 import { PlaybackPowerPolicy } from './support/PlaybackPowerPolicy';
 import { PlaybackCoverageTracker } from './history/PlaybackCoverageTracker';
+import { PlaybackStateReducer } from './support/PlaybackStateReducer';
 
 const RESUME_MINIMUM_MS = 5000;
 const COMPLETION_REMAINING_MS = 10000;
@@ -40,6 +41,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   private readonly engine: PlaybackEngine = new PlaybackEngine();
   private readonly queue: PlaybackQueue = new PlaybackQueue();
   private readonly coverageTracker: PlaybackCoverageTracker = new PlaybackCoverageTracker();
+  private readonly stateReducer: PlaybackStateReducer = new PlaybackStateReducer();
   private context?: common.UIAbilityContext;
   private settings?: SettingsRepository;
   private session?: PlaybackSession;
@@ -146,7 +148,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     if (!this.playerStore.hasCurrentTrack()) {
       return;
     }
-    if (this.playerStore.isPlaying()) {
+    if (this.playerStore.playWhenReady) {
       this.pause();
     } else {
       this.play();
@@ -157,14 +159,17 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     if (!this.playerStore.hasCurrentTrack()) {
       return;
     }
-    this.playerStore.playWhenReady = true;
+    this.updatePlaybackIntent(true);
     if (this.playerStore.state === PlayerState.LOADING) {
+      return;
+    }
+    if (this.playerStore.state === PlayerState.IDLE || this.playerStore.state === PlayerState.ERROR) {
+      this.reloadCurrentTrackForPlayback();
       return;
     }
     this.restartCoverageAfterInterruption();
     this.coverageTracker.recordResume(this.playerStore.progress.positionMs);
     this.engine.play().catch((error: Object) => {
-      this.playerStore.playWhenReady = false;
       this.onStateChanged(PlayerState.ERROR, PlaybackRuntime.messageOf(error));
     });
   }
@@ -173,7 +178,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     if (!this.playerStore.hasCurrentTrack()) {
       return;
     }
-    this.playerStore.playWhenReady = false;
+    this.updatePlaybackIntent(false);
     this.coverageTracker.recordPause(this.playerStore.progress.positionMs);
     if (this.playerStore.state === PlayerState.LOADING || this.playerStore.state === PlayerState.READY) {
       return;
@@ -289,8 +294,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.queue.clear();
     this.currentPlaybackTrack = undefined;
     this.playerStore.currentTrack = undefined;
-    this.playerStore.miniArtwork = undefined;
-    this.playerStore.miniArtworkUri = '';
+    this.playerStore.setMiniArtwork(undefined, '');
     this.playerStore.heroArtwork = undefined;
     this.playerStore.heroArtworkUri = '';
     this.playerStore.heroArtworkPreferPixelMap = false;
@@ -300,6 +304,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.queuePhase = QueueBuildPhase.EMPTY;
     this.playerStore.queueSize = 0;
     this.playerStore.playWhenReady = false;
+    this.playerStore.transportState = this.stateReducer.reset();
     this.persistResumeState(-1, 0);
     this.settings?.setPlaybackQueue([], -1);
     this.syncQueueSnapshot();
@@ -315,8 +320,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.pendingSeekPositionMs = undefined;
     await this.engine.shutdown();
     await this.session?.shutdown();
-    this.playerStore.miniArtwork = undefined;
-    this.playerStore.miniArtworkUri = '';
+    this.playerStore.setMiniArtwork(undefined, '');
     this.playerStore.heroArtwork = undefined;
     this.playerStore.heroArtworkUri = '';
     this.playerStore.heroArtworkPreferPixelMap = false;
@@ -324,8 +328,9 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.currentTrack = undefined;
     this.playerStore.progress.positionMs = 0;
     this.playerStore.progress.durationMs = 0;
-    this.playerStore.state = PlayerState.IDLE;
     this.playerStore.playWhenReady = false;
+    this.playerStore.state = PlayerState.IDLE;
+    this.playerStore.transportState = this.stateReducer.reset();
     this.playerStore.errorMessage = '';
     this.playerStore.queuePhase = QueueBuildPhase.EMPTY;
     this.playerStore.queueSize = 0;
@@ -347,10 +352,21 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   onStateChanged(state: PlayerState, message?: string): void {
-    this.playerStore.state = state;
+    const previousState = this.playerStore.state;
+    const previousTransportState = this.playerStore.transportState;
     if (state === PlayerState.ERROR) {
       this.playerStore.playWhenReady = false;
       this.interruptCoverage();
+    }
+    this.playerStore.state = state;
+    this.playerStore.transportState = this.stateReducer.reduce(
+      state,
+      this.playerStore.playWhenReady
+    );
+    if (message === undefined &&
+      state === previousState &&
+      this.playerStore.transportState === previousTransportState) {
+      return;
     }
     this.playerStore.errorMessage = message === undefined ? '' : message;
     if (state === PlayerState.PAUSED || state === PlayerState.ERROR) {
@@ -397,9 +413,10 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     const next = this.queue.next(this.playerStore.repeatMode, true);
     this.syncQueueSnapshot();
     if (next !== undefined) {
-      this.beginTrack(next);
+      this.beginTrack(next, this.playerStore.playWhenReady);
     } else {
       this.playerStore.playWhenReady = false;
+      this.playerStore.transportState = this.stateReducer.settleCompletion();
       this.syncSessionState();
     }
   }
@@ -626,11 +643,15 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       this.persistResumeState(track.id, 0);
     }
     this.playerStore.state = PlayerState.LOADING;
+    this.playerStore.transportState = this.stateReducer.beginSourceChange(playWhenReady);
+    this.syncSessionState();
     this.playerStore.errorMessage = '';
     this.artworkCache?.pinCurrent(track);
-    if (!sameSmallArtwork) {
-      this.playerStore.miniArtwork = undefined;
-      this.playerStore.miniArtworkUri = this.resolveArtworkUri(track.smallArtworkPath);
+    if (!sameSmallArtwork || this.playerStore.miniArtworkUri.length === 0) {
+      this.playerStore.setMiniArtwork(
+        undefined,
+        this.resolveArtworkUri(track.smallArtworkPath)
+      );
     }
     if (!sameLargeArtwork) {
       this.playerStore.heroArtwork = this.artworkCache?.getLarge(track);
@@ -644,6 +665,16 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       this.prefetchCurrentWindow();
     }
     return playbackStarted;
+  }
+
+  private reloadCurrentTrackForPlayback(): void {
+    const track = this.playerStore.currentTrack;
+    if (track === undefined) {
+      return;
+    }
+    this.beginTrack(track, true, true).catch((error: Object) => {
+      this.onStateChanged(PlayerState.ERROR, PlaybackRuntime.messageOf(error));
+    });
   }
 
   private buildQueueAsync(libraryItems: Array<TrackListItem>, selectedId: number,
@@ -736,6 +767,13 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       this.playerStore.heroArtwork = pixelMap;
       this.playerStore.heroArtworkPreferPixelMap = true;
       this.playerStore.heroArtworkRevision += 1;
+    }
+  }
+
+  onOutputDeviceUnavailable(): void {
+    if (this.playerStore.hasCurrentTrack() &&
+      (this.playerStore.playWhenReady || this.playerStore.state === PlayerState.PLAYING)) {
+      this.pause();
     }
   }
 
@@ -845,11 +883,22 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
 
   private syncSessionState(): void {
     this.session?.updatePlaybackState(
-      this.playerStore.state,
+      this.playerStore.transportState,
       this.playerStore.progress.positionMs,
       this.playerStore.repeatMode,
       this.playerStore.shuffleEnabled
     );
+  }
+
+  private updatePlaybackIntent(playWhenReady: boolean): void {
+    const previousIntent = this.playerStore.playWhenReady;
+    const previousTransportState = this.playerStore.transportState;
+    this.playerStore.playWhenReady = playWhenReady;
+    this.playerStore.transportState = this.stateReducer.updateIntent(playWhenReady);
+    if (previousIntent !== playWhenReady ||
+      previousTransportState !== this.playerStore.transportState) {
+      this.syncSessionState();
+    }
   }
 
   private setShuffleEnabled(enabled: boolean): void {

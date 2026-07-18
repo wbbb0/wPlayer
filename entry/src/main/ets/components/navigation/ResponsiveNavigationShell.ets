@@ -43,7 +43,6 @@ import {
 } from '../library/PlaylistNavigationMenus';
 import { MiniPlayerHostParams, MiniPlayerSurface } from '../player/MiniPlayerSurface';
 import { MiniPlayerBinding } from '../player/MiniPlayerBinding';
-import { PlayerMarqueeMotionStore } from '../player/PlayerTrackMarquee';
 import { QueueActionMenu, QueueActionMenuParams } from '../library/QueueActionMenu';
 import { TrackActionMenuPresenter } from '../library/TrackActionMenu';
 import {
@@ -121,7 +120,6 @@ export struct ResponsiveNavigationShell {
   @ObjectLink libraryStore: LibraryStore;
   @ObjectLink playlistStore: PlaylistStore;
   @ObjectLink playerStore: PlayerStore;
-  @ObjectLink marqueeMotionStore: PlayerMarqueeMotionStore;
   @ObjectLink settingsStore: AppSettingsStore;
   @ObjectLink miniPlayerBinding: MiniPlayerBinding;
   compactMiniPlayerContent?: ComponentContent<MiniPlayerHostParams>;
@@ -956,7 +954,6 @@ export struct ResponsiveNavigationShell {
   private MiniPlayer() {
     MiniPlayerSurface({
       playerStore: this.playerStore,
-      marqueeMotionStore: this.marqueeMotionStore,
       binding: this.miniPlayerBinding
     })
   }

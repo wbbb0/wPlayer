@@ -1,4 +1,4 @@
-import { AnimatorOptions, AnimatorResult, ComponentContent, window } from '@kit.ArkUI';
+import { ComponentContent, window } from '@kit.ArkUI';
 import { HdsTabsController } from '@kit.UIDesignKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { common } from '@kit.AbilityKit';
@@ -15,10 +15,6 @@ import { PlayerStore } from '../playback/model/PlaybackModels';
 import { SettingsRepository } from '../settings/SettingsRepository';
 import { AppSettingsStore, appSettings } from '../settings/AppSettingsStore';
 import { WindowAvoidAreaController } from '../components/layout/WindowAvoidAreaController';
-import {
-  PlayerMarqueeMotionSpec,
-  PlayerMarqueeMotionStore
-} from '../components/player/PlayerTrackMarquee';
 import {
   MiniPlayerHost,
   MiniPlayerHostParams
@@ -62,14 +58,12 @@ struct Index {
   @State playlistStore: PlaylistStore = new PlaylistStore(playbackRuntime.repository);
   @State playlistController: IndexPlaylistController = new IndexPlaylistController(this.playlistStore);
   @State playerStore: PlayerStore = playbackRuntime.playerStore;
-  @State playerMarqueeMotionStore: PlayerMarqueeMotionStore = new PlayerMarqueeMotionStore();
   // The invisible geometry probe must not react to playback position or lyric updates.
   @State geometryPlayerStore: PlayerStore = new PlayerStore();
   @State settingsStore: AppSettingsStore = appSettings;
   @State playlistSheetVisible: boolean = false;
   @State animatedThemePrimary: string = '';
   @State animatedThemeOnPrimary: string = '';
-  private marqueeAnimator?: AnimatorResult;
   private readonly appearanceListener: AppAppearanceListener = (_epoch: number): void => {
     this.refreshAppearance();
   };
@@ -84,7 +78,6 @@ struct Index {
     this.playerMorphController.attach(this.getUIContext());
     const miniPlayerParams = new MiniPlayerHostParams(
       this.playerStore,
-      this.playerMarqueeMotionStore,
       this.playerMorphController.miniPlayerBinding,
       (): void => this.playerMorphController.showFullPlayer(),
       (): void => this.playerMorphController.beginMiniPlayerGesture(),
@@ -101,16 +94,6 @@ struct Index {
       wrapBuilder(MiniPlayerHost),
       miniPlayerParams
     );
-    this.playerMarqueeMotionStore.bindTrackChangeListener((trackId: number): void => {
-      this.restartPlayerMarquee(trackId);
-    });
-    this.playerMarqueeMotionStore.bindActivityChangeListener((active: boolean): void => {
-      if (active) {
-        this.restartPlayerMarquee(-1);
-      } else {
-        this.stopPlayerMarquee();
-      }
-    });
     playbackRuntime.setPaletteChangeListener((primary: string, _secondary: string, _accent: string): void => {
       this.animateThemePrimary(primary);
       this.syncSystemBarContentColor();
@@ -152,11 +135,6 @@ struct Index {
   }
 
   aboutToDisappear(): void {
-    this.marqueeAnimator?.cancel();
-    this.marqueeAnimator = undefined;
-    this.playerMarqueeMotionStore.bindTrackChangeListener(undefined);
-    this.playerMarqueeMotionStore.bindActivityChangeListener(undefined);
-    this.stopPlayerMarquee();
     this.playerMorphController.dispose();
     this.compactMiniPlayerContent?.dispose();
     this.compactMiniPlayerContent = undefined;
@@ -186,50 +164,6 @@ struct Index {
       this.animatedThemePrimary = targetColor;
       this.animatedThemeOnPrimary = targetContentColor;
     });
-  }
-
-  private restartPlayerMarquee(_trackId: number): void {
-    if (!this.playerMarqueeMotionStore.hasScrollingConsumers()) {
-      this.playerMarqueeMotionStore.progress = 0;
-      return;
-    }
-    const options: AnimatorOptions = this.playerMarqueeAnimatorOptions();
-    try {
-      if (this.marqueeAnimator === undefined) {
-        this.marqueeAnimator = this.getUIContext().createAnimator(options);
-        this.marqueeAnimator.onFrame = (progress: number): void => {
-          this.playerMarqueeMotionStore.progress = progress;
-        };
-      } else {
-        this.marqueeAnimator.cancel();
-        this.marqueeAnimator.reset(options);
-      }
-      this.playerMarqueeMotionStore.progress = 0;
-      this.marqueeAnimator.play();
-    } catch (error) {
-      const businessError = error as BusinessError;
-      this.marqueeAnimator = undefined;
-      this.playerMarqueeMotionStore.progress = 0;
-      console.warn(`Unable to start player marquee: ${businessError.code}, ${businessError.message}`);
-    }
-  }
-
-  private stopPlayerMarquee(): void {
-    this.marqueeAnimator?.cancel();
-    this.playerMarqueeMotionStore.progress = 0;
-  }
-
-  private playerMarqueeAnimatorOptions(): AnimatorOptions {
-    return {
-      duration: PlayerMarqueeMotionSpec.CYCLE_DURATION,
-      delay: PlayerMarqueeMotionSpec.START_DELAY,
-      easing: 'linear',
-      fill: 'none',
-      direction: 'normal',
-      iterations: -1,
-      begin: 0,
-      end: 1
-    };
   }
 
   private refreshAppearance(): void {
@@ -349,7 +283,6 @@ struct Index {
       libraryStore: this.libraryStore,
       playlistStore: this.playlistStore,
       playerStore: this.playerStore,
-      marqueeMotionStore: this.playerMarqueeMotionStore,
       settingsStore: this.settingsStore,
       miniPlayerBinding: this.playerMorphController.miniPlayerBinding,
       compactMiniPlayerContent: this.compactMiniPlayerContent,
@@ -401,7 +334,6 @@ struct Index {
     PlayerMorphOverlay({
       controller: this.playerMorphController,
       playerStore: this.playerStore,
-      marqueeMotionStore: this.playerMarqueeMotionStore,
       settingsStore: this.settingsStore,
       topInset: this.statusBarAvoidHeight,
       bottomInset: this.navigationAvoidHeight,
@@ -419,7 +351,6 @@ struct Index {
   private FullPlayerGeometryProbe() {
     PlayerGeometryProbe({
       playerStore: this.geometryPlayerStore,
-      marqueeMotionStore: this.playerMarqueeMotionStore,
       settingsStore: this.settingsStore,
       topInset: this.statusBarAvoidHeight,
       bottomInset: this.navigationAvoidHeight,

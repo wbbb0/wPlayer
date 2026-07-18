@@ -1,7 +1,6 @@
 import { AppSettingsStore } from '../../settings/AppSettingsStore';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { FullPlayerContent } from './FullPlayerContent';
-import { PlayerMarqueeMotionStore } from './PlayerTrackMarquee';
 import {
   FullPlayerPage,
   PlayerFrame,
@@ -11,7 +10,6 @@ import {
 @Component
 export struct PlayerGeometryProbe {
   @ObjectLink playerStore: PlayerStore;
-  @ObjectLink marqueeMotionStore: PlayerMarqueeMotionStore;
   @ObjectLink settingsStore: AppSettingsStore;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
@@ -27,7 +25,6 @@ export struct PlayerGeometryProbe {
     Stack() {
       FullPlayerContent({
         playerStore: this.playerStore,
-        marqueeMotionStore: this.marqueeMotionStore,
         topInset: this.topInset,
         bottomInset: this.bottomInset,
         showArtwork: false,

@@ -29,7 +29,7 @@ import { LayoutLength } from '../layout/LayoutLength';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import { SymbolGlyphModifier } from '@kit.ArkUI';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
-import { PlayerMarqueeMotionStore, PlayerTrackMarquee } from './PlayerTrackMarquee';
+import { PlayerTrackMarquee } from './PlayerTrackMarquee';
 
 @Component
 struct TimedLyricRow {
@@ -140,7 +140,7 @@ struct PlayerProgressControl {
 @Component
 export struct FullPlayerContent {
   @ObjectLink playerStore: PlayerStore;
-  @ObjectLink marqueeMotionStore: PlayerMarqueeMotionStore;
+  @Prop marqueeActive: boolean = true;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @Prop showArtwork: boolean = true;
@@ -593,9 +593,8 @@ export struct FullPlayerContent {
               .layoutWeight(1)
           } else {
             PlayerTrackMarquee({
-              motionStore: this.marqueeMotionStore,
               playerStore: this.playerStore,
-              trackId: this.playerStore.currentTrack?.id ?? -1,
+              active: this.marqueeActive,
               titleColor: this.contentColor(),
               titleSize: PlayerLayoutSpec.FULL_PLAYER_TITLE_SIZE,
               titleWeight: FontWeight.Bold,

@@ -2,25 +2,22 @@ import { PlayerMotionSpec } from './PlayerMotion';
 import { MiniPlayerBinding } from './MiniPlayerBinding';
 import { PlayerMiniArtwork } from './PlayerArtworkViews';
 import { PlayerPlaybackButton } from './PlayerControls';
-import { PlayerMarqueeMotionStore, PlayerTrackMarquee } from './PlayerTrackMarquee';
+import { PlayerTrackMarquee } from './PlayerTrackMarquee';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { LayoutLength } from '../layout/LayoutLength';
 
 export class MiniPlayerHostParams {
   playerStore: PlayerStore;
-  marqueeMotionStore: PlayerMarqueeMotionStore;
   binding: MiniPlayerBinding;
   onShowFullPlayer: () => void;
   onGestureStart: () => void;
   onGestureUpdate: (event: GestureEvent) => void;
   onGestureFinish: () => void;
 
-  constructor(playerStore: PlayerStore, marqueeMotionStore: PlayerMarqueeMotionStore,
-    binding: MiniPlayerBinding, onShowFullPlayer: () => void,
+  constructor(playerStore: PlayerStore, binding: MiniPlayerBinding, onShowFullPlayer: () => void,
     onGestureStart: () => void, onGestureUpdate: (event: GestureEvent) => void,
     onGestureFinish: () => void) {
     this.playerStore = playerStore;
-    this.marqueeMotionStore = marqueeMotionStore;
     this.binding = binding;
     this.onShowFullPlayer = onShowFullPlayer;
     this.onGestureStart = onGestureStart;
@@ -33,7 +30,6 @@ export class MiniPlayerHostParams {
 export function MiniPlayerHost(params: MiniPlayerHostParams) {
   MiniPlayerSurface({
     playerStore: params.playerStore,
-    marqueeMotionStore: params.marqueeMotionStore,
     binding: params.binding,
     onShowFullPlayer: params.onShowFullPlayer,
     onGestureStart: params.onGestureStart,
@@ -45,10 +41,10 @@ export function MiniPlayerHost(params: MiniPlayerHostParams) {
 @Component
 export struct MiniPlayerContent {
   @ObjectLink playerStore: PlayerStore;
-  @ObjectLink marqueeMotionStore: PlayerMarqueeMotionStore;
   @ObjectLink binding: MiniPlayerBinding;
   @Prop showArtwork: boolean = true;
   @Prop followsSwipeOffset: boolean = true;
+  @Prop marqueeActive: boolean = true;
   onShowFullPlayer: () => void = (): void => {};
 
   build() {
@@ -68,9 +64,8 @@ export struct MiniPlayerContent {
       if (this.binding.expanded) {
         Column({ space: 2 }) {
           PlayerTrackMarquee({
-            motionStore: this.marqueeMotionStore,
             playerStore: this.playerStore,
-            trackId: this.playerStore.currentTrack?.id ?? -1,
+            active: this.marqueeActive,
             titleColor: $r('app.color.text_primary'),
             titleSize: 15,
             titleWeight: FontWeight.Medium
@@ -103,7 +98,6 @@ export struct MiniPlayerContent {
 @Component
 export struct MiniPlayerSurface {
   @ObjectLink playerStore: PlayerStore;
-  @ObjectLink marqueeMotionStore: PlayerMarqueeMotionStore;
   @ObjectLink binding: MiniPlayerBinding;
   onShowFullPlayer: () => void = (): void => {};
   onGestureStart: () => void = (): void => {};
@@ -114,10 +108,10 @@ export struct MiniPlayerSurface {
     Stack() {
       MiniPlayerContent({
         playerStore: this.playerStore,
-        marqueeMotionStore: this.marqueeMotionStore,
         binding: this.binding,
         showArtwork: true,
         followsSwipeOffset: true,
+        marqueeActive: this.binding.sourceVisible,
         onShowFullPlayer: this.onShowFullPlayer
       })
     }

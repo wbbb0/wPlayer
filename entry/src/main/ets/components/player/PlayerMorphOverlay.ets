@@ -5,7 +5,6 @@ import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { AppSettingsStore } from '../../settings/AppSettingsStore';
 import { FullPlayerContent } from './FullPlayerContent';
 import { MiniPlayerContent } from './MiniPlayerSurface';
-import { PlayerMarqueeMotionStore } from './PlayerTrackMarquee';
 import { PlayerMorphArtwork } from './PlayerMorphArtwork';
 import { PlayerMorphController } from './PlayerMorphController';
 import {
@@ -13,6 +12,7 @@ import {
   FULL_PLAYER_VERTICAL_GESTURE_HOST_ID,
   FullPlayerPage,
   PlayerLayoutSpec,
+  PlayerMorphPhase,
   PlayerMotionSpec
 } from './PlayerMotion';
 
@@ -20,7 +20,6 @@ import {
 export struct PlayerMorphOverlay {
   @ObjectLink controller: PlayerMorphController;
   @ObjectLink playerStore: PlayerStore;
-  @ObjectLink marqueeMotionStore: PlayerMarqueeMotionStore;
   @ObjectLink settingsStore: AppSettingsStore;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
@@ -49,7 +48,7 @@ export struct PlayerMorphOverlay {
         Stack() {
           FullPlayerContent({
             playerStore: this.playerStore,
-            marqueeMotionStore: this.marqueeMotionStore,
+            marqueeActive: this.controller.playerMorphPhase === PlayerMorphPhase.OPEN,
             topInset: this.topInset,
             bottomInset: this.bottomInset,
             showArtwork: false,
@@ -85,10 +84,10 @@ export struct PlayerMorphOverlay {
           Stack() {
             MiniPlayerContent({
               playerStore: this.playerStore,
-              marqueeMotionStore: this.marqueeMotionStore,
               binding: this.controller.miniPlayerBinding,
               showArtwork: false,
               followsSwipeOffset: false,
+              marqueeActive: false,
               onShowFullPlayer: (): void => this.controller.showFullPlayer()
             })
           }

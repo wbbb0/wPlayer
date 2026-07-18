@@ -1,12 +1,14 @@
 import { PlayerFrame, PlayerLayoutSpec, PlayerMotionSpec } from './PlayerMotion';
 import { PlayerMiniArtwork } from './PlayerArtworkViews';
 import { PlayerPlaybackButton } from './PlayerControls';
+import { PlayerMarqueeMotionStore, PlayerTrackMarquee } from './PlayerTrackMarquee';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { LayoutLength } from '../layout/LayoutLength';
 
 @Component
 export struct MiniPlayerContent {
   @ObjectLink playerStore: PlayerStore;
+  @ObjectLink marqueeMotionStore: PlayerMarqueeMotionStore;
   @Prop expanded: boolean = false;
   @Prop showArtwork: boolean = true;
   @Prop followsSwipeOffset: boolean = true;
@@ -29,11 +31,14 @@ export struct MiniPlayerContent {
 
       if (this.expanded) {
         Column({ space: 2 }) {
-          Text(this.playerStore.currentTrack?.title ?? '尚未播放')
-            .fontSize(15)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.text_primary'))
-            .maxLines(1)
+          PlayerTrackMarquee({
+            motionStore: this.marqueeMotionStore,
+            trackId: this.playerStore.currentTrack?.id ?? -1,
+            title: this.playerStore.currentTrack?.title ?? '尚未播放',
+            titleColor: $r('app.color.text_primary'),
+            titleSize: 15,
+            titleWeight: FontWeight.Medium
+          })
 
           Text(this.playerStore.currentTrack?.artistDisplay || '选择一首音乐')
             .fontSize(11)
@@ -62,6 +67,7 @@ export struct MiniPlayerContent {
 @Component
 export struct MiniPlayerSurface {
   @ObjectLink playerStore: PlayerStore;
+  @ObjectLink marqueeMotionStore: PlayerMarqueeMotionStore;
   @Prop expanded: boolean = false;
   @Prop swipeOffsetX: number = 0;
   @Prop morphActive: boolean = false;
@@ -81,6 +87,7 @@ export struct MiniPlayerSurface {
     Stack() {
       MiniPlayerContent({
         playerStore: this.playerStore,
+        marqueeMotionStore: this.marqueeMotionStore,
         expanded: this.expanded,
         showArtwork: true,
         followsSwipeOffset: true,

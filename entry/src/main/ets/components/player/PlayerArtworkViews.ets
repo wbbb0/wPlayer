@@ -69,8 +69,15 @@ export struct PlayerHeroArtwork {
       fitMode: ArtworkFitMode.CONTAIN,
       cornerRadius: Math.min(this.cornerRadius, Math.min(this.artworkWidth(), this.artworkHeight()) / 2),
       shadowEnabled: true,
-      shadowRadius: PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS,
-      shadowOffsetY: PlayerMotionSpec.FULL_ARTWORK_SHADOW_OFFSET_Y,
+      shadowRadius: this.playerStore.isPlaying() ?
+        PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS :
+        PlayerMotionSpec.PAUSED_ARTWORK_SHADOW_RADIUS,
+      shadowOffsetY: this.playerStore.isPlaying() ?
+        PlayerMotionSpec.FULL_ARTWORK_SHADOW_OFFSET_Y :
+        PlayerMotionSpec.PAUSED_ARTWORK_SHADOW_OFFSET_Y,
+      animateShadowChanges: true,
+      shadowSpringResponse: PlayerMotionSpec.ARTWORK_STATE_SPRING_RESPONSE,
+      shadowSpringDamping: PlayerMotionSpec.ARTWORK_STATE_SPRING_DAMPING,
       interpolation: this.interpolation
     })
       .scale({

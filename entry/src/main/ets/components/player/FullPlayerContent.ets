@@ -29,6 +29,7 @@ import { LayoutLength } from '../layout/LayoutLength';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import { SymbolGlyphModifier } from '@kit.ArkUI';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
+import { PlayerMarqueeMotionStore, PlayerTrackMarquee } from './PlayerTrackMarquee';
 
 @Component
 struct TimedLyricRow {
@@ -102,6 +103,7 @@ struct PlayerProgressControl {
         .selectedColor(this.playerStore.themeOnPrimary())
         .trackColor(this.playerStore.themeOnPrimaryMedium())
         .blockColor(this.playerStore.themeOnPrimary())
+        .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
         .trackThickness(PlayerLayoutSpec.FULL_PLAYER_PROGRESS_TRACK_THICKNESS)
         .enabled(this.progressStore.durationMs > 0)
         .onChange((value: number, mode: SliderChangeMode) => {
@@ -138,6 +140,7 @@ struct PlayerProgressControl {
 @Component
 export struct FullPlayerContent {
   @ObjectLink playerStore: PlayerStore;
+  @ObjectLink marqueeMotionStore: PlayerMarqueeMotionStore;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @Prop showArtwork: boolean = true;
@@ -146,6 +149,7 @@ export struct FullPlayerContent {
   @Prop rootFrame: PlayerFrame = { x: 0, y: 0, width: 0, height: 0 };
   @Prop pagePosition: number = FullPlayerPage.COVER;
   @Prop paneCount: number = 1;
+  @Prop primaryContentColor: string = '';
   @Prop previousArtworkTarget: PlayerPoint = {
     x: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_X,
     y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y
@@ -155,6 +159,7 @@ export struct FullPlayerContent {
     y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y
   };
   onClose: () => void = (): void => {};
+  onNavigatePage: (page: FullPlayerPage) => void = (_page: FullPlayerPage): void => {};
   onPlayQueueTrack: (trackId: number) => void = (_trackId: number): void => {};
   onSeek: (positionMs: number) => void = (_positionMs: number): void => {};
   onResolveQueueArtwork: (relativePath: string) => string = (_relativePath: string): string => '';
@@ -234,6 +239,18 @@ export struct FullPlayerContent {
       this.playerStore.currentTrack.artistDisplay : '未知艺术家';
   }
 
+  private contentColor(): string {
+    return this.primaryContentColor.length > 0 ?
+      this.primaryContentColor : this.playerStore.themeOnPrimary();
+  }
+
+  private pageButtonDisabled(page: FullPlayerPage): boolean {
+    const currentPosition = Math.round(
+      FullPlayerPagerSpec.clampPosition(this.pagePosition, this.paneCount)
+    );
+    return currentPosition === FullPlayerPagerSpec.positionForPage(page, this.paneCount);
+  }
+
   aboutToAppear(): void {
     if (!this.measuresArtworkTarget) {
       this.playerStore.addQueueIndexListener(this.queueIndexListener);
@@ -300,14 +317,13 @@ export struct FullPlayerContent {
           Image($r('app.media.control_chevron_down'))
             .width(PlayerLayoutSpec.FULL_PLAYER_CLOSE_ICON_SIZE)
             .height(PlayerLayoutSpec.FULL_PLAYER_CLOSE_ICON_SIZE)
-            .fillColor(this.playerStore.themeOnPrimary())
+            .fillColor(this.contentColor())
             .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
         }
         .width(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE)
         .height(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE)
         .borderRadius(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE / 2)
         .backgroundColor($r('app.color.glass_surface_subtle'))
-        .backgroundBlurStyle(BlurStyle.Thin)
         .clickEffect({ level: ClickEffectLevel.MIDDLE })
         .accessibilityText('收起播放器')
         .onClick(() => {
@@ -315,6 +331,7 @@ export struct FullPlayerContent {
         })
       }
       .width('100%')
+      .hitTestBehavior(HitTestMode.Transparent)
       .padding({
         left: PlayerLayoutSpec.FULL_PLAYER_PAGE_HORIZONTAL_INSET,
         right: PlayerLayoutSpec.FULL_PLAYER_PAGE_HORIZONTAL_INSET
@@ -327,23 +344,57 @@ export struct FullPlayerContent {
 
   @Builder
   private QueueHeader() {
-    Row() {
+    Row({ space: 8 }) {
       Text('当前播放队列')
         .fontSize(24)
         .fontWeight(FontWeight.Bold)
         .fontColor(this.playerStore.themeOnPrimary())
         .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
-      Blank()
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .layoutWeight(1)
       Text(`${this.playerStore.queueSize} 首`)
         .fontSize(13)
         .fontColor(this.playerStore.themeOnPrimaryMedium())
         .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+      PlayerModeButton({
+        playerStore: this.playerStore,
+        action: PlayerModeAction.SHUFFLE,
+        buttonSize: 44
+      })
+      PlayerModeButton({
+        playerStore: this.playerStore,
+        action: PlayerModeAction.REPEAT,
+        buttonSize: 44
+      })
     }
     .width(this.pageWidth())
     .height(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE)
     .padding({
       left: this.headerTextInset(FullPlayerPage.QUEUE),
       right: PlayerLayoutSpec.FULL_PLAYER_PAGE_HORIZONTAL_INSET
+    })
+  }
+
+  @Builder
+  private PageNavigationButton(page: FullPlayerPage) {
+    Stack() {
+      SymbolGlyph(page === FullPlayerPage.QUEUE ?
+        $r('sys.symbol.music_note_list_fill') : $r('sys.symbol.lyrics_square'))
+        .fontSize(22)
+        .fontColor([this.contentColor()])
+        .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+    }
+    .width(44)
+    .height(44)
+    .borderRadius(22)
+    .backgroundColor($r('app.color.glass_surface_subtle'))
+    .clickEffect({ level: ClickEffectLevel.LIGHT })
+    .enabled(!this.pageButtonDisabled(page))
+    .opacity(this.pageButtonDisabled(page) ? 0.38 : 1)
+    .accessibilityText(page === FullPlayerPage.QUEUE ? '打开播放队列' : '打开歌词')
+    .onClick(() => {
+      this.onNavigatePage(page);
     })
   }
 
@@ -529,33 +580,31 @@ export struct FullPlayerContent {
 
       Column({ space: 5 }) {
         Row({ space: 8 }) {
-          Text(this.playerStore.currentTrack?.title ?? '尚未播放')
-            .fontSize(PlayerLayoutSpec.FULL_PLAYER_TITLE_SIZE)
-            .fontWeight(FontWeight.Bold)
-            .fontColor(this.playerStore.themeOnPrimary())
-            .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
-            .maxLines(1)
+          PlayerTrackMarquee({
+            motionStore: this.marqueeMotionStore,
+            trackId: this.playerStore.currentTrack?.id ?? -1,
+            title: this.playerStore.currentTrack?.title ?? '尚未播放',
+            titleColor: this.contentColor(),
+            titleSize: PlayerLayoutSpec.FULL_PLAYER_TITLE_SIZE,
+            titleWeight: FontWeight.Bold,
+            animateColor: true
+          })
             .layoutWeight(1)
 
-          Row({ space: 2 }) {
-            PlayerModeButton({ playerStore: this.playerStore, action: PlayerModeAction.SHUFFLE })
-            PlayerModeButton({ playerStore: this.playerStore, action: PlayerModeAction.REPEAT })
-            Stack() {
-              Image($r('app.media.control_more'))
-                .width(20)
-                .height(20)
-                .fillColor(this.playerStore.themeOnPrimary())
-                .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
-            }
-            .width(40)
-            .height(40)
-            .borderRadius(20)
-            .backgroundColor($r('app.color.glass_surface_subtle'))
-            .clickEffect({ level: ClickEffectLevel.MIDDLE })
-            .accessibilityText('更多操作')
-            .bindMenu(this.CurrentTrackMenu(), { placement: Placement.BottomRight })
+          Stack() {
+            Image($r('app.media.control_more'))
+              .width(20)
+              .height(20)
+              .fillColor(this.contentColor())
+              .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
           }
-          .alignItems(VerticalAlign.Center)
+          .width(40)
+          .height(40)
+          .borderRadius(20)
+          .backgroundColor($r('app.color.glass_surface_subtle'))
+          .clickEffect({ level: ClickEffectLevel.MIDDLE })
+          .accessibilityText('更多操作')
+          .bindMenu(this.CurrentTrackMenu(), { placement: Placement.BottomRight })
         }
         .width('100%')
         .alignItems(VerticalAlign.Center)
@@ -592,15 +641,27 @@ export struct FullPlayerContent {
         onSeek: (positionMs: number): void => this.onSeek(positionMs)
       })
 
-      Row({ space: 16 }) {
-        PlayerTransportButton({ playerStore: this.playerStore,
-          action: PlayerTransportAction.PREVIOUS, buttonSize: 52 })
-        PlayerPlaybackButton({ playerStore: this.playerStore, buttonSize: 64 })
-        PlayerTransportButton({ playerStore: this.playerStore,
-          action: PlayerTransportAction.NEXT, buttonSize: 52 })
+      Stack() {
+        Row() {
+          this.PageNavigationButton(FullPlayerPage.QUEUE)
+          Blank()
+          this.PageNavigationButton(FullPlayerPage.LYRICS)
+        }
+        .width('100%')
+        .align(Alignment.Center)
+
+        Row({ space: 16 }) {
+          PlayerTransportButton({ playerStore: this.playerStore,
+            action: PlayerTransportAction.PREVIOUS, buttonSize: 52,
+            contentColor: this.contentColor() })
+          PlayerPlaybackButton({ playerStore: this.playerStore, buttonSize: 64 })
+          PlayerTransportButton({ playerStore: this.playerStore,
+            action: PlayerTransportAction.NEXT, buttonSize: 52,
+            contentColor: this.contentColor() })
+        }
+        .align(Alignment.Center)
       }
-      .justifyContent(FlexAlign.Center)
-      .alignItems(VerticalAlign.Center)
+      .height(64)
       .width('100%')
       .margin({ top: 18, bottom: 12 })
     }

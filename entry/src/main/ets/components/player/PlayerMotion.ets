@@ -37,10 +37,12 @@ export const FULL_PLAYER_HORIZONTAL_GESTURE_HOST_ID: string = 'full_player_horiz
 
 export class FullPlayerPagerSpec {
   static readonly PAGE_COUNT: number = 3;
-  static readonly SWIPE_COMPLETION_FRACTION: number = 0.18;
+  static readonly SWIPE_COMPLETION_FRACTION: number = 0.12;
+  static readonly SWIPE_COMPLETION_MAX_DISTANCE: number = 56;
   static readonly SIDE_PAGE_HANDOFF_FRACTION: number = 0.3;
   static readonly SIDE_PAGE_EXIT_DISTANCE_FRACTION: number = 0.06;
-  static readonly PAGE_SETTLE_DURATION: number = 260;
+  static readonly PAGE_SETTLE_SPRING_RESPONSE: number = 0.42;
+  static readonly PAGE_SETTLE_SPRING_DAMPING: number = 0.88;
   static readonly SIDE_PAGE_ARTWORK_FADE_END_PROGRESS: number = 0.6;
 
   static paneCount(width: number, height: number): number {
@@ -57,6 +59,13 @@ export class FullPlayerPagerSpec {
 
   static clampPosition(position: number, paneCount: number): number {
     return Math.max(0, Math.min(FullPlayerPagerSpec.maximumPosition(paneCount), position));
+  }
+
+  static swipeCompletionDistance(pageSpan: number): number {
+    return Math.min(
+      Math.max(0, pageSpan) * FullPlayerPagerSpec.SWIPE_COMPLETION_FRACTION,
+      FullPlayerPagerSpec.SWIPE_COMPLETION_MAX_DISTANCE
+    );
   }
 
   static positionForPage(page: FullPlayerPage, paneCount: number): number {
@@ -136,11 +145,13 @@ export class PlayerMotionSpec {
   static readonly MINI_CONTENT_FADE_START: number = 0.08;
   static readonly MINI_CONTENT_FADE_RATE: number = 4.2;
   static readonly MINI_CONTENT_VISIBLE_LIMIT: number = 0.32;
-  static readonly FULL_ARTWORK_SHADOW_RADIUS: number = 38;
-  static readonly FULL_ARTWORK_SHADOW_OFFSET_Y: number = 20;
+  static readonly FULL_ARTWORK_SHADOW_RADIUS: number = 52;
+  static readonly FULL_ARTWORK_SHADOW_OFFSET_Y: number = 28;
+  static readonly PAUSED_ARTWORK_SHADOW_RADIUS: number = 38;
+  static readonly PAUSED_ARTWORK_SHADOW_OFFSET_Y: number = 20;
   static readonly PAUSED_ARTWORK_SCALE: number = 0.90;
-  static readonly ARTWORK_STATE_SPRING_RESPONSE: number = 0.38;
-  static readonly ARTWORK_STATE_SPRING_DAMPING: number = 0.76;
+  static readonly ARTWORK_STATE_SPRING_RESPONSE: number = 0.36;
+  static readonly ARTWORK_STATE_SPRING_DAMPING: number = 0.72;
   static readonly LYRIC_FOCUS_DURATION: number = 100;
 
   static distanceFromRecognitionOrigin(offset: number): number {
@@ -175,8 +186,9 @@ export class PlayerLayoutSpec {
   static readonly FULL_PLAYER_PAGE_HORIZONTAL_INSET: number = 20;
   static readonly FULL_PLAYER_LYRICS_HORIZONTAL_INSET: number = 28;
   static readonly FULL_PLAYER_PAGE_TOP_INSET: number = 12;
-  static readonly FULL_PLAYER_CLOSE_BUTTON_SIZE: number = 44;
-  static readonly FULL_PLAYER_CLOSE_ICON_SIZE: number = 22;
+  static readonly FULL_PLAYER_CLOSE_BUTTON_SIZE: number = 52;
+  static readonly FULL_PLAYER_CLOSE_ICON_SIZE: number =
+    PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE * 0.45;
   static readonly FULL_PLAYER_HEADER_TEXT_GAP: number = 12;
   static readonly FULL_PLAYER_QUEUE_INDEX_WIDTH: number = 28;
   static readonly FULL_PLAYER_QUEUE_ARTWORK_SIZE: number = 52;

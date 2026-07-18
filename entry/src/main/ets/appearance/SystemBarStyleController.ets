@@ -77,7 +77,9 @@ export class SystemBarStyleController {
           statusBarColor: '#00000000',
           navigationBarColor: '#00000000',
           statusBarContentColor: desiredColor,
-          navigationBarContentColor: desiredColor
+          navigationBarContentColor: desiredColor,
+          enableStatusBarAnimation: true,
+          enableNavigationBarAnimation: true
         });
         if (this.mainWindow === targetWindow) {
           this.appliedContentColor = desiredColor;

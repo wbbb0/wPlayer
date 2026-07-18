@@ -1,4 +1,5 @@
 import { image } from '@kit.ImageKit';
+import { curves } from '@kit.ArkUI';
 
 export enum ArtworkFitMode {
   COVER,
@@ -25,6 +26,9 @@ export struct ArtworkView {
   @Prop shadowEnabled: boolean = false;
   @Prop shadowRadius: number = 14;
   @Prop shadowOffsetY: number = 5;
+  @Prop animateShadowChanges: boolean = false;
+  @Prop shadowSpringResponse: number = 0.36;
+  @Prop shadowSpringDamping: number = 0.72;
   @Prop interpolation: ImageInterpolation = ImageInterpolation.Medium;
 
   private containedImageWidth(): Length {
@@ -139,6 +143,12 @@ export struct ArtworkView {
         color: $r('app.color.artwork_shadow'),
         offsetY: this.shadowEnabled ? this.shadowOffsetY : 0
       })
+      .animation(this.animateShadowChanges ? {
+        curve: curves.springMotion(
+          this.shadowSpringResponse,
+          this.shadowSpringDamping
+        )
+      } : { duration: 0 })
     }
     .width(this.slotWidth)
     .aspectRatio(this.slotAspectRatio)

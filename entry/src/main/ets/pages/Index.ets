@@ -2,7 +2,7 @@ import {
   HdsBarStyle,
   HdsTabsController,
 } from '@kit.UIDesignKit';
-import { ComponentContent, curves, window } from '@kit.ArkUI';
+import { AnimatorOptions, AnimatorResult, ComponentContent, curves, window } from '@kit.ArkUI';
 import { vibrator } from '@kit.SensorServiceKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { common } from '@kit.AbilityKit';
@@ -44,6 +44,10 @@ import {
   MiniPlayerContent,
   MiniPlayerSurface
 } from '../components/player/MiniPlayerSurface';
+import {
+  PlayerMarqueeMotionSpec,
+  PlayerMarqueeMotionStore
+} from '../components/player/PlayerTrackMarquee';
 import { ArtworkLayout } from '../components/artwork/ArtworkLayout';
 import { ArtworkFitMode, ArtworkView } from '../components/artwork/ArtworkView';
 import { PlaylistSelectionSheet } from '../components/library/PlaylistSelectionSheet';
@@ -72,7 +76,7 @@ import {
   appAppearanceController
 } from '../appearance/AppAppearance';
 import { PaletteMotionSpec } from '../appearance/PaletteMotionSpec';
-import { DynamicColor } from '../appearance/DynamicColor';
+import { DynamicColor, DynamicContainerRole } from '../appearance/DynamicColor';
 import { systemBarStyleController } from '../appearance/SystemBarStyleController';
 
 const MORE_TAB_INDEX: number = PRIMARY_NAVIGATION_COUNT;
@@ -94,6 +98,7 @@ struct Index {
   @State libraryStore: LibraryStore = new LibraryStore(playbackRuntime.repository, playbackRuntime);
   @State playlistStore: PlaylistStore = new PlaylistStore(playbackRuntime.repository);
   @State playerStore: PlayerStore = playbackRuntime.playerStore;
+  @State playerMarqueeMotionStore: PlayerMarqueeMotionStore = new PlayerMarqueeMotionStore();
   // The invisible geometry probe must not react to playback position or lyric updates.
   @State geometryPlayerStore: PlayerStore = new PlayerStore();
   @State settingsStore: AppSettingsStore = appSettings;
@@ -105,6 +110,7 @@ struct Index {
   @State playlistRenameName: string = '';
   @State recentPlaylistTargetIds: Array<number> = [];
   @State animatedThemePrimary: string = '';
+  @State animatedThemeOnPrimary: string = '';
   @State miniBarExpanded: boolean = false;
   @State miniPlayerOffsetX: number = 0;
   @State playerExpandProgress: number = 0;
@@ -149,6 +155,7 @@ struct Index {
   private returnToExpandedMiniBar: boolean = false;
   private fullPlayerGestureStartPosition: number = FullPlayerPage.COVER;
   private morphTransitionEpoch: number = 0;
+  private marqueeAnimator?: AnimatorResult;
   private compactTabIndexBeforeSelection: number = 0;
   private expandedTabIndexBeforeSelection: number = 0;
   private readonly appearanceListener: AppAppearanceListener = (_epoch: number): void => {
@@ -171,6 +178,9 @@ struct Index {
   private readonly customizationScroller: Scroller = new Scroller();
 
   aboutToAppear(): void {
+    this.playerMarqueeMotionStore.bindTrackChangeListener((trackId: number): void => {
+      this.restartPlayerMarquee(trackId);
+    });
     playbackRuntime.setPaletteChangeListener((primary: string, _secondary: string, _accent: string): void => {
       this.animateThemePrimary(primary);
       this.syncSystemBarContentColor();
@@ -225,6 +235,9 @@ struct Index {
   }
 
   aboutToDisappear(): void {
+    this.marqueeAnimator?.cancel();
+    this.marqueeAnimator = undefined;
+    this.playerMarqueeMotionStore.bindTrackChangeListener(undefined);
     this.releaseMorphArtworkSource();
     playbackRuntime.setPaletteChangeListener(undefined);
     systemBarStyleController.setPlayerContentColor(false, '');
@@ -250,7 +263,12 @@ struct Index {
   }
 
   private animateThemePrimary(targetColor: string): void {
-    if (this.animatedThemePrimary === targetColor) {
+    const targetContentColor = DynamicColor.foreground(
+      targetColor,
+      DynamicContainerRole.PRIMARY
+    );
+    if (this.animatedThemePrimary === targetColor &&
+      this.animatedThemeOnPrimary === targetContentColor) {
       return;
     }
     this.getUIContext().animateTo({
@@ -258,7 +276,43 @@ struct Index {
       curve: Curve.EaseInOut
     }, () => {
       this.animatedThemePrimary = targetColor;
+      this.animatedThemeOnPrimary = targetContentColor;
     });
+  }
+
+  private restartPlayerMarquee(_trackId: number): void {
+    const options: AnimatorOptions = this.playerMarqueeAnimatorOptions();
+    try {
+      if (this.marqueeAnimator === undefined) {
+        this.marqueeAnimator = this.getUIContext().createAnimator(options);
+        this.marqueeAnimator.onFrame = (progress: number): void => {
+          this.playerMarqueeMotionStore.progress = progress;
+        };
+      } else {
+        this.marqueeAnimator.cancel();
+        this.marqueeAnimator.reset(options);
+      }
+      this.playerMarqueeMotionStore.progress = 0;
+      this.marqueeAnimator.play();
+    } catch (error) {
+      const businessError = error as BusinessError;
+      this.marqueeAnimator = undefined;
+      this.playerMarqueeMotionStore.progress = 0;
+      console.warn(`Unable to start player marquee: ${businessError.code}, ${businessError.message}`);
+    }
+  }
+
+  private playerMarqueeAnimatorOptions(): AnimatorOptions {
+    return {
+      duration: PlayerMarqueeMotionSpec.CYCLE_DURATION,
+      delay: PlayerMarqueeMotionSpec.START_DELAY,
+      easing: 'linear',
+      fill: 'none',
+      direction: 'normal',
+      iterations: -1,
+      begin: 0,
+      end: 1
+    };
   }
 
   private refreshAppearance(): void {
@@ -1091,16 +1145,19 @@ struct Index {
 
   private finishFullPlayerPageGesture(): void {
     const paneCount = this.fullPlayerPaneCount();
+    const pageSpan = Math.max(1, this.fullPlayerPageSpan());
     const movement = this.fullPlayerPagePosition - this.fullPlayerGestureStartPosition;
     let targetPosition = Math.round(this.fullPlayerGestureStartPosition);
-    if (Math.abs(movement) >= FullPlayerPagerSpec.SWIPE_COMPLETION_FRACTION) {
+    if (Math.abs(movement) * pageSpan >= FullPlayerPagerSpec.swipeCompletionDistance(pageSpan)) {
       targetPosition += movement > 0 ? 1 : -1;
     }
     targetPosition = FullPlayerPagerSpec.clampPosition(targetPosition, paneCount);
     this.fullPlayerPage = FullPlayerPagerSpec.nearestPage(targetPosition, paneCount);
     this.getUIContext().animateTo({
-      duration: FullPlayerPagerSpec.PAGE_SETTLE_DURATION,
-      curve: Curve.EaseOut
+      curve: curves.springMotion(
+        FullPlayerPagerSpec.PAGE_SETTLE_SPRING_RESPONSE,
+        FullPlayerPagerSpec.PAGE_SETTLE_SPRING_DAMPING
+      )
     }, () => {
       this.fullPlayerPagePosition = targetPosition;
     });
@@ -1115,6 +1172,26 @@ struct Index {
       PlayerLayoutSpec.MINI_ARTWORK_RADIUS,
       fullRadius
     );
+  }
+
+  private navigateFullPlayerPage(page: FullPlayerPage): void {
+    if (this.playerMorphPhase !== PlayerMorphPhase.OPEN) {
+      return;
+    }
+    const paneCount = this.fullPlayerPaneCount();
+    const targetPosition = FullPlayerPagerSpec.positionForPage(page, paneCount);
+    if (Math.abs(this.fullPlayerPagePosition - targetPosition) < 0.0001) {
+      return;
+    }
+    this.fullPlayerPage = page;
+    this.getUIContext().animateTo({
+      curve: curves.springMotion(
+        FullPlayerPagerSpec.PAGE_SETTLE_SPRING_RESPONSE,
+        FullPlayerPagerSpec.PAGE_SETTLE_SPRING_DAMPING
+      )
+    }, () => {
+      this.fullPlayerPagePosition = targetPosition;
+    });
   }
 
   private openPlaylistCreator(): void {
@@ -1285,6 +1362,7 @@ struct Index {
       libraryStore: this.libraryStore,
       playlistStore: this.playlistStore,
       playerStore: this.playerStore,
+      marqueeMotionStore: this.playerMarqueeMotionStore,
       settingsStore: this.settingsStore,
       topInset: this.statusBarAvoidHeight,
       bottomInset: this.navigationAvoidHeight,
@@ -1352,6 +1430,7 @@ struct Index {
         Stack() {
           FullPlayerContent({
             playerStore: this.playerStore,
+            marqueeMotionStore: this.playerMarqueeMotionStore,
             topInset: this.statusBarAvoidHeight,
             bottomInset: this.navigationAvoidHeight,
             showArtwork: false,
@@ -1359,9 +1438,11 @@ struct Index {
             rootFrame: this.fullPlayerFrame(),
             pagePosition: this.fullPlayerPagePosition,
             paneCount: this.renderedFullPlayerPaneCount(),
+            primaryContentColor: this.animatedThemeOnPrimary,
             previousArtworkTarget: this.artworkTarget,
             previousCenteredArtworkTarget: this.centeredArtworkTarget,
             onClose: () => this.hideFullPlayer(),
+            onNavigatePage: (page: FullPlayerPage): void => this.navigateFullPlayerPage(page),
             onPlayQueueTrack: (trackId: number): void => playbackRuntime.playQueueTrack(trackId),
             onSeek: (positionMs: number): void => playbackRuntime.seek(positionMs),
             onCompletedCollectionChange: (enabled: boolean): void =>
@@ -1383,6 +1464,7 @@ struct Index {
           Stack() {
             MiniPlayerContent({
               playerStore: this.playerStore,
+              marqueeMotionStore: this.playerMarqueeMotionStore,
               expanded: this.miniBarExpanded,
               showArtwork: false,
               followsSwipeOffset: false,
@@ -1486,10 +1568,17 @@ struct Index {
         fitMode: ArtworkFitMode.COVER,
         resolvedCornerRadius: this.morphArtworkSourceRadius(),
         shadowEnabled: true,
-        shadowRadius: PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS *
-          this.clamp(this.playerExpandProgress, 0, 1),
-        shadowOffsetY: PlayerMotionSpec.FULL_ARTWORK_SHADOW_OFFSET_Y *
-          this.clamp(this.playerExpandProgress, 0, 1),
+        shadowRadius: (this.playerStore.isPlaying() ?
+          PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS :
+          PlayerMotionSpec.PAUSED_ARTWORK_SHADOW_RADIUS) *
+            this.clamp(this.playerExpandProgress, 0, 1),
+        shadowOffsetY: (this.playerStore.isPlaying() ?
+          PlayerMotionSpec.FULL_ARTWORK_SHADOW_OFFSET_Y :
+          PlayerMotionSpec.PAUSED_ARTWORK_SHADOW_OFFSET_Y) *
+            this.clamp(this.playerExpandProgress, 0, 1),
+        animateShadowChanges: this.playerMorphPhase === PlayerMorphPhase.OPEN,
+        shadowSpringResponse: PlayerMotionSpec.ARTWORK_STATE_SPRING_RESPONSE,
+        shadowSpringDamping: PlayerMotionSpec.ARTWORK_STATE_SPRING_DAMPING,
         interpolation: this.heroArtworkInterpolation()
       })
         .scale({
@@ -1544,6 +1633,7 @@ struct Index {
     Stack() {
       FullPlayerContent({
         playerStore: this.geometryPlayerStore,
+        marqueeMotionStore: this.playerMarqueeMotionStore,
         topInset: this.statusBarAvoidHeight,
         bottomInset: this.navigationAvoidHeight,
         showArtwork: false,
@@ -1552,6 +1642,7 @@ struct Index {
         rootFrame: this.rootFrame,
         pagePosition: FullPlayerPage.COVER,
         paneCount: this.fullPlayerPaneCount(),
+        primaryContentColor: this.animatedThemeOnPrimary,
         previousArtworkTarget: this.artworkTarget,
         previousCenteredArtworkTarget: this.centeredArtworkTarget,
         onClose: () => this.hideFullPlayer(),

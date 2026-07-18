@@ -44,6 +44,7 @@ export struct PlayerTransportButton {
   @ObjectLink playerStore: PlayerStore;
   @Prop action: PlayerTransportAction = PlayerTransportAction.NEXT;
   @Prop buttonSize: number = 54;
+  @Prop contentColor: string = '';
 
   private icon(): Resource {
     return this.action === PlayerTransportAction.PREVIOUS ?
@@ -54,12 +55,16 @@ export struct PlayerTransportButton {
     return this.action === PlayerTransportAction.PREVIOUS ? '上一首' : '下一首';
   }
 
+  private iconColor(): string {
+    return this.contentColor.length > 0 ? this.contentColor : this.playerStore.themeOnPrimary();
+  }
+
   build() {
     Stack() {
       Image(this.icon())
         .width(this.buttonSize * 0.45)
         .height(this.buttonSize * 0.45)
-        .fillColor(this.playerStore.themeOnPrimary())
+        .fillColor(this.iconColor())
         .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
     }
     .width(this.buttonSize)
@@ -82,6 +87,7 @@ export struct PlayerTransportButton {
 export struct PlayerModeButton {
   @ObjectLink playerStore: PlayerStore;
   @Prop action: PlayerModeAction = PlayerModeAction.SHUFFLE;
+  @Prop buttonSize: number = 44;
 
   private symbol(): Resource {
     if (this.action === PlayerModeAction.SHUFFLE) {
@@ -103,27 +109,37 @@ export struct PlayerModeButton {
     return '切换循环模式';
   }
 
+  private modeForegroundColor(): string {
+    if (!this.active()) {
+      return this.playerStore.themeOnPrimary();
+    }
+    const primary = this.playerStore.themePrimary();
+    return primary.length > 0 ? primary : this.playerStore.themeBaseBackground;
+  }
+
   build() {
     Stack() {
       SymbolGlyph(this.symbol())
-        .fontSize(22)
-        .fontColor([this.active() ? this.playerStore.themeOnPrimary() :
-          this.playerStore.themeOnPrimaryMedium()])
+        .fontSize(this.buttonSize * 0.5)
+        .fontColor([this.modeForegroundColor()])
         .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
 
       if (!this.active()) {
         Row()
-          .width(25)
+          .width(this.buttonSize * 0.57)
           .height(2)
           .borderRadius(1)
-          .backgroundColor(this.playerStore.themeOnPrimaryMedium())
+          .backgroundColor(this.modeForegroundColor())
           .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
           .rotate({ angle: -45 })
       }
     }
-    .width(44)
-    .height(44)
-    .borderRadius(22)
+    .width(this.buttonSize)
+    .height(this.buttonSize)
+    .borderRadius(this.buttonSize / 2)
+    .backgroundColor(this.active() ?
+      this.playerStore.themeOnPrimary() : $r('app.color.glass_surface_subtle'))
+    .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
     .clickEffect({ level: ClickEffectLevel.LIGHT })
     .accessibilityText(this.accessibilityLabel())
     .onClick(() => {

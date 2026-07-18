@@ -8,6 +8,8 @@ export class PageLayoutSpec {
   static readonly ALBUM_ROW_GAP: number = 20;
   static readonly ALBUM_GRID_CACHE_COUNT: number = 12;
   static readonly VIRTUAL_LIST_CACHE_COUNT: number = 16;
+  static readonly DETAIL_PRIMARY_PLAY_MIN_WIDTH: number = 112;
+  static readonly DETAIL_PRIMARY_PLAY_MAX_WIDTH: number = 180;
 
   static primaryContentStart(_topInset: number): number {
     // HdsNavigation owns the title bar safe area and its layout height.

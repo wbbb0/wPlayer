@@ -244,8 +244,14 @@ export struct AlbumDetailPage {
             ))
         }
       }
-      .width(this.usesWideHeader() ? 220 : Math.min(220, Math.max(128, this.rootWidth - 164)))
-      .height(44).backgroundColor(detail.album.paletteSecondary)
+      .width(this.usesWideHeader() ? PageLayoutSpec.DETAIL_PRIMARY_PLAY_MAX_WIDTH :
+        Math.min(
+          PageLayoutSpec.DETAIL_PRIMARY_PLAY_MAX_WIDTH,
+          Math.max(PageLayoutSpec.DETAIL_PRIMARY_PLAY_MIN_WIDTH, this.rootWidth - 164)
+        ))
+      .height(44)
+      .borderRadius(22)
+      .backgroundColor(detail.album.paletteSecondary)
       .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .enabled(detail.tracks.length > 0)
       .onClick(() => this.playFirst(detail))

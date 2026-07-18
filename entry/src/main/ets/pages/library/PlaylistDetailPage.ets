@@ -106,8 +106,12 @@ export struct PlaylistDetailPage {
             .fontColor($r('app.color.control_on_accent'))
         }
       }
-      .width(Math.min(220, Math.max(128, this.rootWidth - 164)))
+      .width(Math.min(
+        PageLayoutSpec.DETAIL_PRIMARY_PLAY_MAX_WIDTH,
+        Math.max(PageLayoutSpec.DETAIL_PRIMARY_PLAY_MIN_WIDTH, this.rootWidth - 164)
+      ))
       .height(44)
+      .borderRadius(22)
       .backgroundColor($r('app.color.theme_accent'))
       .enabled(this.detailItems().length > 0)
       .onClick(() => {

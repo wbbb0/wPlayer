@@ -186,7 +186,11 @@ export class PlayerMorphController {
       const sourceHostRectangle = componentUtils.getRectangleById(sourceHostId);
       const horizontalMargin = uiContext.vp2px(AppShellLayoutSpec.COMPACT_SIDE_MARGIN);
       const bottomMargin = uiContext.vp2px(AppShellLayoutSpec.FLOATING_BAR_BOTTOM_MARGIN);
-      const visibleMiniPlayerX = wideLayout || this.miniBarExpanded ?
+      const visibleMiniPlayerX = wideLayout ?
+        sourceHostRectangle.windowOffset.x + sourceHostRectangle.size.width -
+          miniPlayerRectangle.size.width -
+          uiContext.vp2px(AppShellLayoutSpec.WIDE_SIDE_MARGIN) :
+        this.miniBarExpanded ?
         sourceHostRectangle.windowOffset.x +
           (sourceHostRectangle.size.width - miniPlayerRectangle.size.width) / 2 :
         sourceHostRectangle.windowOffset.x + sourceHostRectangle.size.width -

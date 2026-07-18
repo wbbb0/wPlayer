@@ -274,6 +274,10 @@ export struct ResponsiveNavigationShell {
       },
       barSideMargin: AppShellLayoutSpec.WIDE_SIDE_MARGIN,
       barBottomMargin: AppShellLayoutSpec.FLOATING_BAR_BOTTOM_MARGIN,
+      gradientMask: {
+        maskColor: $r('app.color.float_bar_gradient_mask'),
+        maskHeight: AppShellLayoutSpec.FLOATING_BAR_GRADIENT_MASK_HEIGHT
+      },
       systemMaterialEffect: {
         materialType: hdsMaterial.MaterialType.ADAPTIVE,
         materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
@@ -1056,7 +1060,14 @@ export struct ResponsiveNavigationShell {
     HdsTabs({ controller: this.expandedTabsController, index: this.expandedTabIndex() }) {
       ForEach(this.expandedItems(), (item: NavigationPageItem, index: number) => {
         TabContent() {
-          this.RootNavigation(item)
+          Stack({ alignContent: Alignment.Bottom }) {
+            this.RootNavigation(item)
+            if (this.expandedTabIndex() === index) {
+              this.WideMiniPlayerHost()
+            }
+          }
+          .width('100%')
+          .height('100%')
         }
         .tabBar(this.ExpandedTabBar(item, index))
       }, (item: NavigationPageItem) => item.routeId)
@@ -1075,14 +1086,14 @@ export struct ResponsiveNavigationShell {
 
   @Builder
   private WideMiniPlayerHost() {
-    Stack() {
+    Stack({ alignContent: Alignment.BottomEnd }) {
       HdsTabs({ index: 0 }) {
         TabContent() { Stack() }
           .tabBar(new BottomTabBarStyle({
             normal: new SymbolGlyphModifier($r('sys.symbol.music_fill'))
           }, '播放器'))
       }
-      .width('100%')
+      .width(this.rootWidth)
       .height('100%')
       .barOverlap(true)
       .barPosition(BarPosition.End)
@@ -1092,16 +1103,14 @@ export struct ResponsiveNavigationShell {
       .barFloatingStyle(this.wideMiniPlayerFloatingStyle())
     }
     .id('wide_mini_player_hds_host')
-    .width(this.wideMiniPlayerWidth() + AppShellLayoutSpec.WIDE_SIDE_MARGIN * 2)
-    .height(AppShellLayoutSpec.MINI_PLAYER_HEIGHT + AppShellLayoutSpec.FLOATING_BAR_BOTTOM_MARGIN)
+    .width('100%')
+    .height(AppShellLayoutSpec.WIDE_MINI_PLAYER_HOST_HEIGHT)
+    .clip(true)
   }
 
   build() {
     if (this.usesWideLayout()) {
-      Stack({ alignContent: Alignment.BottomEnd }) {
-        this.ExpandedTabsContent()
-        this.WideMiniPlayerHost()
-      }
+      Stack() { this.ExpandedTabsContent() }
       .id('player_tabs_wide_content_host')
       .width('100%')
       .height('100%')

@@ -7,6 +7,7 @@ import {
 } from '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { artistTarget } from '../navigation/LibraryNavigation';
+import { LayoutLength } from '../layout/LayoutLength';
 
 export enum AlbumAction {
   INSERT_NEXT = 0,
@@ -189,6 +190,7 @@ export struct AlbumGridSection {
   @ObjectLink store: LibraryStore;
   @Prop albums: Array<AlbumListItem> = [];
   @Prop containerWidth: number = 0;
+  @State measuredContainerWidth: number = 0;
   @Prop horizontalInset: number = PageLayoutSpec.HORIZONTAL_INSET;
   @Prop actionsEnabled: boolean = false;
   @Prop actionAnchorPrefix: string = 'album_section';
@@ -199,11 +201,15 @@ export struct AlbumGridSection {
     (_target: LibraryNavigationTarget): void => {};
 
   private columnCount(): number {
-    return PageLayoutSpec.albumColumnCount(this.containerWidth, this.horizontalInset);
+    return PageLayoutSpec.albumColumnCount(this.effectiveContainerWidth(), this.horizontalInset);
   }
 
   private itemWidth(): number {
-    return PageLayoutSpec.albumItemWidth(this.containerWidth, this.horizontalInset);
+    return PageLayoutSpec.albumItemWidth(this.effectiveContainerWidth(), this.horizontalInset);
+  }
+
+  private effectiveContainerWidth(): number {
+    return this.measuredContainerWidth > 0 ? this.measuredContainerWidth : this.containerWidth;
   }
 
   private rowStarts(): Array<number> {
@@ -249,6 +255,12 @@ export struct AlbumGridSection {
     .padding({
       left: this.horizontalInset,
       right: this.horizontalInset
+    })
+    .onAreaChange((_oldValue: Area, newValue: Area) => {
+      const nextWidth = LayoutLength.toNumber(newValue.width, this.measuredContainerWidth);
+      if (nextWidth > 0 && Math.abs(nextWidth - this.measuredContainerWidth) >= 0.5) {
+        this.measuredContainerWidth = nextWidth;
+      }
     })
   }
 }

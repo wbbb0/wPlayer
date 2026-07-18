@@ -15,7 +15,8 @@ export struct LibraryAlphabetIndex {
   }
 
   build() {
-    AlphabetIndexer({ arrayValue: this.labels(), selected: this.effectiveSelectedIndex() })
+    AlphabetIndexer({ arrayValue: this.labels(), selected: 0 })
+      .selected(this.effectiveSelectedIndex())
       .width(28)
       .height('80%')
       .usingPopup(true)

@@ -60,7 +60,7 @@ export struct SongsPage {
                       this.store.resolveArtworkPath(slot.value.smallArtworkPath) : '',
                     actionTrack: slot.value,
                     actionAnchorPrefix: 'songs',
-                    menuPlacement: Placement.Right,
+                    menuPlacement: Placement.BottomLeft,
                     horizontalInset: 16,
                     verticalInset: 8,
                     artworkSize: 52,

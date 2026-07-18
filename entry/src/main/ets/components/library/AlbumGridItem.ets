@@ -91,45 +91,28 @@ export struct AlbumGridItem {
   @Builder
   private AlbumContent() {
     Column({ space: 7 }) {
-      Stack({ alignContent: Alignment.TopEnd }) {
-        ArtworkView({
-          sourcePath: this.album.artworkPath.length > 0 ?
-            this.store.resolveArtworkPath(this.album.artworkPath) : '',
-          sourceWidth: this.album.artworkWidth,
-          sourceHeight: this.album.artworkHeight,
-          fitMode: ArtworkFitMode.CONTAIN,
-          cornerRadius: 18,
-          shadowEnabled: this.album.artworkPath.length > 0
-        })
-        if (this.actionsEnabled) {
-          Button() {
-            Image($r('app.media.control_more'))
-              .width(18)
-              .height(18)
-              .fillColor($r('app.color.text_primary'))
-          }
-          .id(`${this.actionAnchorPrefix}_${this.album.id}`)
-          .width(38)
-          .height(38)
-          .margin(8)
-          .borderRadius(19)
-          .backgroundColor($r('app.color.glass_surface_strong'))
-          .accessibilityText('更多专辑操作')
-          .bindMenu(this.AlbumMenu(), { placement: Placement.BottomRight })
-        }
-      }
-      .width('100%')
+      ArtworkView({
+        sourcePath: this.album.artworkPath.length > 0 ?
+          this.store.resolveArtworkPath(this.album.artworkPath) : '',
+        sourceWidth: this.album.artworkWidth,
+        sourceHeight: this.album.artworkHeight,
+        fitMode: ArtworkFitMode.CONTAIN,
+        cornerRadius: 18,
+        shadowEnabled: this.album.artworkPath.length > 0
+      })
       Text(this.album.title)
         .fontSize(15)
         .fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.text_primary'))
         .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
         .width('100%')
       Text(this.album.albumArtistDisplay.length > 0 ?
         this.album.albumArtistDisplay : `${this.album.trackCount} 首`)
         .fontSize(12)
         .fontColor($r('app.color.text_secondary'))
         .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
         .width('100%')
     }
     .width('100%')

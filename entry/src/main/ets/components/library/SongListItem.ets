@@ -6,9 +6,10 @@ import {
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { ArtworkFitMode, ArtworkView } from '../artwork/ArtworkView';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
+import { LayoutLength } from '../layout/LayoutLength';
 import { TrackContextMenu } from './TrackActionMenu';
 
-const CONTEXT_PREVIEW_TEXT_MAX_WIDTH = 280;
+const CONTEXT_PREVIEW_FALLBACK_WIDTH = 344;
 
 export interface SongListItemData {
   id: number;
@@ -28,6 +29,7 @@ export enum SongListItemLayout {
 @Component
 export struct SongListItem {
   @State contextMenuShown: boolean = false;
+  @State contextPreviewWidth: number = 0;
   @Prop item: SongListItemData;
   @Prop layout: SongListItemLayout = SongListItemLayout.LIBRARY;
   @Prop artworkPath: string = '';
@@ -108,6 +110,10 @@ export struct SongListItem {
 
   private actionAnchorId(): string {
     return `track_more_${this.actionAnchorPrefix}_${this.item.id}`;
+  }
+
+  private effectiveContextPreviewWidth(): number {
+    return this.contextPreviewWidth > 0 ? this.contextPreviewWidth : CONTEXT_PREVIEW_FALLBACK_WIDTH;
   }
 
   @Builder
@@ -193,9 +199,11 @@ export struct SongListItem {
       }
       .alignItems(HorizontalAlign.Start)
       .justifyContent(FlexAlign.Center)
-      .flexShrink(1)
+      .layoutWeight(1)
+      .clip(true)
     }
-    .flexShrink(1)
+    .width('100%')
+    .clip(true)
   }
 
   @Builder
@@ -272,10 +280,9 @@ export struct SongListItem {
   private RowContent() {
     Row() {
       this.IdentityContent()
-      Blank()
-        .layoutWeight(1)
     }
     .layoutWeight(1)
+    .clip(true)
 
     this.TrailingContent()
   }
@@ -292,18 +299,23 @@ export struct SongListItem {
           .fontColor(this.primaryColor)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .width('100%')
         if (this.showArtist) {
           Text(this.artistLabel())
             .fontSize(this.secondarySize())
             .fontColor(this.secondaryColor)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .width('100%')
         }
       }
       .alignItems(HorizontalAlign.Start)
       .justifyContent(FlexAlign.Center)
-      .constraintSize({ maxWidth: CONTEXT_PREVIEW_TEXT_MAX_WIDTH })
+      .layoutWeight(1)
+      .clip(true)
     }
+    .width(this.effectiveContextPreviewWidth())
+    .clip(true)
   }
 
   @Builder
@@ -311,6 +323,15 @@ export struct SongListItem {
     Row() {
       this.IdentityContent()
     }
+    .width('100%')
+    .clip(true)
+    .opacity(this.contextMenuShown ? 0 : 1)
+    .onAreaChange((_oldValue: Area, newValue: Area) => {
+      const nextWidth = LayoutLength.toNumber(newValue.width, this.contextPreviewWidth);
+      if (nextWidth > 0 && Math.abs(nextWidth - this.contextPreviewWidth) >= 0.5) {
+        this.contextPreviewWidth = nextWidth;
+      }
+    })
     .bindContextMenu(
       this.contextMenuShown,
       this.ContextMenu(),
@@ -318,6 +339,7 @@ export struct SongListItem {
         preview: this.ContextMenuPreview,
         placement: this.menuPlacement,
         previewBorderRadius: 0,
+        layoutRegionMargin: { left: 16, right: 16 },
         onDisappear: (): void => {
           this.contextMenuShown = false;
         }
@@ -330,10 +352,9 @@ export struct SongListItem {
     Row({ space: this.rowSpace() }) {
       Row() {
         this.ContextMenuIdentity()
-        Blank()
-          .layoutWeight(1)
       }
       .layoutWeight(1)
+      .clip(true)
 
       this.TrailingContent()
     }

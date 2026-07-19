@@ -66,17 +66,28 @@ struct AlbumContextMenu {
   }
 }
 
+@Reusable
 @Component
 export struct AlbumGridItem {
   @ObjectLink store: LibraryStore;
   @Prop album: AlbumListItem;
   @Prop actionsEnabled: boolean = false;
   @Prop actionAnchorPrefix: string = 'album_grid';
+  @Prop selectionMode: boolean = false;
+  @Prop selected: boolean = false;
   onActivate: (album: AlbumListItem) => void = (_album: AlbumListItem): void => {};
+  onToggleSelection: (album: AlbumListItem) => void = (_album: AlbumListItem): void => {};
   onAction: (album: AlbumListItem, action: AlbumAction) => void =
     (_album: AlbumListItem, _action: AlbumAction): void => {};
   onNavigate: (target: LibraryNavigationTarget) => void =
     (_target: LibraryNavigationTarget): void => {};
+
+  aboutToReuse(params: ESObject): void {
+    this.onActivate = params.onActivate as (album: AlbumListItem) => void;
+    this.onToggleSelection = params.onToggleSelection as (album: AlbumListItem) => void;
+    this.onAction = params.onAction as (album: AlbumListItem, action: AlbumAction) => void;
+    this.onNavigate = params.onNavigate as (target: LibraryNavigationTarget) => void;
+  }
 
   @Builder
   private AlbumMenu() {
@@ -117,13 +128,37 @@ export struct AlbumGridItem {
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)
-    .onClick(() => this.onActivate(this.album))
+    .onClick(() => {
+      if (this.selectionMode) {
+        this.onToggleSelection(this.album);
+      } else {
+        this.onActivate(this.album);
+      }
+    })
+  }
+
+  @Builder
+  private SelectableAlbumContent() {
+    Stack({ alignContent: Alignment.TopStart }) {
+      this.AlbumContent()
+      SymbolGlyph(this.selected ? $r('sys.symbol.checkmark_circle_fill') : $r('sys.symbol.circle'))
+        .fontSize(26)
+        .fontColor([this.selected ? $r('app.color.theme_accent') : $r('app.color.text_secondary')])
+        .backgroundColor($r('app.color.glass_surface_strong'))
+        .borderRadius(15)
+        .margin({ top: 8, left: 8 })
+        .opacity(this.selectionMode ? 1 : 0)
+        .translate({ x: this.selectionMode ? 0 : -10 })
+        .scale({ x: this.selectionMode ? 1 : 0.7, y: this.selectionMode ? 1 : 0.7 })
+        .animation({ duration: 180, curve: Curve.EaseOut })
+    }
+    .width('100%')
   }
 
   build() {
     if (this.actionsEnabled) {
       Stack() {
-        this.AlbumContent()
+        this.SelectableAlbumContent()
       }
         .width('100%')
         .bindContextMenu(
@@ -135,7 +170,7 @@ export struct AlbumGridItem {
           }
         )
     } else {
-      this.AlbumContent()
+      this.SelectableAlbumContent()
     }
   }
 }

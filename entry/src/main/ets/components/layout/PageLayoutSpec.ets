@@ -6,8 +6,12 @@ export class PageLayoutSpec {
   static readonly ALBUM_MIN_COLUMN_WIDTH: number = 160;
   static readonly ALBUM_COLUMN_GAP: number = 16;
   static readonly ALBUM_ROW_GAP: number = 20;
-  static readonly ALBUM_GRID_CACHE_COUNT: number = 12;
-  static readonly VIRTUAL_LIST_CACHE_COUNT: number = 16;
+  static readonly ALBUM_GRID_CACHE_COUNT: number = 3;
+  static readonly VIRTUAL_LIST_CACHE_COUNT: number = 8;
+  static readonly SONG_LIST_CACHE_COUNT: number = 6;
+  static readonly DETAIL_TRACK_LIST_CACHE_COUNT: number = 6;
+  static readonly PLAYER_QUEUE_CACHE_COUNT: number = 5;
+  static readonly LYRIC_LIST_CACHE_COUNT: number = 8;
   static readonly DETAIL_PRIMARY_PLAY_MIN_WIDTH: number = 112;
   static readonly DETAIL_PRIMARY_PLAY_MAX_WIDTH: number = 180;
 

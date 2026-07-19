@@ -11,6 +11,7 @@ import {
   TrackListItem
 } from '../../library/model/LibraryModels';
 import { MusicRepository } from '../../library/data/MusicRepository';
+import { LibraryListDataSource } from '../../library/store/LibraryListDataSource';
 
 const PLAYLIST_PAGE_SIZE: number = 100;
 
@@ -25,6 +26,10 @@ export class PlaylistStore {
   lastMessage: string = '';
   sortField: PlaylistSortField = PlaylistSortField.UPDATED_AT;
   sortDirection: SortDirection = SortDirection.DESCENDING;
+  readonly playlistDataSource: LibraryListDataSource<PlaylistSummary> =
+    new LibraryListDataSource<PlaylistSummary>();
+  readonly detailItemDataSource: LibraryListDataSource<PlaylistTrackItem> =
+    new LibraryListDataSource<PlaylistTrackItem>();
 
   private readonly repository: MusicRepository;
   private refreshGeneration: number = 0;
@@ -52,6 +57,7 @@ export class PlaylistStore {
     try {
       const playlists = await this.repository.getPlaylists(this.sortField, this.sortDirection);
       if (generation === this.refreshGeneration) {
+        this.playlistDataSource.replace(playlists);
         this.playlists = playlists;
       }
     } catch (error) {
@@ -74,6 +80,7 @@ export class PlaylistStore {
     try {
       const detail = await this.repository.getPlaylistDetail(playlistId, 0, PLAYLIST_PAGE_SIZE);
       if (generation === this.detailGeneration) {
+        this.detailItemDataSource.replace(detail?.items ?? []);
         this.detail = detail;
       }
     } catch (error) {
@@ -103,9 +110,11 @@ export class PlaylistStore {
         current.playlist.itemSortDirection
       );
       if (generation === this.detailGeneration && next !== undefined) {
+        const items = current.items.concat(next.items);
+        this.detailItemDataSource.replace(items);
         this.detail = {
           playlist: next.playlist,
-          items: current.items.concat(next.items),
+          items: items,
           offset: 0,
           totalCount: next.totalCount
         };
@@ -146,6 +155,7 @@ export class PlaylistStore {
     const result = await this.runMutation(async (): Promise<boolean> => {
       await this.repository.deletePlaylist(playlistId);
       if (this.detail?.playlist.id === playlistId) {
+        this.detailItemDataSource.clear();
         this.detail = undefined;
       }
       await this.refresh();
@@ -185,11 +195,18 @@ export class PlaylistStore {
   }
 
   async removeTrack(playlistId: number, trackId: number): Promise<boolean> {
+    return this.removeTracks(playlistId, [trackId]);
+  }
+
+  async removeTracks(playlistId: number, trackIds: Array<number>): Promise<boolean> {
+    if (trackIds.length === 0) {
+      return false;
+    }
     const removed = await this.runMutation(async (): Promise<number> => {
-      const count = await this.repository.removePlaylistItems(playlistId, [trackId]);
+      const count = await this.repository.removePlaylistItems(playlistId, trackIds);
       await this.refreshAfterItemMutation(playlistId);
       if (count > 0) {
-        this.lastMessage = '已从播放列表移除';
+        this.lastMessage = count === 1 ? '已从播放列表移除' : `已从播放列表移除 ${count} 首`;
       }
       return count;
     });
@@ -224,6 +241,24 @@ export class PlaylistStore {
     } catch (error) {
       this.errorMessage = PlaylistStore.messageOf(error);
     }
+  }
+
+  async getAllTracks(playlistId: number): Promise<Array<PlaylistTrackItem>> {
+    const items: Array<PlaylistTrackItem> = [];
+    let totalCount = 0;
+    do {
+      const detail = await this.repository.getPlaylistDetail(
+        playlistId,
+        items.length,
+        PLAYLIST_PAGE_SIZE
+      );
+      if (detail === undefined) {
+        return items;
+      }
+      totalCount = detail.totalCount;
+      items.push(...detail.items);
+    } while (items.length < totalCount);
+    return items;
   }
 
   private async runItemMutation(playlistId: number,

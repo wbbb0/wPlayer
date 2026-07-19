@@ -29,7 +29,8 @@ export class LibraryListDataSource<T> implements IDataSource {
 
   replace(items: Array<T>): void {
     this.items = items.slice();
-    this.listeners.forEach((listener: DataChangeListener) => listener.onDataReloaded());
+    const operations: Array<DataOperation> = [{ type: DataOperationType.RELOAD }];
+    this.listeners.forEach((listener: DataChangeListener) => listener.onDatasetChange(operations));
   }
 
   append(item: T): void {
@@ -43,6 +44,7 @@ export class LibraryListDataSource<T> implements IDataSource {
       return;
     }
     this.items = [];
-    this.listeners.forEach((listener: DataChangeListener) => listener.onDataReloaded());
+    const operations: Array<DataOperation> = [{ type: DataOperationType.RELOAD }];
+    this.listeners.forEach((listener: DataChangeListener) => listener.onDatasetChange(operations));
   }
 }

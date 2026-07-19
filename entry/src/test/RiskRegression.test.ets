@@ -4,6 +4,12 @@ import { ResourceLeaseRegistry } from '../main/ets/playback/artwork/ResourceLeas
 import { RequestEpoch } from '../main/ets/playback/support/RequestEpoch';
 import { DuplicatePolicy } from '../main/ets/library/importer/DuplicatePolicy';
 import { ImportConcurrencyPolicy } from '../main/ets/library/importer/ImportConcurrencyPolicy';
+import { ImportDetailPolicy } from '../main/ets/library/importer/ImportDetailPolicy';
+import {
+  ImportItemDetailKind,
+  ImportItemOutcome,
+  ImportItemResult
+} from '../main/ets/library/model/LibraryModels';
 import { ArtworkEncodingPolicy } from '../main/ets/library/artwork/ArtworkEncodingPolicy';
 import { ImportPreparationPolicy, PreparedItemState } from
   '../main/ets/library/importer/ImportPreparationPolicy';
@@ -121,6 +127,34 @@ export default function riskRegressionTest() {
       expect(ImportConcurrencyPolicy.needsFullFingerprint(1, 1)).assertTrue();
       expect(ImportConcurrencyPolicy.needsFullFingerprint(0, 2)).assertTrue();
       expect(ImportConcurrencyPolicy.FILE_PROBE_CONCURRENCY).assertEqual(3);
+      expect(ImportConcurrencyPolicy.URI_PREFLIGHT_BATCH_SIZE)
+        .assertLarger(ImportConcurrencyPolicy.IMPORT_WORK_BATCH_SIZE);
+    });
+
+    it('keeps explicit import detail categories and safely classifies legacy results', 0, () => {
+      const uriDuplicate: ImportItemResult = {
+        uri: 'uri',
+        displayName: 'track',
+        outcome: ImportItemOutcome.DUPLICATE,
+        reason: 'duplicate',
+        detailKind: ImportItemDetailKind.URI_DUPLICATE
+      };
+      const legacyFailure: ImportItemResult = {
+        uri: 'bad',
+        displayName: 'bad',
+        outcome: ImportItemOutcome.FAILED,
+        reason: 'failed'
+      };
+      expect(ImportDetailPolicy.kindOf(uriDuplicate)).assertEqual(ImportItemDetailKind.URI_DUPLICATE);
+      expect(ImportDetailPolicy.kindOf(legacyFailure)).assertEqual(ImportItemDetailKind.FAILED);
+      expect(ImportDetailPolicy.shouldRetain(uriDuplicate)).assertTrue();
+      const imported: ImportItemResult = {
+        uri: 'new',
+        displayName: 'new',
+        outcome: ImportItemOutcome.IMPORTED,
+        reason: 'imported'
+      };
+      expect(ImportDetailPolicy.shouldRetain(imported)).assertFalse();
     });
 
     it('uses broadly supported JPEG files for persistent artwork variants', 0, () => {

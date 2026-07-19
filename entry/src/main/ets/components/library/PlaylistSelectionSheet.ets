@@ -1,5 +1,7 @@
 import { PlaylistKind, PlaylistSummary } from '../../library/model/LibraryModels';
 import { PlaylistStore } from '../../playlist/store/PlaylistStore';
+import { LibraryListDataSource } from '../../library/store/LibraryListDataSource';
+import { PageLayoutSpec } from '../layout/PageLayoutSpec';
 
 @Component
 export struct PlaylistSelectionSheet {
@@ -8,6 +10,15 @@ export struct PlaylistSelectionSheet {
   @Prop recentPlaylistIds: Array<number> = [];
   onClose: () => void = (): void => {};
   onAddedToPlaylist: (playlistId: number) => void = (_playlistId: number): void => {};
+  private readonly recentDataSource: LibraryListDataSource<PlaylistSummary> =
+    new LibraryListDataSource<PlaylistSummary>();
+  private readonly otherDataSource: LibraryListDataSource<PlaylistSummary> =
+    new LibraryListDataSource<PlaylistSummary>();
+
+  aboutToAppear(): void {
+    this.recentDataSource.replace(this.recentPlaylists());
+    this.otherDataSource.replace(this.otherPlaylists());
+  }
 
   private addTo(playlist: PlaylistSummary): void {
     if (this.trackIds.length === 0 || this.store.mutating) {
@@ -112,7 +123,7 @@ export struct PlaylistSelectionSheet {
             ListItem() {
               this.SectionTitle('最近添加到')
             }
-            ForEach(this.recentPlaylists(), (playlist: PlaylistSummary) => {
+            LazyForEach(this.recentDataSource, (playlist: PlaylistSummary) => {
               ListItem() {
                 this.PlaylistRow(playlist)
               }
@@ -122,7 +133,7 @@ export struct PlaylistSelectionSheet {
             ListItem() {
               this.SectionTitle(this.recentPlaylists().length > 0 ? '其他播放列表' : '全部播放列表')
             }
-            ForEach(this.otherPlaylists(), (playlist: PlaylistSummary) => {
+            LazyForEach(this.otherDataSource, (playlist: PlaylistSummary) => {
               ListItem() {
                 this.PlaylistRow(playlist)
               }
@@ -131,6 +142,7 @@ export struct PlaylistSelectionSheet {
         }
         .width('100%')
         .layoutWeight(1)
+        .cachedCount(PageLayoutSpec.VIRTUAL_LIST_CACHE_COUNT, true)
       }
 
       if (this.store.errorMessage.length > 0) {

@@ -4,6 +4,12 @@ import { ResourceLeaseRegistry } from '../../../main/ets/playback/artwork/Resour
 import { RequestEpoch } from '../../../main/ets/playback/support/RequestEpoch';
 import { DuplicatePolicy } from '../../../main/ets/library/importer/DuplicatePolicy';
 import { ImportConcurrencyPolicy } from '../../../main/ets/library/importer/ImportConcurrencyPolicy';
+import { ImportDetailPolicy } from '../../../main/ets/library/importer/ImportDetailPolicy';
+import {
+  ImportItemDetailKind,
+  ImportItemOutcome,
+  ImportItemResult
+} from '../../../main/ets/library/model/LibraryModels';
 import { ArtworkEncodingPolicy } from '../../../main/ets/library/artwork/ArtworkEncodingPolicy';
 import { ImportPreparationPolicy, PreparedItemState } from
   '../../../main/ets/library/importer/ImportPreparationPolicy';
@@ -77,6 +83,35 @@ export default function riskRegressionTest() {
       expect(ImportConcurrencyPolicy.needsFullFingerprint(1, 1)).assertTrue();
       expect(ImportConcurrencyPolicy.needsFullFingerprint(0, 2)).assertTrue();
       expect(ImportConcurrencyPolicy.FILE_PROBE_CONCURRENCY).assertEqual(3);
+      expect(ImportConcurrencyPolicy.URI_PREFLIGHT_BATCH_SIZE)
+        .assertLarger(ImportConcurrencyPolicy.IMPORT_WORK_BATCH_SIZE);
+    });
+
+    it('classifiesImportDetailsForDisclosureGroups', 0, () => {
+      const contentDuplicate: ImportItemResult = {
+        uri: 'uri',
+        displayName: 'track',
+        outcome: ImportItemOutcome.DUPLICATE,
+        reason: 'duplicate',
+        detailKind: ImportItemDetailKind.CONTENT_DUPLICATE
+      };
+      const legacyFailure: ImportItemResult = {
+        uri: 'bad',
+        displayName: 'bad',
+        outcome: ImportItemOutcome.FAILED,
+        reason: 'failed'
+      };
+      expect(ImportDetailPolicy.kindOf(contentDuplicate))
+        .assertEqual(ImportItemDetailKind.CONTENT_DUPLICATE);
+      expect(ImportDetailPolicy.kindOf(legacyFailure)).assertEqual(ImportItemDetailKind.FAILED);
+      expect(ImportDetailPolicy.shouldRetain(contentDuplicate)).assertTrue();
+      const imported: ImportItemResult = {
+        uri: 'new',
+        displayName: 'new',
+        outcome: ImportItemOutcome.IMPORTED,
+        reason: 'imported'
+      };
+      expect(ImportDetailPolicy.shouldRetain(imported)).assertFalse();
     });
 
     it('usesJpegForPersistentArtworkVariants', 0, () => {

@@ -1,12 +1,78 @@
 import { PageLayoutSpec } from '../../components/layout/PageLayoutSpec';
 import { PageScrollBehavior, PageScrollContentBehavior } from '../../components/layout/PageScrollBehavior';
 import { LibraryStore } from '../../library/store/LibraryStore';
-import { ImportItemOutcome, ImportItemResult } from '../../library/model/LibraryModels';
+import {
+  ImportItemDetailKind,
+  ImportItemOutcome,
+  ImportItemResult
+} from '../../library/model/LibraryModels';
+import { LibraryListDataSource } from '../../library/store/LibraryListDataSource';
 
 class TaskReportLayoutSpec {
   static readonly TOP_PADDING: number = 20;
   static readonly HEADER_HEIGHT: number = 48;
   static readonly HEADER_TRAILING_SAFE_AREA: number = 56;
+}
+
+@Reusable
+@Component
+struct ImportDetailListItem {
+  @Prop item: ImportItemResult;
+
+  private readableUri(uri: string): string {
+    try {
+      return decodeURIComponent(uri);
+    } catch (_error) {
+      return uri;
+    }
+  }
+
+  build() {
+    Column({ space: 6 }) {
+      Row({ space: 10 }) {
+        Text(this.item.outcome === ImportItemOutcome.DUPLICATE ? '重复' : '失败')
+          .fontSize(12)
+          .fontColor(this.item.outcome === ImportItemOutcome.DUPLICATE ?
+            $r('app.color.text_secondary') : $r('app.color.message_error'))
+        Text(this.readableUri(this.item.displayName))
+          .fontSize(15)
+          .fontColor($r('app.color.text_primary'))
+          .maxLines(2)
+          .layoutWeight(1)
+      }.width('100%')
+      if (this.item.reason.length > 0) {
+        Text(this.item.reason)
+          .fontSize(12)
+          .fontColor(this.item.outcome === ImportItemOutcome.DUPLICATE ?
+            $r('app.color.text_secondary') : $r('app.color.message_error'))
+          .width('100%')
+      }
+      Text(`文件 URI：${this.readableUri(this.item.uri)}`)
+        .fontSize(11)
+        .fontColor($r('app.color.text_secondary'))
+        .width('100%')
+        .maxLines(4)
+      if (this.item.outcome === ImportItemOutcome.DUPLICATE &&
+        this.item.duplicateSourceUri !== undefined) {
+        Text(`已有文件 URI：${this.readableUri(this.item.duplicateSourceUri)}`)
+          .fontSize(11)
+          .fontColor($r('app.color.text_secondary'))
+          .width('100%')
+          .maxLines(4)
+      }
+      if (this.item.outcome === ImportItemOutcome.DUPLICATE &&
+        this.item.duplicateTrackId !== undefined) {
+        Text(`已有音乐库记录：#${this.item.duplicateTrackId}`)
+          .fontSize(11)
+          .fontColor($r('app.color.text_secondary'))
+          .width('100%')
+      }
+    }
+    .width('100%')
+    .padding(14)
+    .borderRadius(16)
+    .backgroundColor($r('app.color.glass_surface'))
+  }
 }
 
 @Component
@@ -15,6 +81,7 @@ export struct LibraryManagementPage {
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @State showTaskReport: boolean = false;
+  @State expandedImportDetail?: ImportItemDetailKind = undefined;
   scroller: Scroller = new Scroller();
   private readonly scrollBehavior: PageScrollBehavior = new PageScrollBehavior();
   private readonly contentBehavior: PageScrollContentBehavior = new PageScrollContentBehavior();
@@ -26,58 +93,70 @@ export struct LibraryManagementPage {
       this.store.sortIndexError.length > 0 || this.store.errorMessage.length > 0;
   }
 
-  private readableUri(uri: string): string {
-    try {
-      return decodeURIComponent(uri);
-    } catch (_error) {
-      return uri;
+  private detailCount(kind: ImportItemDetailKind): number {
+    switch (kind) {
+      case ImportItemDetailKind.URI_DUPLICATE:
+        return this.store.uriDuplicateCount;
+      case ImportItemDetailKind.CONTENT_DUPLICATE:
+        return this.store.contentDuplicateCount;
+      case ImportItemDetailKind.BATCH_DUPLICATE:
+        return this.store.batchDuplicateCount;
+      case ImportItemDetailKind.FAILED:
+        return this.store.failedImportCount;
     }
   }
 
+  private toggleImportDetail(kind: ImportItemDetailKind): void {
+    this.expandedImportDetail = this.expandedImportDetail === kind ? undefined : kind;
+  }
+
   @Builder
-  private ImportDetailRow(item: ImportItemResult) {
-    Column({ space: 6 }) {
-      Row({ space: 10 }) {
-        Text(item.outcome === ImportItemOutcome.DUPLICATE ? '重复' : '失败')
-          .fontSize(12)
-          .fontColor(item.outcome === ImportItemOutcome.DUPLICATE ?
-            $r('app.color.text_secondary') : $r('app.color.message_error'))
-        Text(this.readableUri(item.displayName))
+  private ImportDetailHeader(title: string, kind: ImportItemDetailKind) {
+    Button() {
+      Row({ space: 12 }) {
+        Text(title)
           .fontSize(15)
-          .fontColor($r('app.color.text_primary'))
-          .maxLines(2)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(kind === ImportItemDetailKind.FAILED ?
+            $r('app.color.message_error') : $r('app.color.text_primary'))
           .layoutWeight(1)
-      }.width('100%')
-      if (item.reason.length > 0) {
-        Text(item.reason)
-          .fontSize(12)
-          .fontColor(item.outcome === ImportItemOutcome.DUPLICATE ?
-            $r('app.color.text_secondary') : $r('app.color.message_error'))
-          .width('100%')
-      }
-      Text(`文件 URI：${this.readableUri(item.uri)}`)
-        .fontSize(11)
-        .fontColor($r('app.color.text_secondary'))
-        .width('100%')
-        .maxLines(4)
-      if (item.outcome === ImportItemOutcome.DUPLICATE && item.duplicateSourceUri !== undefined) {
-        Text(`已有文件 URI：${this.readableUri(item.duplicateSourceUri)}`)
-          .fontSize(11)
+          .textAlign(TextAlign.Start)
+        Text(`${this.detailCount(kind)}`)
+          .fontSize(13)
           .fontColor($r('app.color.text_secondary'))
-          .width('100%')
-          .maxLines(4)
+          .fontFeature('tnum')
+        SymbolGlyph($r('sys.symbol.chevron_right'))
+          .fontSize(16)
+          .fontColor([$r('app.color.text_tertiary')])
+          .rotate({ angle: this.expandedImportDetail === kind ? 90 : 0 })
       }
-      if (item.outcome === ImportItemOutcome.DUPLICATE && item.duplicateTrackId !== undefined) {
-        Text(`已有音乐库记录：#${item.duplicateTrackId}`)
-          .fontSize(11)
-          .fontColor($r('app.color.text_secondary'))
-          .width('100%')
-      }
+      .width('100%')
+      .height(48)
+      .padding({ left: 14, right: 14 })
     }
     .width('100%')
-    .padding(14)
-    .borderRadius(16)
+    .height(48)
+    .buttonStyle(ButtonStyleMode.TEXTUAL)
     .backgroundColor($r('app.color.glass_surface'))
+    .backgroundBlurStyle(BlurStyle.COMPONENT_THICK, {
+      adaptiveColor: AdaptiveColor.AVERAGE,
+      policy: BlurStyleActivePolicy.ALWAYS_ACTIVE,
+      scale: 1
+    })
+    .borderRadius(16)
+    .accessibilityText(`${title}，${this.detailCount(kind)} 项`)
+    .onClick(() => this.toggleImportDetail(kind))
+  }
+
+  @Builder
+  private ImportDetailItems(kind: ImportItemDetailKind,
+    dataSource: LibraryListDataSource<ImportItemResult>) {
+    LazyForEach(dataSource, (item: ImportItemResult, index: number) => {
+      ListItem() {
+        ImportDetailListItem({ item: item })
+          .reuseId('import_detail')
+      }
+    }, (item: ImportItemResult, index: number) => `${kind}:${index}:${item.uri}`)
   }
 
   @Builder
@@ -190,15 +269,56 @@ export struct LibraryManagementPage {
           .fontColor($r('app.color.text_primary'))
           .width('100%')
         List({ space: 10 }) {
-          LazyForEach(this.store.importDetailDataSource, (item: ImportItemResult) => {
-            ListItem() {
-              this.ImportDetailRow(item)
+          if (this.store.uriDuplicateCount > 0) {
+            ListItemGroup({
+              header: this.ImportDetailHeader('URI 已存在', ImportItemDetailKind.URI_DUPLICATE)
+            }) {
+              if (this.expandedImportDetail === ImportItemDetailKind.URI_DUPLICATE) {
+                this.ImportDetailItems(
+                  ImportItemDetailKind.URI_DUPLICATE, this.store.uriDuplicateDataSource
+                )
+              }
             }
-          }, (item: ImportItemResult) => `${item.outcome}:${item.uri}`)
+          }
+          if (this.store.contentDuplicateCount > 0) {
+            ListItemGroup({
+              header: this.ImportDetailHeader('文件内容重复', ImportItemDetailKind.CONTENT_DUPLICATE)
+            }) {
+              if (this.expandedImportDetail === ImportItemDetailKind.CONTENT_DUPLICATE) {
+                this.ImportDetailItems(
+                  ImportItemDetailKind.CONTENT_DUPLICATE, this.store.contentDuplicateDataSource
+                )
+              }
+            }
+          }
+          if (this.store.batchDuplicateCount > 0) {
+            ListItemGroup({
+              header: this.ImportDetailHeader('本次选择中重复', ImportItemDetailKind.BATCH_DUPLICATE)
+            }) {
+              if (this.expandedImportDetail === ImportItemDetailKind.BATCH_DUPLICATE) {
+                this.ImportDetailItems(
+                  ImportItemDetailKind.BATCH_DUPLICATE, this.store.batchDuplicateDataSource
+                )
+              }
+            }
+          }
+          if (this.store.failedImportCount > 0) {
+            ListItemGroup({
+              header: this.ImportDetailHeader('导入失败', ImportItemDetailKind.FAILED)
+            }) {
+              if (this.expandedImportDetail === ImportItemDetailKind.FAILED) {
+                this.ImportDetailItems(
+                  ImportItemDetailKind.FAILED, this.store.failedImportDataSource
+                )
+              }
+            }
+          }
         }
         .width('100%')
         .layoutWeight(1)
         .edgeEffect(EdgeEffect.Spring)
+        .sticky(StickyStyle.Header)
+        .cachedCount(PageLayoutSpec.VIRTUAL_LIST_CACHE_COUNT, true)
       } else if (!this.store.importing && this.store.lastImportResult !== undefined) {
         Text('本次导入没有重复或错误')
           .fontColor($r('app.color.text_secondary'))
@@ -265,6 +385,7 @@ export struct LibraryManagementPage {
           .height(52)
           .enabled(!this.store.importing && !this.store.loading)
           .onClick(() => {
+            this.expandedImportDetail = undefined;
             this.store.selectAndImport(() => {
               this.showTaskReport = true;
             });

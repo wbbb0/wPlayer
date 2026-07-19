@@ -20,7 +20,7 @@ import {
   QueueTrack,
   RepeatMode
 } from './model/PlaybackModels';
-import { PlaybackQueue } from './queue/PlaybackQueue';
+import { PlaybackQueue, PlaybackQueueRemovalResult } from './queue/PlaybackQueue';
 import { PlaybackSession, PlaybackSessionCommands } from './session/PlaybackSession';
 import { LyricsParser } from './lyrics/LyricsParser';
 import { LyricTimeline } from './lyrics/LyricTimeline';
@@ -142,6 +142,70 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     if (current !== undefined) {
       this.enqueueQueueItems([current], false);
     }
+  }
+
+  playQueueSelection(items: Array<QueueTrack>): void {
+    if (items.length === 0) {
+      return;
+    }
+    const buildEpoch = ++this.queueBuildEpoch;
+    const phase = this.queue.build(items, items[0].id, false);
+    this.playerStore.queuePhase = phase;
+    this.playerStore.queueSize = this.queue.size();
+    this.syncQueueSnapshot();
+    if (phase === QueueBuildPhase.READY) {
+      this.beginTrack(items[0]).catch((error: Object): void => {
+        if (buildEpoch === this.queueBuildEpoch) {
+          console.warn(`Unable to play queue selection: ${PlaybackRuntime.messageOf(error)}`);
+        }
+      });
+    }
+  }
+
+  insertQueueTracks(items: Array<QueueTrack>): void {
+    this.enqueueQueueItems(items, true);
+  }
+
+  appendQueueTracks(items: Array<QueueTrack>): void {
+    this.enqueueQueueItems(items, false);
+  }
+
+  removeQueueEntries(entryIds: Array<number>): void {
+    if (entryIds.length === 0 || this.playerStore.queuePhase !== QueueBuildPhase.READY) {
+      return;
+    }
+    const result: PlaybackQueueRemovalResult = this.queue.removeEntries(entryIds);
+    this.playerStore.queueSize = this.queue.size();
+    this.playerStore.queuePhase =
+      this.playerStore.queueSize > 0 ? QueueBuildPhase.READY : QueueBuildPhase.EMPTY;
+    this.syncQueueSnapshot();
+    if (result.removedCurrent && result.current !== undefined) {
+      this.beginTrack(result.current);
+    } else if (result.removedCurrent) {
+      this.clearRemovedQueuePlayback();
+    }
+  }
+
+  private clearRemovedQueuePlayback(): void {
+    this.interruptCoverage();
+    ++this.artworkEpoch;
+    ++this.seekEpoch;
+    this.pendingSeekPositionMs = undefined;
+    this.currentPlaybackTrack = undefined;
+    this.playerStore.currentTrack = undefined;
+    this.playerStore.playWhenReady = false;
+    this.playerStore.progress.positionMs = 0;
+    this.playerStore.progress.durationMs = 0;
+    this.playerStore.setMiniArtwork(undefined, '');
+    this.playerStore.heroArtwork = undefined;
+    this.playerStore.heroArtworkUri = '';
+    this.playerStore.heroArtworkRevision += 1;
+    this.playerStore.transportState = this.stateReducer.reset();
+    this.engine.invalidateAndStop().then((): void => {
+      this.onStateChanged(PlayerState.IDLE);
+    }).catch((error: Object): void => {
+      console.warn(`Unable to stop an emptied playback queue: ${PlaybackRuntime.messageOf(error)}`);
+    });
   }
 
   togglePlayback(): void {

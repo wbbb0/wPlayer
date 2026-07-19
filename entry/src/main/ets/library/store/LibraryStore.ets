@@ -10,8 +10,8 @@ import {
   ArtistDetail,
   ImportProgress,
   ImportResult,
+  ImportItemDetailKind,
   ImportItemResult,
-  ImportItemOutcome,
   LibraryStatistics,
   LibraryIndexPresentation,
   LibrarySection,
@@ -27,6 +27,7 @@ import { LibraryPagingPolicy } from './LibraryPagingPolicy';
 import { LibraryListDataSource } from './LibraryListDataSource';
 import { LibraryPlaybackBridge } from './LibraryPlaybackBridge';
 import { ImportPerformanceTrace } from '../importer/ImportPerformanceTrace';
+import { ImportDetailPolicy } from '../importer/ImportDetailPolicy';
 import { ArtworkPaletteUpdate, PaletteRefreshAsset } from '../data/MusicRepositoryTypes';
 
 const PALETTE_REFRESH_CONCURRENCY: number = 4;
@@ -76,7 +77,13 @@ export class LibraryStore {
     new PagedLibraryDataSource<TrackListItem>(LibraryPagingPolicy.TRACK_PAGE_SIZE, 7);
   readonly albumDataSource: PagedLibraryDataSource<AlbumListItem> =
     new PagedLibraryDataSource<AlbumListItem>(LibraryPagingPolicy.ALBUM_PAGE_SIZE, 5);
-  readonly importDetailDataSource: LibraryListDataSource<ImportItemResult> =
+  readonly uriDuplicateDataSource: LibraryListDataSource<ImportItemResult> =
+    new LibraryListDataSource<ImportItemResult>();
+  readonly contentDuplicateDataSource: LibraryListDataSource<ImportItemResult> =
+    new LibraryListDataSource<ImportItemResult>();
+  readonly batchDuplicateDataSource: LibraryListDataSource<ImportItemResult> =
+    new LibraryListDataSource<ImportItemResult>();
+  readonly failedImportDataSource: LibraryListDataSource<ImportItemResult> =
     new LibraryListDataSource<ImportItemResult>();
   trackSections: Array<LibrarySection> = [];
   albumSections: Array<LibrarySection> = [];
@@ -106,8 +113,11 @@ export class LibraryStore {
   lastMessage: string = '';
   errorMessage: string = '';
   lastImportResult?: ImportResult;
-  importDetailItems: Array<ImportItemResult> = [];
   importDetailCount: number = 0;
+  uriDuplicateCount: number = 0;
+  contentDuplicateCount: number = 0;
+  batchDuplicateCount: number = 0;
+  failedImportCount: number = 0;
   sortIndexResult: string = '';
   sortIndexError: string = '';
   private readonly repository: MusicRepository;
@@ -250,28 +260,21 @@ export class LibraryStore {
     this.errorMessage = '';
     this.lastMessage = '';
     this.lastImportResult = undefined;
-    this.importDetailItems = [];
-    this.importDetailCount = 0;
-    this.importDetailDataSource.clear();
+    this.clearImportDetails();
     try {
       const result = await this.importer.selectAndImport((progress: ImportProgress) => {
         this.importProgress = progress;
-      }, onStarted, (item: ImportItemResult) => {
-        if (item.outcome !== ImportItemOutcome.IMPORTED) {
-          this.importDetailItems.push(item);
-          this.importDetailCount += 1;
-          this.importDetailDataSource.append(item);
-        }
-      });
+      }, onStarted);
       this.lastImportResult = result;
-      this.importDetailItems = result.items.filter((item: ImportItemResult) =>
-        item.outcome !== ImportItemOutcome.IMPORTED);
-      this.importDetailCount = this.importDetailItems.length;
-      this.importDetailDataSource.replace(this.importDetailItems);
+      this.replaceImportDetails(result.items);
       this.lastMessage = LibraryStore.importSummary(result);
-      const refreshStartedAt = Date.now();
-      await this.refresh();
-      ImportPerformanceTrace.mark('post_import_refresh', refreshStartedAt);
+      if (result.imported > 0) {
+        const refreshStartedAt = Date.now();
+        await this.refresh();
+        ImportPerformanceTrace.mark('post_import_refresh', refreshStartedAt);
+      } else {
+        ImportPerformanceTrace.event('post_import_refresh_skipped', 0, 'reason=no_library_changes');
+      }
     } catch (error) {
       this.errorMessage = LibraryStore.errorMessageOf(error);
     } finally {
@@ -281,6 +284,54 @@ export class LibraryStore {
 
   cancelImport(): void {
     this.importer?.cancel();
+  }
+
+  private clearImportDetails(): void {
+    this.importDetailCount = 0;
+    this.uriDuplicateCount = 0;
+    this.contentDuplicateCount = 0;
+    this.batchDuplicateCount = 0;
+    this.failedImportCount = 0;
+    this.uriDuplicateDataSource.clear();
+    this.contentDuplicateDataSource.clear();
+    this.batchDuplicateDataSource.clear();
+    this.failedImportDataSource.clear();
+  }
+
+  private replaceImportDetails(items: Array<ImportItemResult>): void {
+    const uriDuplicates: Array<ImportItemResult> = [];
+    const contentDuplicates: Array<ImportItemResult> = [];
+    const batchDuplicates: Array<ImportItemResult> = [];
+    const failures: Array<ImportItemResult> = [];
+    for (let index = 0; index < items.length; index += 1) {
+      const item = items[index];
+      switch (ImportDetailPolicy.kindOf(item)) {
+        case ImportItemDetailKind.URI_DUPLICATE:
+          uriDuplicates.push(item);
+          break;
+        case ImportItemDetailKind.CONTENT_DUPLICATE:
+          contentDuplicates.push(item);
+          break;
+        case ImportItemDetailKind.BATCH_DUPLICATE:
+          batchDuplicates.push(item);
+          break;
+        case ImportItemDetailKind.FAILED:
+          failures.push(item);
+          break;
+        default:
+          break;
+      }
+    }
+    this.uriDuplicateCount = uriDuplicates.length;
+    this.contentDuplicateCount = contentDuplicates.length;
+    this.batchDuplicateCount = batchDuplicates.length;
+    this.failedImportCount = failures.length;
+    this.importDetailCount = this.uriDuplicateCount + this.contentDuplicateCount +
+      this.batchDuplicateCount + this.failedImportCount;
+    this.uriDuplicateDataSource.replace(uriDuplicates);
+    this.contentDuplicateDataSource.replace(contentDuplicates);
+    this.batchDuplicateDataSource.replace(batchDuplicates);
+    this.failedImportDataSource.replace(failures);
   }
 
   async clearLibrary(): Promise<void> {

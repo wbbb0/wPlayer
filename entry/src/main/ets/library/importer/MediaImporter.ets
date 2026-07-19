@@ -14,11 +14,13 @@ import {
 import { ImportConcurrencyPolicy } from './ImportConcurrencyPolicy';
 import { ImportPerformanceTrace } from './ImportPerformanceTrace';
 import { DuplicatePolicy } from './DuplicatePolicy';
+import { ImportDetailPolicy } from './ImportDetailPolicy';
 import { ImportPreparationPolicy, PreparedItemState } from './ImportPreparationPolicy';
 import {
   ArtworkPictureType,
   ImportProgress,
   ImportResult,
+  ImportItemDetailKind,
   ImportItemOutcome,
   ImportItemResult,
   MetadataReadResult,
@@ -55,8 +57,6 @@ interface CommitOutcome {
   errorMessage: string;
 }
 
-const IMPORT_BATCH_SIZE = 16;
-
 export class MediaImporter {
   private readonly context: common.UIAbilityContext;
   private readonly repository: MusicRepository;
@@ -64,6 +64,8 @@ export class MediaImporter {
   private cancelRequested: boolean = false;
   private importing: boolean = false;
   private readonly artworkPreparations: Map<string, Promise<ArtworkCacheResult>> = new Map();
+  private readonly duplicateCandidateLookups: Map<string, Promise<Array<DuplicateCandidate>>> = new Map();
+  private readonly candidateFingerprintTasks: Map<number, Promise<string>> = new Map();
   private artworkCleanupTail: Promise<void> = Promise.resolve();
 
   constructor(context: common.UIAbilityContext, repository: MusicRepository, artworkCache: ArtworkCache) {
@@ -88,6 +90,8 @@ export class MediaImporter {
     this.importing = true;
     this.cancelRequested = false;
     this.artworkPreparations.clear();
+    this.duplicateCandidateLookups.clear();
+    this.candidateFingerprintTasks.clear();
     let completedResult: ImportResult | undefined;
     let traceStarted = false;
     try {
@@ -113,6 +117,8 @@ export class MediaImporter {
       this.importing = false;
       this.cancelRequested = false;
       this.artworkPreparations.clear();
+      this.duplicateCandidateLookups.clear();
+      this.candidateFingerprintTasks.clear();
       this.scheduleArtworkCleanup();
     }
   }
@@ -154,46 +160,21 @@ export class MediaImporter {
     };
     this.notify(onProgress, progress);
 
-    for (let batchOffset = 0; batchOffset < uris.length; batchOffset += IMPORT_BATCH_SIZE) {
+    const pendingUris = await this.preflightUris(uris, itemResults, progress, onProgress, onItem);
+    for (let batchOffset = 0; batchOffset < pendingUris.length;
+      batchOffset += ImportConcurrencyPolicy.IMPORT_WORK_BATCH_SIZE) {
       if (this.cancelRequested) {
         break;
       }
-      const uriBatch = uris.slice(
-        batchOffset, Math.min(batchOffset + IMPORT_BATCH_SIZE, uris.length)
+      this.duplicateCandidateLookups.clear();
+      const uriBatch = pendingUris.slice(
+        batchOffset,
+        Math.min(batchOffset + ImportConcurrencyPolicy.IMPORT_WORK_BATCH_SIZE, pendingUris.length)
       );
-      progress.currentName = '正在检查重复文件';
-      this.notify(onProgress, progress);
-
-      const uriCheckStartedAt = Date.now();
-      const existingUris = await this.repository.hasUris(uriBatch);
-      ImportPerformanceTrace.mark('uri_check', uriCheckStartedAt, 0,
-        `batch=${batchOffset / IMPORT_BATCH_SIZE + 1} count=${uriBatch.length}`);
-      const pendingUris: Array<string> = [];
-      for (let index = 0; index < uriBatch.length; index += 1) {
-        const uri = uriBatch[index];
-        if (existingUris.indexOf(uri) >= 0) {
-          progress.duplicates += 1;
-          progress.processed += 1;
-          this.recordItem(itemResults, {
-            uri: uri,
-            displayName: uri,
-            outcome: ImportItemOutcome.DUPLICATE,
-            reason: '同一文件 URI 已在音乐库中',
-            duplicateSourceUri: uri
-          }, onItem);
-        } else {
-          pendingUris.push(uri);
-        }
-      }
-      this.notify(onProgress, progress);
-
-      if (pendingUris.length === 0) {
-        continue;
-      }
       const permissionStartedAt = Date.now();
-      const permissionResult = await persistReadPermissions(pendingUris);
+      const permissionResult = await persistReadPermissions(uriBatch);
       ImportPerformanceTrace.mark('permission_persist', permissionStartedAt, 0,
-        `count=${pendingUris.length} failed=${permissionResult.failedUris.length}`);
+        `count=${uriBatch.length} failed=${permissionResult.failedUris.length}`);
       progress.failed += permissionResult.failedUris.length;
       progress.processed += permissionResult.failedUris.length;
       permissionResult.failedUris.forEach((uri: string) => {
@@ -201,7 +182,8 @@ export class MediaImporter {
           uri: uri,
           displayName: uri,
           outcome: ImportItemOutcome.FAILED,
-          reason: '无法持久化文件读取授权'
+          reason: '无法持久化文件读取授权',
+          detailKind: ImportItemDetailKind.FAILED
         }, onItem);
       });
       this.notify(onProgress, progress);
@@ -227,7 +209,8 @@ export class MediaImporter {
             uri: item.uri,
             displayName: item.displayName,
             outcome: ImportItemOutcome.FAILED,
-            reason: item.errorMessage.length > 0 ? item.errorMessage : '导入准备结果不完整'
+            reason: item.errorMessage.length > 0 ? item.errorMessage : '导入准备结果不完整',
+            detailKind: ImportItemDetailKind.FAILED
           }, onItem);
         } else if (state === PreparedItemState.DUPLICATE) {
           progress.duplicates += 1;
@@ -238,6 +221,7 @@ export class MediaImporter {
             displayName: item.displayName,
             outcome: ImportItemOutcome.DUPLICATE,
             reason: '完整文件内容与已有歌曲相同',
+            detailKind: ImportItemDetailKind.CONTENT_DUPLICATE,
             duplicateTrackId: item.duplicateTrackId,
             duplicateSourceUri: item.duplicateSourceUri
           }, onItem);
@@ -280,7 +264,8 @@ export class MediaImporter {
               uri: uniqueInputs[index].uri,
               displayName: uniqueInputs[index].displayName,
               outcome: ImportItemOutcome.FAILED,
-              reason: results[index].errorMessage
+              reason: results[index].errorMessage,
+              detailKind: ImportItemDetailKind.FAILED
             }, onItem);
           } else if (results[index].imported) {
             progress.imported += 1;
@@ -298,6 +283,8 @@ export class MediaImporter {
               displayName: uniqueInputs[index].displayName,
               outcome: ImportItemOutcome.DUPLICATE,
               reason: results[index].duplicateSource === 'content' ? '文件完整内容与已有歌曲相同' : '文件已存在',
+              detailKind: results[index].duplicateSource === 'content' ?
+                ImportItemDetailKind.CONTENT_DUPLICATE : ImportItemDetailKind.URI_DUPLICATE,
               duplicateTrackId: results[index].trackId,
               duplicateSourceUri: results[index].duplicateSourceUri
             }, onItem);
@@ -323,6 +310,80 @@ export class MediaImporter {
       failed: progress.failed,
       items: itemResults
     };
+  }
+
+  private async preflightUris(uris: Array<string>, itemResults: Array<ImportItemResult>,
+    progress: ImportProgress, onProgress?: ImportProgressCallback,
+    onItem?: ImportItemCallback): Promise<Array<string>> {
+    const uniqueUris: Array<string> = [];
+    const selectedUris: Set<string> = new Set();
+    for (let index = 0; index < uris.length; index += 1) {
+      const uri = uris[index];
+      if (uri.length === 0) {
+        progress.failed += 1;
+        progress.processed += 1;
+        this.recordItem(itemResults, {
+          uri: uri,
+          displayName: uri,
+          outcome: ImportItemOutcome.FAILED,
+          reason: '文件 URI 为空',
+          detailKind: ImportItemDetailKind.FAILED
+        }, onItem);
+      } else if (selectedUris.has(uri)) {
+        progress.duplicates += 1;
+        progress.processed += 1;
+        this.recordItem(itemResults, {
+          uri: uri,
+          displayName: uri,
+          outcome: ImportItemOutcome.DUPLICATE,
+          reason: '本次选择中存在相同文件 URI',
+          detailKind: ImportItemDetailKind.BATCH_DUPLICATE,
+          duplicateSourceUri: uri
+        }, onItem);
+      } else {
+        selectedUris.add(uri);
+        uniqueUris.push(uri);
+      }
+    }
+    this.notify(onProgress, progress);
+
+    const pendingUris: Array<string> = [];
+    for (let batchOffset = 0; batchOffset < uniqueUris.length;
+      batchOffset += ImportConcurrencyPolicy.URI_PREFLIGHT_BATCH_SIZE) {
+      if (this.cancelRequested) {
+        break;
+      }
+      const uriBatch = uniqueUris.slice(
+        batchOffset,
+        Math.min(batchOffset + ImportConcurrencyPolicy.URI_PREFLIGHT_BATCH_SIZE, uniqueUris.length)
+      );
+      progress.currentName = '正在检查重复文件';
+      this.notify(onProgress, progress);
+      const uriCheckStartedAt = Date.now();
+      const existingUris = await this.repository.hasUris(uriBatch);
+      const existingUriSet: Set<string> = new Set(existingUris);
+      ImportPerformanceTrace.mark('uri_check', uriCheckStartedAt, 0,
+        `batch=${batchOffset / ImportConcurrencyPolicy.URI_PREFLIGHT_BATCH_SIZE + 1} count=${uriBatch.length}`);
+      for (let index = 0; index < uriBatch.length; index += 1) {
+        const uri = uriBatch[index];
+        if (existingUriSet.has(uri)) {
+          progress.duplicates += 1;
+          progress.processed += 1;
+          this.recordItem(itemResults, {
+            uri: uri,
+            displayName: uri,
+            outcome: ImportItemOutcome.DUPLICATE,
+            reason: '同一文件 URI 已在音乐库中',
+            detailKind: ImportItemDetailKind.URI_DUPLICATE,
+            duplicateSourceUri: uri
+          }, onItem);
+        } else {
+          pendingUris.push(uri);
+        }
+      }
+      this.notify(onProgress, progress);
+    }
+    return pendingUris;
   }
 
   private async prepareImports(uris: Array<string>): Promise<Array<PreparedImport>> {
@@ -354,7 +415,7 @@ export class MediaImporter {
     try {
       const readResult = await MetadataReader.read(uri);
       const candidateStartedAt = Date.now();
-      const candidates = await this.repository.findDuplicateCandidates(
+      const candidates = await this.findDuplicateCandidatesCached(
         readResult.fileSize, readResult.quickFingerprint
       );
       ImportPerformanceTrace.mark('candidate_query', candidateStartedAt, fileId,
@@ -412,19 +473,57 @@ export class MediaImporter {
     }
   }
 
+  private async findDuplicateCandidatesCached(fileSize: number,
+    quickFingerprint: string): Promise<Array<DuplicateCandidate>> {
+    const key = `${fileSize}:${quickFingerprint}`;
+    const existing = this.duplicateCandidateLookups.get(key);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const pending = this.repository.findDuplicateCandidates(fileSize, quickFingerprint);
+    this.duplicateCandidateLookups.set(key, pending);
+    try {
+      return await pending;
+    } catch (error) {
+      if (this.duplicateCandidateLookups.get(key) === pending) {
+        this.duplicateCandidateLookups.delete(key);
+      }
+      throw new Error(MediaImporter.errorMessage(error));
+    }
+  }
+
   private async ensureCandidateFingerprints(candidates: Array<DuplicateCandidate>): Promise<void> {
     for (let index = 0; index < candidates.length; index += 1) {
       const candidate = candidates[index];
       if (candidate.fullFingerprint.length > 0) {
         continue;
       }
-      const fileId = ImportPerformanceTrace.fileId(candidate.uri);
-      const startedAt = Date.now();
-      const fingerprint = await calculateFullFingerprint(candidate.uri);
-      ImportPerformanceTrace.mark('candidate_hash', startedAt, fileId);
-      await this.repository.updateFullFingerprint(candidate.trackId, fingerprint);
-      candidate.fullFingerprint = fingerprint;
+      const existing = this.candidateFingerprintTasks.get(candidate.trackId);
+      let pending: Promise<string>;
+      if (existing !== undefined) {
+        pending = existing;
+      } else {
+        pending = this.calculateAndPersistCandidateFingerprint(candidate);
+        this.candidateFingerprintTasks.set(candidate.trackId, pending);
+      }
+      try {
+        candidate.fullFingerprint = await pending;
+      } catch (error) {
+        if (this.candidateFingerprintTasks.get(candidate.trackId) === pending) {
+          this.candidateFingerprintTasks.delete(candidate.trackId);
+        }
+        throw new Error(MediaImporter.errorMessage(error));
+      }
     }
+  }
+
+  private async calculateAndPersistCandidateFingerprint(candidate: DuplicateCandidate): Promise<string> {
+    const fileId = ImportPerformanceTrace.fileId(candidate.uri);
+    const startedAt = Date.now();
+    const fingerprint = await calculateFullFingerprint(candidate.uri);
+    ImportPerformanceTrace.mark('candidate_hash', startedAt, fileId);
+    await this.repository.updateFullFingerprint(candidate.trackId, fingerprint);
+    return fingerprint;
   }
 
   private async ensureBatchFingerprintProofs(inputs: Array<TrackImportInput>): Promise<void> {
@@ -479,6 +578,7 @@ export class MediaImporter {
         displayName: input.displayName,
         outcome: ImportItemOutcome.DUPLICATE,
         reason: '本批次中存在完整内容相同的文件',
+        detailKind: ImportItemDetailKind.BATCH_DUPLICATE,
         duplicateSourceUri: source.uri
       }, onItem);
     }
@@ -738,7 +838,9 @@ export class MediaImporter {
 
   private recordItem(items: Array<ImportItemResult>, item: ImportItemResult,
     callback?: ImportItemCallback): void {
-    items.push(item);
+    if (ImportDetailPolicy.shouldRetain(item)) {
+      items.push(item);
+    }
     callback?.(item);
   }
 

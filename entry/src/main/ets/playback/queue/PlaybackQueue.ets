@@ -10,6 +10,11 @@ export interface PlaybackQueueSnapshot {
   currentIndex: number;
 }
 
+export interface PlaybackQueueRemovalResult {
+  removedCurrent: boolean;
+  current?: QueueTrack;
+}
+
 export class PlaybackQueue {
   private items: Array<QueueEntry> = [];
   private order: Array<number> = [];
@@ -122,6 +127,32 @@ export class PlaybackQueue {
       this.items.push(this.createEntry(item));
     });
     this.rebuildIndexes();
+  }
+
+  removeEntries(entryIds: Array<number>): PlaybackQueueRemovalResult {
+    if (entryIds.length === 0 || this.cursor < 0) {
+      return { removedCurrent: false, current: this.current() };
+    }
+    const selectedIds = new Set<number>(entryIds);
+    const orderedEntries = this.order.map((itemIndex: number): QueueEntry => this.items[itemIndex]);
+    const currentEntry = orderedEntries[this.cursor];
+    const remaining = orderedEntries.filter((entry: QueueEntry): boolean =>
+      !selectedIds.has(entry.queueEntryId));
+    const removedCurrent = currentEntry !== undefined && selectedIds.has(currentEntry.queueEntryId);
+    if (remaining.length === 0) {
+      this.clear();
+      return { removedCurrent: removedCurrent };
+    }
+    this.items = remaining;
+    this.order = remaining.map((_entry: QueueEntry, index: number): number => index);
+    if (removedCurrent) {
+      this.cursor = Math.min(this.cursor, remaining.length - 1);
+    } else {
+      this.cursor = remaining.findIndex((entry: QueueEntry): boolean =>
+        entry.queueEntryId === currentEntry.queueEntryId);
+    }
+    this.rebuildIndexes();
+    return { removedCurrent: removedCurrent, current: this.current() };
   }
 
   playbackWindow(radius: number, repeatMode: RepeatMode): PlaybackQueueWindow {

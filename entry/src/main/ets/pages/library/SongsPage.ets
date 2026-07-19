@@ -10,14 +10,24 @@ import {
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
 import { LibrarySlot } from '../../library/store/PagedLibraryDataSource';
-import { SongListItem, SongListItemLayout } from '../../components/library/SongListItem';
+import {
+  SongListItem,
+  SongListItemLayout,
+  SongListItemLayoutSpec
+} from '../../components/library/SongListItem';
+import { LayoutLength } from '../../components/layout/LayoutLength';
+import { MultiSelectController } from '../../components/library/MultiSelectController';
+import { playbackRuntime } from '../../playback/PlaybackRuntime';
 
 @Component
 export struct SongsPage {
   @ObjectLink store: LibraryStore;
+  @ObjectLink selection: MultiSelectController;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @State selectedSectionIndex: number = 0;
+  @State listWidth: number = 0;
+  @State selectedItems: Array<TrackListItem> = [];
   onPlayTrack: (item: TrackListItem) => void = (_item: TrackListItem): void => {};
   onOpenTrackActions: (item: TrackListItem, anchorId: string) => void =
     (_item: TrackListItem, _anchorId: string): void => {};
@@ -26,7 +36,51 @@ export struct SongsPage {
   onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
     (_items: Array<TrackListItem>): void => {};
   scroller: Scroller = new Scroller();
-  private readonly scrollBehavior: PageListBehavior = new PageListBehavior();
+  private readonly scrollBehavior: PageListBehavior =
+    new PageListBehavior(PageLayoutSpec.SONG_LIST_CACHE_COUNT);
+
+  private contextPreviewWidth(): number {
+    return Math.max(
+      SongListItemLayoutSpec.CONTEXT_PREVIEW_FALLBACK_WIDTH,
+      this.listWidth - SongListItemLayoutSpec.LIBRARY_PREVIEW_TRAILING_RESERVE
+    );
+  }
+
+  aboutToAppear(): void {
+    this.selection.deleteEnabled = false;
+    this.selection.onPlay = (): void => this.playSelection();
+    this.selection.onAddToPlaylist = (): void =>
+      this.onRequestAddToPlaylist(this.currentSelection());
+    this.selection.onInsertNext = (): void => playbackRuntime.insertNext(this.currentSelection());
+    this.selection.onAppendToQueue = (): void =>
+      playbackRuntime.appendToQueue(this.currentSelection());
+  }
+
+  private currentSelection(): Array<TrackListItem> {
+    return this.selectedItems.filter((item: TrackListItem): boolean =>
+      this.selection.isSelected(item.id));
+  }
+
+  private toggleSelection(item: TrackListItem): void {
+    this.selection.toggle(item.id);
+    if (!this.selection.isSelected(item.id)) {
+      this.selectedItems =
+        this.selectedItems.filter((selected: TrackListItem): boolean => selected.id !== item.id);
+    } else {
+      this.selectedItems =
+        this.selectedItems.filter((selected: TrackListItem): boolean => selected.id !== item.id)
+          .concat([item]);
+    }
+  }
+
+  private playSelection(): void {
+    const items = this.currentSelection();
+    if (items.length > 0) {
+      playbackRuntime.playInOrder(items[0], items);
+      this.selectedItems = [];
+      this.selection.cancel();
+    }
+  }
 
   build() {
     if (this.store.statistics.trackCount === 0) {
@@ -65,6 +119,9 @@ export struct SongsPage {
                     verticalInset: 8,
                     artworkSize: 52,
                     artworkCornerRadius: 10,
+                    contextPreviewWidth: this.contextPreviewWidth(),
+                    selectionMode: this.selection.active,
+                    selected: this.selection.isSelected(slot.value.id),
                     onActivate: (): void => {
                       if (slot.value !== undefined) {
                         this.onPlayTrack(slot.value);
@@ -73,7 +130,10 @@ export struct SongsPage {
                     onOpenActions: this.onOpenTrackActions,
                     onNavigateAction: this.onNavigateTrackAction,
                     onRequestAddToPlaylist: this.onRequestAddToPlaylist
+                    ,
+                    onToggleSelection: (): void => this.toggleSelection(slot.value!)
                   })
+                    .reuseId('songs_library')
                 }
                 .width('100%')
               }
@@ -138,6 +198,12 @@ export struct SongsPage {
           }
           this.store.ensureTrackRange(firstIndex, lastIndex);
         })
+        .onAreaChange((_oldValue: Area, newValue: Area) => {
+          const nextWidth = LayoutLength.toNumber(newValue.width, this.listWidth);
+          if (nextWidth > 0 && Math.abs(nextWidth - this.listWidth) >= 0.5) {
+            this.listWidth = nextWidth;
+          }
+        })
         .attributeModifier(this.scrollBehavior)
 
         if (this.store.trackIndexPresentation === LibraryIndexPresentation.ALPHABET &&
@@ -153,6 +219,7 @@ export struct SongsPage {
           })
           .margin({ right: 2, bottom: PageLayoutSpec.contentEnd(this.bottomInset) / 2 })
         }
+
       }
       .width('100%')
       .height('100%')

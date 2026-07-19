@@ -2,17 +2,21 @@ import { PageLayoutSpec } from '../../components/layout/PageLayoutSpec';
 import { PageListBehavior } from '../../components/layout/PageScrollBehavior';
 import {
   PlaylistKind,
-  PlaylistSummary
+  PlaylistSummary,
+  TrackListItem
 } from '../../library/model/LibraryModels';
 import { PlaylistStore } from '../../playlist/store/PlaylistStore';
 import { promptAction } from '@kit.ArkUI';
 import { HdsListItem } from '@kit.UIDesignKit';
+import { MultiSelectController } from '../../components/library/MultiSelectController';
+import { playbackRuntime } from '../../playback/PlaybackRuntime';
 
 const DELETE_ANIMATION_DURATION: number = 180;
 
 @Component
 export struct PlaylistsPage {
   @ObjectLink store: PlaylistStore;
+  @ObjectLink selection: MultiSelectController;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   scroller: Scroller = new Scroller();
@@ -20,6 +24,25 @@ export struct PlaylistsPage {
   onRequestRename: (playlist: PlaylistSummary) => void = (_playlist: PlaylistSummary): void => {};
   private readonly scrollBehavior: PageListBehavior = new PageListBehavior();
   @State private removingPlaylistIds: Array<number> = [];
+  @State private selectedPlaylists: Array<PlaylistSummary> = [];
+  @State private selectionBusy: boolean = false;
+  onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
+    (_items: Array<TrackListItem>): void => {};
+
+  aboutToAppear(): void {
+    this.selection.deleteEnabled = false;
+    this.selection.onPlay = (): void => this.runSelection((tracks: Array<TrackListItem>): void => {
+      playbackRuntime.playInOrder(tracks[0], tracks);
+      this.selection.cancel();
+    });
+    this.selection.onAddToPlaylist = (): void => this.runSelection(this.onRequestAddToPlaylist);
+    this.selection.onInsertNext = (): void => this.runSelection(
+      (tracks: Array<TrackListItem>): void => playbackRuntime.insertNext(tracks)
+    );
+    this.selection.onAppendToQueue = (): void => this.runSelection(
+      (tracks: Array<TrackListItem>): void => playbackRuntime.appendToQueue(tracks)
+    );
+  }
 
   private durationLabel(durationMs: number): string {
     const totalMinutes = Math.floor(Math.max(0, durationMs) / 60000);
@@ -51,6 +74,57 @@ export struct PlaylistsPage {
 
   private isRemovingPlaylist(playlistId: number): boolean {
     return this.removingPlaylistIds.includes(playlistId);
+  }
+
+  private currentSelection(): Array<PlaylistSummary> {
+    return this.selectedPlaylists.filter((playlist: PlaylistSummary): boolean =>
+      this.selection.isSelected(playlist.id));
+  }
+
+  private toggleSelection(playlist: PlaylistSummary): void {
+    this.selection.toggle(playlist.id);
+    if (!this.selection.isSelected(playlist.id)) {
+      this.selectedPlaylists =
+        this.selectedPlaylists.filter((item: PlaylistSummary): boolean => item.id !== playlist.id);
+    } else {
+      this.selectedPlaylists =
+        this.selectedPlaylists.filter((item: PlaylistSummary): boolean => item.id !== playlist.id)
+          .concat([playlist]);
+    }
+  }
+
+  private async selectedTracks(): Promise<Array<TrackListItem>> {
+    const tracks: Array<TrackListItem> = [];
+    const playlists = this.currentSelection();
+    for (let index = 0; index < playlists.length; index += 1) {
+      const items = await this.store.getAllTracks(playlists[index].id);
+      items.forEach((track: TrackListItem): void => {
+        if (!tracks.some((existing: TrackListItem): boolean => existing.id === track.id)) {
+          tracks.push(track);
+        }
+      });
+    }
+    return tracks;
+  }
+
+  private runSelection(action: (tracks: Array<TrackListItem>) => void, close: boolean = false): void {
+    if (this.selectionBusy || this.selection.selectedCount() === 0) {
+      return;
+    }
+    this.selectionBusy = true;
+    this.selection.setBusy(true);
+    this.selectedTracks().then((tracks: Array<TrackListItem>): void => {
+      if (tracks.length > 0) {
+        action(tracks);
+      }
+      if (close) {
+        this.selectedPlaylists = [];
+        this.selection.cancel();
+      }
+    }).finally((): void => {
+      this.selectionBusy = false;
+      this.selection.setBusy(false);
+    });
   }
 
   private animatePlaylistRemoval(playlistId: number): void {
@@ -99,6 +173,18 @@ export struct PlaylistsPage {
   @Builder
   private PlaylistContent(playlist: PlaylistSummary) {
     Row({ space: 14 }) {
+      Stack() {
+        SymbolGlyph(this.selection.isSelected(playlist.id) ?
+          $r('sys.symbol.checkmark_circle_fill') : $r('sys.symbol.circle'))
+          .fontSize(22)
+          .fontColor([this.selection.isSelected(playlist.id) ?
+            $r('app.color.theme_accent') : $r('app.color.text_tertiary')])
+      }
+      .width(this.selection.active ? 24 : 0)
+      .opacity(this.selection.active ? 1 : 0)
+      .translate({ x: this.selection.active ? 0 : -12 })
+      .clip(true)
+      .animation({ duration: 180, curve: Curve.EaseOut })
       Stack({ alignContent: Alignment.Center }) {
         SymbolGlyph(playlist.kind === PlaylistKind.COMPLETED_HISTORY ?
           $r('sys.symbol.checkmark_circle_fill') : $r('sys.symbol.music_note_list_fill'))
@@ -131,7 +217,8 @@ export struct PlaylistsPage {
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
 
-      Button() {
+      if (!this.selection.active) {
+        Button() {
         Image($r('app.media.control_more'))
           .width(18)
           .height(18)
@@ -143,12 +230,19 @@ export struct PlaylistsPage {
       .backgroundColor(Color.Transparent)
       .accessibilityText('更多播放列表操作')
       .bindMenu(this.PlaylistMenu(playlist), { placement: Placement.BottomRight })
+      }
     }
     .width('100%')
     .padding(14)
     .borderRadius(20)
     .backgroundColor($r('app.color.glass_surface'))
-    .onClick(() => this.onOpenPlaylist(playlist))
+    .onClick(() => {
+      if (this.selection.active) {
+        this.toggleSelection(playlist);
+      } else {
+        this.onOpenPlaylist(playlist);
+      }
+    })
     .bindContextMenu(
       this.PlaylistMenu(playlist),
       ResponseType.LongPress,
@@ -157,8 +251,9 @@ export struct PlaylistsPage {
   }
 
   build() {
+    Stack({ alignContent: Alignment.Bottom }) {
     List({ space: 10, scroller: this.scroller }) {
-      ForEach(this.store.playlists, (playlist: PlaylistSummary) => {
+      LazyForEach(this.store.playlistDataSource, (playlist: PlaylistSummary) => {
         if (playlist.kind === PlaylistKind.USER) {
           HdsListItem({
             customItemBuilder: () => {
@@ -213,5 +308,8 @@ export struct PlaylistsPage {
     .contentStartOffset(PageLayoutSpec.primaryContentStart(this.topInset))
     .contentEndOffset(PageLayoutSpec.contentEnd(this.bottomInset))
     .attributeModifier(this.scrollBehavior)
+    }
+    .width('100%')
+    .height('100%')
   }
 }

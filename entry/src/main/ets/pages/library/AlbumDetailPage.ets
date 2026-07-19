@@ -17,11 +17,13 @@ import { SongListItem, SongListItemLayout } from '../../components/library/SongL
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import { DynamicColor, DynamicContainerRole } from '../../appearance/DynamicColor';
 import { AlbumAction, AlbumGridSection } from '../../components/library/AlbumGridItem';
+import { MultiSelectController } from '../../components/library/MultiSelectController';
 
 @Component
 export struct AlbumDetailPage {
   @ObjectLink store: LibraryStore;
   @ObjectLink state: AlbumDetailState;
+  @ObjectLink selection: MultiSelectController;
   @Prop actionAnchorPrefix: string = 'album';
   @Prop currentIdentity: LibraryEntityIdentity | undefined = undefined;
   @Prop topInset: number = 0;
@@ -29,10 +31,12 @@ export struct AlbumDetailPage {
   @Prop rootWidth: number = 0;
   @Prop showArtwork: boolean = true;
   @Prop themeBackground: string = '#FF000000';
+  @State selectedItems: Array<TrackListItem> = [];
   private multipleDiscTracks?: Array<TrackListItem>;
   private multipleDiscResult: boolean = false;
   scroller: Scroller = new Scroller();
-  private readonly scrollBehavior: PageListBehavior = new PageListBehavior();
+  private readonly scrollBehavior: PageListBehavior =
+    new PageListBehavior(PageLayoutSpec.DETAIL_TRACK_LIST_CACHE_COUNT);
   onOpenArtist: (artist: ArtistReference) => void = (_artist: ArtistReference): void => {};
   onOpenAlbum: (album: AlbumListItem) => void = (_album: AlbumListItem): void => {};
   onAlbumAction: (album: AlbumListItem, action: AlbumAction) => void =
@@ -46,6 +50,13 @@ export struct AlbumDetailPage {
 
   aboutToAppear(): void {
     this.state.load(this.store);
+    this.selection.deleteEnabled = false;
+    this.selection.onPlay = (): void => this.playSelection();
+    this.selection.onAddToPlaylist = (): void =>
+      this.onRequestAddToPlaylist(this.currentSelection());
+    this.selection.onInsertNext = (): void => playbackRuntime.insertNext(this.currentSelection());
+    this.selection.onAppendToQueue = (): void =>
+      playbackRuntime.appendToQueue(this.currentSelection());
   }
 
   private detail(): AlbumDetail | undefined {
@@ -108,6 +119,32 @@ export struct AlbumDetailPage {
   private playFirst(detail: AlbumDetail): void {
     if (detail.tracks.length > 0) {
       playbackRuntime.playInOrder(detail.tracks[0], detail.tracks);
+    }
+  }
+
+  private currentSelection(): Array<TrackListItem> {
+    return this.selectedItems.filter((item: TrackListItem): boolean =>
+      this.selection.isSelected(item.id));
+  }
+
+  private toggleSelection(track: TrackListItem): void {
+    this.selection.toggle(track.id);
+    if (!this.selection.isSelected(track.id)) {
+      this.selectedItems =
+        this.selectedItems.filter((item: TrackListItem): boolean => item.id !== track.id);
+    } else {
+      this.selectedItems =
+        this.selectedItems.filter((item: TrackListItem): boolean => item.id !== track.id)
+          .concat([track]);
+    }
+  }
+
+  private playSelection(): void {
+    const items = this.currentSelection();
+    if (items.length > 0) {
+      playbackRuntime.playInOrder(items[0], items);
+      this.selectedItems = [];
+      this.selection.cancel();
     }
   }
 
@@ -338,10 +375,11 @@ export struct AlbumDetailPage {
   }
 
   build() {
+    Stack({ alignContent: Alignment.Bottom }) {
     List({ space: 2, scroller: this.scroller }) {
       if (this.state.detail !== undefined) {
         ListItem() { this.Header(this.state.detail) }
-        ForEach(this.state.detail.tracks, (track: TrackListItem, index: number) => {
+        LazyForEach(this.state.trackDataSource, (track: TrackListItem, index: number) => {
           ListItem() {
             Column() {
               if (this.isDiscStart(this.state.detail!.tracks, index)) {
@@ -377,6 +415,8 @@ export struct AlbumDetailPage {
                 minimumHeight: 58,
                 rowCornerRadius: 14,
                 queueIndexWidth: 30,
+                selectionMode: this.selection.active,
+                selected: this.selection.isSelected(track.id),
                 onActivate: (): void => {
                   const detail = this.detail();
                   if (detail !== undefined) {
@@ -385,8 +425,10 @@ export struct AlbumDetailPage {
                 },
                 onOpenActions: this.onOpenTrackActions,
                 onNavigateAction: this.onNavigateTrackAction,
-                onRequestAddToPlaylist: this.onRequestAddToPlaylist
+                onRequestAddToPlaylist: this.onRequestAddToPlaylist,
+                onToggleSelection: (): void => this.toggleSelection(track)
               })
+                .reuseId('album_detail_track')
             }
           }
         }, (track: TrackListItem) => `${track.id}`)
@@ -415,5 +457,8 @@ export struct AlbumDetailPage {
     .attributeModifier(this.scrollBehavior)
     .backgroundColor(this.themeBackground)
     .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+    }
+    .width('100%')
+    .height('100%')
   }
 }

@@ -3,6 +3,8 @@ import {
   ArtistDetail
 } from '../model/LibraryModels';
 import { LibraryStore } from './LibraryStore';
+import { TrackListItem } from '../model/LibraryModels';
+import { LibraryListDataSource } from './LibraryListDataSource';
 
 @Observed
 export class AlbumDetailState {
@@ -10,6 +12,8 @@ export class AlbumDetailState {
   detail?: AlbumDetail;
   loading: boolean = false;
   error: string = '';
+  readonly trackDataSource: LibraryListDataSource<TrackListItem> =
+    new LibraryListDataSource<TrackListItem>();
   private loadEpoch: number = 0;
   private loaded: boolean = false;
 
@@ -29,6 +33,7 @@ export class AlbumDetailState {
       if (epoch !== this.loadEpoch) {
         return;
       }
+      this.trackDataSource.replace(detail?.tracks ?? []);
       this.detail = detail;
       this.loaded = detail !== undefined;
       if (detail === undefined) {
@@ -56,6 +61,8 @@ export class ArtistDetailState {
   detail?: ArtistDetail;
   loading: boolean = false;
   error: string = '';
+  readonly trackDataSource: LibraryListDataSource<TrackListItem> =
+    new LibraryListDataSource<TrackListItem>();
   private loadEpoch: number = 0;
   private loaded: boolean = false;
 
@@ -75,6 +82,7 @@ export class ArtistDetailState {
       if (epoch !== this.loadEpoch) {
         return;
       }
+      this.trackDataSource.replace(detail?.tracks ?? []);
       this.detail = detail;
       this.loaded = detail !== undefined;
       if (detail === undefined) {

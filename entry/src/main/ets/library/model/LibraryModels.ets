@@ -354,11 +354,19 @@ export enum ImportItemOutcome {
   FAILED = 'failed'
 }
 
+export enum ImportItemDetailKind {
+  URI_DUPLICATE = 'uri_duplicate',
+  CONTENT_DUPLICATE = 'content_duplicate',
+  BATCH_DUPLICATE = 'batch_duplicate',
+  FAILED = 'failed'
+}
+
 export interface ImportItemResult {
   uri: string;
   displayName: string;
   outcome: ImportItemOutcome;
   reason: string;
+  detailKind?: ImportItemDetailKind;
   duplicateTrackId?: number;
   duplicateSourceUri?: string;
 }

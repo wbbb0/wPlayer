@@ -83,15 +83,15 @@ function calculateFullFingerprintTask(uri: string): string {
     file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
     const stat = fs.statSync(file.fd);
     const digest = cryptoFramework.createMd('SHA256');
+    const buffer = new ArrayBuffer(Math.min(1024 * 1024, stat.size));
     let offset = 0;
     while (offset < stat.size) {
-      const length = Math.min(1024 * 1024, stat.size - offset);
-      const buffer = new ArrayBuffer(length);
+      const length = Math.min(buffer.byteLength, stat.size - offset);
       const bytesRead = fs.readSync(file.fd, buffer, { offset: offset, length: length });
       if (bytesRead <= 0) {
         throw new Error(`Unexpected end of file at ${offset}`);
       }
-      digest.updateSync({ data: bytesRead === length ? new Uint8Array(buffer) : new Uint8Array(buffer, 0, bytesRead) });
+      digest.updateSync({ data: new Uint8Array(buffer, 0, bytesRead) });
       offset += bytesRead;
     }
     const result = digest.digestSync();

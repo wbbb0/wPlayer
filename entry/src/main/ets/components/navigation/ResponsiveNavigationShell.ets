@@ -87,6 +87,11 @@ import {
   M3uTransferService
 } from '../../playlist/m3u/M3uTransferService';
 import { AlbumAction } from '../library/AlbumGridItem';
+import {
+  MultiSelectActionMenu,
+  MultiSelectActionMenuParams,
+  MultiSelectController
+} from '../library/MultiSelectController';
 
 const TRACK_SORT_LABELS: Array<string> = ['名称', '专辑', '艺术家', '发行日期', '添加时间'];
 const ALBUM_SORT_LABELS: Array<string> = ['名称', '艺术家', '发行日期', '添加时间'];
@@ -107,6 +112,7 @@ class PlaylistDetailRouteParams {
   readonly playlistId: number;
   readonly initialTitle: string;
   readonly scroller: Scroller = new Scroller();
+  readonly selection: MultiSelectController = new MultiSelectController();
 
   constructor(playlistId: number, initialTitle: string) {
     this.instanceId = ++playlistRouteInstanceId;
@@ -162,6 +168,77 @@ export struct ResponsiveNavigationShell {
   private readonly playlistTransferService: M3uTransferService =
     new M3uTransferService(playbackRuntime.repository);
   private playlistTransferBusy: boolean = false;
+  @State private songsSelection: MultiSelectController = new MultiSelectController();
+  @State private albumsSelection: MultiSelectController = new MultiSelectController();
+  @State private playlistsSelection: MultiSelectController = new MultiSelectController();
+  @State private detailSelectionRevision: number = 0;
+  private readonly onDetailSelectionChange: () => void = (): void => {
+    this.detailSelectionRevision += 1;
+  };
+
+  private rootSelection(routeId: string): MultiSelectController | undefined {
+    if (routeId === NavigationRoute.SONGS) {
+      return this.songsSelection;
+    }
+    if (routeId === NavigationRoute.ALBUMS) {
+      return this.albumsSelection;
+    }
+    if (routeId === NavigationRoute.PLAYLISTS) {
+      return this.playlistsSelection;
+    }
+    return undefined;
+  }
+
+  private openMultiSelectActionMenu(controller: MultiSelectController, targetId: string): void {
+    const content = new ComponentContent(
+      this.getUIContext(),
+      wrapBuilder(MultiSelectActionMenu),
+      new MultiSelectActionMenuParams(controller)
+    );
+    this.getUIContext().getPromptAction().openMenu(
+      content,
+      { id: targetId },
+      { enableArrow: true }
+    ).catch((error: BusinessError): void => {
+      console.warn(`Unable to open multi-select menu: ${error.code}, ${error.message}`);
+    });
+  }
+
+  private selectionTitleMenu(
+    controller: MultiSelectController,
+    targetId: string,
+    normalItems: Array<HdsNavigationMenuItemOptions> = []
+  ): HdsNavigationMenuContentOptions {
+    const effectiveTargetId = `${targetId}_${this.detailSelectionRevision}`;
+    controller.onStateChange = this.onDetailSelectionChange;
+    if (controller.active) {
+      const activeItems: Array<HdsNavigationMenuItemOptions> = [{
+        content: {
+          label: controller.selectedCount() > 0 ? `操作 ${controller.selectedCount()}` : '操作',
+          type: TextStyleMode.NORMAL,
+          componentId: effectiveTargetId,
+          isEnabled: controller.selectedCount() > 0 && !controller.busy,
+          action: (): void => this.openMultiSelectActionMenu(controller, effectiveTargetId)
+        }
+      }, {
+        content: {
+          label: '取消',
+          type: TextStyleMode.NORMAL,
+          action: (): void => controller.cancel()
+        }
+      }];
+      return { maxCount: activeItems.length, value: activeItems };
+    }
+    const items = normalItems.concat([{
+      content: {
+        icon: $r('sys.symbol.checkmark_square_on_square'),
+        label: '多选',
+        type: IconStyleMode.NORMAL,
+        action: (): void => controller.activate()
+      }
+    }]);
+    return { maxCount: items.length, value: items };
+  }
 
   private orderedItems(): Array<NavigationPageItem> {
     return orderedNavigationItems(this.navigationOrder);
@@ -429,7 +506,11 @@ export struct ResponsiveNavigationShell {
         action: (): void => this.openPlaylistSortMenu()
       }
     }];
-    return { maxCount: values.length, value: values };
+    return this.selectionTitleMenu(
+      this.playlistsSelection,
+      'playlists_selection_actions',
+      values
+    );
   }
 
   private shuffleAllTracks(): void {
@@ -478,7 +559,10 @@ export struct ResponsiveNavigationShell {
         action: () => this.openSortMenu(routeId, targetId)
       }
     }];
-    return { maxCount: values.length, value: values };
+    const selection = this.rootSelection(routeId);
+    return selection === undefined ?
+      { maxCount: values.length, value: values } :
+      this.selectionTitleMenu(selection, `${routeId}_selection_actions`, values);
   }
 
   private albumDetailBackground(params: AlbumDetailRouteParams): string {
@@ -492,9 +576,7 @@ export struct ResponsiveNavigationShell {
 
   private albumDetailTitleMenu(params: AlbumDetailRouteParams): HdsNavigationMenuContentOptions {
     const targetId = `album_detail_more_${params.instanceId}`;
-    return {
-      maxCount: 1,
-      value: [{
+    const values: Array<HdsNavigationMenuItemOptions> = [{
         content: {
           icon: $r('app.media.control_more'),
           label: '更多',
@@ -517,8 +599,12 @@ export struct ResponsiveNavigationShell {
             });
           }
         }
-      }]
-    };
+      }];
+    return this.selectionTitleMenu(
+      params.selection,
+      `album_detail_selection_${params.instanceId}`,
+      values
+    );
   }
 
   private openTrackActions(
@@ -715,7 +801,11 @@ export struct ResponsiveNavigationShell {
         action: (): void => this.openPlaylistTransferMenu(params.playlistId, moreTargetId)
       }
     }];
-    return { maxCount: values.length, value: values };
+    return this.selectionTitleMenu(
+      params.selection,
+      `playlist_detail_selection_${params.instanceId}`,
+      values
+    );
   }
 
   @Builder
@@ -723,6 +813,7 @@ export struct ResponsiveNavigationShell {
     if (navigationPageKind(routeId) === NavigationPageKind.PLAYLISTS) {
       PlaylistsPage({
         store: this.playlistStore,
+        selection: this.playlistsSelection,
         topInset: this.topInset,
         bottomInset: this.bottomInset,
         scroller: this.routeScroller(routeId),
@@ -732,11 +823,13 @@ export struct ResponsiveNavigationShell {
             param: new PlaylistDetailRouteParams(playlist.id, playlist.name)
           });
         },
-        onRequestRename: this.onRequestRenamePlaylist
+        onRequestRename: this.onRequestRenamePlaylist,
+        onRequestAddToPlaylist: this.onRequestAddToPlaylist
       })
     } else if (navigationPageKind(routeId) === NavigationPageKind.SONGS) {
       SongsPage({
         store: this.libraryStore,
+        selection: this.songsSelection,
         topInset: this.topInset,
         bottomInset: this.bottomInset,
         scroller: this.routeScroller(routeId),
@@ -747,7 +840,8 @@ export struct ResponsiveNavigationShell {
         onRequestAddToPlaylist: this.onRequestAddToPlaylist
       })
     } else if (navigationPageKind(routeId) === NavigationPageKind.ALBUMS) {
-      AlbumsPage({ store: this.libraryStore, topInset: this.topInset, bottomInset: this.bottomInset,
+      AlbumsPage({ store: this.libraryStore, selection: this.albumsSelection,
+        topInset: this.topInset, bottomInset: this.bottomInset,
         scroller: this.routeScroller(routeId),
         onOpenAlbum: (item) => {
           this.onNavigateLibrary(albumTarget({
@@ -757,7 +851,8 @@ export struct ResponsiveNavigationShell {
           }));
         },
         onAlbumAction: (item, action): void => this.performAlbumAction(item.id, action),
-        onNavigateAlbumAction: this.onNavigateLibrary
+        onNavigateAlbumAction: this.onNavigateLibrary,
+        onRequestAddToPlaylist: this.onRequestAddToPlaylist
       })
     } else if (navigationPageKind(routeId) === NavigationPageKind.LIBRARY_MANAGEMENT) {
       LibraryManagementPage({ store: this.libraryStore, topInset: this.topInset, bottomInset: this.bottomInset,
@@ -785,6 +880,7 @@ export struct ResponsiveNavigationShell {
         PlaylistDetailPage({
           store: this.playlistStore,
           libraryStore: this.libraryStore,
+          selection: (_param as PlaylistDetailRouteParams).selection,
           playlistId: (_param as PlaylistDetailRouteParams).playlistId,
           rootWidth: this.rootWidth,
           topInset: this.topInset,
@@ -813,6 +909,7 @@ export struct ResponsiveNavigationShell {
         AlbumDetailPage({
           store: this.libraryStore,
           state: (_param as AlbumDetailRouteParams).state,
+          selection: (_param as AlbumDetailRouteParams).selection,
           topInset: this.topInset,
           bottomInset: this.bottomInset,
           rootWidth: this.rootWidth,
@@ -848,6 +945,7 @@ export struct ResponsiveNavigationShell {
         ArtistDetailPage({
           store: this.libraryStore,
           state: (_param as ArtistDetailRouteParams).state,
+          selection: (_param as ArtistDetailRouteParams).selection,
           topInset: this.topInset,
           bottomInset: this.bottomInset,
           rootWidth: this.rootWidth,
@@ -872,7 +970,11 @@ export struct ResponsiveNavigationShell {
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryTitleBar(
         (_param as ArtistDetailRouteParams).name,
-        this.appearancePalette
+        this.appearancePalette,
+        this.selectionTitleMenu(
+          (_param as ArtistDetailRouteParams).selection,
+          `artist_detail_selection_${(_param as ArtistDetailRouteParams).instanceId}`
+        )
       ))
       .bindToScrollable([(_param as ArtistDetailRouteParams).scroller])
     } else if (name === NavigationRoute.NAVIGATION_CUSTOMIZATION) {

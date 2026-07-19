@@ -15,6 +15,7 @@ import { PlaybackOriginKind } from '../../playback/model/PlaybackModels';
 import { SongListItem, SongListItemLayout } from '../../components/library/SongListItem';
 import { TrackActionMenuPresenter } from '../../components/library/TrackActionMenu';
 import { promptAction } from '@kit.ArkUI';
+import { MultiSelectController } from '../../components/library/MultiSelectController';
 
 const REMOVE_ANIMATION_DURATION: number = 180;
 
@@ -22,21 +23,32 @@ const REMOVE_ANIMATION_DURATION: number = 180;
 export struct PlaylistDetailPage {
   @ObjectLink store: PlaylistStore;
   @ObjectLink libraryStore: LibraryStore;
+  @ObjectLink selection: MultiSelectController;
   @Prop playlistId: number = -1;
   @Prop rootWidth: number = 0;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @State removingTrackIds: Array<number> = [];
+  @State selectedItems: Array<PlaylistTrackItem> = [];
   scroller: Scroller = new Scroller();
   onResolveArtwork: (relativePath: string) => string = (_relativePath: string): string => '';
   onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
     (_items: Array<TrackListItem>): void => {};
   onNavigateLibrary: (target: LibraryNavigationTarget) => void =
     (_target: LibraryNavigationTarget): void => {};
-  private readonly scrollBehavior: PageListBehavior = new PageListBehavior();
+  private readonly scrollBehavior: PageListBehavior =
+    new PageListBehavior(PageLayoutSpec.DETAIL_TRACK_LIST_CACHE_COUNT);
 
   aboutToAppear(): void {
     this.store.loadDetail(this.playlistId);
+    this.selection.deleteEnabled = true;
+    this.selection.onPlay = (): void => this.playSelection();
+    this.selection.onAddToPlaylist = (): void =>
+      this.onRequestAddToPlaylist(this.currentSelection());
+    this.selection.onInsertNext = (): void => playbackRuntime.insertNext(this.currentSelection());
+    this.selection.onAppendToQueue = (): void =>
+      playbackRuntime.appendToQueue(this.currentSelection());
+    this.selection.onDelete = (): void => this.confirmRemoveSelection();
   }
 
   private playlist(): PlaylistSummary | undefined {
@@ -69,6 +81,60 @@ export struct PlaylistDetailPage {
 
   private markPlayed(): void {
     this.store.markPlayed(this.playlistId);
+  }
+
+  private currentSelection(): Array<PlaylistTrackItem> {
+    return this.selectedItems.filter((item: PlaylistTrackItem): boolean =>
+      this.selection.isSelected(item.id));
+  }
+
+  private toggleSelection(item: PlaylistTrackItem): void {
+    this.selection.toggle(item.id);
+    if (!this.selection.isSelected(item.id)) {
+      this.selectedItems =
+        this.selectedItems.filter((selected: PlaylistTrackItem): boolean => selected.id !== item.id);
+    } else {
+      this.selectedItems =
+        this.selectedItems.filter((selected: PlaylistTrackItem): boolean => selected.id !== item.id)
+          .concat([item]);
+    }
+  }
+
+  private playSelection(): void {
+    const items = this.currentSelection();
+    if (items.length > 0) {
+      playbackRuntime.playInOrder(items[0], items, this.origin());
+      this.markPlayed();
+      this.selectedItems = [];
+      this.selection.cancel();
+    }
+  }
+
+  private confirmRemoveSelection(): void {
+    const items = this.currentSelection();
+    if (items.length === 0 || this.store.mutating) {
+      return;
+    }
+    const count = items.length;
+    this.getUIContext().getPromptAction().showDialog({
+      title: '从播放列表移除',
+      message: `确定移除选中的 ${count} 首歌曲吗？音乐文件不会被删除。`,
+      buttons: [
+        { text: '取消', color: $r('app.color.text_primary') },
+        { text: '移除', color: $r('sys.color.ohos_id_color_warning') }
+      ]
+    }).then((result: promptAction.ShowDialogSuccessResponse): void => {
+      if (result.index !== 1) {
+        return;
+      }
+      const ids = items.map((item: PlaylistTrackItem): number => item.id);
+      this.store.removeTracks(this.playlistId, ids).then((removed: boolean): void => {
+        if (removed) {
+          this.selectedItems = [];
+          this.selection.cancel();
+        }
+      });
+    }).catch((_error: Object): void => {});
   }
 
   @Builder
@@ -220,7 +286,10 @@ export struct PlaylistDetailPage {
         this.openTrackActions(item, anchorId),
       onNavigateAction: this.onNavigateLibrary,
       onRequestAddToPlaylist: this.onRequestAddToPlaylist,
-      onRemoveAction: (): void => this.confirmRemoveTrack(item)
+      onRemoveAction: (): void => this.confirmRemoveTrack(item),
+      selectionMode: this.selection.active,
+      selected: this.selection.isSelected(item.id),
+      onToggleSelection: (): void => this.toggleSelection(item)
     })
   }
 
@@ -239,6 +308,7 @@ export struct PlaylistDetailPage {
   }
 
   build() {
+    Stack({ alignContent: Alignment.Bottom }) {
     List({ space: 0, scroller: this.scroller }) {
       if (this.playlist() !== undefined) {
         ListItem() {
@@ -246,7 +316,7 @@ export struct PlaylistDetailPage {
         }
       }
       if (this.store.detail?.playlist.id === this.playlistId) {
-        ForEach(this.store.detail.items, (item: PlaylistTrackItem) => {
+        LazyForEach(this.store.detailItemDataSource, (item: PlaylistTrackItem) => {
           HdsListItem({
             customItemBuilder: () => {
               this.TrackContent(item)
@@ -286,5 +356,8 @@ export struct PlaylistDetailPage {
     .contentEndOffset(PageLayoutSpec.contentEnd(this.bottomInset))
     .onReachEnd(() => this.store.loadMore())
     .attributeModifier(this.scrollBehavior)
+    }
+    .width('100%')
+    .height('100%')
   }
 }

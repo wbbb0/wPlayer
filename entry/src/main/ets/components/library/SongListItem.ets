@@ -6,10 +6,12 @@ import {
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { ArtworkFitMode, ArtworkView } from '../artwork/ArtworkView';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
-import { LayoutLength } from '../layout/LayoutLength';
 import { TrackContextMenu } from './TrackActionMenu';
 
-const CONTEXT_PREVIEW_FALLBACK_WIDTH = 344;
+export class SongListItemLayoutSpec {
+  static readonly CONTEXT_PREVIEW_FALLBACK_WIDTH: number = 344;
+  static readonly LIBRARY_PREVIEW_TRAILING_RESERVE: number = 132;
+}
 
 export interface SongListItemData {
   id: number;
@@ -26,10 +28,10 @@ export enum SongListItemLayout {
   PLAYER_QUEUE
 }
 
+@Reusable
 @Component
 export struct SongListItem {
   @State contextMenuShown: boolean = false;
-  @State contextPreviewWidth: number = 0;
   @Prop item: SongListItemData;
   @Prop layout: SongListItemLayout = SongListItemLayout.LIBRARY;
   @Prop artworkPath: string = '';
@@ -60,7 +62,11 @@ export struct SongListItem {
   @Prop artworkCornerRadius: number = 10;
   @Prop queueIndexWidth: number = 28;
   @Prop queueGestureDistance: number = 8;
+  @Prop contextPreviewWidth: number = SongListItemLayoutSpec.CONTEXT_PREVIEW_FALLBACK_WIDTH;
+  @Prop selectionMode: boolean = false;
+  @Prop selected: boolean = false;
   onActivate: () => void = (): void => {};
+  onToggleSelection: () => void = (): void => {};
   onOpenActions: (track: TrackListItem, anchorId: string) => void =
     (_track: TrackListItem, _anchorId: string): void => {};
   onNavigateAction: (target: LibraryNavigationTarget) => void =
@@ -69,6 +75,18 @@ export struct SongListItem {
     (_items: Array<TrackListItem>): void => {};
   onRemoveAction: (() => void) | undefined = undefined;
   private suppressActivationUntil: number = 0;
+
+  aboutToReuse(params: ESObject): void {
+    this.contextMenuShown = false;
+    this.suppressActivationUntil = 0;
+    this.onActivate = params.onActivate as () => void;
+    this.onToggleSelection = params.onToggleSelection as () => void;
+    this.onOpenActions = params.onOpenActions as (track: TrackListItem, anchorId: string) => void;
+    this.onNavigateAction = params.onNavigateAction as (target: LibraryNavigationTarget) => void;
+    this.onRequestAddToPlaylist =
+      params.onRequestAddToPlaylist as (items: Array<TrackListItem>) => void;
+    this.onRemoveAction = params.onRemoveAction as (() => void) | undefined;
+  }
 
   private durationLabel(): string {
     const totalSeconds = Math.max(0, Math.floor(this.item.durationMs / 1000));
@@ -113,7 +131,10 @@ export struct SongListItem {
   }
 
   private effectiveContextPreviewWidth(): number {
-    return this.contextPreviewWidth > 0 ? this.contextPreviewWidth : CONTEXT_PREVIEW_FALLBACK_WIDTH;
+    return Math.max(
+      SongListItemLayoutSpec.CONTEXT_PREVIEW_FALLBACK_WIDTH,
+      this.contextPreviewWidth
+    );
   }
 
   @Builder
@@ -257,7 +278,11 @@ export struct SongListItem {
     .borderRadius(this.rowCornerRadius)
     .hoverEffect(HoverEffect.None)
     .onClick(() => {
-      this.onActivate();
+      if (this.selectionMode) {
+        this.onToggleSelection();
+      } else {
+        this.onActivate();
+      }
     })
   }
 
@@ -278,6 +303,17 @@ export struct SongListItem {
 
   @Builder
   private RowContent() {
+    Stack() {
+      SymbolGlyph(this.selected ? $r('sys.symbol.checkmark_circle_fill') : $r('sys.symbol.circle'))
+        .fontSize(22)
+        .fontColor([this.selected ? $r('app.color.theme_accent') : this.tertiaryColor])
+    }
+    .width(this.selectionMode ? 30 : 0)
+    .opacity(this.selectionMode ? 1 : 0)
+    .translate({ x: this.selectionMode ? 0 : -12 })
+    .margin({ right: this.selectionMode ? 8 : 0 })
+    .clip(true)
+    .animation({ duration: 180, curve: Curve.EaseOut })
     Row() {
       this.IdentityContent()
     }
@@ -326,12 +362,6 @@ export struct SongListItem {
     .width('100%')
     .clip(true)
     .opacity(this.contextMenuShown ? 0 : 1)
-    .onAreaChange((_oldValue: Area, newValue: Area) => {
-      const nextWidth = LayoutLength.toNumber(newValue.width, this.contextPreviewWidth);
-      if (nextWidth > 0 && Math.abs(nextWidth - this.contextPreviewWidth) >= 0.5) {
-        this.contextPreviewWidth = nextWidth;
-      }
-    })
     .bindContextMenu(
       this.contextMenuShown,
       this.ContextMenu(),
@@ -349,6 +379,9 @@ export struct SongListItem {
 
   @Builder
   private StandardRowWithContextMenu() {
+    if (this.selectionMode) {
+      this.StandardRow()
+    } else {
     Row({ space: this.rowSpace() }) {
       Row() {
         this.ContextMenuIdentity()
@@ -381,6 +414,7 @@ export struct SongListItem {
           this.contextMenuShown = true;
         })
     )
+    }
   }
 
   @Builder
@@ -415,7 +449,11 @@ export struct SongListItem {
           distance: this.queueGestureDistance
         }),
         TapGesture().onAction(() => {
-          this.onActivate();
+          if (this.selectionMode) {
+            this.onToggleSelection();
+          } else {
+            this.onActivate();
+          }
         })
       )
     )

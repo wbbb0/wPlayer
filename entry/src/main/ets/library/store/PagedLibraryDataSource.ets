@@ -87,7 +87,9 @@ export class PagedLibraryDataSource<T> implements IDataSource {
     this.failedPages.clear();
     this.protectedStart = 0;
     this.protectedEnd = -1;
-    this.listeners.forEach((listener: DataChangeListener) => listener.onDataReloaded());
+    this.listeners.forEach((listener: DataChangeListener) => listener.onDatasetChange([
+      { type: DataOperationType.RELOAD }
+    ]));
   }
 
   async ensureRange(firstIndex: number, lastIndex: number): Promise<void> {
@@ -136,8 +138,18 @@ export class PagedLibraryDataSource<T> implements IDataSource {
       this.pageRevisions.set(pageStart, ++this.revisionSerial);
       this.markAccessed(pageStart);
       const changedCount = Math.min(items.length, Math.max(0, this.itemCount - pageStart));
+      const revision = this.pageRevisions.get(pageStart) ?? 0;
+      const changes: Array<DataOperation> = [];
       for (let offset = 0; offset < changedCount; offset += 1) {
-        this.listeners.forEach((listener: DataChangeListener) => listener.onDataChange(pageStart + offset));
+        const index = pageStart + offset;
+        changes.push({
+          type: DataOperationType.CHANGE,
+          index: index,
+          key: `${this.generation}:${index}:${revision}`
+        });
+      }
+      if (changes.length > 0) {
+        this.listeners.forEach((listener: DataChangeListener) => listener.onDatasetChange(changes));
       }
       this.evictUnusedPages();
     } catch (_error) {

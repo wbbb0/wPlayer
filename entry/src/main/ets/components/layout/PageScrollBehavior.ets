@@ -30,19 +30,31 @@ export class PageScrollContentBehavior implements AttributeModifier<ColumnAttrib
 }
 
 export class PageListBehavior implements AttributeModifier<ListAttribute> {
+  private readonly cacheCount: number;
+
+  constructor(cacheCount: number = PageLayoutSpec.VIRTUAL_LIST_CACHE_COUNT) {
+    this.cacheCount = cacheCount;
+  }
+
   applyNormalAttribute(instance: ListAttribute): void {
     instance
       .clip(false)
       .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: false })
-      .cachedCount(PageLayoutSpec.VIRTUAL_LIST_CACHE_COUNT, true);
+      .cachedCount(this.cacheCount, true);
   }
 }
 
 export class PageGridBehavior implements AttributeModifier<GridAttribute> {
+  private readonly cacheCount: number;
+
+  constructor(cacheCount: number = PageLayoutSpec.ALBUM_GRID_CACHE_COUNT) {
+    this.cacheCount = cacheCount;
+  }
+
   applyNormalAttribute(instance: GridAttribute): void {
     instance
       .clip(false)
       .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: false })
-      .cachedCount(PageLayoutSpec.ALBUM_GRID_CACHE_COUNT, true);
+      .cachedCount(this.cacheCount, true);
   }
 }

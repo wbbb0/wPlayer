@@ -296,6 +296,17 @@ Use this checklist after cloning the repository onto a new Windows development m
    `devecocli --version`. If PowerShell selects `devecocli.ps1` and rejects it because of the execution policy, fix
    the local-script policy and open a new terminal, or invoke the generated `devecocli.cmd` shim. Do not weaken a
    managed machine policy from project automation.
+   Before running the CLI, verify `$env:DEVECO_SDK_HOME` is non-empty and points to the SDK parent directory. An
+   empty or invalid value causes Hvigor sync to fail with configuration error `00303217`; for the default DevEco
+   installation, set it for the current shell with
+   `$env:DEVECO_SDK_HOME='C:\Program Files\Huawei\DevEco Studio\sdk'`.
+   Allow enough command timeout for both Hvigor sync and compilation. Killing `devecocli build` after only a few
+   seconds can surface a secondary Node.js `EPIPE` error because the CLI's output pipe was closed; that error does
+   not identify the underlying project build result.
+   Hvigor daemons retain the environment from the process that started them. After an unsigned build with
+   `WPLAYER_DISABLE_LOCAL_SIGNING=1`, clearing the variable in a later shell may still produce only an unsigned HAP
+   and log `No signingConfig found`. Stop the daemon with the DevEco-provided `hvigorw --stop-daemon`, then run the
+   normal build again so `signing.local.json` is evaluated in a fresh process.
 3. Run `git status` before making changes. If Git reports dubious ownership after copying the repository from a
    different Windows account, verify the directory is trusted and then add this exact repository path to Git's
    global `safe.directory` list. Never use a wildcard safe-directory exception.

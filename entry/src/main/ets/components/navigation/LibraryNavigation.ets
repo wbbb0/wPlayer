@@ -10,6 +10,7 @@ import {
   AlbumDetailState,
   ArtistDetailState
 } from '../../library/store/LibraryDetailState';
+import { MultiSelectController } from '../library/MultiSelectController';
 
 let routeInstanceId: number = 0;
 
@@ -24,6 +25,7 @@ export class AlbumDetailRouteParams {
   readonly title: string;
   readonly palettePrimary: string;
   readonly state: AlbumDetailState;
+  readonly selection: MultiSelectController = new MultiSelectController();
   readonly scroller: Scroller = new Scroller();
 
   constructor(albumId: number, title: string, palettePrimary: string) {
@@ -48,6 +50,7 @@ export class ArtistDetailRouteParams {
   readonly artistId: number;
   readonly name: string;
   readonly state: ArtistDetailState;
+  readonly selection: MultiSelectController = new MultiSelectController();
   readonly scroller: Scroller = new Scroller();
 
   constructor(artistId: number, name: string) {

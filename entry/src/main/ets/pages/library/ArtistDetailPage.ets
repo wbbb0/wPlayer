@@ -12,16 +12,19 @@ import {
 import { ArtistDetailState } from '../../library/store/LibraryDetailState';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
+import { MultiSelectController } from '../../components/library/MultiSelectController';
 
 @Component
 export struct ArtistDetailPage {
   @ObjectLink store: LibraryStore;
   @ObjectLink state: ArtistDetailState;
+  @ObjectLink selection: MultiSelectController;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @Prop rootWidth: number = 0;
   @Prop actionAnchorPrefix: string = 'artist';
   @Prop currentIdentity: LibraryEntityIdentity | undefined = undefined;
+  @State selectedItems: Array<TrackListItem> = [];
   scroller: Scroller = new Scroller();
   onOpenAlbum: (album: AlbumListItem) => void = (_album: AlbumListItem): void => {};
   onOpenTrackActions: (track: TrackListItem, anchorId: string) => void =
@@ -30,10 +33,18 @@ export struct ArtistDetailPage {
     (_target: LibraryNavigationTarget): void => {};
   onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
     (_items: Array<TrackListItem>): void => {};
-  private readonly scrollBehavior: PageListBehavior = new PageListBehavior();
+  private readonly scrollBehavior: PageListBehavior =
+    new PageListBehavior(PageLayoutSpec.DETAIL_TRACK_LIST_CACHE_COUNT);
 
   aboutToAppear(): void {
     this.state.load(this.store);
+    this.selection.deleteEnabled = false;
+    this.selection.onPlay = (): void => this.playSelection();
+    this.selection.onAddToPlaylist = (): void =>
+      this.onRequestAddToPlaylist(this.currentSelection());
+    this.selection.onInsertNext = (): void => playbackRuntime.insertNext(this.currentSelection());
+    this.selection.onAppendToQueue = (): void =>
+      playbackRuntime.appendToQueue(this.currentSelection());
   }
 
   private durationLabel(durationMs: number): string {
@@ -46,6 +57,32 @@ export struct ArtistDetailPage {
   private playFirst(detail: ArtistDetail): void {
     if (detail.tracks.length > 0) {
       playbackRuntime.playInOrder(detail.tracks[0], detail.tracks);
+    }
+  }
+
+  private currentSelection(): Array<TrackListItem> {
+    return this.selectedItems.filter((item: TrackListItem): boolean =>
+      this.selection.isSelected(item.id));
+  }
+
+  private toggleSelection(track: TrackListItem): void {
+    this.selection.toggle(track.id);
+    if (!this.selection.isSelected(track.id)) {
+      this.selectedItems =
+        this.selectedItems.filter((item: TrackListItem): boolean => item.id !== track.id);
+    } else {
+      this.selectedItems =
+        this.selectedItems.filter((item: TrackListItem): boolean => item.id !== track.id)
+          .concat([track]);
+    }
+  }
+
+  private playSelection(): void {
+    const items = this.currentSelection();
+    if (items.length > 0) {
+      playbackRuntime.playInOrder(items[0], items);
+      this.selectedItems = [];
+      this.selection.cancel();
     }
   }
 
@@ -140,6 +177,7 @@ export struct ArtistDetailPage {
   }
 
   build() {
+    Stack({ alignContent: Alignment.Bottom }) {
     List({ space: 2, scroller: this.scroller }) {
       if (this.state.detail !== undefined) {
         ListItem() {
@@ -162,7 +200,7 @@ export struct ArtistDetailPage {
           ListItem() {
             this.SectionTitle('歌曲', this.state.detail.trackCount)
           }
-          ForEach(this.state.detail.tracks, (track: TrackListItem) => {
+          LazyForEach(this.state.trackDataSource, (track: TrackListItem) => {
             ListItem() {
               SongListItem({
                 item: track,
@@ -184,8 +222,12 @@ export struct ArtistDetailPage {
                 },
                 onOpenActions: this.onOpenTrackActions,
                 onNavigateAction: this.onNavigateTrackAction,
-                onRequestAddToPlaylist: this.onRequestAddToPlaylist
+                onRequestAddToPlaylist: this.onRequestAddToPlaylist,
+                selectionMode: this.selection.active,
+                selected: this.selection.isSelected(track.id),
+                onToggleSelection: (): void => this.toggleSelection(track)
               })
+                .reuseId('artist_detail_track')
             }
           }, (track: TrackListItem) => `${track.id}`)
         }
@@ -212,5 +254,8 @@ export struct ArtistDetailPage {
     .contentStartOffset(PageLayoutSpec.primaryContentStart(this.topInset))
     .contentEndOffset(PageLayoutSpec.contentEnd(this.bottomInset))
     .attributeModifier(this.scrollBehavior)
+    }
+    .width('100%')
+    .height('100%')
   }
 }

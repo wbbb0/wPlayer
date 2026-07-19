@@ -10,18 +10,24 @@ import {
 import {
   AlbumListItem,
   LibraryIndexPresentation,
-  LibraryNavigationTarget
+  LibraryNavigationTarget,
+  TrackListItem
 } from '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
 import { LibrarySlot } from '../../library/store/PagedLibraryDataSource';
+import { MultiSelectController } from '../../components/library/MultiSelectController';
+import { playbackRuntime } from '../../playback/PlaybackRuntime';
 
 @Component
 export struct AlbumsPage {
   @ObjectLink store: LibraryStore;
+  @ObjectLink selection: MultiSelectController;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @State selectedSectionIndex: number = 0;
+  @State selectedAlbums: Array<AlbumListItem> = [];
+  @State selectionBusy: boolean = false;
   scroller: Scroller = new Scroller();
   onOpenAlbum: (item: AlbumListItem) => void = (_item: AlbumListItem): void => {};
   onAlbumAction: (item: AlbumListItem, action: AlbumAction) => void =
@@ -29,6 +35,75 @@ export struct AlbumsPage {
   onNavigateAlbumAction: (target: LibraryNavigationTarget) => void =
     (_target: LibraryNavigationTarget): void => {};
   private readonly scrollBehavior: PageGridBehavior = new PageGridBehavior();
+
+  aboutToAppear(): void {
+    this.selection.deleteEnabled = false;
+    this.selection.onPlay = (): void => this.runSelection((tracks: Array<TrackListItem>): void => {
+      playbackRuntime.playInOrder(tracks[0], tracks);
+      this.selection.cancel();
+    });
+    this.selection.onAddToPlaylist = (): void =>
+      this.runSelection(this.onRequestAddToPlaylist);
+    this.selection.onInsertNext = (): void => this.runSelection(
+      (tracks: Array<TrackListItem>): void => playbackRuntime.insertNext(tracks)
+    );
+    this.selection.onAppendToQueue = (): void => this.runSelection(
+      (tracks: Array<TrackListItem>): void => playbackRuntime.appendToQueue(tracks)
+    );
+  }
+
+  private currentSelection(): Array<AlbumListItem> {
+    return this.selectedAlbums.filter((album: AlbumListItem): boolean =>
+      this.selection.isSelected(album.id));
+  }
+
+  private toggleSelection(album: AlbumListItem): void {
+    this.selection.toggle(album.id);
+    if (!this.selection.isSelected(album.id)) {
+      this.selectedAlbums =
+        this.selectedAlbums.filter((selected: AlbumListItem): boolean => selected.id !== album.id);
+    } else {
+      this.selectedAlbums =
+        this.selectedAlbums.filter((selected: AlbumListItem): boolean => selected.id !== album.id)
+          .concat([album]);
+    }
+  }
+
+  private async selectedTracks(): Promise<Array<TrackListItem>> {
+    const tracks: Array<TrackListItem> = [];
+    const albums = this.currentSelection();
+    for (let index = 0; index < albums.length; index += 1) {
+      const detail = await this.store.getAlbumDetail(albums[index].id);
+      if (detail !== undefined) {
+        detail.tracks.forEach((track: TrackListItem): void => {
+          if (!tracks.some((existing: TrackListItem): boolean => existing.id === track.id)) {
+            tracks.push(track);
+          }
+        });
+      }
+    }
+    return tracks;
+  }
+
+  private runSelection(action: (tracks: Array<TrackListItem>) => void, close: boolean = false): void {
+    if (this.selectionBusy || this.selection.selectedCount() === 0) {
+      return;
+    }
+    this.selectionBusy = true;
+    this.selection.setBusy(true);
+    this.selectedTracks().then((tracks: Array<TrackListItem>): void => {
+      if (tracks.length > 0) {
+        action(tracks);
+      }
+      if (close) {
+        this.selectedAlbums = [];
+        this.selection.cancel();
+      }
+    }).finally((): void => {
+      this.selectionBusy = false;
+      this.selection.setBusy(false);
+    });
+  }
 
   build() {
     if (this.store.statistics.albumCount === 0) {
@@ -53,10 +128,14 @@ export struct AlbumsPage {
                   album: slot.value,
                   actionsEnabled: true,
                   actionAnchorPrefix: 'albums',
+                  selectionMode: this.selection.active,
+                  selected: this.selection.isSelected(slot.value.id),
                   onActivate: this.onOpenAlbum,
+                  onToggleSelection: (album: AlbumListItem): void => this.toggleSelection(album),
                   onAction: this.onAlbumAction,
                   onNavigate: this.onNavigateAlbumAction
                 })
+                  .reuseId('albums_actions')
               }
             } else {
               GridItem() {
@@ -110,4 +189,7 @@ export struct AlbumsPage {
       .backgroundColor(Color.Transparent)
     }
   }
+
+  onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
+    (_items: Array<TrackListItem>): void => {};
 }

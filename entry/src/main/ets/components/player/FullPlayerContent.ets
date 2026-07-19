@@ -30,7 +30,9 @@ import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import { SymbolGlyphModifier } from '@kit.ArkUI';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { PlayerTrackMarquee } from './PlayerTrackMarquee';
+import { PageLayoutSpec } from '../layout/PageLayoutSpec';
 
+@Reusable
 @Component
 struct TimedLyricRow {
   @ObjectLink playerStore: PlayerStore;
@@ -175,6 +177,8 @@ export struct FullPlayerContent {
   private readonly lyricScroller: Scroller = new Scroller();
   private lastFocusedQueueIndex: number = -1;
   private lastFocusedLyricIndex: number = -1;
+  @State private selectedQueueEntries: Array<QueueEntry> = [];
+  @State private queueSelectionActive: boolean = false;
   private readonly queueIndexListener: QueueIndexListener = (index: number): void => {
     if (this.measuresArtworkTarget || index < 0 || this.playerStore.queueSize === 0) {
       return;
@@ -189,6 +193,59 @@ export struct FullPlayerContent {
     this.lastFocusedLyricIndex = index;
     this.lyricScroller.scrollToIndex(targetIndex, true, ScrollAlign.START);
   };
+
+  private queueEntrySelected(entryId: number): boolean {
+    return this.selectedQueueEntries.some((entry: QueueEntry): boolean =>
+      entry.queueEntryId === entryId);
+  }
+
+  private toggleQueueSelection(entry: QueueEntry): void {
+    if (this.queueEntrySelected(entry.queueEntryId)) {
+      this.selectedQueueEntries =
+        this.selectedQueueEntries.filter((selected: QueueEntry): boolean =>
+          selected.queueEntryId !== entry.queueEntryId);
+    } else {
+      this.selectedQueueEntries = this.selectedQueueEntries.concat([entry]);
+    }
+  }
+
+  private cancelQueueSelection(): void {
+    this.queueSelectionActive = false;
+    this.selectedQueueEntries = [];
+  }
+
+  @Builder
+  private QueueSelectionMenu() {
+    Menu() {
+      MenuItem({ content: '播放' })
+        .onClick(() => {
+          playbackRuntime.playQueueSelection(
+            this.selectedQueueEntries.map((entry: QueueEntry) => entry.track)
+          );
+          this.cancelQueueSelection();
+        })
+      MenuItem({ content: '添加到播放列表' })
+        .onClick(() => this.onRequestAddToPlaylist(
+          this.selectedQueueEntries.map((entry: QueueEntry): number => entry.track.id)
+        ))
+      MenuItem({ content: '插播', labelInfo: '下一首开始' })
+        .onClick(() => playbackRuntime.insertQueueTracks(
+          this.selectedQueueEntries.map((entry: QueueEntry) => entry.track)
+        ))
+      MenuItem({ content: '追加到播放队列' })
+        .onClick(() => playbackRuntime.appendQueueTracks(
+          this.selectedQueueEntries.map((entry: QueueEntry) => entry.track)
+        ))
+      MenuItem({ content: '从播放队列移除' })
+        .onClick(() => {
+          playbackRuntime.removeQueueEntries(
+            this.selectedQueueEntries.map((entry: QueueEntry): number => entry.queueEntryId)
+          );
+          this.cancelQueueSelection();
+        })
+    }
+    .width(240)
+  }
 
   @Builder
   private CurrentTrackMenu() {
@@ -357,20 +414,48 @@ export struct FullPlayerContent {
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .layoutWeight(1)
-      Text(`${this.playerStore.queueSize} 首`)
-        .fontSize(13)
-        .fontColor(this.playerStore.themeOnPrimaryMedium())
-        .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
-      PlayerModeButton({
-        playerStore: this.playerStore,
-        action: PlayerModeAction.SHUFFLE,
-        buttonSize: 44
-      })
-      PlayerModeButton({
-        playerStore: this.playerStore,
-        action: PlayerModeAction.REPEAT,
-        buttonSize: 44
-      })
+      if (this.queueSelectionActive) {
+        Button(`操作 ${this.selectedQueueEntries.length}`)
+          .height(40)
+          .enabled(this.selectedQueueEntries.length > 0)
+          .fontColor(this.playerStore.themeOnPrimary())
+          .backgroundColor($r('app.color.glass_surface_subtle'))
+          .bindMenu(this.QueueSelectionMenu(), { placement: Placement.BottomRight })
+        Button('取消')
+          .height(40)
+          .fontColor(this.playerStore.themeOnPrimary())
+          .backgroundColor(Color.Transparent)
+          .onClick(() => this.cancelQueueSelection())
+      } else {
+        Text(`${this.playerStore.queueSize} 首`)
+          .fontSize(13)
+          .fontColor(this.playerStore.themeOnPrimaryMedium())
+          .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+        PlayerModeButton({
+          playerStore: this.playerStore,
+          action: PlayerModeAction.SHUFFLE,
+          buttonSize: 44
+        })
+        PlayerModeButton({
+          playerStore: this.playerStore,
+          action: PlayerModeAction.REPEAT,
+          buttonSize: 44
+        })
+        Button() {
+          SymbolGlyph($r('sys.symbol.checkmark_square_on_square'))
+            .fontSize(21)
+            .fontColor([this.playerStore.themeOnPrimary()])
+        }
+        .width(44)
+        .height(44)
+        .borderRadius(22)
+        .backgroundColor($r('app.color.glass_surface_subtle'))
+        .accessibilityText('多选')
+        .onClick(() => {
+          this.queueSelectionActive = true;
+          this.selectedQueueEntries = [];
+        })
+      }
     }
     .width(this.pageWidth())
     .height(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE)
@@ -431,6 +516,7 @@ export struct FullPlayerContent {
 
   @Builder
   private QueuePage() {
+    Stack({ alignContent: Alignment.Bottom }) {
     Column() {
       if (this.playerStore.queueSize === 0) {
         Column({ space: 8 }) {
@@ -487,10 +573,14 @@ export struct FullPlayerContent {
                     artworkCornerRadius: PlayerLayoutSpec.FULL_ARTWORK_RADIUS,
                     queueIndexWidth: PlayerLayoutSpec.FULL_PLAYER_QUEUE_INDEX_WIDTH,
                     queueGestureDistance: PlayerMotionSpec.GESTURE_AXIS_LOCK_DISTANCE,
+                    selectionMode: this.queueSelectionActive,
+                    selected: this.queueEntrySelected(entry.queueEntryId),
                     onActivate: (): void => {
                       this.onPlayQueueTrack(entry.track.id);
-                    }
+                    },
+                    onToggleSelection: (): void => this.toggleQueueSelection(entry)
                   })
+                    .reuseId('player_queue_track')
                 }
                 .width('100%')
                 .padding({
@@ -506,6 +596,7 @@ export struct FullPlayerContent {
         .layoutWeight(1)
         .width('100%')
         .edgeEffect(EdgeEffect.Spring)
+        .cachedCount(PageLayoutSpec.PLAYER_QUEUE_CACHE_COUNT, true)
         .scrollBar(BarState.Auto)
         .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) => {
           recognizers.forEach((recognizer: GestureRecognizer) => {
@@ -530,6 +621,9 @@ export struct FullPlayerContent {
         (this.paneCount > 1 ? PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE : 0),
       bottom: this.bottomInset + PlayerLayoutSpec.FULL_PLAYER_BOTTOM_INSET
     })
+    }
+    .width(this.pageWidth())
+    .height('100%')
   }
 
   @Builder
@@ -694,12 +788,14 @@ export struct FullPlayerContent {
           LazyForEach(this.playerStore.lyricDataSource, (line: TimedLyricLine, index: number) => {
             ListItem() {
               TimedLyricRow({ playerStore: this.playerStore, line: line, index: index })
+                .reuseId('timed_lyric')
             }
           }, (line: TimedLyricLine, index: number) => `${line.timeMs}_${index}`)
         }
         .width('100%')
         .layoutWeight(1)
         .edgeEffect(EdgeEffect.Spring)
+        .cachedCount(PageLayoutSpec.LYRIC_LIST_CACHE_COUNT, true)
         .scrollBar(BarState.Off)
         .contentEndOffset(this.lyricEndOffset())
         .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) => {

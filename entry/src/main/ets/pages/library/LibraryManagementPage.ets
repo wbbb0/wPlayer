@@ -96,7 +96,6 @@ export struct LibraryManagementPage {
   @State performanceExpanded: boolean = false;
   @State selectedUnavailableIds: Array<number> = [];
   scroller: Scroller = new Scroller();
-  openDebugMaintenance: () => void = (): void => {};
   private readonly scrollBehavior: PageScrollBehavior = new PageScrollBehavior();
   private readonly contentBehavior: PageScrollContentBehavior = new PageScrollContentBehavior();
 
@@ -543,7 +542,7 @@ export struct LibraryManagementPage {
   private confirmClear(): void {
     this.getUIContext().showAlertDialog({
       title: '清空音乐库？',
-      message: '将移除应用中的曲目记录和封面缓存，不会删除原始音乐文件。',
+      message: '将移除曲目记录和封面缓存，并请求撤销应用对已导入音乐的持续访问权限。不会删除原始音乐文件。',
       primaryButton: {
         value: '取消',
         action: () => {}
@@ -620,34 +619,6 @@ export struct LibraryManagementPage {
             this.store.checkMusicFiles();
             this.openTaskReport();
           })
-
-        Button() {
-          Row({ space: 12 }) {
-            SymbolGlyph($r('sys.symbol.gearshape_fill'))
-              .fontSize(20)
-              .fontColor([$r('app.color.text_secondary')])
-            Column({ space: 3 }) {
-              Text('调试维护')
-                .fontSize(16)
-                .fontColor($r('app.color.text_primary'))
-              Text('重建排序索引、刷新封面调色板')
-                .fontSize(12)
-                .fontColor($r('app.color.text_secondary'))
-            }
-            .alignItems(HorizontalAlign.Start)
-            .layoutWeight(1)
-            SymbolGlyph($r('sys.symbol.chevron_right'))
-              .fontSize(16)
-              .fontColor([$r('app.color.text_tertiary')])
-          }
-          .width('100%')
-        }
-        .width('100%')
-        .height(64)
-        .buttonStyle(ButtonStyleMode.TEXTUAL)
-        .backgroundColor($r('app.color.glass_surface'))
-        .borderRadius(18)
-        .onClick(() => this.openDebugMaintenance())
 
         if (this.hasTaskReport() || this.store.lastMessage.length > 0 || this.store.errorMessage.length > 0) {
           Divider()

@@ -838,6 +838,27 @@ export class MusicLibraryQueries {
     }
   }
 
+  async getPersistedMediaUris(): Promise<Array<string>> {
+    let resultSet: relationalStore.ResultSet | undefined;
+    const uris: Array<string> = [];
+    try {
+      resultSet = await this.database.getStore().querySql(
+        'SELECT uri FROM media_file WHERE authorization_persisted = 1 ORDER BY id'
+      );
+      while (resultSet.goToNextRow()) {
+        const uri = resultSet.getString(0);
+        if (uri.length > 0) {
+          uris.push(uri);
+        }
+      }
+      return uris;
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to read persisted media URIs', error);
+    } finally {
+      RelationalStoreSafety.closeResultSet(resultSet, 'persisted media URI lookup');
+    }
+  }
+
   async hasUris(uris: Array<string>): Promise<Array<string>> {
     const existingUris: Array<string> = [];
     for (let offset = 0; offset < uris.length; offset += URI_QUERY_BATCH_SIZE) {

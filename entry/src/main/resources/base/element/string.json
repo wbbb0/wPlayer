@@ -2,15 +2,15 @@
   "string": [
     {
       "name": "module_desc",
-      "value": "module description"
+      "value": "干净、流畅且专注的本地音乐播放与音乐库管理"
     },
     {
       "name": "EntryAbility_desc",
-      "value": "description"
+      "value": "导入、整理和播放用户主动选择的本地音乐"
     },
     {
       "name": "EntryAbility_label",
-      "value": "wPlayer"
+      "value": "w音乐"
     }
   ]
 }

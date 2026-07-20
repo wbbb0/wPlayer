@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "A clean, responsive, and focused local music experience"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "Import, organize, and play local music selected by the user"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "wPlayer"
+    }
+  ]
+}

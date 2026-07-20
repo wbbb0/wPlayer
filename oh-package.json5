@@ -1,6 +1,6 @@
 {
   "modelVersion": "6.1.1",
-  "description": "Please describe the basic information.",
+  "description": "A clean, responsive, and focused local music player for HarmonyOS.",
   "dependencies": {
   },
   "devDependencies": {

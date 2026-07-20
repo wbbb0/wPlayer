@@ -1,10 +1,10 @@
 {
   "name": "entry",
   "version": "1.0.0",
-  "description": "Please describe the basic information.",
+  "description": "A clean, responsive, and focused local music player for HarmonyOS",
   "main": "",
-  "author": "",
-  "license": "",
+  "author": "韩旭龙",
+  "license": "GPL-3.0-only",
   "dependencies": {}
 }
 

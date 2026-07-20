@@ -362,6 +362,10 @@ export class MusicRepository {
     return this.queries.hasUri(uri);
   }
 
+  getPersistedMediaUris(): Promise<Array<string>> {
+    return this.queries.getPersistedMediaUris();
+  }
+
   hasUris(uris: Array<string>): Promise<Array<string>> {
     return this.queries.hasUris(uris);
   }

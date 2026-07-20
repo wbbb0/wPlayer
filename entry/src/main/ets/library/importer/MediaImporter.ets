@@ -192,6 +192,8 @@ export class MediaImporter {
       throw new Error('Cannot clear the library during an import');
     }
     await this.artworkCleanupTail;
+    const persistedUris = await this.repository.getPersistedMediaUris();
+    await revokeReadPermissions(persistedUris);
     await this.repository.clearLibrary();
     const assets = await this.repository.getUnreferencedArtworkAssets();
     for (let index = 0; index < assets.length; index += 1) {

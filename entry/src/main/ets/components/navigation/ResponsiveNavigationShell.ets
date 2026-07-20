@@ -66,13 +66,16 @@ import { AlbumsPage } from '../../pages/library/AlbumsPage';
 import { AlbumDetailPage } from '../../pages/library/AlbumDetailPage';
 import { ArtistDetailPage } from '../../pages/library/ArtistDetailPage';
 import { LibraryManagementPage } from '../../pages/library/LibraryManagementPage';
-import { LibraryDebugMaintenancePage } from '../../pages/library/LibraryDebugMaintenancePage';
 import { MorePage } from '../../pages/library/MorePage';
 import { PlaylistsPage } from '../../pages/library/PlaylistsPage';
 import { PlaylistDetailPage } from '../../pages/library/PlaylistDetailPage';
 import { SongsPage } from '../../pages/library/SongsPage';
 import { SettingsPage } from '../../pages/settings/SettingsPage';
 import { NavigationCustomizationPage } from '../../pages/settings/NavigationCustomizationPage';
+import { AboutPage } from '../../pages/settings/AboutPage';
+import { PrivacyPolicyPage } from '../../pages/settings/PrivacyPolicyPage';
+import { DataAndPermissionsPage } from '../../pages/settings/DataAndPermissionsPage';
+import { OpenSourceLicensesPage } from '../../pages/settings/OpenSourceLicensesPage';
 import { AppSettingsStore } from '../../settings/AppSettingsStore';
 import {
   AlbumDetailRouteParams,
@@ -147,7 +150,10 @@ export struct ResponsiveNavigationShell {
   morePathStack: NavPathStack = new NavPathStack();
   moreScroller: Scroller = new Scroller();
   customizationScroller: Scroller = new Scroller();
-  libraryDebugMaintenanceScroller: Scroller = new Scroller();
+  aboutScroller: Scroller = new Scroller();
+  privacyPolicyScroller: Scroller = new Scroller();
+  dataAndPermissionsScroller: Scroller = new Scroller();
+  openSourceLicensesScroller: Scroller = new Scroller();
 
   onCompactTabChange: (index: number) => void = (_index: number): void => {};
   onCompactTabClick: (index: number) => void = (_index: number): void => {};
@@ -857,10 +863,7 @@ export struct ResponsiveNavigationShell {
       })
     } else if (navigationPageKind(routeId) === NavigationPageKind.LIBRARY_MANAGEMENT) {
       LibraryManagementPage({ store: this.libraryStore, topInset: this.topInset, bottomInset: this.bottomInset,
-        scroller: this.routeScroller(routeId),
-        openDebugMaintenance: (): void => this.routePathStack(routeId).pushPath({
-          name: NavigationRoute.LIBRARY_DEBUG_MAINTENANCE
-        }) })
+        scroller: this.routeScroller(routeId) })
     } else if (navigationPageKind(routeId) === NavigationPageKind.SETTINGS) {
       SettingsPage({
         settingsStore: this.settingsStore,
@@ -868,6 +871,18 @@ export struct ResponsiveNavigationShell {
         bottomInset: this.bottomInset,
         scroller: this.routeScroller(routeId),
         openNavigationCustomization: this.onOpenNavigationCustomization,
+        openAbout: (): void => this.routePathStack(NavigationRoute.SETTINGS).pushPath({
+          name: NavigationRoute.ABOUT
+        }),
+        openPrivacyPolicy: (): void => this.routePathStack(NavigationRoute.SETTINGS).pushPath({
+          name: NavigationRoute.PRIVACY_POLICY
+        }),
+        openDataAndPermissions: (): void => this.routePathStack(NavigationRoute.SETTINGS).pushPath({
+          name: NavigationRoute.DATA_AND_PERMISSIONS
+        }),
+        openOpenSourceLicenses: (): void => this.routePathStack(NavigationRoute.SETTINGS).pushPath({
+          name: NavigationRoute.OPEN_SOURCE_LICENSES
+        }),
         onRememberLastTabChange: this.onRememberLastTabChange,
         onRememberSortChange: this.onRememberSortChange
       })
@@ -995,13 +1010,12 @@ export struct ResponsiveNavigationShell {
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryTitleBar('自定义页面', this.appearancePalette))
       .bindToScrollable([this.customizationScroller])
-    } else if (name === NavigationRoute.LIBRARY_DEBUG_MAINTENANCE) {
+    } else if (name === NavigationRoute.ABOUT) {
       HdsNavDestination() {
-        LibraryDebugMaintenancePage({
-          store: this.libraryStore,
+        AboutPage({
           topInset: this.topInset,
           bottomInset: this.bottomInset,
-          scroller: this.libraryDebugMaintenanceScroller
+          scroller: this.aboutScroller
         })
       }
       .width('100%')
@@ -1009,8 +1023,53 @@ export struct ResponsiveNavigationShell {
       .backgroundColor(this.themePageBackground)
       .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
-      .titleBar(AppNavigationStyle.secondaryTitleBar('调试维护', this.appearancePalette))
-      .bindToScrollable([this.libraryDebugMaintenanceScroller])
+      .titleBar(AppNavigationStyle.secondaryTitleBar('关于 w音乐', this.appearancePalette))
+      .bindToScrollable([this.aboutScroller])
+    } else if (name === NavigationRoute.PRIVACY_POLICY) {
+      HdsNavDestination() {
+        PrivacyPolicyPage({
+          topInset: this.topInset,
+          bottomInset: this.bottomInset,
+          scroller: this.privacyPolicyScroller
+        })
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(this.themePageBackground)
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar('隐私政策', this.appearancePalette))
+      .bindToScrollable([this.privacyPolicyScroller])
+    } else if (name === NavigationRoute.DATA_AND_PERMISSIONS) {
+      HdsNavDestination() {
+        DataAndPermissionsPage({
+          topInset: this.topInset,
+          bottomInset: this.bottomInset,
+          scroller: this.dataAndPermissionsScroller
+        })
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(this.themePageBackground)
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar('数据与权限', this.appearancePalette))
+      .bindToScrollable([this.dataAndPermissionsScroller])
+    } else if (name === NavigationRoute.OPEN_SOURCE_LICENSES) {
+      HdsNavDestination() {
+        OpenSourceLicensesPage({
+          topInset: this.topInset,
+          bottomInset: this.bottomInset,
+          scroller: this.openSourceLicensesScroller
+        })
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(this.themePageBackground)
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar('开源软件许可', this.appearancePalette))
+      .bindToScrollable([this.openSourceLicensesScroller])
     } else {
       HdsNavDestination() {
         this.PageContent(name)

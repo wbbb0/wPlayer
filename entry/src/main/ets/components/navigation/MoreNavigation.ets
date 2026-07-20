@@ -5,7 +5,10 @@ export class NavigationRoute {
   static readonly LIBRARY_MANAGEMENT: string = 'libraryManagement';
   static readonly SETTINGS: string = 'settings';
   static readonly NAVIGATION_CUSTOMIZATION: string = 'navigationCustomization';
-  static readonly LIBRARY_DEBUG_MAINTENANCE: string = 'libraryDebugMaintenance';
+  static readonly ABOUT: string = 'about';
+  static readonly PRIVACY_POLICY: string = 'privacyPolicy';
+  static readonly DATA_AND_PERMISSIONS: string = 'dataAndPermissions';
+  static readonly OPEN_SOURCE_LICENSES: string = 'openSourceLicenses';
 }
 
 export enum NavigationPageKind {
@@ -52,7 +55,7 @@ export const DYNAMIC_NAVIGATION_ITEMS: Array<NavigationPageItem> = [
     routeId: NavigationRoute.LIBRARY_MANAGEMENT,
     kind: NavigationPageKind.LIBRARY_MANAGEMENT,
     label: '音乐库',
-    description: '添加音乐、查看统计或清空测试数据',
+    description: '添加音乐、检查文件并管理本地音乐库',
     symbol: $r('sys.symbol.externaldrive_fill')
   }
 ];

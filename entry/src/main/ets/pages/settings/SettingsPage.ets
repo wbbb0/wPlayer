@@ -12,6 +12,10 @@ export struct SettingsPage {
   @Prop bottomInset: number = 0;
   scroller: Scroller = new Scroller();
   openNavigationCustomization: () => void = (): void => {};
+  openAbout: () => void = (): void => {};
+  openPrivacyPolicy: () => void = (): void => {};
+  openDataAndPermissions: () => void = (): void => {};
+  openOpenSourceLicenses: () => void = (): void => {};
   onRememberLastTabChange: (value: boolean) => void = (_value: boolean): void => {};
   onRememberSortChange: (value: boolean) => void = (_value: boolean): void => {};
 
@@ -149,6 +153,42 @@ export struct SettingsPage {
               title: '自定义页面',
               description: '调整导航栏与“更多”中的页面顺序',
               onActivate: this.openNavigationCustomization
+            })
+          }
+          .width('100%')
+          .borderRadius(20)
+          .backgroundColor($r('app.color.glass_surface'))
+        }
+
+        Column() {
+          this.SectionTitle('关于')
+          Column() {
+            SettingsLinkItem({
+              symbol: $r('sys.symbol.music_fill'),
+              title: '关于 w音乐',
+              description: '应用信息、开发者与联系方式',
+              onActivate: this.openAbout
+            })
+            this.ItemDivider()
+            SettingsLinkItem({
+              symbol: $r('sys.symbol.checkmark_circle_fill'),
+              title: '隐私政策',
+              description: '了解本地音乐和应用数据如何处理',
+              onActivate: this.openPrivacyPolicy
+            })
+            this.ItemDivider()
+            SettingsLinkItem({
+              symbol: $r('sys.symbol.externaldrive_fill'),
+              title: '数据与权限',
+              description: '查看本地数据、系统权限与删除方式',
+              onActivate: this.openDataAndPermissions
+            })
+            this.ItemDivider()
+            SettingsLinkItem({
+              symbol: $r('sys.symbol.list_bullet'),
+              title: '开源软件许可',
+              description: 'GPL-3.0-only 许可与对应源代码',
+              onActivate: this.openOpenSourceLicenses
             })
           }
           .width('100%')

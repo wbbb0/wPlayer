@@ -18,10 +18,13 @@ import {
   PlaylistTransferTrack,
   LibrarySnapshot,
   LibraryStatistics,
+  MediaFileCheckCandidate,
   SortDirection,
   TrackListItem,
   TrackNavigationTargets,
-  TrackSortField
+  TrackSortField,
+  TrackAvailabilityUpdate,
+  UnavailableTrackItem
 } from '../model/LibraryModels';
 import { PlaybackTrack, QueueTrack, ResumeState } from '../../playback/model/PlaybackModels';
 import { LibraryDatabase } from './LibraryDatabase';
@@ -133,6 +136,94 @@ export class MusicRepository {
     state: AvailabilityState
   ): Promise<void> {
     return this.queries.setTrackAvailability(trackId, state);
+  }
+
+  setTrackAvailabilities(updates: Array<TrackAvailabilityUpdate>): Promise<void> {
+    return this.queries.setTrackAvailabilities(updates);
+  }
+
+  getMediaFileCheckCandidates(): Promise<Array<MediaFileCheckCandidate>> {
+    return this.queries.getMediaFileCheckCandidates();
+  }
+
+  getUnavailableTracks(): Promise<Array<UnavailableTrackItem>> {
+    return this.queries.getUnavailableTracks();
+  }
+
+  removeTracks(trackIds: Array<number>): Promise<number> {
+    const uniqueIds = Array.from(new Set<number>(trackIds.filter((id: number) => id >= 0)));
+    if (uniqueIds.length === 0) {
+      return Promise.resolve(0);
+    }
+    return this.database.enqueueWrite(async (transaction: relationalStore.Transaction): Promise<number> => {
+      const now = Date.now();
+      let removed = 0;
+      const affectedAlbums: Set<number> = new Set<number>();
+      for (let offset = 0; offset < uniqueIds.length; offset += 300) {
+        const batch = uniqueIds.slice(offset, Math.min(offset + 300, uniqueIds.length));
+        const placeholders = batch.map((_id: number) => '?').join(', ');
+        const albumResult = await transaction.querySql(
+          `SELECT DISTINCT album_id FROM track
+           WHERE id IN (${placeholders}) AND album_id IS NOT NULL`,
+          batch
+        );
+        while (albumResult.goToNextRow()) {
+          affectedAlbums.add(albumResult.getLong(0));
+        }
+        albumResult.close();
+        const artworkResult = await transaction.querySql(
+          `SELECT asset_id, COUNT(*) FROM track_artwork
+           WHERE track_id IN (${placeholders}) AND asset_id IS NOT NULL GROUP BY asset_id`,
+          batch
+        );
+        while (artworkResult.goToNextRow()) {
+          const assetId = artworkResult.getLong(0);
+          const count = artworkResult.getLong(1);
+          await transaction.execute(
+            `UPDATE artwork_asset SET ref_count = MAX(0, ref_count - ?),
+              unreferenced_at = CASE WHEN ref_count - ? <= 0 THEN ? ELSE unreferenced_at END
+             WHERE id = ?`,
+            [count, count, now, assetId]
+          );
+        }
+        artworkResult.close();
+        const countResult = await transaction.querySql(
+          `SELECT COUNT(*) FROM track WHERE id IN (${placeholders})`,
+          batch
+        );
+        if (countResult.goToNextRow()) {
+          removed += countResult.getLong(0);
+        }
+        countResult.close();
+        await transaction.execute(
+          `DELETE FROM media_file WHERE id IN (
+             SELECT media_file_id FROM track WHERE id IN (${placeholders})
+           )`,
+          batch
+        );
+      }
+      for (const albumId of affectedAlbums) {
+        await transaction.execute(
+          `UPDATE album SET
+            track_count = (SELECT COUNT(*) FROM track WHERE album_id = ?),
+            total_duration_ms = COALESCE((SELECT SUM(duration_ms) FROM track WHERE album_id = ?), 0),
+            primary_artwork_id = (
+              SELECT primary_artwork_id FROM track
+              WHERE album_id = ? AND primary_artwork_id IS NOT NULL ORDER BY id LIMIT 1
+            ),
+            updated_at = ? WHERE id = ?`,
+          [albumId, albumId, albumId, now, albumId]
+        );
+      }
+      await transaction.execute('DELETE FROM album WHERE track_count = 0');
+      await transaction.execute(
+        `DELETE FROM person WHERE id NOT IN (
+          SELECT person_id FROM track_credit UNION SELECT person_id FROM album_credit
+        )`
+      );
+      await transaction.execute('DELETE FROM genre WHERE id NOT IN (SELECT genre_id FROM track_genre)');
+      return removed;
+    });
   }
 
   getAlbums(
@@ -322,5 +413,9 @@ export class MusicRepository {
 
   importTracks(inputs: Array<TrackImportInput>): Promise<Array<ImportTrackResult>> {
     return this.importer.importTracks(inputs);
+  }
+
+  refreshTrack(trackId: number, input: TrackImportInput): Promise<void> {
+    return this.importer.refreshTrack(trackId, input);
   }
 }

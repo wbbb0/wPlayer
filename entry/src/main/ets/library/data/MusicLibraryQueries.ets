@@ -16,10 +16,13 @@ import {
   LibrarySnapshot,
   LibraryStatistics,
   MediaFormat,
+  MediaFileCheckCandidate,
   TrackListItem,
   TrackNavigationTargets,
   TrackSortField,
-  SortDirection
+  TrackAvailabilityUpdate,
+  SortDirection,
+  UnavailableTrackItem
 } from '../model/LibraryModels';
 import { PlaybackTrack, QueueTrack, ResumeState } from '../../playback/model/PlaybackModels';
 import { LibraryDatabase } from './LibraryDatabase';
@@ -51,7 +54,11 @@ export class MusicLibraryQueries {
     return {
       trackCount: await this.readCount(store, 'SELECT COUNT(*) FROM track'),
       albumCount: await this.readCount(store, 'SELECT COUNT(*) FROM album'),
-      artworkCount: await this.readCount(store, 'SELECT COUNT(*) FROM artwork_asset WHERE ref_count > 0')
+      artworkCount: await this.readCount(store, 'SELECT COUNT(*) FROM artwork_asset WHERE ref_count > 0'),
+      unavailableTrackCount: await this.readCount(
+        store,
+        `SELECT COUNT(*) FROM media_file WHERE availability_state <> ${AvailabilityState.AVAILABLE}`
+      )
     };
   }
 
@@ -94,8 +101,11 @@ export class MusicLibraryQueries {
           COALESCE(a.large_hash, ''), COALESCE(a.large_path, ''),
           COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
           COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
-          COALESCE(a.palette_accent, '#FFFFB347'), ${descriptor.sectionExpression}
-         FROM track t LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
+          COALESCE(a.palette_accent, '#FFFFB347'), ${descriptor.sectionExpression},
+          m.availability_state
+         FROM track t
+         JOIN media_file m ON m.id = t.media_file_id
+         LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
          ORDER BY ${descriptor.orderClause}${paginationClause}`,
         bindArgs
       );
@@ -117,7 +127,8 @@ export class MusicLibraryQueries {
           palettePrimary: resultSet.getString(13),
           paletteSecondary: resultSet.getString(14),
           paletteAccent: resultSet.getString(15),
-          sectionKey: resultSet.getString(16)
+          sectionKey: resultSet.getString(16),
+          availability: resultSet.getLong(17) as AvailabilityState
         });
       }
       return items;
@@ -321,6 +332,81 @@ export class MusicLibraryQueries {
     });
   }
 
+  setTrackAvailabilities(updates: Array<TrackAvailabilityUpdate>): Promise<void> {
+    if (updates.length === 0) {
+      return Promise.resolve();
+    }
+    return this.database.enqueueWrite(async (transaction: relationalStore.Transaction): Promise<void> => {
+      const now = Date.now();
+      for (let index = 0; index < updates.length; index += 1) {
+        const update = updates[index];
+        await transaction.execute(
+          `UPDATE media_file SET availability_state = ?, last_checked_at = ?, updated_at = ?
+           WHERE id = (SELECT media_file_id FROM track WHERE id = ?)`,
+          [update.state, now, now, update.trackId]
+        );
+      }
+    });
+  }
+
+  async getMediaFileCheckCandidates(): Promise<Array<MediaFileCheckCandidate>> {
+    let resultSet: relationalStore.ResultSet | undefined;
+    const items: Array<MediaFileCheckCandidate> = [];
+    try {
+      resultSet = await this.database.getStore().querySql(
+        `SELECT t.id, f.uri, f.display_name, f.file_size, f.modified_at, f.availability_state
+         FROM media_file f JOIN track t ON t.media_file_id = f.id
+         ORDER BY t.id`
+      );
+      while (resultSet.goToNextRow()) {
+        items.push({
+          trackId: resultSet.getLong(0),
+          uri: resultSet.getString(1),
+          displayName: resultSet.getString(2),
+          fileSize: resultSet.getLong(3),
+          modifiedAt: resultSet.getLong(4),
+          availability: resultSet.getLong(5) as AvailabilityState
+        });
+      }
+      return items;
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to query media file check candidates', error);
+    } finally {
+      RelationalStoreSafety.closeResultSet(resultSet, 'media file check candidates');
+    }
+  }
+
+  async getUnavailableTracks(): Promise<Array<UnavailableTrackItem>> {
+    let resultSet: relationalStore.ResultSet | undefined;
+    const items: Array<UnavailableTrackItem> = [];
+    try {
+      resultSet = await this.database.getStore().querySql(
+        `SELECT t.id, t.title, t.artist_display, t.album_display,
+          f.display_name, f.uri, f.availability_state
+         FROM track t JOIN media_file f ON f.id = t.media_file_id
+         WHERE f.availability_state <> ?
+         ORDER BY t.title_natural_key, t.id`,
+        [AvailabilityState.AVAILABLE]
+      );
+      while (resultSet.goToNextRow()) {
+        items.push({
+          trackId: resultSet.getLong(0),
+          title: resultSet.getString(1),
+          artistDisplay: resultSet.getString(2),
+          albumDisplay: resultSet.getString(3),
+          displayName: resultSet.getString(4),
+          uri: resultSet.getString(5),
+          availability: resultSet.getLong(6) as AvailabilityState
+        });
+      }
+      return items;
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to query unavailable tracks', error);
+    } finally {
+      RelationalStoreSafety.closeResultSet(resultSet, 'unavailable tracks');
+    }
+  }
+
   async getAlbums(field: AlbumSortField, direction: SortDirection): Promise<LibrarySnapshot<AlbumListItem>> {
     const descriptor = LibrarySortPlan.album(field, direction);
     const items = await this.queryAlbumItems(descriptor);
@@ -356,7 +442,11 @@ export class MusicLibraryQueries {
           al.total_duration_ms, COALESCE(a.large_path, ''),
           COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
           COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
-          COALESCE(a.palette_accent, '#FFFFB347'), ${descriptor.sectionExpression}
+          COALESCE(a.palette_accent, '#FFFFB347'), ${descriptor.sectionExpression},
+          (SELECT COUNT(*) FROM track unavailable_track
+           JOIN media_file unavailable_file ON unavailable_file.id = unavailable_track.media_file_id
+           WHERE unavailable_track.album_id = al.id
+             AND unavailable_file.availability_state <> ${AvailabilityState.AVAILABLE})
          FROM album al LEFT JOIN artwork_asset a ON a.id = al.primary_artwork_id
          ORDER BY ${descriptor.orderClause}${paginationClause}`,
         bindArgs
@@ -379,6 +469,10 @@ export class MusicLibraryQueries {
           COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
           COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
           COALESCE(a.palette_accent, '#FFFFB347'), '#',
+          (SELECT COUNT(*) FROM track unavailable_track
+           JOIN media_file unavailable_file ON unavailable_file.id = unavailable_track.media_file_id
+           WHERE unavailable_track.album_id = al.id
+             AND unavailable_file.availability_state <> ${AvailabilityState.AVAILABLE}),
           COALESCE(al.release_year, 0),
           COALESCE((SELECT GROUP_CONCAT(g.name) FROM genre g WHERE g.id IN (
             SELECT tg.genre_id FROM track_genre tg JOIN track grouped_track ON grouped_track.id = tg.track_id
@@ -401,10 +495,11 @@ export class MusicLibraryQueries {
           palettePrimary: albumResult.getString(8),
           paletteSecondary: albumResult.getString(9),
           paletteAccent: albumResult.getString(10),
-          sectionKey: albumResult.getString(11)
+          sectionKey: albumResult.getString(11),
+          unavailableTrackCount: albumResult.getLong(12)
         };
-        releaseYear = albumResult.getLong(12);
-        genreDisplay = albumResult.getString(13);
+        releaseYear = albumResult.getLong(13);
+        genreDisplay = albumResult.getString(14);
       }
     } catch (error) {
       throw RelationalStoreSafety.operationError(`Unable to read album ${albumId}`, error);
@@ -424,8 +519,10 @@ export class MusicLibraryQueries {
           COALESCE(a.large_hash, ''), COALESCE(a.large_path, ''),
           COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
           COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
-          COALESCE(a.palette_accent, '#FFFFB347'), '#'
-         FROM track t LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
+          COALESCE(a.palette_accent, '#FFFFB347'), '#', m.availability_state
+         FROM track t
+         JOIN media_file m ON m.id = t.media_file_id
+         LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
          WHERE t.album_id = ?
          ORDER BY CASE WHEN t.disc_number IS NULL OR t.disc_number <= 0 THEN 1 ELSE 0 END,
           t.disc_number ASC,
@@ -443,7 +540,8 @@ export class MusicLibraryQueries {
           artworkPath: trackResult.getString(10), artworkWidth: trackResult.getLong(11),
           artworkHeight: trackResult.getLong(12), palettePrimary: trackResult.getString(13),
           paletteSecondary: trackResult.getString(14), paletteAccent: trackResult.getString(15),
-          sectionKey: trackResult.getString(16)
+          sectionKey: trackResult.getString(16),
+          availability: trackResult.getLong(17) as AvailabilityState
         });
       }
     } catch (error) {
@@ -591,7 +689,11 @@ export class MusicLibraryQueries {
           al.total_duration_ms, COALESCE(a.large_path, ''),
           COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
           COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
-          COALESCE(a.palette_accent, '#FFFFB347'), '#'
+          COALESCE(a.palette_accent, '#FFFFB347'), '#',
+          (SELECT COUNT(*) FROM track unavailable_track
+           JOIN media_file unavailable_file ON unavailable_file.id = unavailable_track.media_file_id
+           WHERE unavailable_track.album_id = al.id
+             AND unavailable_file.availability_state <> ${AvailabilityState.AVAILABLE})
          FROM album_credit ac
          JOIN album al ON al.id = ac.album_id
          LEFT JOIN artwork_asset a ON a.id = al.primary_artwork_id
@@ -612,7 +714,11 @@ export class MusicLibraryQueries {
           al.total_duration_ms, COALESCE(a.large_path, ''),
           COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
           COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
-          COALESCE(a.palette_accent, '#FFFFB347'), '#'
+          COALESCE(a.palette_accent, '#FFFFB347'), '#',
+          (SELECT COUNT(*) FROM track unavailable_track
+           JOIN media_file unavailable_file ON unavailable_file.id = unavailable_track.media_file_id
+           WHERE unavailable_track.album_id = al.id
+             AND unavailable_file.availability_state <> ${AvailabilityState.AVAILABLE})
          FROM album_credit current_credit
          JOIN album_credit related_credit
            ON related_credit.person_id = current_credit.person_id
@@ -645,7 +751,8 @@ export class MusicLibraryQueries {
           palettePrimary: resultSet.getString(8),
           paletteSecondary: resultSet.getString(9),
           paletteAccent: resultSet.getString(10),
-          sectionKey: resultSet.getString(11)
+          sectionKey: resultSet.getString(11),
+          unavailableTrackCount: resultSet.getLong(12)
         });
       }
       return albums;
@@ -667,8 +774,10 @@ export class MusicLibraryQueries {
           COALESCE(a.large_hash, ''), COALESCE(a.large_path, ''),
           COALESCE(a.large_width, 0), COALESCE(a.large_height, 0),
           COALESCE(a.palette_primary, '#FF7C4DFF'), COALESCE(a.palette_secondary, '#FFFF4D8D'),
-          COALESCE(a.palette_accent, '#FFFFB347'), '#'
-         FROM track t LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
+          COALESCE(a.palette_accent, '#FFFFB347'), '#', m.availability_state
+         FROM track t
+         JOIN media_file m ON m.id = t.media_file_id
+         LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
          WHERE EXISTS (
            SELECT 1 FROM track_credit tc
            WHERE tc.track_id = t.id AND tc.person_id = ? AND tc.role = ?
@@ -693,7 +802,8 @@ export class MusicLibraryQueries {
           artworkPath: resultSet.getString(10), artworkWidth: resultSet.getLong(11),
           artworkHeight: resultSet.getLong(12), palettePrimary: resultSet.getString(13),
           paletteSecondary: resultSet.getString(14), paletteAccent: resultSet.getString(15),
-          sectionKey: resultSet.getString(16)
+          sectionKey: resultSet.getString(16),
+          availability: resultSet.getLong(17) as AvailabilityState
         });
       }
       return tracks;

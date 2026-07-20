@@ -15,6 +15,36 @@ export interface MediaProbeResult {
   workerDurationMs: number;
 }
 
+export interface MediaFileStat {
+  fileSize: number;
+  modifiedAt: number;
+}
+
+@Concurrent
+function statMediaFileTask(uri: string): MediaFileStat {
+  let file: fs.File | undefined;
+  try {
+    file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+    const stat = fs.statSync(file.fd);
+    return {
+      fileSize: stat.size,
+      modifiedAt: stat.mtime
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : `${error}`;
+    throw new Error(`Unable to stat media file: ${message}`);
+  } finally {
+    if (file !== undefined) {
+      try {
+        fs.closeSync(file);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : `${error}`;
+        console.warn(`Unable to close media file after stat: ${message}`);
+      }
+    }
+  }
+}
+
 function errorMessage(error: Object): string {
   return error instanceof Error ? error.message : `${error}`;
 }
@@ -229,6 +259,14 @@ export function probeMediaFile(uri: string): Promise<MediaProbeResult> {
     return taskpool.execute(probeMediaFileTask, uri) as Promise<MediaProbeResult>;
   } catch (error) {
     return Promise.reject(operationError('Unable to submit media probe task', error));
+  }
+}
+
+export function statMediaFile(uri: string): Promise<MediaFileStat> {
+  try {
+    return taskpool.execute(statMediaFileTask, uri) as Promise<MediaFileStat>;
+  } catch (error) {
+    return Promise.reject(operationError('Unable to submit media stat task', error));
   }
 }
 

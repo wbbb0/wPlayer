@@ -80,6 +80,15 @@ export struct SettingsPage {
               onChange: (value: boolean): void => this.settingsStore.setPreserveShuffleOnManualPlay(value)
             })
             this.ItemDivider()
+            SettingsToggleItem({
+              symbol: $r('sys.symbol.trash'),
+              title: '自动移除失效文件',
+              description: '播放时发现文件不可用即移除音乐库记录，不会删除原始文件',
+              isOn: this.settingsStore.autoRemoveUnavailableOnPlayback,
+              onChange: (value: boolean): void =>
+                this.settingsStore.setAutoRemoveUnavailableOnPlayback(value)
+            })
+            this.ItemDivider()
             Row({ space: 14 }) {
               SymbolGlyph($r('sys.symbol.checkmark_circle_fill'))
                 .fontSize(23)

@@ -31,6 +31,15 @@ interface PendingSeekWait {
   timerId: number;
 }
 
+export class PlaybackFileError extends Error {
+  readonly availability: AvailabilityState;
+
+  constructor(message: string, availability: AvailabilityState) {
+    super(message);
+    this.availability = availability;
+  }
+}
+
 export class PlaybackEngine {
   private player?: media.AVPlayer;
   private sourceFile?: fs.File;
@@ -148,6 +157,7 @@ export class PlaybackEngine {
     if (track.availability !== AvailabilityState.AVAILABLE) {
       throw new Error('音乐文件当前不可用，请重新授权或重新导入');
     }
+    let sourcePreparationActive = false;
     try {
       const player = await this.ensurePlayer();
       this.ensureCurrent(epoch);
@@ -158,11 +168,15 @@ export class PlaybackEngine {
       try {
         sourceFile = fs.openSync(track.uri, fs.OpenMode.READ_ONLY);
       } catch (error) {
-        const cause = new Error(`无法打开音乐文件：${PlaybackEngine.messageOf(error)}`);
+        const cause = new PlaybackFileError(
+          `无法打开音乐文件：${PlaybackEngine.messageOf(error)}`,
+          AvailabilityState.UNAVAILABLE
+        );
         this.listener?.onStateChanged(PlayerState.ERROR, cause.message);
         throw cause;
       }
       this.sourceFile = sourceFile;
+      sourcePreparationActive = true;
       const initialized = this.waitForState('initialized');
       player.fdSrc = { fd: sourceFile.fd, offset: 0, length: track.fileSize };
       await initialized;
@@ -172,6 +186,7 @@ export class PlaybackEngine {
         rendererFlags: 0
       };
       await player.prepare();
+      sourcePreparationActive = false;
       this.ensureCurrent(epoch);
       if (resumePositionMs > 0) {
         await this.seekInternal(resumePositionMs);
@@ -195,6 +210,15 @@ export class PlaybackEngine {
     } catch (error) {
       if (error === PLAYBACK_REQUEST_SUPERSEDED) {
         throw PLAYBACK_REQUEST_SUPERSEDED;
+      }
+      if (error instanceof PlaybackFileError) {
+        throw error;
+      }
+      if (sourcePreparationActive) {
+        throw new PlaybackFileError(
+          `无法解析音乐文件：${PlaybackEngine.messageOf(error)}`,
+          AvailabilityState.CORRUPTED
+        );
       }
       throw new Error(`Unable to load playback source: ${PlaybackEngine.messageOf(error)}`);
     }

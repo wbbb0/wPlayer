@@ -5,6 +5,7 @@ export class NavigationRoute {
   static readonly LIBRARY_MANAGEMENT: string = 'libraryManagement';
   static readonly SETTINGS: string = 'settings';
   static readonly NAVIGATION_CUSTOMIZATION: string = 'navigationCustomization';
+  static readonly LIBRARY_DEBUG_MAINTENANCE: string = 'libraryDebugMaintenance';
 }
 
 export enum NavigationPageKind {

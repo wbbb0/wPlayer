@@ -4,14 +4,23 @@ import { LibraryStore } from '../../library/store/LibraryStore';
 import {
   ImportItemDetailKind,
   ImportItemOutcome,
-  ImportItemResult
+  ImportItemResult,
+  FileCheckItemOutcome,
+  FileCheckItemResult,
+  UnavailableTrackItem
 } from '../../library/model/LibraryModels';
 import { LibraryListDataSource } from '../../library/store/LibraryListDataSource';
+import { LibraryItemAvailability } from '../../components/library/LibraryItemAvailability';
 
 class TaskReportLayoutSpec {
   static readonly TOP_PADDING: number = 20;
   static readonly HEADER_HEIGHT: number = 48;
   static readonly HEADER_TRAILING_SAFE_AREA: number = 56;
+}
+
+enum LibraryManagementSheet {
+  TASK_REPORT = 0,
+  UNAVAILABLE_FILES = 1
 }
 
 @Reusable
@@ -80,17 +89,55 @@ export struct LibraryManagementPage {
   @ObjectLink store: LibraryStore;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
-  @State showTaskReport: boolean = false;
+  @State showPageSheet: boolean = false;
+  @State activeSheet: LibraryManagementSheet = LibraryManagementSheet.TASK_REPORT;
   @State expandedImportDetail?: ImportItemDetailKind = undefined;
+  @State selectedUnavailableIds: Array<number> = [];
   scroller: Scroller = new Scroller();
+  openDebugMaintenance: () => void = (): void => {};
   private readonly scrollBehavior: PageScrollBehavior = new PageScrollBehavior();
   private readonly contentBehavior: PageScrollContentBehavior = new PageScrollContentBehavior();
 
   private hasTaskReport(): boolean {
     return this.store.importing || this.store.lastImportResult !== undefined ||
-      this.store.rebuildingSortIndexes || this.store.sortIndexResult.length > 0 ||
-      this.store.refreshingPalettes || this.store.paletteRefreshResult.length > 0 ||
-      this.store.sortIndexError.length > 0 || this.store.errorMessage.length > 0;
+      this.store.errorMessage.length > 0 ||
+      this.store.checkingFiles || this.store.fileCheckResult.length > 0;
+  }
+
+  private openUnavailableFiles(): void {
+    if (this.store.statistics.unavailableTrackCount <= 0) {
+      return;
+    }
+    this.selectedUnavailableIds = [];
+    this.store.loadUnavailableTracks().then((): void => {
+      this.activeSheet = LibraryManagementSheet.UNAVAILABLE_FILES;
+      this.showPageSheet = true;
+    }).catch((error: Object): void => {
+      console.warn(`Unable to load unavailable files: ${error instanceof Error ? error.message : `${error}`}`);
+    });
+  }
+
+  private toggleUnavailableSelection(trackId: number): void {
+    if (this.selectedUnavailableIds.indexOf(trackId) >= 0) {
+      this.selectedUnavailableIds =
+        this.selectedUnavailableIds.filter((id: number): boolean => id !== trackId);
+    } else {
+      this.selectedUnavailableIds = this.selectedUnavailableIds.concat([trackId]);
+    }
+  }
+
+  private removeUnavailable(trackIds: Array<number>): void {
+    this.store.removeUnavailableTracks(trackIds).then((): void => {
+      this.selectedUnavailableIds = [];
+      if (this.store.statistics.unavailableTrackCount === 0) {
+        this.showPageSheet = false;
+      }
+    });
+  }
+
+  private openTaskReport(): void {
+    this.activeSheet = LibraryManagementSheet.TASK_REPORT;
+    this.showPageSheet = true;
   }
 
   private detailCount(kind: ImportItemDetailKind): number {
@@ -162,7 +209,9 @@ export struct LibraryManagementPage {
   @Builder
   private TaskReportSheet() {
     Column({ space: 16 }) {
-      Text(this.store.importing ? '导入进度' : '任务结果')
+      Text(this.store.checkingFiles ? '文件检查进度' :
+        (this.store.lastTaskWasFileCheck ? '文件检查结果' :
+          (this.store.importing ? '导入进度' : '任务结果')))
         .fontSize(24)
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.text_primary'))
@@ -201,7 +250,42 @@ export struct LibraryManagementPage {
         .backgroundColor($r('app.color.glass_surface'))
       }
 
-      if (this.store.lastImportResult !== undefined) {
+      if (this.store.checkingFiles) {
+        Column({ space: 10 }) {
+          Progress({
+            value: this.store.fileCheckProgress.processed,
+            total: Math.max(1, this.store.fileCheckProgress.total),
+            type: ProgressType.Linear
+          }).width('100%')
+          Text(this.store.fileCheckProgress.currentName.length > 0 ?
+            this.store.fileCheckProgress.currentName : '正在检查音乐文件')
+            .fontSize(13)
+            .fontColor($r('app.color.text_secondary'))
+            .maxLines(2)
+            .width('100%')
+          Text(`${this.store.fileCheckProgress.processed} / ${this.store.fileCheckProgress.total}` +
+            `  ·  更新 ${this.store.fileCheckProgress.updated}` +
+            `  ·  恢复 ${this.store.fileCheckProgress.recovered}` +
+            `  ·  失效 ${this.store.fileCheckProgress.unavailable}`)
+            .fontSize(12)
+            .fontColor($r('app.color.text_secondary'))
+            .fontFeature('tnum')
+            .width('100%')
+          Button('停止检查')
+            .buttonStyle(ButtonStyleMode.TEXTUAL)
+            .onClick(() => this.store.cancelFileCheck())
+        }
+        .width('100%')
+        .padding(16)
+        .borderRadius(18)
+        .backgroundColor($r('app.color.glass_surface'))
+      } else if (this.store.fileCheckResult.length > 0) {
+        Text(this.store.fileCheckResult)
+          .fontColor($r('app.color.message_success'))
+          .width('100%')
+      }
+
+      if (!this.store.lastTaskWasFileCheck && this.store.lastImportResult !== undefined) {
         Text(`已导入 ${this.store.lastImportResult.imported} 首  ·  ` +
           `重复 ${this.store.lastImportResult.duplicates} 首  ·  ` +
           `失败 ${this.store.lastImportResult.failed} 首`)
@@ -229,40 +313,32 @@ export struct LibraryManagementPage {
         .backgroundColor($r('app.color.destructive_surface'))
       }
 
-      if (this.store.rebuildingSortIndexes) {
-        Text('正在重建排序索引…')
-          .fontColor($r('app.color.text_secondary'))
+      if (this.store.lastTaskWasFileCheck && !this.store.checkingFiles &&
+        this.store.fileCheckResult.length > 0) {
+        if (this.store.fileCheckItems.length > 0) {
+          Text('变化与问题明细')
+            .fontSize(17)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.text_primary'))
+            .width('100%')
+          List({ space: 10 }) {
+            ForEach(this.store.fileCheckItems, (item: FileCheckItemResult) => {
+              ListItem() {
+                FileCheckResultListItem({ item: item })
+                  .reuseId('file_check_result')
+              }
+            }, (item: FileCheckItemResult) => `${item.trackId}:${item.outcome}`)
+          }
           .width('100%')
-      } else if (this.store.sortIndexResult.length > 0) {
-        Text(this.store.sortIndexResult)
-          .fontColor($r('app.color.message_success'))
-          .width('100%')
-      } else if (this.store.sortIndexError.length > 0) {
-        Text(`排序索引重建失败：${this.store.sortIndexError}`)
-          .fontColor($r('app.color.message_error'))
-          .width('100%')
-      }
-
-      if (this.store.refreshingPalettes) {
-        Column({ space: 10 }) {
-          Progress({
-            value: this.store.paletteRefreshProcessed,
-            total: Math.max(1, this.store.paletteRefreshTotal),
-            type: ProgressType.Linear
-          }).width('100%')
-          Text(`正在刷新封面调色板 ${this.store.paletteRefreshProcessed} / ` +
-            `${this.store.paletteRefreshTotal}`)
+          .layoutWeight(1)
+          .edgeEffect(EdgeEffect.Spring)
+          .cachedCount(PageLayoutSpec.VIRTUAL_LIST_CACHE_COUNT, true)
+        } else {
+          Text('所有文件均可访问，且文件大小和修改时间没有变化')
             .fontColor($r('app.color.text_secondary'))
             .width('100%')
         }
-        .width('100%')
-      } else if (this.store.paletteRefreshResult.length > 0) {
-        Text(this.store.paletteRefreshResult)
-          .fontColor($r('app.color.message_success'))
-          .width('100%')
-      }
-
-      if (this.store.importDetailCount > 0) {
+      } else if (!this.store.lastTaskWasFileCheck && this.store.importDetailCount > 0) {
         Text('重复与错误明细')
           .fontSize(17)
           .fontWeight(FontWeight.Medium)
@@ -319,7 +395,8 @@ export struct LibraryManagementPage {
         .edgeEffect(EdgeEffect.Spring)
         .sticky(StickyStyle.Header)
         .cachedCount(PageLayoutSpec.VIRTUAL_LIST_CACHE_COUNT, true)
-      } else if (!this.store.importing && this.store.lastImportResult !== undefined) {
+      } else if (!this.store.lastTaskWasFileCheck && !this.store.importing &&
+        this.store.lastImportResult !== undefined) {
         Text('本次导入没有重复或错误')
           .fontColor($r('app.color.text_secondary'))
           .width('100%')
@@ -368,6 +445,20 @@ export struct LibraryManagementPage {
         Text('封面缓存').fontColor($r('app.color.text_primary')).layoutWeight(1)
         Text(`${this.store.statistics.artworkCount} 项`).fontColor($r('app.color.text_secondary'))
       }.width('100%')
+      Row({ space: 8 }) {
+        Text('失效文件')
+          .fontColor(this.store.statistics.unavailableTrackCount > 0 ?
+            $r('app.color.message_error') : $r('app.color.text_primary'))
+          .layoutWeight(1)
+        Text(`${this.store.statistics.unavailableTrackCount} 首`)
+          .fontColor($r('app.color.text_secondary'))
+        SymbolGlyph($r('sys.symbol.chevron_right'))
+          .fontSize(15)
+          .fontColor([$r('app.color.text_tertiary')])
+      }
+      .width('100%')
+      .opacity(this.store.statistics.unavailableTrackCount > 0 ? 1 : 0.55)
+      .onClick(() => this.openUnavailableFiles())
     }
     .width('100%')
     .padding(18)
@@ -387,29 +478,48 @@ export struct LibraryManagementPage {
           .onClick(() => {
             this.expandedImportDetail = undefined;
             this.store.selectAndImport(() => {
-              this.showTaskReport = true;
+              this.openTaskReport();
             });
           })
 
-        Button(this.store.rebuildingSortIndexes ? '正在重建排序索引…' : '重建排序索引')
+        Button(this.store.checkingFiles ? '正在检查音乐文件…' : '检查音乐文件')
           .width('100%')
           .height(48)
           .enabled(!this.store.importing && !this.store.loading && !this.store.rebuildingSortIndexes &&
+            !this.store.refreshingPalettes && !this.store.checkingFiles &&
             this.store.statistics.trackCount > 0)
           .onClick(() => {
-            this.store.rebuildSortIndexes();
-            this.showTaskReport = true;
+            this.store.checkMusicFiles();
+            this.openTaskReport();
           })
 
-        Button(this.store.refreshingPalettes ? '正在刷新调色板…' : '刷新封面调色板')
+        Button() {
+          Row({ space: 12 }) {
+            SymbolGlyph($r('sys.symbol.gearshape_fill'))
+              .fontSize(20)
+              .fontColor([$r('app.color.text_secondary')])
+            Column({ space: 3 }) {
+              Text('调试维护')
+                .fontSize(16)
+                .fontColor($r('app.color.text_primary'))
+              Text('重建排序索引、刷新封面调色板')
+                .fontSize(12)
+                .fontColor($r('app.color.text_secondary'))
+            }
+            .alignItems(HorizontalAlign.Start)
+            .layoutWeight(1)
+            SymbolGlyph($r('sys.symbol.chevron_right'))
+              .fontSize(16)
+              .fontColor([$r('app.color.text_tertiary')])
+          }
           .width('100%')
-          .height(48)
-          .enabled(!this.store.importing && !this.store.loading && !this.store.rebuildingSortIndexes &&
-            !this.store.refreshingPalettes && this.store.statistics.artworkCount > 0)
-          .onClick(() => {
-            this.store.refreshArtworkPalettes();
-            this.showTaskReport = true;
-          })
+        }
+        .width('100%')
+        .height(64)
+        .buttonStyle(ButtonStyleMode.TEXTUAL)
+        .backgroundColor($r('app.color.glass_surface'))
+        .borderRadius(18)
+        .onClick(() => this.openDebugMaintenance())
 
         if (this.hasTaskReport() || this.store.lastMessage.length > 0 || this.store.errorMessage.length > 0) {
           Divider()
@@ -418,11 +528,13 @@ export struct LibraryManagementPage {
             .opacity(0.22)
 
           if (this.hasTaskReport()) {
-            Button(this.store.importing ? '查看导入进度' : '查看任务结果')
+            Button(this.store.checkingFiles ? '查看文件检查进度' :
+              (this.store.importing ? '查看导入进度' :
+                (this.store.lastTaskWasFileCheck ? '查看文件检查结果' : '查看任务结果')))
               .width('100%')
               .height(48)
               .buttonStyle(ButtonStyleMode.TEXTUAL)
-              .onClick(() => this.showTaskReport = true)
+              .onClick(() => this.openTaskReport())
           }
 
           if (this.store.lastMessage.length > 0) {
@@ -465,10 +577,176 @@ export struct LibraryManagementPage {
     .height('100%')
     .backgroundColor(Color.Transparent)
     .attributeModifier(this.scrollBehavior)
-    .bindSheet($$this.showTaskReport, this.TaskReportSheet(), {
+    .bindSheet($$this.showPageSheet, this.ActiveSheet(), {
       height: SheetSize.LARGE,
       showClose: true,
       dragBar: true
     })
+  }
+
+  @Builder
+  private ActiveSheet() {
+    if (this.activeSheet === LibraryManagementSheet.UNAVAILABLE_FILES) {
+      this.UnavailableFilesSheet()
+    } else {
+      this.TaskReportSheet()
+    }
+  }
+
+  @Builder
+  private UnavailableFilesSheet() {
+    Column({ space: 14 }) {
+      Row({ space: 10 }) {
+        Text('失效文件')
+          .fontSize(24)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+          .layoutWeight(1)
+        if (this.selectedUnavailableIds.length > 0) {
+          Button(`删除 ${this.selectedUnavailableIds.length} 项`)
+            .buttonStyle(ButtonStyleMode.TEXTUAL)
+            .fontColor($r('app.color.destructive'))
+            .onClick(() => this.removeUnavailable(this.selectedUnavailableIds))
+        }
+      }
+      .width('100%')
+      if (this.store.unavailableTracks.length > 0) {
+        List({ space: 8 }) {
+          ForEach(this.store.unavailableTracks, (item: UnavailableTrackItem) => {
+            ListItem() {
+              Row({ space: 12 }) {
+                SymbolGlyph(this.selectedUnavailableIds.indexOf(item.trackId) >= 0 ?
+                  $r('sys.symbol.checkmark_circle_fill') : $r('sys.symbol.circle'))
+                  .fontSize(22)
+                  .fontColor([this.selectedUnavailableIds.indexOf(item.trackId) >= 0 ?
+                    $r('app.color.theme_accent') : $r('app.color.text_tertiary')])
+                Column({ space: 4 }) {
+                  Text(item.title)
+                    .fontSize(15)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor($r('app.color.text_primary'))
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  Text(`${LibraryItemAvailability.label(item.availability)}` +
+                    (item.artistDisplay.length > 0 ? ` · ${item.artistDisplay}` : ''))
+                    .fontSize(12)
+                    .fontColor($r('app.color.message_error'))
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                }
+                .alignItems(HorizontalAlign.Start)
+                .layoutWeight(1)
+                Button() {
+                  SymbolGlyph($r('sys.symbol.trash'))
+                    .fontSize(18)
+                    .fontColor([$r('app.color.destructive')])
+                }
+                .width(40)
+                .height(40)
+                .buttonStyle(ButtonStyleMode.TEXTUAL)
+                .accessibilityText(`删除 ${item.title}`)
+                .onClick(() => this.removeUnavailable([item.trackId]))
+              }
+              .width('100%')
+              .padding(12)
+              .borderRadius(16)
+              .backgroundColor($r('app.color.glass_surface'))
+              .onClick(() => this.toggleUnavailableSelection(item.trackId))
+            }
+          }, (item: UnavailableTrackItem) => `${item.trackId}`)
+        }
+        .width('100%')
+        .layoutWeight(1)
+        .edgeEffect(EdgeEffect.Spring)
+        Button('一键清理所有失效记录')
+          .width('100%')
+          .fontColor($r('app.color.destructive'))
+          .backgroundColor($r('app.color.destructive_surface'))
+          .onClick(() => this.confirmClearUnavailable())
+      } else {
+        Text('当前没有失效文件')
+          .fontColor($r('app.color.text_secondary'))
+          .width('100%')
+          .textAlign(TextAlign.Center)
+          .layoutWeight(1)
+      }
+    }
+    .width('100%')
+    .height('100%')
+    .padding({ left: 20, right: 20, top: 20, bottom: 24 })
+  }
+
+  private confirmClearUnavailable(): void {
+    this.getUIContext().showAlertDialog({
+      title: '清理所有失效记录？',
+      message: '只会移除音乐库记录，不会删除设备上的原始文件。',
+      primaryButton: {
+        value: '取消',
+        action: () => {}
+      },
+      secondaryButton: {
+        value: '清理',
+        fontColor: $r('app.color.destructive'),
+        action: () => this.store.clearAllUnavailableTracks()
+      }
+    });
+  }
+}
+
+@Reusable
+@Component
+struct FileCheckResultListItem {
+  @Prop item: FileCheckItemResult;
+
+  private outcomeLabel(): string {
+    switch (this.item.outcome) {
+      case FileCheckItemOutcome.UPDATED:
+        return '已更新';
+      case FileCheckItemOutcome.RECOVERED:
+        return '已恢复';
+      case FileCheckItemOutcome.AUTHORIZATION_REVOKED:
+        return '授权失效';
+      case FileCheckItemOutcome.CORRUPTED:
+        return '解析失败';
+      default:
+        return '不可用';
+    }
+  }
+
+  private success(): boolean {
+    return this.item.outcome === FileCheckItemOutcome.UPDATED ||
+      this.item.outcome === FileCheckItemOutcome.RECOVERED;
+  }
+
+  build() {
+    Column({ space: 6 }) {
+      Row({ space: 10 }) {
+        Text(this.outcomeLabel())
+          .fontSize(12)
+          .fontColor(this.success() ?
+            $r('app.color.message_success') : $r('app.color.message_error'))
+        Text(this.item.displayName)
+          .fontSize(15)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_primary'))
+          .maxLines(2)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .layoutWeight(1)
+      }
+      .width('100%')
+      Text(this.item.reason)
+        .fontSize(12)
+        .fontColor($r('app.color.text_secondary'))
+        .width('100%')
+      Text(this.item.uri)
+        .fontSize(11)
+        .fontColor($r('app.color.text_tertiary'))
+        .maxLines(3)
+        .width('100%')
+    }
+    .width('100%')
+    .padding(14)
+    .borderRadius(16)
+    .backgroundColor($r('app.color.glass_surface'))
   }
 }

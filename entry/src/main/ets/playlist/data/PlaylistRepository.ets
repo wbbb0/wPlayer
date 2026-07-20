@@ -1,5 +1,6 @@
 import { relationalStore } from '@kit.ArkData';
 import {
+  AvailabilityState,
   PlaylistDetail,
   PlaylistItemInput,
   PlaylistItemSource,
@@ -204,12 +205,14 @@ export class PlaylistRepository {
           WHEN ? = ${PlaylistTrackSortField.ALBUM} THEN t.album_section
           ELSE '#'
         END,
+        f.availability_state,
         pi.manual_position, pi.added_at, pi.add_source,
         pi.first_qualified_at, pi.last_qualified_at,
         MAX(COALESCE(rs.last_played_at, 0), COALESCE(ps.last_played_at, 0)),
         COALESCE(ps.last_completed_at, 0)
        FROM playlist_item pi
        JOIN track t ON t.id = pi.track_id
+       JOIN media_file f ON f.id = t.media_file_id
        LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
        LEFT JOIN track_playback_stats ps ON ps.track_id = t.id
        LEFT JOIN track_playback_state rs ON rs.track_id = t.id
@@ -237,13 +240,14 @@ export class PlaylistRepository {
           paletteSecondary: resultSet.getString(14),
           paletteAccent: resultSet.getString(15),
           sectionKey: resultSet.getString(16),
-          position: resultSet.getLong(17),
-          addedAt: resultSet.getLong(18),
-          source: resultSet.getLong(19) as PlaylistItemSource,
-          firstQualifiedAt: resultSet.getLong(20),
-          lastQualifiedAt: resultSet.getLong(21),
-          lastPlayedAt: resultSet.getLong(22),
-          lastCompletedAt: resultSet.getLong(23)
+          availability: resultSet.getLong(17) as AvailabilityState,
+          position: resultSet.getLong(18),
+          addedAt: resultSet.getLong(19),
+          source: resultSet.getLong(20) as PlaylistItemSource,
+          firstQualifiedAt: resultSet.getLong(21),
+          lastQualifiedAt: resultSet.getLong(22),
+          lastPlayedAt: resultSet.getLong(23),
+          lastCompletedAt: resultSet.getLong(24)
         });
       }
     } catch (error) {

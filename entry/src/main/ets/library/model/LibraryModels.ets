@@ -203,6 +203,7 @@ export interface TrackListItem {
   paletteSecondary: string;
   paletteAccent: string;
   sectionKey: string;
+  availability: AvailabilityState;
 }
 
 export interface ArtistReference {
@@ -252,6 +253,7 @@ export interface AlbumListItem {
   paletteSecondary: string;
   paletteAccent: string;
   sectionKey: string;
+  unavailableTrackCount: number;
 }
 
 export interface AlbumDetail {
@@ -330,6 +332,64 @@ export interface LibraryStatistics {
   trackCount: number;
   albumCount: number;
   artworkCount: number;
+  unavailableTrackCount: number;
+}
+
+export interface MediaFileCheckCandidate {
+  trackId: number;
+  uri: string;
+  displayName: string;
+  fileSize: number;
+  modifiedAt: number;
+  availability: AvailabilityState;
+}
+
+export interface UnavailableTrackItem {
+  trackId: number;
+  title: string;
+  artistDisplay: string;
+  albumDisplay: string;
+  displayName: string;
+  uri: string;
+  availability: AvailabilityState;
+}
+
+export interface FileCheckProgress {
+  total: number;
+  processed: number;
+  updated: number;
+  unavailable: number;
+  recovered: number;
+  currentName: string;
+}
+
+export interface FileCheckResult {
+  checked: number;
+  updated: number;
+  unavailable: number;
+  recovered: number;
+  items: Array<FileCheckItemResult>;
+}
+
+export enum FileCheckItemOutcome {
+  UPDATED = 'updated',
+  RECOVERED = 'recovered',
+  UNAVAILABLE = 'unavailable',
+  AUTHORIZATION_REVOKED = 'authorization_revoked',
+  CORRUPTED = 'corrupted'
+}
+
+export interface FileCheckItemResult {
+  trackId: number;
+  displayName: string;
+  uri: string;
+  outcome: FileCheckItemOutcome;
+  reason: string;
+}
+
+export interface TrackAvailabilityUpdate {
+  trackId: number;
+  state: AvailabilityState;
 }
 
 export interface ImportProgress {

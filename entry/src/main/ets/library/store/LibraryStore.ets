@@ -8,6 +8,9 @@ import {
   AlbumSortField,
   ArtistReference,
   ArtistDetail,
+  FileCheckProgress,
+  FileCheckResult,
+  FileCheckItemResult,
   ImportProgress,
   ImportResult,
   ImportItemDetailKind,
@@ -18,7 +21,8 @@ import {
   SortDirection,
   TrackListItem,
   TrackNavigationTargets,
-  TrackSortField
+  TrackSortField,
+  UnavailableTrackItem
 } from '../model/LibraryModels';
 import { SettingsRepository } from '../../settings/SettingsRepository';
 import { appSettings } from '../../settings/AppSettingsStore';
@@ -93,7 +97,23 @@ export class LibraryStore {
   trackSortDirection: SortDirection = SortDirection.ASCENDING;
   albumSortField: AlbumSortField = AlbumSortField.TITLE;
   albumSortDirection: SortDirection = SortDirection.ASCENDING;
-  statistics: LibraryStatistics = { trackCount: 0, albumCount: 0, artworkCount: 0 };
+  statistics: LibraryStatistics = {
+    trackCount: 0,
+    albumCount: 0,
+    artworkCount: 0,
+    unavailableTrackCount: 0
+  };
+  fileCheckProgress: FileCheckProgress = {
+    total: 0,
+    processed: 0,
+    updated: 0,
+    unavailable: 0,
+    recovered: 0,
+    currentName: ''
+  };
+  fileCheckItems: Array<FileCheckItemResult> = [];
+  lastTaskWasFileCheck: boolean = false;
+  unavailableTracks: Array<UnavailableTrackItem> = [];
   importProgress: ImportProgress = {
     total: 0,
     processed: 0,
@@ -105,11 +125,13 @@ export class LibraryStore {
   initialized: boolean = false;
   loading: boolean = false;
   importing: boolean = false;
+  checkingFiles: boolean = false;
   rebuildingSortIndexes: boolean = false;
   refreshingPalettes: boolean = false;
   paletteRefreshProcessed: number = 0;
   paletteRefreshTotal: number = 0;
   paletteRefreshResult: string = '';
+  fileCheckResult: string = '';
   lastMessage: string = '';
   errorMessage: string = '';
   lastImportResult?: ImportResult;
@@ -135,6 +157,13 @@ export class LibraryStore {
   constructor(repository?: MusicRepository, playbackBridge?: LibraryPlaybackBridge) {
     this.repository = repository === undefined ? new MusicRepository() : repository;
     this.playbackBridge = playbackBridge;
+    this.playbackBridge?.setLibraryMutationListener((): void => {
+      if (this.initialized) {
+        this.refresh().then((): Promise<void> => this.loadUnavailableTracks()).catch((error: Object): void => {
+          console.warn(`Unable to refresh after playback library change: ${LibraryStore.errorMessageOf(error)}`);
+        });
+      }
+    });
   }
 
   async initialize(context: common.UIAbilityContext, settings?: SettingsRepository): Promise<void> {
@@ -257,6 +286,9 @@ export class LibraryStore {
       return;
     }
     this.importing = true;
+    this.lastTaskWasFileCheck = false;
+    this.fileCheckResult = '';
+    this.fileCheckItems = [];
     this.errorMessage = '';
     this.lastMessage = '';
     this.lastImportResult = undefined;
@@ -350,6 +382,67 @@ export class LibraryStore {
     } finally {
       this.loading = false;
     }
+  }
+
+  async checkMusicFiles(): Promise<void> {
+    if (this.importer === undefined || this.importing || this.loading || this.checkingFiles) {
+      return;
+    }
+    this.checkingFiles = true;
+    this.lastTaskWasFileCheck = true;
+    this.errorMessage = '';
+    this.fileCheckResult = '';
+    this.fileCheckItems = [];
+    try {
+      const result: FileCheckResult = await this.importer.checkLibrary(
+        (progress: FileCheckProgress): void => {
+          this.fileCheckProgress = progress;
+        }
+      );
+      await this.refresh();
+      await this.loadUnavailableTracks();
+      this.fileCheckItems = result.items;
+      this.fileCheckResult = `已检查 ${result.checked} 首，更新 ${result.updated} 首，` +
+        `恢复 ${result.recovered} 首，失效 ${this.statistics.unavailableTrackCount} 首`;
+      this.lastMessage = this.fileCheckResult;
+    } catch (error) {
+      this.errorMessage = LibraryStore.errorMessageOf(error);
+    } finally {
+      this.checkingFiles = false;
+    }
+  }
+
+  cancelFileCheck(): void {
+    this.importer?.cancel();
+  }
+
+  async loadUnavailableTracks(): Promise<void> {
+    this.unavailableTracks = await this.repository.getUnavailableTracks();
+  }
+
+  async removeUnavailableTracks(trackIds: Array<number>): Promise<void> {
+    if (trackIds.length === 0 || this.loading || this.importing || this.checkingFiles) {
+      return;
+    }
+    this.loading = true;
+    this.errorMessage = '';
+    try {
+      await this.playbackBridge?.prepareForTrackRemoval(trackIds);
+      const removed = await this.repository.removeTracks(trackIds);
+      await this.refresh();
+      await this.loadUnavailableTracks();
+      this.lastMessage = `已从音乐库移除 ${removed} 首失效文件记录`;
+    } catch (error) {
+      this.errorMessage = LibraryStore.errorMessageOf(error);
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  clearAllUnavailableTracks(): Promise<void> {
+    return this.removeUnavailableTracks(
+      this.unavailableTracks.map((item: UnavailableTrackItem): number => item.trackId)
+    );
   }
 
   async rebuildSortIndexes(): Promise<void> {

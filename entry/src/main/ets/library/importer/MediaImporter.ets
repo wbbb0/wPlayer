@@ -9,7 +9,9 @@ import {
 import { MetadataReader } from '../metadata/MetadataReader';
 import {
   calculateFullFingerprint,
-  readArtworkBytesAsync
+  MediaFileStat,
+  readArtworkBytesAsync,
+  statMediaFile
 } from '../metadata/MediaFileTasks';
 import { ImportConcurrencyPolicy } from './ImportConcurrencyPolicy';
 import { ImportPerformanceTrace } from './ImportPerformanceTrace';
@@ -18,24 +20,33 @@ import { ImportDetailPolicy } from './ImportDetailPolicy';
 import { ImportPreparationPolicy, PreparedItemState } from './ImportPreparationPolicy';
 import {
   ArtworkPictureType,
+  AvailabilityState,
   ImportProgress,
   ImportResult,
   ImportItemDetailKind,
   ImportItemOutcome,
   ImportItemResult,
+  FileCheckProgress,
+  FileCheckResult,
+  FileCheckItemOutcome,
+  FileCheckItemResult,
+  MediaFileCheckCandidate,
   MetadataReadResult,
   ParsedArtwork,
-  ParsedMetadata
+  ParsedMetadata,
+  TrackAvailabilityUpdate
 } from '../model/LibraryModels';
 import {
   persistReadPermissions,
   revokeReadPermissions,
+  ensureReadPermissions,
   selectAudioFiles
 } from './MediaPickerService';
 
 export type ImportProgressCallback = (progress: ImportProgress) => void;
 export type ImportStartedCallback = () => void;
 export type ImportItemCallback = (item: ImportItemResult) => void;
+export type FileCheckProgressCallback = (progress: FileCheckProgress) => void;
 
 interface PreparedImport {
   uri: string;
@@ -55,6 +66,14 @@ interface CommitOutcome {
   duplicateSource?: string;
   duplicateSourceUri?: string;
   errorMessage: string;
+}
+
+interface FileCheckWorkResult {
+  updated: boolean;
+  unavailable: boolean;
+  recovered: boolean;
+  item?: FileCheckItemResult;
+  availabilityUpdate?: TrackAvailabilityUpdate;
 }
 
 export class MediaImporter {
@@ -141,6 +160,225 @@ export class MediaImporter {
       await this.repository.removeUnreferencedArtwork(asset.assetId);
     }
     this.scheduleArtworkCleanup();
+  }
+
+  async checkLibrary(onProgress?: FileCheckProgressCallback): Promise<FileCheckResult> {
+    if (this.importing) {
+      throw new Error('Cannot check music files during an import');
+    }
+    this.importing = true;
+    this.cancelRequested = false;
+    this.artworkPreparations.clear();
+    let progress: FileCheckProgress = {
+      total: 0,
+      processed: 0,
+      updated: 0,
+      unavailable: 0,
+      recovered: 0,
+      currentName: ''
+    };
+    try {
+      const candidates = await this.repository.getMediaFileCheckCandidates();
+      progress = {
+      total: candidates.length,
+      processed: 0,
+      updated: 0,
+      unavailable: 0,
+      recovered: 0,
+      currentName: ''
+      };
+      this.notifyFileCheck(onProgress, progress);
+      const startedAt = Date.now();
+      progress.currentName = '正在激活文件访问权限';
+      this.notifyFileCheck(onProgress, progress);
+      const permissionStartedAt = Date.now();
+      const permissions = await ensureReadPermissions(
+        candidates.map((candidate: MediaFileCheckCandidate): string => candidate.uri)
+      );
+      const accessibleUris = new Set<string>(permissions.successfulUris);
+      const availabilityUpdates: Array<TrackAvailabilityUpdate> = [];
+      const itemResults: Array<FileCheckItemResult> = [];
+      const accessibleCandidates: Array<MediaFileCheckCandidate> = [];
+      for (let index = 0; index < candidates.length; index += 1) {
+        const candidate = candidates[index];
+        if (accessibleUris.has(candidate.uri)) {
+          accessibleCandidates.push(candidate);
+          continue;
+        }
+        availabilityUpdates.push({
+          trackId: candidate.trackId,
+          state: AvailabilityState.AUTHORIZATION_REVOKED
+        });
+        itemResults.push({
+          trackId: candidate.trackId,
+          displayName: candidate.displayName,
+          uri: candidate.uri,
+          outcome: FileCheckItemOutcome.AUTHORIZATION_REVOKED,
+          reason: '文件读取授权已失效'
+        });
+        progress.processed += 1;
+        progress.unavailable += 1;
+      }
+      console.info(`[FileCheck] permissions ${Date.now() - permissionStartedAt}ms, ` +
+        `available=${accessibleCandidates.length}, failed=${permissions.failedUris.length}`);
+      let nextIndex = 0;
+      let lastProgressAt = 0;
+      const consume = async (): Promise<void> => {
+        while (!this.cancelRequested) {
+          const index = nextIndex++;
+          if (index >= accessibleCandidates.length) {
+            return;
+          }
+          const candidate = accessibleCandidates[index];
+          progress.currentName = candidate.displayName;
+          const outcome = await this.checkOneFile(candidate);
+          if (outcome.updated) {
+            progress.updated += 1;
+          }
+          if (outcome.unavailable) {
+            progress.unavailable += 1;
+          }
+          if (outcome.recovered) {
+            progress.recovered += 1;
+          }
+          if (outcome.item !== undefined) {
+            itemResults.push(outcome.item);
+          }
+          if (outcome.availabilityUpdate !== undefined) {
+            availabilityUpdates.push(outcome.availabilityUpdate);
+          }
+          progress.processed += 1;
+          const now = Date.now();
+          if (now - lastProgressAt >= 100 || progress.processed >= progress.total) {
+            lastProgressAt = now;
+            this.notifyFileCheck(onProgress, progress);
+          }
+        }
+      };
+      const workers: Array<Promise<void>> = [];
+      const workerCount = Math.min(
+        ImportConcurrencyPolicy.FILE_CHECK_CONCURRENCY,
+        accessibleCandidates.length
+      );
+      for (let index = 0; index < workerCount; index += 1) {
+        workers.push(consume());
+      }
+      await Promise.all(workers);
+      await this.repository.setTrackAvailabilities(availabilityUpdates);
+      progress.currentName = '';
+      this.notifyFileCheck(onProgress, progress);
+      console.info(`[FileCheck] completed ${progress.processed}/${progress.total} in ` +
+        `${Date.now() - startedAt}ms, updated=${progress.updated}, unavailable=${progress.unavailable}, ` +
+        `recovered=${progress.recovered}`);
+      return {
+        checked: progress.processed,
+        updated: progress.updated,
+        unavailable: progress.unavailable,
+        recovered: progress.recovered,
+        items: itemResults
+      };
+    } finally {
+      this.importing = false;
+      this.cancelRequested = false;
+      this.artworkPreparations.clear();
+      this.scheduleArtworkCleanup();
+    }
+  }
+
+  private async checkOneFile(candidate: MediaFileCheckCandidate): Promise<FileCheckWorkResult> {
+    let stat: MediaFileStat;
+    try {
+      stat = await statMediaFile(candidate.uri);
+    } catch (_error) {
+      return {
+        updated: false,
+        unavailable: true,
+        recovered: false,
+        availabilityUpdate: {
+          trackId: candidate.trackId,
+          state: AvailabilityState.UNAVAILABLE
+        },
+        item: {
+          trackId: candidate.trackId,
+          displayName: candidate.displayName,
+          uri: candidate.uri,
+          outcome: FileCheckItemOutcome.UNAVAILABLE,
+          reason: '无法打开音乐文件'
+        }
+      };
+    }
+    if (stat.fileSize === candidate.fileSize && stat.modifiedAt === candidate.modifiedAt) {
+      if (candidate.availability === AvailabilityState.AVAILABLE) {
+        return { updated: false, unavailable: false, recovered: false };
+      }
+      return {
+        updated: false,
+        unavailable: false,
+        recovered: true,
+        availabilityUpdate: {
+          trackId: candidate.trackId,
+          state: AvailabilityState.AVAILABLE
+        },
+        item: {
+          trackId: candidate.trackId,
+          displayName: candidate.displayName,
+          uri: candidate.uri,
+          outcome: FileCheckItemOutcome.RECOVERED,
+          reason: '文件已恢复可用'
+        }
+      };
+    }
+    try {
+      const readResult = await MetadataReader.read(candidate.uri);
+      let artworks: Array<ArtworkImportInput>;
+      try {
+        artworks = await this.prepareArtworks(candidate.uri, readResult.metadata);
+      } catch (error) {
+        console.warn(`Artwork refresh failed: ${MediaImporter.errorMessage(error)}`);
+        artworks = MediaImporter.artworkMetadataOnly(readResult.metadata.artworks);
+      }
+      await this.repository.refreshTrack(candidate.trackId, {
+        uri: candidate.uri,
+        displayName: readResult.fileName,
+        fileSize: readResult.fileSize,
+        modifiedAt: readResult.modifiedAt,
+        quickFingerprint: readResult.quickFingerprint,
+        fullFingerprint: '',
+        authorizationPersisted: true,
+        metadata: readResult.metadata,
+        artworks: artworks
+      });
+      return {
+        updated: true,
+        unavailable: false,
+        recovered: candidate.availability !== AvailabilityState.AVAILABLE,
+        item: {
+          trackId: candidate.trackId,
+          displayName: readResult.fileName,
+          uri: candidate.uri,
+          outcome: FileCheckItemOutcome.UPDATED,
+          reason: '文件已变化，音乐信息已更新'
+        }
+      };
+    } catch (error) {
+      console.warn(`Unable to refresh ${candidate.displayName}: ${MediaImporter.errorMessage(error)}`);
+      return {
+        updated: false,
+        unavailable: true,
+        recovered: false,
+        availabilityUpdate: {
+          trackId: candidate.trackId,
+          state: AvailabilityState.CORRUPTED
+        },
+        item: {
+          trackId: candidate.trackId,
+          displayName: candidate.displayName,
+          uri: candidate.uri,
+          outcome: FileCheckItemOutcome.CORRUPTED,
+          reason: '文件已变化，但无法重新解析'
+        }
+      };
+    }
   }
 
   async cleanupArtworkStorage(): Promise<void> {
@@ -832,6 +1070,18 @@ export class MediaImporter {
       imported: progress.imported,
       duplicates: progress.duplicates,
       failed: progress.failed,
+      currentName: progress.currentName
+    });
+  }
+
+  private notifyFileCheck(callback: FileCheckProgressCallback | undefined,
+    progress: FileCheckProgress): void {
+    callback?.({
+      total: progress.total,
+      processed: progress.processed,
+      updated: progress.updated,
+      unavailable: progress.unavailable,
+      recovered: progress.recovered,
       currentName: progress.currentName
     });
   }

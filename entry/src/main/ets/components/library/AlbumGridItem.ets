@@ -8,6 +8,8 @@ import {
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { artistTarget } from '../navigation/LibraryNavigation';
 import { LayoutLength } from '../layout/LayoutLength';
+import { LibraryItemAvailability } from './LibraryItemAvailability';
+import { AvailabilityState } from '../../library/model/LibraryModels';
 
 export enum AlbumAction {
   INSERT_NEXT = 0,
@@ -119,7 +121,12 @@ export struct AlbumGridItem {
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .width('100%')
       Text(this.album.albumArtistDisplay.length > 0 ?
-        this.album.albumArtistDisplay : `${this.album.trackCount} 首`)
+        (this.album.unavailableTrackCount > 0 ?
+          `${this.album.albumArtistDisplay} · ${this.album.unavailableTrackCount} 首不可用` :
+          this.album.albumArtistDisplay) :
+        (this.albumUnavailable() ? '文件均不可用' :
+          (this.album.unavailableTrackCount > 0 ?
+            `${this.album.unavailableTrackCount} 首不可用` : `${this.album.trackCount} 首`)))
         .fontSize(12)
         .fontColor($r('app.color.text_secondary'))
         .maxLines(1)
@@ -128,6 +135,9 @@ export struct AlbumGridItem {
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)
+    .opacity(LibraryItemAvailability.opacity(
+      this.albumUnavailable() ? AvailabilityState.UNAVAILABLE : AvailabilityState.AVAILABLE
+    ))
     .onClick(() => {
       if (this.selectionMode) {
         this.onToggleSelection(this.album);
@@ -135,6 +145,11 @@ export struct AlbumGridItem {
         this.onActivate(this.album);
       }
     })
+  }
+
+  private albumUnavailable(): boolean {
+    return this.album.trackCount > 0 &&
+      this.album.unavailableTrackCount >= this.album.trackCount;
   }
 
   @Builder

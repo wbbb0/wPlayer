@@ -53,6 +53,142 @@ export class MusicLibraryImporter {
     });
   }
 
+  refreshTrack(trackId: number, input: TrackImportInput): Promise<void> {
+    return this.database.enqueueWrite(async (transaction: relationalStore.Transaction): Promise<void> => {
+      const current = await transaction.querySql(
+        `SELECT t.album_id, t.duration_ms
+         FROM track t WHERE t.id = ? LIMIT 1`,
+        [trackId]
+      );
+      if (!current.goToNextRow()) {
+        current.close();
+        throw new Error(`Track ${trackId} no longer exists`);
+      }
+      const oldAlbumId = current.isColumnNull(0) ? undefined : current.getLong(0);
+      current.close();
+      const now = Date.now();
+      const artworkResult = await transaction.querySql(
+        `SELECT asset_id, COUNT(*) FROM track_artwork
+         WHERE track_id = ? AND asset_id IS NOT NULL GROUP BY asset_id`,
+        [trackId]
+      );
+      while (artworkResult.goToNextRow()) {
+        const assetId = artworkResult.getLong(0);
+        const count = artworkResult.getLong(1);
+        await transaction.execute(
+          `UPDATE artwork_asset SET ref_count = MAX(0, ref_count - ?),
+            unreferenced_at = CASE WHEN ref_count - ? <= 0 THEN ? ELSE unreferenced_at END
+           WHERE id = ?`,
+          [count, count, now, assetId]
+        );
+      }
+      artworkResult.close();
+      await transaction.execute('DELETE FROM track_credit WHERE track_id = ?', [trackId]);
+      await transaction.execute('DELETE FROM track_genre WHERE track_id = ?', [trackId]);
+      await transaction.execute('DELETE FROM track_tag_extra WHERE track_id = ?', [trackId]);
+      await transaction.execute('DELETE FROM track_artwork WHERE track_id = ?', [trackId]);
+
+      const metadata = input.metadata;
+      const albumId = await this.ensureAlbum(transaction, metadata, now);
+      const title = metadata.title.length > 0 ? metadata.title : input.displayName;
+      const sortTitle = metadata.sortTitle.length > 0 ? metadata.sortTitle : title;
+      const artistDisplay = metadata.artists.join(', ');
+      const titleSort = SortKeyNormalizer.natural(sortTitle);
+      const albumSort = SortKeyNormalizer.natural(metadata.album);
+      const artistSort = SortKeyNormalizer.natural(artistDisplay);
+      await transaction.execute(
+        `UPDATE track SET album_id = ?, title = ?, sort_title = ?, sort_key = ?,
+          title_natural_key = ?, title_section = ?, artist_display = ?,
+          artist_natural_key = ?, artist_section = ?, album_display = ?,
+          album_natural_key = ?, album_section = ?, album_artist_display = ?,
+          composer_display = ?, track_number = ?, total_track_count = ?,
+          track_number_raw = ?, disc_number = ?, total_disc_count = ?, disc_number_raw = ?,
+          release_date_raw = ?, release_year = ?, release_month = ?, release_day = ?,
+          release_date_precision = ?, release_date_sort = ?, original_release_date_raw = ?,
+          original_release_year = ?, original_release_month = ?, original_release_day = ?,
+          original_release_date_precision = ?, duration_ms = ?, sample_rate = ?,
+          channel_count = ?, bits_per_sample = ?, bit_rate = ?, primary_artwork_id = NULL,
+          updated_at = ? WHERE id = ?`,
+        [
+          albumId === undefined ? null : albumId, title, sortTitle,
+          MetadataNormalizer.normalizeKey(sortTitle), titleSort.key, titleSort.section,
+          artistDisplay, artistSort.key, artistSort.section, metadata.album,
+          albumSort.key, albumSort.section, metadata.albumArtists.join(', '),
+          metadata.composers.join(', '), this.numberOrNull(metadata.trackNumber.value),
+          this.numberOrNull(metadata.trackNumber.total),
+          metadata.trackNumber.raw === undefined ? '' : metadata.trackNumber.raw,
+          this.numberOrNull(metadata.discNumber.value), this.numberOrNull(metadata.discNumber.total),
+          metadata.discNumber.raw === undefined ? '' : metadata.discNumber.raw,
+          metadata.releaseDate.raw === undefined ? '' : metadata.releaseDate.raw,
+          this.numberOrNull(metadata.releaseDate.year), this.numberOrNull(metadata.releaseDate.month),
+          this.numberOrNull(metadata.releaseDate.day), metadata.releaseDate.precision,
+          SortKeyNormalizer.date(metadata.releaseDate),
+          metadata.originalReleaseDate.raw === undefined ? '' : metadata.originalReleaseDate.raw,
+          this.numberOrNull(metadata.originalReleaseDate.year),
+          this.numberOrNull(metadata.originalReleaseDate.month),
+          this.numberOrNull(metadata.originalReleaseDate.day),
+          metadata.originalReleaseDate.precision, metadata.durationMs, metadata.sampleRate,
+          metadata.channelCount, metadata.bitsPerSample, metadata.bitRate, now, trackId
+        ]
+      );
+      await this.insertCredits(transaction, trackId, metadata);
+      await this.insertGenres(transaction, trackId, metadata.genres);
+      await this.insertRawTags(transaction, trackId, metadata.rawTags);
+      const primaryArtworkId = await this.insertArtworks(
+        transaction,
+        trackId,
+        input.artworks === undefined ? [] : input.artworks,
+        now
+      );
+      if (primaryArtworkId !== undefined) {
+        await transaction.execute(
+          'UPDATE track SET primary_artwork_id = ? WHERE id = ?',
+          [primaryArtworkId, trackId]
+        );
+      }
+      await transaction.execute(
+        `UPDATE media_file SET display_name = ?, file_size = ?, modified_at = ?,
+          quick_fingerprint = ?, content_fingerprint = '', format = ?, mime_type = ?,
+          authorization_persisted = ?, availability_state = ?, import_state = ?,
+          last_checked_at = ?, updated_at = ?
+         WHERE id = (SELECT media_file_id FROM track WHERE id = ?)`,
+        [
+          input.displayName, input.fileSize, input.modifiedAt, input.quickFingerprint,
+          metadata.format, metadata.mimeType, input.authorizationPersisted ? 1 : 0,
+          AvailabilityState.AVAILABLE, ImportState.IMPORTED, now, now, trackId
+        ]
+      );
+      const affectedAlbums: Array<number> = [];
+      if (oldAlbumId !== undefined) {
+        affectedAlbums.push(oldAlbumId);
+      }
+      if (albumId !== undefined && affectedAlbums.indexOf(albumId) < 0) {
+        affectedAlbums.push(albumId);
+      }
+      for (let index = 0; index < affectedAlbums.length; index += 1) {
+        const affectedAlbumId = affectedAlbums[index];
+        await transaction.execute(
+          `UPDATE album SET
+            track_count = (SELECT COUNT(*) FROM track WHERE album_id = ?),
+            total_duration_ms = COALESCE((SELECT SUM(duration_ms) FROM track WHERE album_id = ?), 0),
+            primary_artwork_id = (
+              SELECT primary_artwork_id FROM track WHERE album_id = ?
+                AND primary_artwork_id IS NOT NULL ORDER BY id LIMIT 1
+            ),
+            updated_at = ? WHERE id = ?`,
+          [affectedAlbumId, affectedAlbumId, affectedAlbumId, now, affectedAlbumId]
+        );
+      }
+      await transaction.execute('DELETE FROM album WHERE track_count = 0');
+      await transaction.execute(
+        `DELETE FROM person WHERE id NOT IN (
+          SELECT person_id FROM track_credit UNION SELECT person_id FROM album_credit
+        )`
+      );
+      await transaction.execute('DELETE FROM genre WHERE id NOT IN (SELECT genre_id FROM track_genre)');
+    });
+  }
+
   private async importTrackInTransaction(transaction: relationalStore.Transaction,
     input: TrackImportInput): Promise<ImportTrackResult> {
     try {

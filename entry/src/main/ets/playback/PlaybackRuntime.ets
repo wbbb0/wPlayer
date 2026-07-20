@@ -8,7 +8,11 @@ import { AvailabilityState, TrackListItem } from '../library/model/LibraryModels
 import { SettingsRepository } from '../settings/SettingsRepository';
 import { appSettings } from '../settings/AppSettingsStore';
 import { ArtworkMemoryCache, DecodedFullArtwork } from './artwork/ArtworkMemoryCache';
-import { PlaybackEngine, PlaybackEngineListener } from './engine/PlaybackEngine';
+import {
+  PlaybackEngine,
+  PlaybackEngineListener,
+  PlaybackFileError
+} from './engine/PlaybackEngine';
 import {
   CompletedCollectionMode,
   PlaybackOriginKind,
@@ -44,6 +48,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   private readonly stateReducer: PlaybackStateReducer = new PlaybackStateReducer();
   private context?: common.UIAbilityContext;
   private settings?: SettingsRepository;
+  private libraryMutationListener?: () => void;
   private session?: PlaybackSession;
   private artworkCache?: ArtworkMemoryCache;
   private initializePromise?: Promise<void>;
@@ -373,6 +378,33 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.settings?.setPlaybackQueue([], -1);
     this.syncQueueSnapshot();
     this.onStateChanged(PlayerState.IDLE);
+  }
+
+  async prepareForTrackRemoval(trackIds: Array<number>): Promise<void> {
+    if (trackIds.length === 0) {
+      return;
+    }
+    const selected = new Set<number>(trackIds);
+    ++this.queueBuildEpoch;
+    const entryIds = this.queue.snapshot().entries
+      .filter((entry: QueueEntry): boolean => selected.has(entry.track.id))
+      .map((entry: QueueEntry): number => entry.queueEntryId);
+    if (entryIds.length > 0) {
+      this.removeQueueEntries(entryIds);
+      return;
+    }
+    if (this.playerStore.currentTrack !== undefined &&
+      selected.has(this.playerStore.currentTrack.id)) {
+      this.queue.clear();
+      this.playerStore.queueSize = 0;
+      this.playerStore.queuePhase = QueueBuildPhase.EMPTY;
+      this.syncQueueSnapshot();
+      this.clearRemovedQueuePlayback();
+    }
+  }
+
+  setLibraryMutationListener(listener: () => void): void {
+    this.libraryMutationListener = listener;
   }
 
   async shutdown(): Promise<void> {
@@ -788,8 +820,10 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       this.playerStore.progress.durationMs = track.durationMs;
       this.session?.updateMetadata(track, this.playerStore.heroArtworkUri);
       if (!await ensureReadPermission(track.uri)) {
-        this.repository.setTrackAvailability(trackId, AvailabilityState.AUTHORIZATION_REVOKED)
-          .catch(() => undefined);
+        await this.markUnavailableAndMaybeRemove(
+          trackId,
+          AvailabilityState.AUTHORIZATION_REVOKED
+        );
         throw new Error('音乐文件授权已失效，请重新导入该文件');
       }
       if (epoch !== this.artworkEpoch) {
@@ -820,9 +854,27 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
         return;
       }
       const message = PlaybackRuntime.messageOf(error);
+      if (error instanceof PlaybackFileError) {
+        await this.markUnavailableAndMaybeRemove(trackId, error.availability);
+        if (epoch !== this.artworkEpoch) {
+          return;
+        }
+      }
       console.warn(`Unable to start playback for track ${trackId}: ${message}`);
       this.onStateChanged(PlayerState.ERROR, message);
     }
+  }
+
+  private async markUnavailableAndMaybeRemove(trackId: number,
+    state: AvailabilityState): Promise<void> {
+    await this.repository.setTrackAvailability(trackId, state);
+    if (!appSettings.autoRemoveUnavailableOnPlayback) {
+      this.libraryMutationListener?.();
+      return;
+    }
+    await this.prepareForTrackRemoval([trackId]);
+    await this.repository.removeTracks([trackId]);
+    this.libraryMutationListener?.();
   }
 
   private async loadCurrentHeroArtwork(track: QueueTrack, epoch: number): Promise<void> {

@@ -9,6 +9,11 @@ export interface PersistPermissionResult {
   failedUris: Array<string>;
 }
 
+export interface ReadPermissionResult {
+  successfulUris: Array<string>;
+  failedUris: Array<string>;
+}
+
 /**
  * Opens the system document picker for the audio formats supported by the
  * initial importer. Returned values remain opaque authorization-managed URIs.
@@ -69,6 +74,43 @@ export async function ensureReadPermission(uri: string): Promise<boolean> {
   }
 }
 
+/** Checks and activates persisted permissions in batches for library maintenance. */
+export async function ensureReadPermissions(uris: Array<string>): Promise<ReadPermissionResult> {
+  const successfulUris: Array<string> = [];
+  const failedUris: Array<string> = [];
+  const uniqueUris = uniqueNonEmptyUris(uris, failedUris);
+  for (let offset = 0; offset < uniqueUris.length; offset += PERSIST_BATCH_SIZE) {
+    const batch = uniqueUris.slice(offset, Math.min(offset + PERSIST_BATCH_SIZE, uniqueUris.length));
+    const policies = createReadPolicies(batch);
+    try {
+      const persisted = await fileShare.checkPersistentPermission(policies);
+      const activatableUris: Array<string> = [];
+      for (let index = 0; index < batch.length; index += 1) {
+        if (index < persisted.length && persisted[index]) {
+          activatableUris.push(batch[index]);
+        } else {
+          failedUris.push(batch[index]);
+        }
+      }
+      if (activatableUris.length === 0) {
+        continue;
+      }
+      try {
+        await fileShare.activatePermission(createReadPolicies(activatableUris));
+        successfulUris.push(...activatableUris);
+      } catch (_) {
+        await activateIndividually(activatableUris, successfulUris, failedUris);
+      }
+    } catch (_) {
+      await ensureIndividually(batch, successfulUris, failedUris);
+    }
+  }
+  return {
+    successfulUris: successfulUris,
+    failedUris: failedUris
+  };
+}
+
 export async function revokeReadPermissions(uris: Array<string>): Promise<void> {
   const uniqueUris = uniqueNonEmptyUris(uris, []);
   for (let offset = 0; offset < uniqueUris.length; offset += PERSIST_BATCH_SIZE) {
@@ -110,6 +152,30 @@ async function persistIndividually(uris: Array<string>, successfulUris: Array<st
       successfulUris.push(uri);
     } catch (_) {
       failedUris.push(uri);
+    }
+  }
+}
+
+async function activateIndividually(uris: Array<string>, successfulUris: Array<string>,
+  failedUris: Array<string>): Promise<void> {
+  for (let index = 0; index < uris.length; index += 1) {
+    const uri = uris[index];
+    try {
+      await fileShare.activatePermission([createReadPolicy(uri)]);
+      successfulUris.push(uri);
+    } catch (_) {
+      failedUris.push(uri);
+    }
+  }
+}
+
+async function ensureIndividually(uris: Array<string>, successfulUris: Array<string>,
+  failedUris: Array<string>): Promise<void> {
+  for (let index = 0; index < uris.length; index += 1) {
+    if (await ensureReadPermission(uris[index])) {
+      successfulUris.push(uris[index]);
+    } else {
+      failedUris.push(uris[index]);
     }
   }
 }

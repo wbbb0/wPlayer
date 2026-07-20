@@ -66,6 +66,7 @@ import { AlbumsPage } from '../../pages/library/AlbumsPage';
 import { AlbumDetailPage } from '../../pages/library/AlbumDetailPage';
 import { ArtistDetailPage } from '../../pages/library/ArtistDetailPage';
 import { LibraryManagementPage } from '../../pages/library/LibraryManagementPage';
+import { LibraryDebugMaintenancePage } from '../../pages/library/LibraryDebugMaintenancePage';
 import { MorePage } from '../../pages/library/MorePage';
 import { PlaylistsPage } from '../../pages/library/PlaylistsPage';
 import { PlaylistDetailPage } from '../../pages/library/PlaylistDetailPage';
@@ -146,6 +147,7 @@ export struct ResponsiveNavigationShell {
   morePathStack: NavPathStack = new NavPathStack();
   moreScroller: Scroller = new Scroller();
   customizationScroller: Scroller = new Scroller();
+  libraryDebugMaintenanceScroller: Scroller = new Scroller();
 
   onCompactTabChange: (index: number) => void = (_index: number): void => {};
   onCompactTabClick: (index: number) => void = (_index: number): void => {};
@@ -855,7 +857,10 @@ export struct ResponsiveNavigationShell {
       })
     } else if (navigationPageKind(routeId) === NavigationPageKind.LIBRARY_MANAGEMENT) {
       LibraryManagementPage({ store: this.libraryStore, topInset: this.topInset, bottomInset: this.bottomInset,
-        scroller: this.routeScroller(routeId) })
+        scroller: this.routeScroller(routeId),
+        openDebugMaintenance: (): void => this.routePathStack(routeId).pushPath({
+          name: NavigationRoute.LIBRARY_DEBUG_MAINTENANCE
+        }) })
     } else if (navigationPageKind(routeId) === NavigationPageKind.SETTINGS) {
       SettingsPage({
         settingsStore: this.settingsStore,
@@ -990,6 +995,22 @@ export struct ResponsiveNavigationShell {
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryTitleBar('自定义页面', this.appearancePalette))
       .bindToScrollable([this.customizationScroller])
+    } else if (name === NavigationRoute.LIBRARY_DEBUG_MAINTENANCE) {
+      HdsNavDestination() {
+        LibraryDebugMaintenancePage({
+          store: this.libraryStore,
+          topInset: this.topInset,
+          bottomInset: this.bottomInset,
+          scroller: this.libraryDebugMaintenanceScroller
+        })
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(this.themePageBackground)
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar('调试维护', this.appearancePalette))
+      .bindToScrollable([this.libraryDebugMaintenanceScroller])
     } else {
       HdsNavDestination() {
         this.PageContent(name)

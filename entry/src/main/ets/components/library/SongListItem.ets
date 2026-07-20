@@ -7,6 +7,8 @@ import { LibraryStore } from '../../library/store/LibraryStore';
 import { ArtworkFitMode, ArtworkView } from '../artwork/ArtworkView';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import { TrackContextMenu } from './TrackActionMenu';
+import { AvailabilityState } from '../../library/model/LibraryModels';
+import { LibraryItemAvailability } from './LibraryItemAvailability';
 
 export class SongListItemLayoutSpec {
   static readonly CONTEXT_PREVIEW_FALLBACK_WIDTH: number = 344;
@@ -20,6 +22,7 @@ export interface SongListItemData {
   durationMs: number;
   artworkWidth: number;
   artworkHeight: number;
+  availability?: AvailabilityState;
 }
 
 export enum SongListItemLayout {
@@ -96,6 +99,10 @@ export struct SongListItem {
   }
 
   private artistLabel(): string {
+    const unavailableLabel = LibraryItemAvailability.label(this.item.availability);
+    if (unavailableLabel.length > 0) {
+      return unavailableLabel;
+    }
     return this.item.artistDisplay.trim().length > 0 ? this.item.artistDisplay : '未知艺术家';
   }
 
@@ -229,6 +236,11 @@ export struct SongListItem {
 
   @Builder
   private TrailingContent() {
+    if (LibraryItemAvailability.unavailable(this.item.availability)) {
+      SymbolGlyph($r('sys.symbol.exclamationmark_triangle_fill'))
+        .fontSize(17)
+        .fontColor([$r('app.color.text_tertiary')])
+    }
     Text(this.durationLabel())
       .fontSize(this.durationSize())
       .fontColor(this.tertiaryColor)
@@ -460,12 +472,16 @@ export struct SongListItem {
   }
 
   build() {
-    if (this.layout === SongListItemLayout.PLAYER_QUEUE) {
-      this.PlayerQueueRow()
-    } else if (this.actionTrack !== undefined && this.libraryStore !== undefined) {
-      this.StandardRowWithContextMenu()
-    } else {
-      this.StandardRow()
+    Column() {
+      if (this.layout === SongListItemLayout.PLAYER_QUEUE) {
+        this.PlayerQueueRow()
+      } else if (this.actionTrack !== undefined && this.libraryStore !== undefined) {
+        this.StandardRowWithContextMenu()
+      } else {
+        this.StandardRow()
+      }
     }
+    .width('100%')
+    .opacity(LibraryItemAvailability.opacity(this.item.availability))
   }
 }

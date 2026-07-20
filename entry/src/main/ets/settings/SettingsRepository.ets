@@ -24,6 +24,7 @@ const REMEMBER_PLAYBACK_POSITION_KEY: string = 'playback.remember_position';
 const REMEMBER_LAST_TAB_KEY: string = 'navigation.remember_last_tab';
 const REMEMBER_LIBRARY_SORT_KEY: string = 'library.remember_sort';
 const PRESERVE_SHUFFLE_ON_MANUAL_PLAY_KEY: string = 'playback.preserve_shuffle_on_manual_play';
+const AUTO_REMOVE_UNAVAILABLE_ON_PLAYBACK_KEY: string = 'playback.auto_remove_unavailable';
 const COMPLETED_COLLECTION_MODE_KEY: string = 'playback.completed_collection.mode';
 const COMPLETED_COLLECTION_CURRENT_KEY: string = 'playback.completed_collection.current_enabled';
 const RECENT_PLAYLIST_TARGET_IDS_KEY: string = 'playlist.recent_target_ids';
@@ -228,6 +229,14 @@ export class SettingsRepository {
 
   setPreserveShuffleOnManualPlayEnabled(value: boolean): void {
     this.setValue(PRESERVE_SHUFFLE_ON_MANUAL_PLAY_KEY, value);
+  }
+
+  getAutoRemoveUnavailableOnPlaybackEnabled(defaultValue: boolean = false): boolean {
+    return this.getBoolean(AUTO_REMOVE_UNAVAILABLE_ON_PLAYBACK_KEY, defaultValue);
+  }
+
+  setAutoRemoveUnavailableOnPlaybackEnabled(value: boolean): void {
+    this.setValue(AUTO_REMOVE_UNAVAILABLE_ON_PLAYBACK_KEY, value);
   }
 
   getCompletedCollectionMode(defaultValue: number = 0): number {

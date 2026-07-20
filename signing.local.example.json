@@ -1,16 +1,38 @@
 {
   "product": "default",
-  "signingConfig": {
-    "name": "default",
-    "type": "HarmonyOS",
-    "material": {
-      "certpath": "C:\\path\\to\\debug.cer",
-      "keyAlias": "debugKey",
-      "keyPassword": "encrypted-key-password",
-      "profile": "C:\\path\\to\\debug.p7b",
-      "signAlg": "SHA256withECDSA",
-      "storeFile": "C:\\path\\to\\debug.p12",
-      "storePassword": "encrypted-store-password"
+  "defaultConfiguration": "debug",
+  "configurations": [
+    {
+      "id": "debug",
+      "signingConfig": {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "C:\\path\\to\\debug.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "encrypted-debug-key-password",
+          "profile": "C:\\path\\to\\debug.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:\\path\\to\\debug.p12",
+          "storePassword": "encrypted-debug-store-password"
+        }
+      }
+    },
+    {
+      "id": "release",
+      "signingConfig": {
+        "name": "release",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "C:\\path\\to\\release.cer",
+          "keyAlias": "releaseKey",
+          "keyPassword": "encrypted-release-key-password",
+          "profile": "C:\\path\\to\\release.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:\\path\\to\\release.p12",
+          "storePassword": "encrypted-release-store-password"
+        }
+      }
     }
-  }
+  ]
 }

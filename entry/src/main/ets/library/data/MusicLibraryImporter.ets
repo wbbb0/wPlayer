@@ -1,6 +1,7 @@
 import { relationalStore } from '@kit.ArkData';
 import {
   ArtworkPictureType,
+  ArtworkState,
   AvailabilityState,
   CreditRole,
   ImportState,
@@ -16,6 +17,7 @@ import {
   TrackImportInput
 } from './MusicRepositoryTypes';
 import { ARTWORK_PALETTE_VERSION } from '../artwork/ArtworkPaletteExtractor';
+import { ArtworkRepairPolicy } from '../artwork/ArtworkRepairPolicy';
 import { RelationalStoreSafety } from './RelationalStoreSafety';
 
 interface CreditGroup {
@@ -26,6 +28,19 @@ interface CreditGroup {
 interface ArtworkReference {
   assetId?: number;
   sourceId?: number;
+}
+
+interface AlbumImportDelta {
+  trackCount: number;
+  durationMs: number;
+  primaryArtworkId?: number;
+}
+
+interface ImportTransactionCache {
+  albumIds: Map<string, number>;
+  personIds: Map<string, number>;
+  genreIds: Map<string, number>;
+  albumDeltas: Map<number, AlbumImportDelta>;
 }
 
 /**
@@ -46,9 +61,11 @@ export class MusicLibraryImporter {
   importTracks(inputs: Array<TrackImportInput>): Promise<Array<ImportTrackResult>> {
     return this.database.enqueueWrite(async (transaction: relationalStore.Transaction) => {
       const results: Array<ImportTrackResult> = [];
+      const cache = MusicLibraryImporter.createTransactionCache();
       for (let index = 0; index < inputs.length; index += 1) {
-        results.push(await this.importTrackInTransaction(transaction, inputs[index]));
+        results.push(await this.importTrackInTransaction(transaction, inputs[index], cache));
       }
+      await this.applyAlbumDeltas(transaction, cache.albumDeltas);
       return results;
     });
   }
@@ -150,12 +167,15 @@ export class MusicLibraryImporter {
         `UPDATE media_file SET display_name = ?, file_size = ?, modified_at = ?,
           quick_fingerprint = ?, content_fingerprint = '', format = ?, mime_type = ?,
           authorization_persisted = ?, availability_state = ?, import_state = ?,
-          last_checked_at = ?, updated_at = ?
+          artwork_state = ?, artwork_attempt_count = 0, artwork_last_error = '',
+          artwork_last_attempt_at = 0, last_checked_at = ?, updated_at = ?
          WHERE id = (SELECT media_file_id FROM track WHERE id = ?)`,
         [
           input.displayName, input.fileSize, input.modifiedAt, input.quickFingerprint,
           metadata.format, metadata.mimeType, input.authorizationPersisted ? 1 : 0,
-          AvailabilityState.AVAILABLE, ImportState.IMPORTED, now, now, trackId
+          AvailabilityState.AVAILABLE, ImportState.IMPORTED,
+          metadata.artworks.length > 0 ? ArtworkState.PENDING : ArtworkState.ABSENT,
+          now, now, trackId
         ]
       );
       const affectedAlbums: Array<number> = [];
@@ -189,8 +209,123 @@ export class MusicLibraryImporter {
     });
   }
 
+  markArtworkProcessing(trackId: number, fileSize: number, modifiedAt: number): Promise<boolean> {
+    return this.database.enqueueWrite(async (transaction: relationalStore.Transaction): Promise<boolean> => {
+      const result = await transaction.querySql(
+        `SELECT 1 FROM track t JOIN media_file f ON f.id = t.media_file_id
+         WHERE t.id = ? AND f.file_size = ? AND f.modified_at = ? LIMIT 1`,
+        [trackId, fileSize, modifiedAt]
+      );
+      const matches = result.goToNextRow();
+      result.close();
+      if (!matches) {
+        return false;
+      }
+      await transaction.execute(
+        `UPDATE media_file SET artwork_state = ?, artwork_attempt_count = artwork_attempt_count + 1,
+          artwork_last_error = '', artwork_last_attempt_at = ?, updated_at = ?
+         WHERE id = (SELECT media_file_id FROM track WHERE id = ?)`,
+        [ArtworkState.PROCESSING, Date.now(), Date.now(), trackId]
+      );
+      return true;
+    });
+  }
+
+  completeArtwork(trackId: number, fileSize: number, modifiedAt: number,
+    artworks: Array<ArtworkImportInput>): Promise<boolean> {
+    return this.database.enqueueWrite(async (transaction: relationalStore.Transaction): Promise<boolean> => {
+      const current = await transaction.querySql(
+        `SELECT t.album_id FROM track t JOIN media_file f ON f.id = t.media_file_id
+         WHERE t.id = ? AND f.file_size = ? AND f.modified_at = ? LIMIT 1`,
+        [trackId, fileSize, modifiedAt]
+      );
+      if (!current.goToNextRow()) {
+        current.close();
+        return false;
+      }
+      const albumId = current.isColumnNull(0) ? undefined : current.getLong(0);
+      current.close();
+      const now = Date.now();
+      await this.releaseTrackArtworkReferences(transaction, trackId, now);
+      await transaction.execute('DELETE FROM track_artwork WHERE track_id = ?', [trackId]);
+      const primaryArtworkId = await this.insertArtworks(transaction, trackId, artworks, now);
+      await transaction.execute(
+        'UPDATE track SET primary_artwork_id = ?, updated_at = ? WHERE id = ?',
+        [primaryArtworkId === undefined ? null : primaryArtworkId, now, trackId]
+      );
+      await transaction.execute(
+        `UPDATE media_file SET artwork_state = ?, artwork_last_error = '', updated_at = ?
+         WHERE id = (SELECT media_file_id FROM track WHERE id = ?)`,
+        [primaryArtworkId === undefined ? ArtworkState.ABSENT : ArtworkState.READY, now, trackId]
+      );
+      if (albumId !== undefined) {
+        await transaction.execute(
+          `UPDATE album SET primary_artwork_id = (
+             SELECT primary_artwork_id FROM track WHERE album_id = ?
+               AND primary_artwork_id IS NOT NULL ORDER BY id LIMIT 1
+           ), updated_at = ? WHERE id = ?`,
+          [albumId, now, albumId]
+        );
+      }
+      return true;
+    });
+  }
+
+  failArtwork(trackId: number, fileSize: number, modifiedAt: number, message: string): Promise<void> {
+    return this.database.enqueueWrite(async (transaction: relationalStore.Transaction): Promise<void> => {
+      await transaction.execute(
+        `UPDATE media_file SET artwork_state = ?, artwork_last_error = ?, updated_at = ?
+         WHERE id = (SELECT media_file_id FROM track WHERE id = ?)
+           AND file_size = ? AND modified_at = ?`,
+        [ArtworkState.FAILED, message, Date.now(), trackId, fileSize, modifiedAt]
+      );
+    });
+  }
+
+  deferArtwork(trackId: number, fileSize: number, modifiedAt: number): Promise<void> {
+    return this.database.enqueueWrite(async (transaction: relationalStore.Transaction): Promise<void> => {
+      await transaction.execute(
+        `UPDATE media_file SET artwork_state = ?, artwork_last_error = '', updated_at = ?
+         WHERE id = (SELECT media_file_id FROM track WHERE id = ?)
+           AND file_size = ? AND modified_at = ? AND artwork_state = ?`,
+        [
+          ArtworkState.PENDING, Date.now(), trackId, fileSize, modifiedAt,
+          ArtworkState.PROCESSING
+        ]
+      );
+    });
+  }
+
+  private async releaseTrackArtworkReferences(transaction: relationalStore.Transaction,
+    trackId: number, now: number): Promise<void> {
+    let artworkResult: relationalStore.ResultSet | undefined;
+    try {
+      artworkResult = await transaction.querySql(
+        `SELECT asset_id, COUNT(*) FROM track_artwork
+         WHERE track_id = ? AND asset_id IS NOT NULL GROUP BY asset_id`,
+        [trackId]
+      );
+      while (artworkResult.goToNextRow()) {
+        const assetId = artworkResult.getLong(0);
+        const count = artworkResult.getLong(1);
+        await transaction.execute(
+          `UPDATE artwork_asset SET ref_count = MAX(0, ref_count - ?),
+            unreferenced_at = CASE WHEN ref_count - ? <= 0 THEN ? ELSE unreferenced_at END
+           WHERE id = ?`,
+          [count, count, now, assetId]
+        );
+      }
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(
+        `Unable to release artwork references for track ${trackId}`, error
+      );
+    } finally {
+      RelationalStoreSafety.closeResultSet(artworkResult, 'track artwork reference release');
+    }
+  }
+
   private async importTrackInTransaction(transaction: relationalStore.Transaction,
-    input: TrackImportInput): Promise<ImportTrackResult> {
+    input: TrackImportInput, cache: ImportTransactionCache): Promise<ImportTrackResult> {
     try {
       const existingTrackId = await this.findTrackIdByUri(transaction, input.uri);
       if (existingTrackId !== undefined) {
@@ -221,12 +356,16 @@ export class MusicLibraryImporter {
         authorization_persisted: input.authorizationPersisted ? 1 : 0,
         availability_state: AvailabilityState.AVAILABLE,
         import_state: ImportState.IMPORTED,
+        artwork_state: metadata.artworks.length > 0 ? ArtworkState.PENDING : ArtworkState.ABSENT,
+        artwork_attempt_count: 0,
+        artwork_last_error: '',
+        artwork_last_attempt_at: 0,
         last_checked_at: now,
         created_at: now,
         updated_at: now
       });
 
-      const albumId = await this.ensureAlbum(transaction, metadata, now);
+      const albumId = await this.ensureAlbum(transaction, metadata, now, cache);
       const title = metadata.title.length > 0 ? metadata.title : input.displayName;
       const sortTitle = metadata.sortTitle.length > 0 ? metadata.sortTitle : title;
       const artistDisplay = metadata.artists.join(', ');
@@ -276,8 +415,8 @@ export class MusicLibraryImporter {
       };
       const trackId = await transaction.insert('track', trackValues);
 
-      await this.insertCredits(transaction, trackId, metadata);
-      await this.insertGenres(transaction, trackId, metadata.genres);
+      await this.insertCredits(transaction, trackId, metadata, cache);
+      await this.insertGenres(transaction, trackId, metadata.genres, cache);
       await this.insertRawTags(transaction, trackId, metadata.rawTags);
       const primaryArtworkId = await this.insertArtworks(
         transaction,
@@ -289,12 +428,13 @@ export class MusicLibraryImporter {
         await transaction.execute('UPDATE track SET primary_artwork_id = ? WHERE id = ?', [primaryArtworkId, trackId]);
       }
       if (albumId !== undefined) {
-        await transaction.execute(
-          `UPDATE album SET track_count = track_count + 1,
-            total_duration_ms = total_duration_ms + ?,
-            primary_artwork_id = COALESCE(primary_artwork_id, ?), updated_at = ? WHERE id = ?`,
-          [metadata.durationMs, primaryArtworkId === undefined ? null : primaryArtworkId, now, albumId]
-        );
+        const delta = cache.albumDeltas.get(albumId) ?? { trackCount: 0, durationMs: 0 };
+        delta.trackCount += 1;
+        delta.durationMs += metadata.durationMs;
+        if (delta.primaryArtworkId === undefined && primaryArtworkId !== undefined) {
+          delta.primaryArtworkId = primaryArtworkId;
+        }
+        cache.albumDeltas.set(albumId, delta);
       }
       const importedResult: ImportTrackResult = { imported: true, trackId: trackId };
       return importedResult;
@@ -306,14 +446,20 @@ export class MusicLibraryImporter {
   private async ensureAlbum(
     transaction: relationalStore.Transaction,
     metadata: ParsedMetadata,
-    now: number
+    now: number,
+    cache?: ImportTransactionCache
   ): Promise<number | undefined> {
     const identityKey = MetadataNormalizer.albumIdentity(metadata);
     if (identityKey.length === 0) {
       return undefined;
     }
+    const cachedId = cache?.albumIds.get(identityKey);
+    if (cachedId !== undefined) {
+      return cachedId;
+    }
     const existingId = await this.findId(transaction, 'album', 'identity_key', identityKey);
     if (existingId !== undefined) {
+      cache?.albumIds.set(identityKey, existingId);
       return existingId;
     }
     const albumArtistKey = metadata.albumArtists
@@ -346,13 +492,14 @@ export class MusicLibraryImporter {
         updated_at: now
       });
       for (let index = 0; index < metadata.albumArtists.length; index += 1) {
-        const personId = await this.ensurePerson(transaction, metadata.albumArtists[index]);
+        const personId = await this.ensurePerson(transaction, metadata.albumArtists[index], cache);
         await transaction.insert('album_credit', {
           album_id: albumId,
           person_id: personId,
           ordinal: index
         });
       }
+      cache?.albumIds.set(identityKey, albumId);
       return albumId;
     } catch (error) {
       throw RelationalStoreSafety.operationError(`Unable to create album ${metadata.album}`, error);
@@ -362,7 +509,8 @@ export class MusicLibraryImporter {
   private async insertCredits(
     transaction: relationalStore.Transaction,
     trackId: number,
-    metadata: ParsedMetadata
+    metadata: ParsedMetadata,
+    cache?: ImportTransactionCache
   ): Promise<void> {
     const groups: Array<CreditGroup> = [
       { role: CreditRole.TRACK_ARTIST, names: metadata.artists },
@@ -375,7 +523,7 @@ export class MusicLibraryImporter {
       for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
         const group = groups[groupIndex];
         for (let index = 0; index < group.names.length; index += 1) {
-          const personId = await this.ensurePerson(transaction, group.names[index]);
+          const personId = await this.ensurePerson(transaction, group.names[index], cache);
           await transaction.insert('track_credit', {
             track_id: trackId,
             person_id: personId,
@@ -392,16 +540,21 @@ export class MusicLibraryImporter {
   private async insertGenres(
     transaction: relationalStore.Transaction,
     trackId: number,
-    genres: Array<string>
+    genres: Array<string>,
+    cache?: ImportTransactionCache
   ): Promise<void> {
     try {
       for (let index = 0; index < genres.length; index += 1) {
         const name = genres[index];
         const key = MetadataNormalizer.normalizeKey(name);
-        let genreId = await this.findId(transaction, 'genre', 'name_key', key);
+        let genreId = cache?.genreIds.get(key);
+        if (genreId === undefined) {
+          genreId = await this.findId(transaction, 'genre', 'name_key', key);
+        }
         if (genreId === undefined) {
           genreId = await transaction.insert('genre', { name: name, name_key: key });
         }
+        cache?.genreIds.set(key, genreId);
         await transaction.insert('track_genre', {
           track_id: trackId,
           genre_id: genreId,
@@ -489,19 +642,15 @@ export class MusicLibraryImporter {
     artwork: ArtworkImportInput,
     now: number
   ): Promise<ArtworkReference> {
-    if (artwork.sourceHash !== undefined && artwork.sourceHash.length > 0) {
-      const existingSource = await this.findArtworkSource(transaction, artwork.sourceHash);
-      if (existingSource !== undefined) {
-        return existingSource;
-      }
-    }
+    const existingSource = artwork.sourceHash !== undefined && artwork.sourceHash.length > 0 ?
+      await this.findArtworkSource(transaction, artwork.sourceHash) : undefined;
     if (artwork.smallHash === undefined || artwork.smallHash.length === 0 ||
       artwork.smallPath === undefined || artwork.smallPath.length === 0 ||
       artwork.smallFormat === undefined || artwork.smallFormat.length === 0 ||
       artwork.largeHash === undefined || artwork.largeHash.length === 0 ||
       artwork.largePath === undefined || artwork.largePath.length === 0 ||
       artwork.largeFormat === undefined || artwork.largeFormat.length === 0) {
-      return {};
+      return existingSource ?? {};
     }
     let assetId = await this.findArtworkAssetId(transaction, artwork.smallHash, artwork.largeHash);
     if (assetId === undefined) {
@@ -533,6 +682,15 @@ export class MusicLibraryImporter {
     }
     if (artwork.sourceHash === undefined || artwork.sourceHash.length === 0) {
       return { assetId: assetId };
+    }
+    if (existingSource !== undefined && existingSource.sourceId !== undefined &&
+      existingSource.assetId !== undefined) {
+      if (ArtworkRepairPolicy.shouldRebindSource(existingSource.assetId, assetId)) {
+        await this.rebindArtworkSource(
+          transaction, existingSource.sourceId, existingSource.assetId, assetId, now
+        );
+      }
+      return { assetId: assetId, sourceId: existingSource.sourceId };
     }
     let sourceId = await this.findId(transaction, 'artwork_source', 'source_hash', artwork.sourceHash);
     if (sourceId === undefined) {
@@ -597,18 +755,84 @@ export class MusicLibraryImporter {
     }
   }
 
-  private async ensurePerson(transaction: relationalStore.Transaction, name: string): Promise<number> {
+  private async rebindArtworkSource(transaction: relationalStore.Transaction, sourceId: number,
+    oldAssetId: number, newAssetId: number, now: number): Promise<void> {
+    let countResult: relationalStore.ResultSet | undefined;
+    try {
+      countResult = await transaction.querySql(
+        'SELECT COUNT(*) FROM track_artwork WHERE source_id = ? AND asset_id = ?',
+        [sourceId, oldAssetId]
+      );
+      const referenceCount = countResult.goToNextRow() ? countResult.getLong(0) : 0;
+      RelationalStoreSafety.closeResultSet(countResult, 'artwork source reference count');
+      countResult = undefined;
+      await transaction.execute(
+        'UPDATE track_artwork SET asset_id = ? WHERE source_id = ?',
+        [newAssetId, sourceId]
+      );
+      await transaction.execute(
+        `UPDATE track SET primary_artwork_id = ?, updated_at = ?
+         WHERE primary_artwork_id = ? AND id IN (
+           SELECT track_id FROM track_artwork WHERE source_id = ?
+         )`,
+        [newAssetId, now, oldAssetId, sourceId]
+      );
+      await transaction.execute(
+        `UPDATE artwork_asset SET ref_count = MAX(0, ref_count - ?),
+          unreferenced_at = CASE WHEN ref_count - ? <= 0 THEN ? ELSE unreferenced_at END
+         WHERE id = ?`,
+        [referenceCount, referenceCount, now, oldAssetId]
+      );
+      await transaction.execute(
+        `UPDATE artwork_asset SET ref_count = ref_count + ?, unreferenced_at = NULL
+         WHERE id = ?`,
+        [referenceCount, newAssetId]
+      );
+      await transaction.execute(
+        'UPDATE artwork_source SET asset_id = ? WHERE id = ?',
+        [newAssetId, sourceId]
+      );
+      await transaction.execute(
+        `UPDATE album SET primary_artwork_id = (
+           SELECT primary_artwork_id FROM track
+           WHERE album_id = album.id AND primary_artwork_id IS NOT NULL ORDER BY id LIMIT 1
+         ), updated_at = ?
+         WHERE id IN (
+           SELECT DISTINCT t.album_id FROM track t
+           JOIN track_artwork ta ON ta.track_id = t.id
+           WHERE ta.source_id = ? AND t.album_id IS NOT NULL
+         )`,
+        [now, sourceId]
+      );
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(
+        `Unable to rebind artwork source ${sourceId}`, error
+      );
+    } finally {
+      RelationalStoreSafety.closeResultSet(countResult, 'artwork source reference count');
+    }
+  }
+
+  private async ensurePerson(transaction: relationalStore.Transaction, name: string,
+    cache?: ImportTransactionCache): Promise<number> {
     const key = MetadataNormalizer.normalizeKey(name);
+    const cachedId = cache?.personIds.get(key);
+    if (cachedId !== undefined) {
+      return cachedId;
+    }
     const existingId = await this.findId(transaction, 'person', 'name_key', key);
     if (existingId !== undefined) {
+      cache?.personIds.set(key, existingId);
       return existingId;
     }
     try {
-      return await transaction.insert('person', {
+      const personId = await transaction.insert('person', {
         name: name,
         name_key: key,
         sort_name_key: key
       });
+      cache?.personIds.set(key, personId);
+      return personId;
     } catch (error) {
       throw RelationalStoreSafety.operationError(`Unable to create person ${name}`, error);
     }
@@ -682,6 +906,45 @@ export class MusicLibraryImporter {
     } finally {
       RelationalStoreSafety.closeResultSet(resultSet, `${table}.${column} lookup`);
     }
+  }
+
+  private async applyAlbumDeltas(transaction: relationalStore.Transaction,
+    deltas: Map<number, AlbumImportDelta>): Promise<void> {
+    const now = Date.now();
+    const albumIds: Array<number> = [];
+    const values: Array<AlbumImportDelta> = [];
+    deltas.forEach((delta: AlbumImportDelta, albumId: number) => {
+      albumIds.push(albumId);
+      values.push(delta);
+    });
+    try {
+      for (let index = 0; index < albumIds.length; index += 1) {
+        const delta = values[index];
+        await transaction.execute(
+          `UPDATE album SET track_count = track_count + ?,
+            total_duration_ms = total_duration_ms + ?,
+            primary_artwork_id = COALESCE(primary_artwork_id, ?), updated_at = ? WHERE id = ?`,
+          [
+            delta.trackCount,
+            delta.durationMs,
+            delta.primaryArtworkId === undefined ? null : delta.primaryArtworkId,
+            now,
+            albumIds[index]
+          ]
+        );
+      }
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to apply album import aggregates', error);
+    }
+  }
+
+  private static createTransactionCache(): ImportTransactionCache {
+    return {
+      albumIds: new Map<string, number>(),
+      personIds: new Map<string, number>(),
+      genreIds: new Map<string, number>(),
+      albumDeltas: new Map<number, AlbumImportDelta>()
+    };
   }
 
   private numberOrNull(value?: number): number | null {

@@ -1,6 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import { MusicRepository } from '../data/MusicRepository';
-import { MediaImporter } from '../importer/MediaImporter';
+import { ImportRefreshPhase, MediaImporter } from '../importer/MediaImporter';
 import { ArtworkCache } from '../artwork/ArtworkCache';
 import {
   AlbumListItem,
@@ -109,6 +109,13 @@ export class LibraryStore {
     updated: 0,
     unavailable: 0,
     recovered: 0,
+    artworkRebuilt: 0,
+    artworkTotal: 0,
+    artworkProcessed: 0,
+    artworkSkipped: 0,
+    artworkFailed: 0,
+    metadataCompleted: false,
+    cancelled: false,
     currentName: ''
   };
   fileCheckItems: Array<FileCheckItemResult> = [];
@@ -120,6 +127,12 @@ export class LibraryStore {
     imported: 0,
     duplicates: 0,
     failed: 0,
+    artworkTotal: 0,
+    artworkProcessed: 0,
+    artworkSkipped: 0,
+    artworkFailed: 0,
+    metadataCompleted: false,
+    cancelled: false,
     currentName: ''
   };
   initialized: boolean = false;
@@ -296,15 +309,14 @@ export class LibraryStore {
     try {
       const result = await this.importer.selectAndImport((progress: ImportProgress) => {
         this.importProgress = progress;
-      }, onStarted);
+      }, onStarted, undefined, async (phase: ImportRefreshPhase): Promise<void> => {
+        await this.refresh();
+        ImportPerformanceTrace.event('library_refresh_completed', 0, `phase=${phase}`);
+      });
       this.lastImportResult = result;
       this.replaceImportDetails(result.items);
       this.lastMessage = LibraryStore.importSummary(result);
-      if (result.imported > 0) {
-        const refreshStartedAt = Date.now();
-        await this.refresh();
-        ImportPerformanceTrace.mark('post_import_refresh', refreshStartedAt);
-      } else {
+      if (result.imported <= 0) {
         ImportPerformanceTrace.event('post_import_refresh_skipped', 0, 'reason=no_library_changes');
       }
     } catch (error) {
@@ -397,13 +409,17 @@ export class LibraryStore {
       const result: FileCheckResult = await this.importer.checkLibrary(
         (progress: FileCheckProgress): void => {
           this.fileCheckProgress = progress;
+        },
+        async (_phase: ImportRefreshPhase): Promise<void> => {
+          await this.refresh();
         }
       );
-      await this.refresh();
       await this.loadUnavailableTracks();
       this.fileCheckItems = result.items;
       this.fileCheckResult = `已检查 ${result.checked} 首，更新 ${result.updated} 首，` +
-        `恢复 ${result.recovered} 首，失效 ${this.statistics.unavailableTrackCount} 首`;
+        `恢复 ${result.recovered} 首，重建封面 ${result.artworkRebuilt} 首，` +
+        `封面失败 ${result.artworkFailed} 首，失效 ${this.statistics.unavailableTrackCount} 首` +
+        (result.artworkSkipped > 0 ? `，取消时跳过封面 ${result.artworkSkipped} 个` : '');
       this.lastMessage = this.fileCheckResult;
     } catch (error) {
       this.errorMessage = LibraryStore.errorMessageOf(error);
@@ -613,7 +629,10 @@ export class LibraryStore {
     if (result.imported === 0 && result.duplicates === 0 && result.failed === 0) {
       return '';
     }
-    return `已导入 ${result.imported} 首，重复 ${result.duplicates} 首，失败 ${result.failed} 首`;
+    const skippedArtwork = result.artworkSkipped > 0 ?
+      `，取消时跳过封面 ${result.artworkSkipped} 个` : '';
+    return `已导入 ${result.imported} 首，重复 ${result.duplicates} 首，` +
+      `失败 ${result.failed} 首，封面失败 ${result.artworkFailed} 个${skippedArtwork}`;
   }
 
   private static errorMessageOf(error: Object): string {

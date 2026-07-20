@@ -15,34 +15,62 @@ export interface MediaProbeResult {
   workerDurationMs: number;
 }
 
-export interface MediaFileStat {
+export interface MediaFileInspectionInput {
+  uri: string;
+  artworkSmallPath: string;
+  artworkLargePath: string;
+}
+
+export interface MediaFileInspectionResult {
+  available: boolean;
   fileSize: number;
   modifiedAt: number;
+  artworkFilesAvailable: boolean;
 }
 
 @Concurrent
-function statMediaFileTask(uri: string): MediaFileStat {
-  let file: fs.File | undefined;
-  try {
-    file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
-    const stat = fs.statSync(file.fd);
-    return {
-      fileSize: stat.size,
-      modifiedAt: stat.mtime
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : `${error}`;
-    throw new Error(`Unable to stat media file: ${message}`);
-  } finally {
-    if (file !== undefined) {
+function inspectMediaFilesTask(
+  inputs: Array<MediaFileInspectionInput>
+): Array<MediaFileInspectionResult> {
+  const results: Array<MediaFileInspectionResult> = [];
+  for (let index = 0; index < inputs.length; index += 1) {
+    const input = inputs[index];
+    let file: fs.File | undefined;
+    try {
+      file = fs.openSync(input.uri, fs.OpenMode.READ_ONLY);
+      const stat = fs.statSync(file.fd);
+      let artworkFilesAvailable = false;
       try {
-        fs.closeSync(file);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : `${error}`;
-        console.warn(`Unable to close media file after stat: ${message}`);
+        artworkFilesAvailable = input.artworkSmallPath.length > 0 &&
+          input.artworkLargePath.length > 0 &&
+          fs.accessSync(input.artworkSmallPath) &&
+          fs.accessSync(input.artworkLargePath);
+      } catch (_) {
+        artworkFilesAvailable = false;
+      }
+      results.push({
+        available: true,
+        fileSize: stat.size,
+        modifiedAt: stat.mtime,
+        artworkFilesAvailable: artworkFilesAvailable
+      });
+    } catch (_) {
+      results.push({
+        available: false,
+        fileSize: 0,
+        modifiedAt: 0,
+        artworkFilesAvailable: false
+      });
+    } finally {
+      if (file !== undefined) {
+        try {
+          fs.closeSync(file);
+        } catch (_) {
+        }
       }
     }
   }
+  return results;
 }
 
 function errorMessage(error: Object): string {
@@ -262,11 +290,15 @@ export function probeMediaFile(uri: string): Promise<MediaProbeResult> {
   }
 }
 
-export function statMediaFile(uri: string): Promise<MediaFileStat> {
+export function inspectMediaFiles(
+  inputs: Array<MediaFileInspectionInput>
+): Promise<Array<MediaFileInspectionResult>> {
   try {
-    return taskpool.execute(statMediaFileTask, uri) as Promise<MediaFileStat>;
+    return taskpool.execute(
+      inspectMediaFilesTask, inputs
+    ) as Promise<Array<MediaFileInspectionResult>>;
   } catch (error) {
-    return Promise.reject(operationError('Unable to submit media stat task', error));
+    return Promise.reject(operationError('Unable to submit media inspection task', error));
   }
 }
 

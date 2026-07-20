@@ -42,7 +42,8 @@ export class ArtworkCache {
     this.context = context;
   }
 
-  async cache(sourceBytes: Uint8Array, knownSourceHash?: string, traceFileId: number = 0): Promise<ArtworkCacheResult> {
+  async cache(sourceBytes: Uint8Array, knownSourceHash?: string, traceFileId: number = 0,
+    shouldContinue?: () => boolean): Promise<ArtworkCacheResult> {
     if (sourceBytes.byteLength === 0) {
       throw new Error('Artwork source is empty');
     }
@@ -51,17 +52,17 @@ export class ArtworkCache {
     }
 
     const sourceHash = knownSourceHash ?? await ArtworkCache.sha256(sourceBytes);
+    ArtworkCache.ensureContinues(shouldContinue);
     const sourceBuffer = ArtworkCache.toExactArrayBuffer(sourceBytes);
     const imageSource = image.createImageSource(sourceBuffer);
     const imagePacker = image.createImagePacker();
     try {
       const imageInfoStartedAt = Date.now();
       const imageInfo = await imageSource.getImageInfo();
+      ArtworkCache.ensureContinues(shouldContinue);
       ImportPerformanceTrace.mark('artwork_info', imageInfoStartedAt, traceFileId,
         `source_bytes=${sourceBytes.byteLength} width=${imageInfo.size.width} height=${imageInfo.size.height}`);
       ArtworkCache.validateSourceDimensions(imageInfo.size.width, imageInfo.size.height);
-      const palettePixels = await ArtworkPaletteExtractor.readPixelBuffer(imageSource, imageInfo.size);
-      const palette = await extractArtworkPaletteAsync(palettePixels);
       if (!ArtworkCache.supportsFormat(imagePacker.supportedFormats, 'jpeg')) {
         throw new Error('JPEG encoding is not supported on this device');
       }
@@ -70,11 +71,16 @@ export class ArtworkCache {
         ArtworkEncodingPolicy.MIME_TYPE, ArtworkEncodingPolicy.QUALITY,
         ArtworkEncodingPolicy.EXTENSION, 'small', traceFileId
       );
+      ArtworkCache.ensureContinues(shouldContinue);
       const large = await this.encodeVariant(
         imageSource, imagePacker, sourceHash, imageInfo.size, LARGE_MAX_EDGE,
         ArtworkEncodingPolicy.MIME_TYPE, ArtworkEncodingPolicy.QUALITY,
         ArtworkEncodingPolicy.EXTENSION, 'large', traceFileId
       );
+      ArtworkCache.ensureContinues(shouldContinue);
+      const palettePixels = await ArtworkPaletteExtractor.readPixelBuffer(imageSource, imageInfo.size);
+      ArtworkCache.ensureContinues(shouldContinue);
+      const palette = await extractArtworkPaletteAsync(palettePixels);
       return { sourceHash: sourceHash, small: small, large: large, palette: palette };
     } finally {
       try {
@@ -114,19 +120,21 @@ export class ArtworkCache {
   }
 
   delete(relativePath: string): void {
-    ArtworkCache.deleteIfPresent(this.resolvePath(relativePath));
+    this.deleteAsync(relativePath).catch((error: Object): void => {
+      console.warn(`Artwork cache delete failed: ${ArtworkCache.errorMessage(error)}`);
+    });
   }
 
   async deleteAsync(relativePath: string): Promise<void> {
     await ArtworkCache.deleteIfPresentAsync(this.resolvePath(relativePath));
   }
 
-  exists(relativePath: string): boolean {
+  async existsAsync(relativePath: string): Promise<boolean> {
     if (relativePath.length === 0) {
       return false;
     }
     try {
-      return fs.accessSync(this.resolvePath(relativePath));
+      return await fs.access(this.resolvePath(relativePath));
     } catch (_) {
       return false;
     }
@@ -159,7 +167,7 @@ export class ArtworkCache {
     shouldContinue?: () => boolean): Promise<number> {
     try {
       const artworkRoot = ArtworkCache.resolvePath(this.context, ARTWORK_DIRECTORY);
-      if (!fs.accessSync(artworkRoot)) {
+      if (!await fs.access(artworkRoot)) {
         return 0;
       }
       let deletedCount = 0;
@@ -235,10 +243,10 @@ export class ArtworkCache {
       opaquePixelMap = await ArtworkCache.flattenOntoWhite(pixelMap);
       const actualInfo = await opaquePixelMap.getImageInfo();
       const artworkRoot = ArtworkCache.resolvePath(this.context, ARTWORK_DIRECTORY);
-      ArtworkCache.ensureDirectory(artworkRoot);
+      await ArtworkCache.ensureDirectoryAsync(artworkRoot);
       temporaryPath = `${artworkRoot}/.${sourceHash}.${variantName}.` +
         `${ArtworkCache.nextTemporaryId()}${TEMP_FILE_SUFFIX}`;
-      const temporaryFile = fs.openSync(temporaryPath,
+      const temporaryFile = await fs.open(temporaryPath,
         fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
       try {
         await imagePacker.packToFile(opaquePixelMap, temporaryFile.fd, {
@@ -247,7 +255,7 @@ export class ArtworkCache {
         });
       } finally {
         try {
-          fs.closeSync(temporaryFile);
+          await fs.close(temporaryFile);
         } catch (error) {
           console.warn(`Unable to close temporary artwork file: ${ArtworkCache.errorMessage(error)}`);
         }
@@ -256,19 +264,19 @@ export class ArtworkCache {
       const contentHash = await hash.hash(temporaryPath, 'sha256');
       const relativePath = ArtworkCache.variantRelativePath(contentHash, extension);
       const finalPath = ArtworkCache.resolvePath(this.context, relativePath);
-      ArtworkCache.ensureDirectory(ArtworkCache.parentDirectory(finalPath));
-      if (fs.accessSync(finalPath)) {
-        ArtworkCache.deleteIfPresent(temporaryPath);
+      await ArtworkCache.ensureDirectoryAsync(ArtworkCache.parentDirectory(finalPath));
+      if (await fs.access(finalPath)) {
+        await ArtworkCache.deleteIfPresentAsync(temporaryPath);
         temporaryPath = '';
       } else {
         try {
-          fs.renameSync(temporaryPath, finalPath);
+          await fs.rename(temporaryPath, finalPath);
           temporaryPath = '';
         } catch (_) {
-          if (!fs.accessSync(finalPath)) {
+          if (!await fs.access(finalPath)) {
             throw new Error(`Failed to commit ${variantName} artwork cache: ${contentHash}`);
           }
-          ArtworkCache.deleteIfPresent(temporaryPath);
+          await ArtworkCache.deleteIfPresentAsync(temporaryPath);
           temporaryPath = '';
         }
       }
@@ -278,7 +286,7 @@ export class ArtworkCache {
         format: format,
         width: actualInfo.size.width,
         height: actualInfo.size.height,
-        byteSize: fs.statSync(finalPath).size
+        byteSize: (await fs.stat(finalPath)).size
       };
       ImportPerformanceTrace.mark(`artwork_${variantName}`, variantStartedAt, traceFileId,
         `width=${result.width} height=${result.height} bytes=${result.byteSize}`);
@@ -288,7 +296,7 @@ export class ArtworkCache {
     } finally {
       try {
         if (temporaryPath.length > 0) {
-          ArtworkCache.deleteIfPresent(temporaryPath);
+          await ArtworkCache.deleteIfPresentAsync(temporaryPath);
         }
       } finally {
         try {
@@ -397,12 +405,18 @@ export class ArtworkCache {
     return normalizedPath;
   }
 
-  private static ensureDirectory(path: string): void {
+  private static async ensureDirectoryAsync(path: string): Promise<void> {
     try {
-      if (!fs.accessSync(path)) {
-        fs.mkdirSync(path, true);
+      if (!await fs.access(path)) {
+        await fs.mkdir(path, true);
       }
     } catch (error) {
+      try {
+        if (await fs.access(path)) {
+          return;
+        }
+      } catch (_) {
+      }
       throw new Error(`Unable to create artwork directory ${path}: ${ArtworkCache.errorMessage(error)}`);
     }
   }
@@ -415,23 +429,13 @@ export class ArtworkCache {
     return path.substring(0, separator);
   }
 
-  private static deleteIfPresent(path: string): void {
-    try {
-      if (fs.accessSync(path)) {
-        fs.unlinkSync(path);
-      }
-    } catch (error) {
-      throw new Error(`Unable to delete artwork file ${path}: ${ArtworkCache.errorMessage(error)}`);
-    }
-  }
-
   private static async deleteIfPresentAsync(path: string): Promise<boolean> {
     try {
       await fs.unlink(path);
       return true;
     } catch (error) {
       try {
-        if (!fs.accessSync(path)) {
+        if (!await fs.access(path)) {
           return false;
         }
       } catch (accessError) {
@@ -457,5 +461,11 @@ export class ArtworkCache {
   private static nextTemporaryId(): string {
     temporaryFileSequence++;
     return `${Date.now()}.${temporaryFileSequence}`;
+  }
+
+  private static ensureContinues(shouldContinue?: () => boolean): void {
+    if (shouldContinue !== undefined && !shouldContinue()) {
+      throw new Error('Artwork operation cancelled');
+    }
   }
 }

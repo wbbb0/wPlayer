@@ -5,6 +5,7 @@ import {
   ImportItemDetailKind,
   ImportItemOutcome,
   ImportItemResult,
+  ImportStagePerformance,
   FileCheckItemOutcome,
   FileCheckItemResult,
   UnavailableTrackItem
@@ -92,6 +93,7 @@ export struct LibraryManagementPage {
   @State showPageSheet: boolean = false;
   @State activeSheet: LibraryManagementSheet = LibraryManagementSheet.TASK_REPORT;
   @State expandedImportDetail?: ImportItemDetailKind = undefined;
+  @State performanceExpanded: boolean = false;
   @State selectedUnavailableIds: Array<number> = [];
   scroller: Scroller = new Scroller();
   openDebugMaintenance: () => void = (): void => {};
@@ -137,6 +139,7 @@ export struct LibraryManagementPage {
 
   private openTaskReport(): void {
     this.activeSheet = LibraryManagementSheet.TASK_REPORT;
+    this.performanceExpanded = false;
     this.showPageSheet = true;
   }
 
@@ -226,8 +229,10 @@ export struct LibraryManagementPage {
             total: Math.max(1, this.store.importProgress.total),
             type: ProgressType.Linear
           }).width('100%')
-          Text(this.store.importProgress.currentName.length > 0 ?
-            this.store.importProgress.currentName : '正在整理音乐库')
+          Text(this.store.importProgress.metadataCompleted ?
+            (this.store.importProgress.cancelled ?
+              '音乐文件处理已停止' : '音乐文件处理完成') :
+            '正在处理音乐文件')
             .fontSize(13)
             .fontColor($r('app.color.text_secondary'))
             .maxLines(2)
@@ -240,6 +245,34 @@ export struct LibraryManagementPage {
             .fontColor($r('app.color.text_secondary'))
             .fontFeature('tnum')
             .width('100%')
+          if (this.store.importProgress.metadataCompleted &&
+            this.store.importProgress.artworkTotal > 0) {
+            Divider()
+              .color($r('app.color.text_secondary'))
+              .opacity(0.2)
+            Progress({
+              value: this.store.importProgress.artworkProcessed,
+              total: Math.max(1, this.store.importProgress.artworkTotal),
+              type: ProgressType.Linear
+            }).width('100%')
+            Text(this.store.importProgress.artworkProcessed <
+              this.store.importProgress.artworkTotal ? '正在处理封面' :
+              (this.store.importProgress.artworkFailed > 0 ?
+                '封面处理完成，但有失败项目' : '封面处理完成'))
+              .fontSize(13)
+              .fontColor($r('app.color.text_secondary'))
+              .width('100%')
+            Text(`${this.store.importProgress.artworkProcessed} / ` +
+              `${this.store.importProgress.artworkTotal}` +
+              (this.store.importProgress.artworkSkipped > 0 ?
+                `  ·  跳过 ${this.store.importProgress.artworkSkipped}` : '') +
+              (this.store.importProgress.artworkFailed > 0 ?
+                `  ·  失败 ${this.store.importProgress.artworkFailed}` : ''))
+              .fontSize(12)
+              .fontColor($r('app.color.text_secondary'))
+              .fontFeature('tnum')
+              .width('100%')
+          }
           Button('停止导入')
             .buttonStyle(ButtonStyleMode.TEXTUAL)
             .onClick(() => this.store.cancelImport())
@@ -257,8 +290,11 @@ export struct LibraryManagementPage {
             total: Math.max(1, this.store.fileCheckProgress.total),
             type: ProgressType.Linear
           }).width('100%')
-          Text(this.store.fileCheckProgress.currentName.length > 0 ?
-            this.store.fileCheckProgress.currentName : '正在检查音乐文件')
+          Text(this.store.fileCheckProgress.metadataCompleted ?
+            (this.store.fileCheckProgress.cancelled ?
+              '音乐文件检查已停止' : '音乐文件检查完成') :
+            (this.store.fileCheckProgress.currentName.length > 0 ?
+              this.store.fileCheckProgress.currentName : '正在检查音乐文件'))
             .fontSize(13)
             .fontColor($r('app.color.text_secondary'))
             .maxLines(2)
@@ -266,11 +302,40 @@ export struct LibraryManagementPage {
           Text(`${this.store.fileCheckProgress.processed} / ${this.store.fileCheckProgress.total}` +
             `  ·  更新 ${this.store.fileCheckProgress.updated}` +
             `  ·  恢复 ${this.store.fileCheckProgress.recovered}` +
+            `  ·  封面 ${this.store.fileCheckProgress.artworkRebuilt}` +
             `  ·  失效 ${this.store.fileCheckProgress.unavailable}`)
             .fontSize(12)
             .fontColor($r('app.color.text_secondary'))
             .fontFeature('tnum')
             .width('100%')
+          if (this.store.fileCheckProgress.metadataCompleted &&
+            this.store.fileCheckProgress.artworkTotal > 0) {
+            Divider()
+              .color($r('app.color.text_secondary'))
+              .opacity(0.2)
+            Progress({
+              value: this.store.fileCheckProgress.artworkProcessed,
+              total: Math.max(1, this.store.fileCheckProgress.artworkTotal),
+              type: ProgressType.Linear
+            }).width('100%')
+            Text(this.store.fileCheckProgress.artworkProcessed <
+              this.store.fileCheckProgress.artworkTotal ? '正在处理封面' :
+              (this.store.fileCheckProgress.artworkFailed > 0 ?
+                '封面处理完成，但有失败项目' : '封面处理完成'))
+              .fontSize(13)
+              .fontColor($r('app.color.text_secondary'))
+              .width('100%')
+            Text(`${this.store.fileCheckProgress.artworkProcessed} / ` +
+              `${this.store.fileCheckProgress.artworkTotal}` +
+              (this.store.fileCheckProgress.artworkSkipped > 0 ?
+                `  ·  跳过 ${this.store.fileCheckProgress.artworkSkipped}` : '') +
+              (this.store.fileCheckProgress.artworkFailed > 0 ?
+                `  ·  失败 ${this.store.fileCheckProgress.artworkFailed}` : ''))
+              .fontSize(12)
+              .fontColor($r('app.color.text_secondary'))
+              .fontFeature('tnum')
+              .width('100%')
+          }
           Button('停止检查')
             .buttonStyle(ButtonStyleMode.TEXTUAL)
             .onClick(() => this.store.cancelFileCheck())
@@ -281,18 +346,81 @@ export struct LibraryManagementPage {
         .backgroundColor($r('app.color.glass_surface'))
       } else if (this.store.fileCheckResult.length > 0) {
         Text(this.store.fileCheckResult)
-          .fontColor($r('app.color.message_success'))
+          .fontColor(this.store.fileCheckProgress.artworkFailed > 0 ?
+            $r('app.color.message_error') : $r('app.color.message_success'))
           .width('100%')
       }
 
       if (!this.store.lastTaskWasFileCheck && this.store.lastImportResult !== undefined) {
         Text(`已导入 ${this.store.lastImportResult.imported} 首  ·  ` +
           `重复 ${this.store.lastImportResult.duplicates} 首  ·  ` +
-          `失败 ${this.store.lastImportResult.failed} 首`)
+          `失败 ${this.store.lastImportResult.failed} 首` +
+          (this.store.lastImportResult.artworkSkipped > 0 ?
+            `  ·  跳过封面 ${this.store.lastImportResult.artworkSkipped} 个` : '') +
+          (this.store.lastImportResult.artworkFailed > 0 ?
+            `  ·  封面失败 ${this.store.lastImportResult.artworkFailed} 个` : ''))
           .fontSize(14)
           .fontColor($r('app.color.text_secondary'))
           .fontFeature('tnum')
           .width('100%')
+
+        if (this.store.lastImportResult.performance !== undefined) {
+          Column({ space: 8 }) {
+            Button() {
+              Row({ space: 10 }) {
+                Text(`性能统计  ·  总耗时 ${this.formatDuration(
+                  this.store.lastImportResult.performance.totalDurationMs
+                )}`)
+                  .fontSize(15)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor($r('app.color.text_primary'))
+                  .layoutWeight(1)
+                  .textAlign(TextAlign.Start)
+                SymbolGlyph($r('sys.symbol.chevron_right'))
+                  .fontSize(16)
+                  .fontColor([$r('app.color.text_tertiary')])
+                  .rotate({ angle: this.performanceExpanded ? 90 : 0 })
+              }
+              .width('100%')
+              .height(44)
+            }
+            .width('100%')
+            .height(44)
+            .buttonStyle(ButtonStyleMode.TEXTUAL)
+            .accessibilityText(this.performanceExpanded ? '收起性能统计' : '展开性能统计')
+            .onClick(() => {
+              this.performanceExpanded = !this.performanceExpanded;
+            })
+            if (this.performanceExpanded) {
+              Scroll() {
+                Column({ space: 8 }) {
+                  ForEach(this.store.lastImportResult.performance.stages,
+                    (stage: ImportStagePerformance) => {
+                    Row() {
+                      Text(stage.label)
+                        .fontSize(12)
+                        .fontColor($r('app.color.text_secondary'))
+                        .layoutWeight(1)
+                      Text(`平均 ${this.formatAverageMs(stage.averageMs)}  ·  ${stage.sampleCount} 个文件`)
+                        .fontSize(12)
+                        .fontColor($r('app.color.text_secondary'))
+                        .fontFeature('tnum')
+                    }
+                    .width('100%')
+                  }, (stage: ImportStagePerformance) => stage.stage)
+                }
+                .width('100%')
+              }
+              .width('100%')
+              .constraintSize({ maxHeight: 180 })
+              .edgeEffect(EdgeEffect.Spring)
+            }
+          }
+          .width('100%')
+          .padding(14)
+          .borderRadius(16)
+          .backgroundColor($r('app.color.glass_surface'))
+        }
       }
 
       if (this.store.errorMessage.length > 0) {
@@ -584,6 +712,20 @@ export struct LibraryManagementPage {
     })
   }
 
+  private formatAverageMs(value: number): string {
+    if (value >= 1000) {
+      return `${(value / 1000).toFixed(2)} s`;
+    }
+    return `${Math.round(value)} ms`;
+  }
+
+  private formatDuration(value: number): string {
+    if (value >= 1000) {
+      return `${(value / 1000).toFixed(2)} s`;
+    }
+    return `${Math.round(value)} ms`;
+  }
+
   @Builder
   private ActiveSheet() {
     if (this.activeSheet === LibraryManagementSheet.UNAVAILABLE_FILES) {
@@ -704,6 +846,12 @@ struct FileCheckResultListItem {
         return '已更新';
       case FileCheckItemOutcome.RECOVERED:
         return '已恢复';
+      case FileCheckItemOutcome.ARTWORK_REBUILT:
+        return '封面已修复';
+      case FileCheckItemOutcome.ARTWORK_ABSENT:
+        return '无内嵌封面';
+      case FileCheckItemOutcome.ARTWORK_FAILED:
+        return '封面失败';
       case FileCheckItemOutcome.AUTHORIZATION_REVOKED:
         return '授权失效';
       case FileCheckItemOutcome.CORRUPTED:
@@ -715,7 +863,9 @@ struct FileCheckResultListItem {
 
   private success(): boolean {
     return this.item.outcome === FileCheckItemOutcome.UPDATED ||
-      this.item.outcome === FileCheckItemOutcome.RECOVERED;
+      this.item.outcome === FileCheckItemOutcome.RECOVERED ||
+      this.item.outcome === FileCheckItemOutcome.ARTWORK_REBUILT ||
+      this.item.outcome === FileCheckItemOutcome.ARTWORK_ABSENT;
   }
 
   build() {

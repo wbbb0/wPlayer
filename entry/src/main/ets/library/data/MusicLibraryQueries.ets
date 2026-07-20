@@ -7,6 +7,7 @@ import {
   ArtistDetail,
   ArtistReference,
   AvailabilityState,
+  ArtworkState,
   ArtworkPictureType,
   CreditRole,
   LibraryCatalog,
@@ -354,8 +355,11 @@ export class MusicLibraryQueries {
     const items: Array<MediaFileCheckCandidate> = [];
     try {
       resultSet = await this.database.getStore().querySql(
-        `SELECT t.id, f.uri, f.display_name, f.file_size, f.modified_at, f.availability_state
+        `SELECT t.id, f.uri, f.display_name, f.file_size, f.modified_at, f.availability_state,
+           f.artwork_state, f.artwork_attempt_count, f.artwork_last_attempt_at,
+           COALESCE(a.small_path, ''), COALESCE(a.large_path, '')
          FROM media_file f JOIN track t ON t.media_file_id = f.id
+         LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
          ORDER BY t.id`
       );
       while (resultSet.goToNextRow()) {
@@ -365,7 +369,12 @@ export class MusicLibraryQueries {
           displayName: resultSet.getString(2),
           fileSize: resultSet.getLong(3),
           modifiedAt: resultSet.getLong(4),
-          availability: resultSet.getLong(5) as AvailabilityState
+          availability: resultSet.getLong(5) as AvailabilityState,
+          artworkState: resultSet.getLong(6) as ArtworkState,
+          artworkAttemptCount: resultSet.getLong(7),
+          artworkLastAttemptAt: resultSet.getLong(8),
+          artworkSmallPath: resultSet.getString(9),
+          artworkLargePath: resultSet.getString(10)
         });
       }
       return items;

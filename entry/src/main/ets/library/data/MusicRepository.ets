@@ -31,6 +31,7 @@ import { LibraryDatabase } from './LibraryDatabase';
 import { MusicLibraryImporter } from './MusicLibraryImporter';
 import { MusicLibraryQueries } from './MusicLibraryQueries';
 import {
+  ArtworkImportInput,
   ArtworkAssetLookup,
   ArtworkCleanupCandidate,
   DuplicateCandidate,
@@ -417,5 +418,22 @@ export class MusicRepository {
 
   refreshTrack(trackId: number, input: TrackImportInput): Promise<void> {
     return this.importer.refreshTrack(trackId, input);
+  }
+
+  markArtworkProcessing(trackId: number, fileSize: number, modifiedAt: number): Promise<boolean> {
+    return this.importer.markArtworkProcessing(trackId, fileSize, modifiedAt);
+  }
+
+  completeArtwork(trackId: number, fileSize: number, modifiedAt: number,
+    artworks: Array<ArtworkImportInput>): Promise<boolean> {
+    return this.importer.completeArtwork(trackId, fileSize, modifiedAt, artworks);
+  }
+
+  failArtwork(trackId: number, fileSize: number, modifiedAt: number, message: string): Promise<void> {
+    return this.importer.failArtwork(trackId, fileSize, modifiedAt, message);
+  }
+
+  deferArtwork(trackId: number, fileSize: number, modifiedAt: number): Promise<void> {
+    return this.importer.deferArtwork(trackId, fileSize, modifiedAt);
   }
 }

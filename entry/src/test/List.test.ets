@@ -13,6 +13,7 @@ import playbackCoverageTest from './PlaybackCoverage.test';
 import playlistInteractionPolicyTest from './PlaylistInteractionPolicy.test';
 import playlistPolicyTest from './PlaylistPolicy.test';
 import playbackStateReducerTest from './PlaybackStateReducer.test';
+import artworkWorkSessionTest from './ArtworkWorkSession.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -30,4 +31,5 @@ export default function testsuite() {
   playlistInteractionPolicyTest();
   playlistPolicyTest();
   playbackStateReducerTest();
+  artworkWorkSessionTest();
 }

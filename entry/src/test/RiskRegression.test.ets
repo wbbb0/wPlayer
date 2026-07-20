@@ -8,9 +8,11 @@ import { ImportDetailPolicy } from '../main/ets/library/importer/ImportDetailPol
 import {
   ImportItemDetailKind,
   ImportItemOutcome,
-  ImportItemResult
+  ImportItemResult,
+  ArtworkState
 } from '../main/ets/library/model/LibraryModels';
 import { ArtworkEncodingPolicy } from '../main/ets/library/artwork/ArtworkEncodingPolicy';
+import { ArtworkRepairPolicy } from '../main/ets/library/artwork/ArtworkRepairPolicy';
 import { ImportPreparationPolicy, PreparedItemState } from
   '../main/ets/library/importer/ImportPreparationPolicy';
 import {
@@ -162,6 +164,28 @@ export default function riskRegressionTest() {
       expect(ArtworkEncodingPolicy.EXTENSION).assertEqual('jpg');
       expect(ArtworkEncodingPolicy.QUALITY).assertLarger(0);
       expect(ArtworkEncodingPolicy.QUALITY).assertLess(101);
+    });
+
+    it('repairs incomplete artwork without retrying confirmed absent sources', 0, () => {
+      const now = 100_000_000;
+      expect(ArtworkRepairPolicy.needsRepair(ArtworkState.ABSENT, false, false)).assertFalse();
+      expect(ArtworkRepairPolicy.needsRepair(ArtworkState.PENDING, false, false)).assertTrue();
+      expect(ArtworkRepairPolicy.needsRepair(ArtworkState.READY, true, true)).assertFalse();
+      expect(ArtworkRepairPolicy.needsRepair(ArtworkState.READY, true, false)).assertTrue();
+      expect(ArtworkRepairPolicy.needsRepair(
+        ArtworkState.PROCESSING, false, false, 1, now - 1000, now
+      )).assertFalse();
+      expect(ArtworkRepairPolicy.needsRepair(
+        ArtworkState.PROCESSING, false, false, 1, 0, now
+      )).assertTrue();
+      expect(ArtworkRepairPolicy.needsRepair(
+        ArtworkState.FAILED, false, false, 3, now - 1000, now
+      )).assertFalse();
+      expect(ArtworkRepairPolicy.needsRepair(
+        ArtworkState.FAILED, false, false, 3, now - 25 * 60 * 60 * 1000, now
+      )).assertTrue();
+      expect(ArtworkRepairPolicy.shouldRebindSource(7, 8)).assertTrue();
+      expect(ArtworkRepairPolicy.shouldRebindSource(7, 7)).assertFalse();
     });
 
     it('classifies an early duplicate without an import input as duplicate', 0, () => {

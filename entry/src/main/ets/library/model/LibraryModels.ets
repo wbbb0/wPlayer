@@ -342,6 +342,20 @@ export interface MediaFileCheckCandidate {
   fileSize: number;
   modifiedAt: number;
   availability: AvailabilityState;
+  artworkState: ArtworkState;
+  artworkAttemptCount: number;
+  artworkLastAttemptAt: number;
+  artworkSmallPath: string;
+  artworkLargePath: string;
+}
+
+export enum ArtworkState {
+  UNKNOWN = 0,
+  ABSENT = 1,
+  PENDING = 2,
+  PROCESSING = 3,
+  READY = 4,
+  FAILED = 5
 }
 
 export interface UnavailableTrackItem {
@@ -360,6 +374,13 @@ export interface FileCheckProgress {
   updated: number;
   unavailable: number;
   recovered: number;
+  artworkRebuilt: number;
+  artworkTotal: number;
+  artworkProcessed: number;
+  artworkSkipped: number;
+  artworkFailed: number;
+  metadataCompleted: boolean;
+  cancelled: boolean;
   currentName: string;
 }
 
@@ -368,6 +389,10 @@ export interface FileCheckResult {
   updated: number;
   unavailable: number;
   recovered: number;
+  artworkRebuilt: number;
+  artworkSkipped: number;
+  artworkFailed: number;
+  cancelled: boolean;
   items: Array<FileCheckItemResult>;
 }
 
@@ -376,7 +401,10 @@ export enum FileCheckItemOutcome {
   RECOVERED = 'recovered',
   UNAVAILABLE = 'unavailable',
   AUTHORIZATION_REVOKED = 'authorization_revoked',
-  CORRUPTED = 'corrupted'
+  CORRUPTED = 'corrupted',
+  ARTWORK_REBUILT = 'artwork_rebuilt',
+  ARTWORK_ABSENT = 'artwork_absent',
+  ARTWORK_FAILED = 'artwork_failed'
 }
 
 export interface FileCheckItemResult {
@@ -398,6 +426,12 @@ export interface ImportProgress {
   imported: number;
   duplicates: number;
   failed: number;
+  artworkTotal: number;
+  artworkProcessed: number;
+  artworkSkipped: number;
+  artworkFailed: number;
+  metadataCompleted: boolean;
+  cancelled: boolean;
   currentName: string;
 }
 
@@ -405,7 +439,23 @@ export interface ImportResult {
   imported: number;
   duplicates: number;
   failed: number;
+  artworkSkipped: number;
+  artworkFailed: number;
+  cancelled: boolean;
   items: Array<ImportItemResult>;
+  performance?: ImportPerformanceSummary;
+}
+
+export interface ImportStagePerformance {
+  stage: string;
+  label: string;
+  averageMs: number;
+  sampleCount: number;
+}
+
+export interface ImportPerformanceSummary {
+  totalDurationMs: number;
+  stages: Array<ImportStagePerformance>;
 }
 
 export enum ImportItemOutcome {

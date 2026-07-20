@@ -5,7 +5,7 @@ import { ARTWORK_PALETTE_VERSION } from '../artwork/ArtworkPaletteExtractor';
 import { RelationalStoreSafety } from './RelationalStoreSafety';
 
 const DATABASE_NAME = 'music_library.db';
-const DATABASE_VERSION = 11;
+const DATABASE_VERSION = 12;
 const SORT_REBUILD_BATCH_SIZE = 500;
 
 const STORE_CONFIG: relationalStore.StoreConfig = {
@@ -33,6 +33,10 @@ const CURRENT_SCHEMA: Array<string> = [
     authorization_persisted INTEGER NOT NULL DEFAULT 0,
     availability_state INTEGER NOT NULL DEFAULT 0,
     import_state INTEGER NOT NULL DEFAULT 0,
+    artwork_state INTEGER NOT NULL DEFAULT 0,
+    artwork_attempt_count INTEGER NOT NULL DEFAULT 0,
+    artwork_last_error TEXT NOT NULL DEFAULT '',
+    artwork_last_attempt_at INTEGER NOT NULL DEFAULT 0,
     last_checked_at INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL

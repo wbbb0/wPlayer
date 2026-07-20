@@ -3,11 +3,8 @@ import { media } from '@kit.MediaKit';
 import {
   MediaFormat,
   MetadataReadResult,
-  ParsedArtwork,
   ParsedMetadata
 } from '../model/LibraryModels';
-import { BinaryFileReader } from './BinaryFileReader';
-import { Id3TagReader } from './Id3TagReader';
 import { MetadataFactory } from './MetadataFactory';
 import { MetadataNormalizer } from './MetadataNormalizer';
 import { probeMediaFile, readEmbeddedLyrics } from './MediaFileTasks';
@@ -30,9 +27,14 @@ export class MetadataReader {
     ImportPerformanceTrace.mark('probe_total', probeStartedAt, fileId,
       `worker_ms=${probe.workerDurationMs} queue_ms=${Math.max(0, Date.now() - probeStartedAt - probe.workerDurationMs)}` +
       ` bytes=${probe.fileSize}`);
-    const systemMetadataStartedAt = Date.now();
-    let metadata = await MetadataReader.mergeSystemMetadata(uri, probe.fileSize, probe.metadata);
-    ImportPerformanceTrace.mark('system_metadata', systemMetadataStartedAt, fileId);
+    let metadata = probe.metadata;
+    if (MetadataReader.needsSystemMetadata(metadata)) {
+      const systemMetadataStartedAt = Date.now();
+      metadata = await MetadataReader.mergeSystemMetadata(uri, probe.fileSize, metadata);
+      ImportPerformanceTrace.mark('system_metadata', systemMetadataStartedAt, fileId);
+    } else {
+      ImportPerformanceTrace.event('system_metadata_skipped', fileId, 'reason=parsed_fields_complete');
+    }
     if (metadata.title.length === 0) {
       metadata.title = MetadataReader.fileStem(probe.fileName);
     }
@@ -49,32 +51,9 @@ export class MetadataReader {
     };
   }
 
-  static readArtworkBytes(uri: string, metadata: ParsedMetadata, artworkIndex: number): Uint8Array {
-    const artwork = metadata.artworks[artworkIndex];
-    if (artwork === undefined) {
-      throw new Error(`Artwork index out of range: ${artworkIndex}`);
-    }
-    const reader = new BinaryFileReader(uri);
-    try {
-      if (metadata.format === MediaFormat.MP3) {
-        return Id3TagReader.readArtworkBytes(reader, artwork);
-      }
-      return reader.read(artwork.byteOffset, artwork.byteLength);
-    } finally {
-      reader.close();
-    }
-  }
-
-  static readSelectedArtworkBytes(uri: string, format: MediaFormat, artwork: ParsedArtwork): Uint8Array {
-    const reader = new BinaryFileReader(uri);
-    try {
-      if (format === MediaFormat.MP3) {
-        return Id3TagReader.readArtworkBytes(reader, artwork);
-      }
-      return reader.read(artwork.byteOffset, artwork.byteLength);
-    } finally {
-      reader.close();
-    }
+  private static needsSystemMetadata(metadata: ParsedMetadata): boolean {
+    return metadata.durationMs <= 0 || metadata.sampleRate <= 0 ||
+      metadata.channelCount <= 0 || metadata.mimeType.length === 0;
   }
 
   private static async mergeSystemMetadata(uri: string, fileSize: number,
@@ -82,7 +61,7 @@ export class MetadataReader {
     let file: fs.File | undefined;
     let extractor: media.AVMetadataExtractor | undefined;
     try {
-      file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+      file = await fs.open(uri, fs.OpenMode.READ_ONLY);
       extractor = await media.createAVMetadataExtractor();
       extractor.fdSrc = { fd: file.fd, offset: 0, length: fileSize };
       const systemMetadata = await extractor.fetchMetadata();
@@ -121,7 +100,7 @@ export class MetadataReader {
       }
       if (file !== undefined) {
         try {
-          fs.closeSync(file);
+          await fs.close(file);
         } catch (error) {
           console.warn(`Metadata file close failed: ${MetadataReader.errorMessage(error)}`);
         }

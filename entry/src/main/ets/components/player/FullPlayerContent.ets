@@ -21,6 +21,7 @@ import {
   PlaybackProgressStore,
   PlayerStore,
   QueueEntry,
+  QueueTrack,
   QueueIndexListener
 } from '../../playback/model/PlaybackModels';
 import { TimedLyricLine } from '../../playback/lyrics/LyricsParser';
@@ -31,6 +32,12 @@ import { SymbolGlyphModifier } from '@kit.ArkUI';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { PlayerTrackMarquee } from './PlayerTrackMarquee';
 import { PageLayoutSpec } from '../layout/PageLayoutSpec';
+import { LibraryStore } from '../../library/store/LibraryStore';
+import {
+  AvailabilityState,
+  LibraryNavigationTarget,
+  TrackListItem
+} from '../../library/model/LibraryModels';
 
 @Reusable
 @Component
@@ -142,6 +149,7 @@ struct PlayerProgressControl {
 @Component
 export struct FullPlayerContent {
   @ObjectLink playerStore: PlayerStore;
+  @ObjectLink libraryStore: LibraryStore;
   @Prop marqueeActive: boolean = true;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
@@ -167,6 +175,8 @@ export struct FullPlayerContent {
   onResolveQueueArtwork: (relativePath: string) => string = (_relativePath: string): string => '';
   onOpenTrackActions: (trackId: number, anchorId: string) => void =
     (_trackId: number, _anchorId: string): void => {};
+  onNavigateLibrary: (target: LibraryNavigationTarget) => void =
+    (_target: LibraryNavigationTarget): void => {};
   onRequestAddToPlaylist: (trackIds: Array<number>) => void =
     (_trackIds: Array<number>): void => {};
   onCompletedCollectionChange: (enabled: boolean) => void =
@@ -197,6 +207,29 @@ export struct FullPlayerContent {
   private queueEntrySelected(entryId: number): boolean {
     return this.selectedQueueEntries.some((entry: QueueEntry): boolean =>
       entry.queueEntryId === entryId);
+  }
+
+  private queueActionTrack(track: QueueTrack): TrackListItem {
+    return {
+      id: track.id,
+      title: track.title,
+      artistDisplay: track.artistDisplay,
+      albumDisplay: track.albumDisplay,
+      durationMs: track.durationMs,
+      trackNumber: 0,
+      discNumber: 0,
+      smallArtworkHash: track.smallArtworkHash,
+      smallArtworkPath: track.smallArtworkPath,
+      artworkHash: track.largeArtworkHash,
+      artworkPath: track.largeArtworkPath,
+      artworkWidth: track.artworkWidth,
+      artworkHeight: track.artworkHeight,
+      palettePrimary: track.palettePrimary,
+      paletteSecondary: track.paletteSecondary,
+      paletteAccent: track.paletteAccent,
+      sectionKey: '',
+      availability: AvailabilityState.AVAILABLE
+    };
   }
 
   private toggleQueueSelection(entry: QueueEntry): void {
@@ -553,6 +586,7 @@ export struct FullPlayerContent {
                 Row() {
                   SongListItem({
                     item: entry.track,
+                    libraryStore: this.libraryStore,
                     layout: SongListItemLayout.PLAYER_QUEUE,
                     artworkPath: this.onResolveQueueArtwork(entry.track.smallArtworkPath),
                     queueIndex: index,
@@ -573,6 +607,12 @@ export struct FullPlayerContent {
                     artworkCornerRadius: PlayerLayoutSpec.FULL_ARTWORK_RADIUS,
                     queueIndexWidth: PlayerLayoutSpec.FULL_PLAYER_QUEUE_INDEX_WIDTH,
                     queueGestureDistance: PlayerMotionSpec.GESTURE_AXIS_LOCK_DISTANCE,
+                    actionTrack: this.queueActionTrack(entry.track),
+                    actionAnchorPrefix: `player_queue_${entry.queueEntryId}`,
+                    menuPlacement: Placement.BottomLeft,
+                    onNavigateAction: this.onNavigateLibrary,
+                    onRequestAddToPlaylist: (items: Array<TrackListItem>): void =>
+                      this.onRequestAddToPlaylist(items.map((item: TrackListItem): number => item.id)),
                     selectionMode: this.queueSelectionActive,
                     selected: this.queueEntrySelected(entry.queueEntryId),
                     onActivate: (): void => {

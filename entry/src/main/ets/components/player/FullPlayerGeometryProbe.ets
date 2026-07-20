@@ -1,6 +1,7 @@
 import { AppSettingsStore } from '../../settings/AppSettingsStore';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { FullPlayerContent } from './FullPlayerContent';
+import { LibraryStore } from '../../library/store/LibraryStore';
 import {
   FullPlayerPage,
   PlayerFrame,
@@ -11,6 +12,7 @@ import {
 export struct PlayerGeometryProbe {
   @ObjectLink playerStore: PlayerStore;
   @ObjectLink settingsStore: AppSettingsStore;
+  @ObjectLink libraryStore: LibraryStore;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @Prop rootFrame: PlayerFrame = { x: 0, y: 0, width: 0, height: 0 };
@@ -25,6 +27,7 @@ export struct PlayerGeometryProbe {
     Stack() {
       FullPlayerContent({
         playerStore: this.playerStore,
+        libraryStore: this.libraryStore,
         topInset: this.topInset,
         bottomInset: this.bottomInset,
         showArtwork: false,

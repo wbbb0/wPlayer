@@ -403,6 +403,8 @@ export struct AlbumDetailPage {
                 libraryStore: this.store,
                 currentIdentity: this.currentIdentity,
                 layout: SongListItemLayout.ALBUM,
+                artworkPath: track.smallArtworkPath.length > 0 ?
+                  this.store.resolveArtworkPath(track.smallArtworkPath) : '',
                 trackNumber: track.trackNumber,
                 showArtist: this.showTrackArtist(
                   track,

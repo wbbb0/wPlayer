@@ -9,10 +9,11 @@ import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import { TrackContextMenu } from './TrackActionMenu';
 import { AvailabilityState } from '../../library/model/LibraryModels';
 import { LibraryItemAvailability } from './LibraryItemAvailability';
+import { LayoutLength } from '../layout/LayoutLength';
+import { LibraryContextInteraction } from './LibraryContextInteraction';
 
 export class SongListItemLayoutSpec {
   static readonly CONTEXT_PREVIEW_FALLBACK_WIDTH: number = 344;
-  static readonly LIBRARY_PREVIEW_TRAILING_RESERVE: number = 132;
 }
 
 export interface SongListItemData {
@@ -35,6 +36,7 @@ export enum SongListItemLayout {
 @Component
 export struct SongListItem {
   @State contextMenuShown: boolean = false;
+  private measuredIdentityWidth: number = 0;
   @Prop item: SongListItemData;
   @Prop layout: SongListItemLayout = SongListItemLayout.LIBRARY;
   @Prop artworkPath: string = '';
@@ -47,7 +49,7 @@ export struct SongListItem {
   @Prop actionTrack: TrackListItem | undefined = undefined;
   @Prop removeActionLabel: string = '';
   @Prop actionAnchorPrefix: string = 'library';
-  @Prop menuPlacement: Placement = Placement.Right;
+  @Prop menuPlacement: Placement = Placement.BottomLeft;
   @Prop primaryColor: ResourceColor = $r('app.color.text_primary');
   @Prop secondaryColor: ResourceColor = $r('app.color.text_secondary');
   @Prop tertiaryColor: ResourceColor = $r('app.color.text_tertiary');
@@ -66,6 +68,10 @@ export struct SongListItem {
   @Prop queueIndexWidth: number = 28;
   @Prop queueGestureDistance: number = 8;
   @Prop contextPreviewWidth: number = SongListItemLayoutSpec.CONTEXT_PREVIEW_FALLBACK_WIDTH;
+  @Prop contextMenuEnabled: boolean = true;
+  @Prop hideWhileContextMenuShown: boolean = true;
+  @Prop contextPreviewShowsArtwork: boolean = false;
+  @Prop horizontalQueueGestureEnabled: boolean = true;
   @Prop selectionMode: boolean = false;
   @Prop selected: boolean = false;
   onActivate: () => void = (): void => {};
@@ -81,6 +87,7 @@ export struct SongListItem {
 
   aboutToReuse(params: ESObject): void {
     this.contextMenuShown = false;
+    this.measuredIdentityWidth = 0;
     this.suppressActivationUntil = 0;
     this.onActivate = params.onActivate as () => void;
     this.onToggleSelection = params.onToggleSelection as () => void;
@@ -137,11 +144,57 @@ export struct SongListItem {
     return `track_more_${this.actionAnchorPrefix}_${this.item.id}`;
   }
 
+  private contextPreviewAnchorId(): string {
+    return `track_context_preview_${this.actionAnchorPrefix}_${this.item.id}`;
+  }
+
   private effectiveContextPreviewWidth(): number {
+    if (this.measuredIdentityWidth > 0) {
+      return this.measuredIdentityWidth;
+    }
     return Math.max(
       SongListItemLayoutSpec.CONTEXT_PREVIEW_FALLBACK_WIDTH,
       this.contextPreviewWidth
     );
+  }
+
+  private measureContextGeometry(): void {
+    try {
+      const uiContext = this.getUIContext();
+      const componentUtils = uiContext.getComponentUtils();
+      const identityInfo = componentUtils.getRectangleById(this.contextPreviewAnchorId());
+      const widthPx = LayoutLength.toNumber(identityInfo.size.width, 0);
+      const width = uiContext.px2vp(widthPx);
+      if (width > 0) {
+        this.measuredIdentityWidth = width;
+      }
+    } catch (error) {
+      console.warn(`Unable to measure track context preview: ${error}`);
+    }
+  }
+
+  private showContextMenu(): void {
+    this.measureContextGeometry();
+    this.suppressActivationUntil =
+      Date.now() + LibraryContextInteraction.ACTIVATION_SUPPRESSION_DURATION;
+    LibraryContextInteraction.triggerHaptic('Track');
+    this.contextMenuShown = true;
+  }
+
+  private contextPreviewArtworkPath(): string {
+    if (this.artworkPath.length > 0) {
+      return this.artworkPath;
+    }
+    if (this.actionTrack !== undefined && this.libraryStore !== undefined &&
+      this.actionTrack.smallArtworkPath.length > 0) {
+      return this.libraryStore.resolveArtworkPath(this.actionTrack.smallArtworkPath);
+    }
+    return '';
+  }
+
+  private contextMenuAvailable(): boolean {
+    return this.contextMenuEnabled && this.actionTrack !== undefined &&
+      this.libraryStore !== undefined;
   }
 
   @Builder
@@ -338,7 +391,18 @@ export struct SongListItem {
   @Builder
   private ContextMenuPreview() {
     Row({ space: this.rowSpace() }) {
-      this.LeadingContent()
+      if (this.contextPreviewShowsArtwork) {
+        ArtworkView({
+          sourcePath: this.contextPreviewArtworkPath(),
+          sourceWidth: this.item.artworkWidth,
+          sourceHeight: this.item.artworkHeight,
+          slotWidth: this.artworkSize,
+          fitMode: ArtworkFitMode.CONTAIN,
+          cornerRadius: this.artworkCornerRadius
+        })
+      } else {
+        this.LeadingContent()
+      }
 
       Column({ space: this.textSpace() }) {
         Text(this.item.title)
@@ -363,7 +427,6 @@ export struct SongListItem {
       .clip(true)
     }
     .width(this.effectiveContextPreviewWidth())
-    .clip(true)
   }
 
   @Builder
@@ -372,8 +435,9 @@ export struct SongListItem {
       this.IdentityContent()
     }
     .width('100%')
+    .id(this.contextPreviewAnchorId())
     .clip(true)
-    .opacity(this.contextMenuShown ? 0 : 1)
+    .opacity(this.hideWhileContextMenuShown && this.contextMenuShown ? 0 : 1)
     .bindContextMenu(
       this.contextMenuShown,
       this.ContextMenu(),
@@ -381,7 +445,6 @@ export struct SongListItem {
         preview: this.ContextMenuPreview,
         placement: this.menuPlacement,
         previewBorderRadius: 0,
-        layoutRegionMargin: { left: 16, right: 16 },
         onDisappear: (): void => {
           this.contextMenuShown = false;
         }
@@ -420,17 +483,61 @@ export struct SongListItem {
       this.onActivate();
     })
     .gesture(
-      LongPressGesture({ repeat: false })
-        .onAction(() => {
-          this.suppressActivationUntil = Date.now() + 800;
-          this.contextMenuShown = true;
-        })
+      LongPressGesture({
+        repeat: false,
+        duration: LibraryContextInteraction.LONG_PRESS_DURATION
+      }).onAction(() => this.showContextMenu())
     )
     }
   }
 
   @Builder
   private PlayerQueueRow() {
+    if (this.contextMenuAvailable() && !this.selectionMode) {
+      this.PlayerQueueRowWithContextMenu()
+    } else if (this.horizontalQueueGestureEnabled) {
+      this.PlayerQueueRowWithHorizontalGesture()
+    } else {
+      this.PlayerQueueRowContent()
+    }
+  }
+
+  @Builder
+  private PlayerQueueRowContent() {
+    Row({ space: this.rowSpace() }) {
+      this.RowContent()
+    }
+    .width('100%')
+    .constraintSize({ minHeight: this.minimumHeight })
+    .padding({
+      left: this.horizontalInset,
+      right: this.horizontalInset,
+      top: this.verticalInset,
+      bottom: this.verticalInset
+    })
+    .borderRadius(this.rowCornerRadius)
+    .backgroundColor(this.active ? this.activeBackgroundColor : Color.Transparent)
+    .shadow(this.active ? {
+      radius: this.activeShadowRadius,
+      color: this.activeShadowColor,
+      offsetY: this.activeShadowOffsetY
+    } : {
+      radius: 0,
+      color: Color.Transparent,
+      offsetY: 0
+    })
+    .hoverEffect(HoverEffect.None)
+    .onClick(() => {
+      if (this.selectionMode) {
+        this.onToggleSelection();
+      } else {
+        this.onActivate();
+      }
+    })
+  }
+
+  @Builder
+  private PlayerQueueRowWithHorizontalGesture() {
     Row({ space: this.rowSpace() }) {
       this.RowContent()
     }
@@ -471,11 +578,60 @@ export struct SongListItem {
     )
   }
 
+  @Builder
+  private PlayerQueueRowWithContextMenu() {
+    Row({ space: this.rowSpace() }) {
+      Row() {
+        this.ContextMenuIdentity()
+      }
+      .layoutWeight(1)
+
+      this.TrailingContent()
+    }
+    .width('100%')
+    .constraintSize({ minHeight: this.minimumHeight })
+    .padding({
+      left: this.horizontalInset,
+      right: this.horizontalInset,
+      top: this.verticalInset,
+      bottom: this.verticalInset
+    })
+    .borderRadius(this.rowCornerRadius)
+    .backgroundColor(this.active ? this.activeBackgroundColor : Color.Transparent)
+    .shadow(this.active ? {
+      radius: this.activeShadowRadius,
+      color: this.activeShadowColor,
+      offsetY: this.activeShadowOffsetY
+    } : {
+      radius: 0,
+      color: Color.Transparent,
+      offsetY: 0
+    })
+    .hoverEffect(HoverEffect.None)
+    .gesture(
+      GestureGroup(GestureMode.Exclusive,
+        PanGesture({
+          direction: PanDirection.Horizontal,
+          distance: this.queueGestureDistance
+        }),
+        LongPressGesture({
+          repeat: false,
+          duration: LibraryContextInteraction.LONG_PRESS_DURATION
+        }).onAction(() => this.showContextMenu()),
+        TapGesture().onAction(() => {
+          if (Date.now() >= this.suppressActivationUntil) {
+            this.onActivate();
+          }
+        })
+      )
+    )
+  }
+
   build() {
     Column() {
       if (this.layout === SongListItemLayout.PLAYER_QUEUE) {
         this.PlayerQueueRow()
-      } else if (this.actionTrack !== undefined && this.libraryStore !== undefined) {
+      } else if (this.contextMenuAvailable()) {
         this.StandardRowWithContextMenu()
       } else {
         this.StandardRow()

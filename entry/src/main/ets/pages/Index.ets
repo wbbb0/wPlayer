@@ -335,6 +335,7 @@ struct Index {
       controller: this.playerMorphController,
       playerStore: this.playerStore,
       settingsStore: this.settingsStore,
+      libraryStore: this.libraryStore,
       topInset: this.statusBarAvoidHeight,
       bottomInset: this.navigationAvoidHeight,
       collapsedSurfaceColor: this.morphCollapsedSurfaceColor(),
@@ -343,7 +344,8 @@ struct Index {
       onRequestAddToPlaylist: (trackIds: Array<number>): void =>
         this.playlistController.requestTrackIdsAddToPlaylist(trackIds),
       onOpenTrackActions: (trackId: number, anchorId: string): void =>
-        this.openFullPlayerTrackActions(trackId, anchorId)
+        this.openFullPlayerTrackActions(trackId, anchorId),
+      onNavigateLibrary: (target: LibraryNavigationTarget): void => this.navigateLibrary(target)
     })
   }
 
@@ -352,6 +354,7 @@ struct Index {
     PlayerGeometryProbe({
       playerStore: this.geometryPlayerStore,
       settingsStore: this.settingsStore,
+      libraryStore: this.libraryStore,
       topInset: this.statusBarAvoidHeight,
       bottomInset: this.navigationAvoidHeight,
       rootFrame: this.playerMorphController.rootFrame,

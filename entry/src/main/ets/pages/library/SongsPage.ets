@@ -12,10 +12,8 @@ import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
 import { LibrarySlot } from '../../library/store/PagedLibraryDataSource';
 import {
   SongListItem,
-  SongListItemLayout,
-  SongListItemLayoutSpec
+  SongListItemLayout
 } from '../../components/library/SongListItem';
-import { LayoutLength } from '../../components/layout/LayoutLength';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 
@@ -26,7 +24,6 @@ export struct SongsPage {
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @State selectedSectionIndex: number = 0;
-  @State listWidth: number = 0;
   @State selectedItems: Array<TrackListItem> = [];
   onPlayTrack: (item: TrackListItem) => void = (_item: TrackListItem): void => {};
   onOpenTrackActions: (item: TrackListItem, anchorId: string) => void =
@@ -38,13 +35,6 @@ export struct SongsPage {
   scroller: Scroller = new Scroller();
   private readonly scrollBehavior: PageListBehavior =
     new PageListBehavior(PageLayoutSpec.SONG_LIST_CACHE_COUNT);
-
-  private contextPreviewWidth(): number {
-    return Math.max(
-      SongListItemLayoutSpec.CONTEXT_PREVIEW_FALLBACK_WIDTH,
-      this.listWidth - SongListItemLayoutSpec.LIBRARY_PREVIEW_TRAILING_RESERVE
-    );
-  }
 
   aboutToAppear(): void {
     this.selection.deleteEnabled = false;
@@ -119,7 +109,6 @@ export struct SongsPage {
                     verticalInset: 8,
                     artworkSize: 52,
                     artworkCornerRadius: 10,
-                    contextPreviewWidth: this.contextPreviewWidth(),
                     selectionMode: this.selection.active,
                     selected: this.selection.isSelected(slot.value.id),
                     onActivate: (): void => {
@@ -197,12 +186,6 @@ export struct SongsPage {
             this.selectedSectionIndex = sectionIndex;
           }
           this.store.ensureTrackRange(firstIndex, lastIndex);
-        })
-        .onAreaChange((_oldValue: Area, newValue: Area) => {
-          const nextWidth = LayoutLength.toNumber(newValue.width, this.listWidth);
-          if (nextWidth > 0 && Math.abs(nextWidth - this.listWidth) >= 0.5) {
-            this.listWidth = nextWidth;
-          }
         })
         .attributeModifier(this.scrollBehavior)
 

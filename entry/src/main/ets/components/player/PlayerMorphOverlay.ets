@@ -7,6 +7,8 @@ import { FullPlayerContent } from './FullPlayerContent';
 import { MiniPlayerContent } from './MiniPlayerSurface';
 import { PlayerMorphArtwork } from './PlayerMorphArtwork';
 import { PlayerMorphController } from './PlayerMorphController';
+import { LibraryStore } from '../../library/store/LibraryStore';
+import { LibraryNavigationTarget } from '../../library/model/LibraryModels';
 import {
   FULL_PLAYER_HORIZONTAL_GESTURE_HOST_ID,
   FULL_PLAYER_VERTICAL_GESTURE_HOST_ID,
@@ -21,6 +23,7 @@ export struct PlayerMorphOverlay {
   @ObjectLink controller: PlayerMorphController;
   @ObjectLink playerStore: PlayerStore;
   @ObjectLink settingsStore: AppSettingsStore;
+  @ObjectLink libraryStore: LibraryStore;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @Prop collapsedSurfaceColor: string = '';
@@ -30,6 +33,8 @@ export struct PlayerMorphOverlay {
     (_trackIds: Array<number>): void => {};
   onOpenTrackActions: (trackId: number, anchorId: string) => void =
     (_trackId: number, _anchorId: string): void => {};
+  onNavigateLibrary: (target: LibraryNavigationTarget) => void =
+    (_target: LibraryNavigationTarget): void => {};
 
   @Builder
   private MorphPlayer() {
@@ -48,6 +53,7 @@ export struct PlayerMorphOverlay {
         Stack() {
           FullPlayerContent({
             playerStore: this.playerStore,
+            libraryStore: this.libraryStore,
             marqueeActive: this.controller.playerMorphPhase === PlayerMorphPhase.OPEN,
             topInset: this.topInset,
             bottomInset: this.bottomInset,
@@ -72,7 +78,8 @@ export struct PlayerMorphOverlay {
             onResolveQueueArtwork: (relativePath: string): string =>
               playbackRuntime.queueArtworkUri(relativePath),
             onOpenTrackActions: (trackId: number, anchorId: string): void =>
-              this.onOpenTrackActions(trackId, anchorId)
+              this.onOpenTrackActions(trackId, anchorId),
+            onNavigateLibrary: this.onNavigateLibrary
           })
         }
         .width(this.controller.fullPlayerFrame().width)

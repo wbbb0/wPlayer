@@ -10,6 +10,7 @@ import { artistTarget } from '../navigation/LibraryNavigation';
 import { LayoutLength } from '../layout/LayoutLength';
 import { LibraryItemAvailability } from './LibraryItemAvailability';
 import { AvailabilityState } from '../../library/model/LibraryModels';
+import { LibraryContextInteraction } from './LibraryContextInteraction';
 
 export enum AlbumAction {
   INSERT_NEXT = 0,
@@ -71,6 +72,10 @@ struct AlbumContextMenu {
 @Reusable
 @Component
 export struct AlbumGridItem {
+  @State contextMenuShown: boolean = false;
+  private measuredItemWidth: number = 0;
+  private measuredItemHeight: number = 0;
+  private suppressActivationUntil: number = 0;
   @ObjectLink store: LibraryStore;
   @Prop album: AlbumListItem;
   @Prop actionsEnabled: boolean = false;
@@ -85,6 +90,10 @@ export struct AlbumGridItem {
     (_target: LibraryNavigationTarget): void => {};
 
   aboutToReuse(params: ESObject): void {
+    this.contextMenuShown = false;
+    this.measuredItemWidth = 0;
+    this.measuredItemHeight = 0;
+    this.suppressActivationUntil = 0;
     this.onActivate = params.onActivate as (album: AlbumListItem) => void;
     this.onToggleSelection = params.onToggleSelection as (album: AlbumListItem) => void;
     this.onAction = params.onAction as (album: AlbumListItem, action: AlbumAction) => void;
@@ -102,7 +111,7 @@ export struct AlbumGridItem {
   }
 
   @Builder
-  private AlbumContent() {
+  private AlbumVisualContent() {
     Column({ space: 7 }) {
       ArtworkView({
         sourcePath: this.album.artworkPath.length > 0 ?
@@ -138,13 +147,47 @@ export struct AlbumGridItem {
     .opacity(LibraryItemAvailability.opacity(
       this.albumUnavailable() ? AvailabilityState.UNAVAILABLE : AvailabilityState.AVAILABLE
     ))
-    .onClick(() => {
-      if (this.selectionMode) {
-        this.onToggleSelection(this.album);
-      } else {
-        this.onActivate(this.album);
+  }
+
+  @Builder
+  private AlbumContextPreview() {
+    if (this.measuredItemWidth > 0 && this.measuredItemHeight > 0) {
+      Stack({ alignContent: Alignment.TopStart }) {
+        this.AlbumVisualContent()
       }
-    })
+      .width(this.measuredItemWidth)
+      .height(this.measuredItemHeight)
+    } else {
+      this.AlbumVisualContent()
+    }
+  }
+
+  private contextPreviewAnchorId(): string {
+    return `album_context_preview_${this.actionAnchorPrefix}_${this.album.id}`;
+  }
+
+  private showContextMenu(): void {
+    try {
+      const uiContext = this.getUIContext();
+      const info = uiContext.getComponentUtils()
+        .getRectangleById(this.contextPreviewAnchorId());
+      const widthPx = LayoutLength.toNumber(info.size.width, 0);
+      const heightPx = LayoutLength.toNumber(info.size.height, 0);
+      const width = uiContext.px2vp(widthPx);
+      const height = uiContext.px2vp(heightPx);
+      if (width > 0) {
+        this.measuredItemWidth = width;
+      }
+      if (height > 0) {
+        this.measuredItemHeight = height;
+      }
+    } catch (error) {
+      console.warn(`Unable to measure album context preview: ${error}`);
+    }
+    this.suppressActivationUntil =
+      Date.now() + LibraryContextInteraction.ACTIVATION_SUPPRESSION_DURATION;
+    LibraryContextInteraction.triggerHaptic('Album');
+    this.contextMenuShown = true;
   }
 
   private albumUnavailable(): boolean {
@@ -155,7 +198,7 @@ export struct AlbumGridItem {
   @Builder
   private SelectableAlbumContent() {
     Stack({ alignContent: Alignment.TopStart }) {
-      this.AlbumContent()
+      this.AlbumVisualContent()
       SymbolGlyph(this.selected ? $r('sys.symbol.checkmark_circle_fill') : $r('sys.symbol.circle'))
         .fontSize(26)
         .fontColor([this.selected ? $r('app.color.theme_accent') : $r('app.color.text_secondary')])
@@ -168,21 +211,48 @@ export struct AlbumGridItem {
         .animation({ duration: 180, curve: Curve.EaseOut })
     }
     .width('100%')
+    .onClick(() => {
+      if (Date.now() < this.suppressActivationUntil) {
+        return;
+      }
+      if (this.selectionMode) {
+        this.onToggleSelection(this.album);
+      } else {
+        this.onActivate(this.album);
+      }
+    })
   }
 
   build() {
-    if (this.actionsEnabled) {
+    if (this.actionsEnabled && !this.selectionMode) {
       Stack() {
-        this.SelectableAlbumContent()
+        Stack() {
+          this.SelectableAlbumContent()
+        }
+        .width('100%')
+        .opacity(this.contextMenuShown ? 0 : 1)
       }
         .width('100%')
+        .id(this.contextPreviewAnchorId())
         .bindContextMenu(
+          this.contextMenuShown,
           this.AlbumMenu(),
-          ResponseType.LongPress,
           {
-            preview: MenuPreviewMode.IMAGE,
-            previewBorderRadius: 0
+            preview: this.AlbumContextPreview,
+            previewBorderRadius: 0,
+            onDisappear: (): void => {
+              this.contextMenuShown = false;
+            }
           }
+        )
+        .gesture(
+          LongPressGesture({
+            repeat: false,
+            duration: LibraryContextInteraction.LONG_PRESS_DURATION
+          })
+            .onAction(() => {
+              this.showContextMenu();
+            })
         )
     } else {
       this.SelectableAlbumContent()

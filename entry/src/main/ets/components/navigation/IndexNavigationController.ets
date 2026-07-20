@@ -36,6 +36,7 @@ export class IndexNavigationController {
   selectedRouteId: string = NavigationRoute.PLAYLISTS;
   readonly rootTitleContents: Array<ComponentContent<AppPrimaryTitleParams> | undefined> =
     new Array<ComponentContent<AppPrimaryTitleParams> | undefined>(ALL_ROOT_NAVIGATION_ITEMS.length);
+  moreTitleContent?: ComponentContent<AppPrimaryTitleParams>;
   readonly rootPathStacks: Array<NavPathStack> = ALL_ROOT_NAVIGATION_ITEMS.map(() => new NavPathStack());
   readonly rootScrollers: Array<Scroller> = ALL_ROOT_NAVIGATION_ITEMS.map(() => new Scroller());
   readonly morePathStack: NavPathStack = new NavPathStack();
@@ -56,6 +57,13 @@ export class IndexNavigationController {
         );
       }
     }
+    if (this.moreTitleContent === undefined) {
+      this.moreTitleContent = new ComponentContent(
+        uiContext,
+        wrapBuilder(AppPrimaryTitleContent),
+        new AppPrimaryTitleParams('更多', palette.titlePrimary)
+      );
+    }
   }
 
   updateTitleColors(palette: AppAppearancePalette): void {
@@ -64,6 +72,7 @@ export class IndexNavigationController {
         new AppPrimaryTitleParams(ALL_ROOT_NAVIGATION_ITEMS[index].label, palette.titlePrimary)
       );
     }
+    this.moreTitleContent?.update(new AppPrimaryTitleParams('更多', palette.titlePrimary));
   }
 
   dispose(): void {
@@ -71,6 +80,8 @@ export class IndexNavigationController {
       this.rootTitleContents[index]?.dispose();
       this.rootTitleContents[index] = undefined;
     }
+    this.moreTitleContent?.dispose();
+    this.moreTitleContent = undefined;
   }
 
   bindSettings(repository: SettingsRepository, store: AppSettingsStore): void {

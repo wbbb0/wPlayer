@@ -7,9 +7,9 @@ import {
 } from '../../library/model/LibraryModels';
 import { PlaylistStore } from '../../playlist/store/PlaylistStore';
 import { promptAction } from '@kit.ArkUI';
-import { HdsListItem } from '@kit.UIDesignKit';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
+import { SongListItem, SongListItemData, SongListItemLayout } from '../../components/library/SongListItem';
 
 const DELETE_ANIMATION_DURATION: number = 180;
 
@@ -50,6 +50,17 @@ export struct PlaylistsPage {
       return `${totalMinutes} 分钟`;
     }
     return `${Math.floor(totalMinutes / 60)} 小时 ${totalMinutes % 60} 分钟`;
+  }
+
+  private playlistItem(playlist: PlaylistSummary): SongListItemData {
+    return {
+      id: playlist.id,
+      title: playlist.name,
+      artistDisplay: `${playlist.trackCount} 首 · ${this.durationLabel(playlist.totalDurationMs)}`,
+      durationMs: 0,
+      artworkWidth: 0,
+      artworkHeight: 0
+    };
   }
 
   private confirmDelete(playlist: PlaylistSummary): void {
@@ -172,110 +183,48 @@ export struct PlaylistsPage {
 
   @Builder
   private PlaylistContent(playlist: PlaylistSummary) {
-    Row({ space: 14 }) {
-      Stack() {
-        SymbolGlyph(this.selection.isSelected(playlist.id) ?
-          $r('sys.symbol.checkmark_circle_fill') : $r('sys.symbol.circle'))
-          .fontSize(22)
-          .fontColor([this.selection.isSelected(playlist.id) ?
-            $r('app.color.theme_accent') : $r('app.color.text_tertiary')])
-      }
-      .width(this.selection.active ? 24 : 0)
-      .opacity(this.selection.active ? 1 : 0)
-      .translate({ x: this.selection.active ? 0 : -12 })
-      .clip(true)
-      .animation({ duration: 180, curve: Curve.EaseOut })
-      Stack({ alignContent: Alignment.Center }) {
-        SymbolGlyph(playlist.kind === PlaylistKind.COMPLETED_HISTORY ?
-          $r('sys.symbol.checkmark_circle_fill') : $r('sys.symbol.music_note_list_fill'))
-          .fontSize(28)
-          .fontColor([$r('app.color.theme_accent')])
-      }
-      .width(54)
-      .height(54)
-      .borderRadius(14)
-      .backgroundColor($r('app.color.glass_surface_strong'))
-
-      Column({ space: 4 }) {
-        Row({ space: 7 }) {
-          Text(playlist.name)
-            .fontSize(17)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.text_primary'))
-            .maxLines(1)
-          if (playlist.kind === PlaylistKind.COMPLETED_HISTORY) {
-            Text('自动')
-              .fontSize(10)
-              .fontColor($r('app.color.theme_accent'))
-          }
-        }
-        Text(`${playlist.trackCount} 首 · ${this.durationLabel(playlist.totalDurationMs)}`)
-          .fontSize(12)
-          .fontColor($r('app.color.text_secondary'))
-          .maxLines(1)
-      }
-      .alignItems(HorizontalAlign.Start)
-      .layoutWeight(1)
-
-      if (!this.selection.active) {
-        Button() {
-        Image($r('app.media.control_more'))
-          .width(18)
-          .height(18)
-          .fillColor($r('app.color.text_primary'))
-      }
-      .width(38)
-      .height(38)
-      .borderRadius(19)
-      .backgroundColor(Color.Transparent)
-      .accessibilityText('更多播放列表操作')
-      .bindMenu(this.PlaylistMenu(playlist), { placement: Placement.BottomRight })
-      }
-    }
-    .width('100%')
-    .padding(14)
-    .borderRadius(20)
-    .backgroundColor($r('app.color.glass_surface'))
-    .onClick(() => {
-      if (this.selection.active) {
-        this.toggleSelection(playlist);
-      } else {
-        this.onOpenPlaylist(playlist);
-      }
+    SongListItem({
+      item: this.playlistItem(playlist),
+      layout: SongListItemLayout.LIBRARY,
+      showDuration: false,
+      leadingSymbol: playlist.kind === PlaylistKind.COMPLETED_HISTORY ?
+        $r('sys.symbol.checkmark_circle_fill') : $r('sys.symbol.music_note_list_fill'),
+      horizontalInset: 16,
+      verticalInset: 8,
+      artworkSize: 52,
+      artworkCornerRadius: 10,
+      customContextMenuEnabled: true,
+      customTrailingMenuEnabled: !this.selection.active,
+      customTrailingMenuAccessibilityText: '更多播放列表操作',
+      customContextMenu: (): void => this.PlaylistMenu(playlist),
+      actionAnchorPrefix: 'playlists',
+      selectionMode: this.selection.active,
+      selected: this.selection.isSelected(playlist.id),
+      onActivate: (): void => this.onOpenPlaylist(playlist),
+      onToggleSelection: (): void => this.toggleSelection(playlist)
     })
-    .bindContextMenu(
-      this.PlaylistMenu(playlist),
-      ResponseType.LongPress,
-      { preview: MenuPreviewMode.IMAGE }
-    )
   }
 
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
-    List({ space: 10, scroller: this.scroller }) {
-      LazyForEach(this.store.playlistDataSource, (playlist: PlaylistSummary) => {
-        if (playlist.kind === PlaylistKind.USER) {
-          HdsListItem({
-            customItemBuilder: () => {
-              this.PlaylistContent(playlist)
-            },
-            swipeActionOptions: {
-              deleteIconOptions: {
-                onAction: () => this.confirmDelete(playlist)
-              }
+    List({ space: 0, scroller: this.scroller }) {
+      LazyForEach(this.store.playlistDataSource, (playlist: PlaylistSummary, index: number) => {
+        ListItem() {
+          Column() {
+            if (index > 0) {
+              Divider()
+                .color($r('app.color.text_tertiary'))
+                .opacity(0.3)
+                .margin({ left: 80, right: PageLayoutSpec.HORIZONTAL_INSET })
             }
-          })
-            .height(this.isRemovingPlaylist(playlist.id) ? 0 : 82)
-            .clip(true)
-            .opacity(this.isRemovingPlaylist(playlist.id) ? 0 : 1)
-            .translate({ x: this.isRemovingPlaylist(playlist.id) ? -28 : 0 })
-        } else {
-          HdsListItem({
-            customItemBuilder: () => {
-              this.PlaylistContent(playlist)
-            }
-          })
+            this.PlaylistContent(playlist)
+          }
+          .width('100%')
         }
+        .height(this.isRemovingPlaylist(playlist.id) ? 0 : 68)
+        .clip(true)
+        .opacity(this.isRemovingPlaylist(playlist.id) ? 0 : 1)
+        .translate({ x: this.isRemovingPlaylist(playlist.id) ? -28 : 0 })
       }, (playlist: PlaylistSummary) => `${playlist.id}`)
 
       if (this.store.loading) {
@@ -304,7 +253,6 @@ export struct PlaylistsPage {
     }
     .width('100%')
     .height('100%')
-    .padding({ left: PageLayoutSpec.HORIZONTAL_INSET, right: PageLayoutSpec.HORIZONTAL_INSET })
     .contentStartOffset(PageLayoutSpec.primaryContentStart(this.topInset))
     .contentEndOffset(PageLayoutSpec.contentEnd(this.bottomInset))
     .attributeModifier(this.scrollBehavior)

@@ -298,6 +298,7 @@ struct Index {
       compactTabsController: this.compactTabsController,
       expandedTabsController: this.expandedTabsController,
       rootTitleContents: this.navigationController.rootTitleContents,
+      moreTitleContent: this.navigationController.moreTitleContent,
       rootPathStacks: this.navigationController.rootPathStacks,
       rootScrollers: this.navigationController.rootScrollers,
       morePathStack: this.navigationController.morePathStack,

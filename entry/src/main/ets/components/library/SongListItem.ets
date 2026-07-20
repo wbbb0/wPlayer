@@ -44,6 +44,7 @@ export struct SongListItem {
   @Prop queueIndex: number = -1;
   @Prop currentQueueIndex: number = -1;
   @Prop showArtist: boolean = true;
+  @Prop showDuration: boolean = true;
   @Prop libraryStore: LibraryStore | undefined = undefined;
   @Prop currentIdentity: LibraryEntityIdentity | undefined = undefined;
   @Prop actionTrack: TrackListItem | undefined = undefined;
@@ -65,10 +66,17 @@ export struct SongListItem {
   @Prop rowCornerRadius: number = 0;
   @Prop artworkSize: number = 52;
   @Prop artworkCornerRadius: number = 10;
+  @Prop leadingSymbol: Resource | undefined = undefined;
+  @Prop leadingSymbolSize: number = 28;
+  @Prop leadingSymbolColor: ResourceColor = $r('app.color.theme_accent');
+  @Prop leadingSymbolBackgroundColor: ResourceColor = $r('app.color.glass_surface_strong');
   @Prop queueIndexWidth: number = 28;
   @Prop queueGestureDistance: number = 8;
   @Prop contextPreviewWidth: number = SongListItemLayoutSpec.CONTEXT_PREVIEW_FALLBACK_WIDTH;
   @Prop contextMenuEnabled: boolean = true;
+  @Prop customContextMenuEnabled: boolean = false;
+  @Prop customTrailingMenuEnabled: boolean = false;
+  @Prop customTrailingMenuAccessibilityText: string = '更多操作';
   @Prop hideWhileContextMenuShown: boolean = true;
   @Prop contextPreviewShowsArtwork: boolean = false;
   @Prop horizontalQueueGestureEnabled: boolean = true;
@@ -83,6 +91,10 @@ export struct SongListItem {
   onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
     (_items: Array<TrackListItem>): void => {};
   onRemoveAction: (() => void) | undefined = undefined;
+  @Builder
+  private EmptyContextMenu() {
+  }
+  @BuilderParam customContextMenu: () => void = this.EmptyContextMenu;
   private suppressActivationUntil: number = 0;
 
   aboutToReuse(params: ESObject): void {
@@ -96,6 +108,9 @@ export struct SongListItem {
     this.onRequestAddToPlaylist =
       params.onRequestAddToPlaylist as (items: Array<TrackListItem>) => void;
     this.onRemoveAction = params.onRemoveAction as (() => void) | undefined;
+    if (params.customContextMenu !== undefined) {
+      this.customContextMenu = params.customContextMenu as () => void;
+    }
   }
 
   private durationLabel(): string {
@@ -193,8 +208,8 @@ export struct SongListItem {
   }
 
   private contextMenuAvailable(): boolean {
-    return this.contextMenuEnabled && this.actionTrack !== undefined &&
-      this.libraryStore !== undefined;
+    return this.contextMenuEnabled && (this.customContextMenuEnabled ||
+      (this.actionTrack !== undefined && this.libraryStore !== undefined));
   }
 
   @Builder
@@ -239,14 +254,26 @@ export struct SongListItem {
       if (this.layout === SongListItemLayout.PLAYER_QUEUE) {
         this.QueuePosition()
       }
-      ArtworkView({
-        sourcePath: this.artworkPath,
-        sourceWidth: this.item.artworkWidth,
-        sourceHeight: this.item.artworkHeight,
-        slotWidth: this.artworkSize,
-        fitMode: ArtworkFitMode.CONTAIN,
-        cornerRadius: this.artworkCornerRadius
-      })
+      if (this.leadingSymbol !== undefined) {
+        Stack({ alignContent: Alignment.Center }) {
+          SymbolGlyph(this.leadingSymbol)
+            .fontSize(this.leadingSymbolSize)
+            .fontColor([this.leadingSymbolColor])
+        }
+        .width(this.artworkSize)
+        .height(this.artworkSize)
+        .borderRadius(this.artworkCornerRadius)
+        .backgroundColor(this.leadingSymbolBackgroundColor)
+      } else {
+        ArtworkView({
+          sourcePath: this.artworkPath,
+          sourceWidth: this.item.artworkWidth,
+          sourceHeight: this.item.artworkHeight,
+          slotWidth: this.artworkSize,
+          fitMode: ArtworkFitMode.CONTAIN,
+          cornerRadius: this.artworkCornerRadius
+        })
+      }
     }
   }
 
@@ -294,15 +321,35 @@ export struct SongListItem {
         .fontSize(17)
         .fontColor([$r('app.color.text_tertiary')])
     }
-    Text(this.durationLabel())
-      .fontSize(this.durationSize())
-      .fontColor(this.tertiaryColor)
-      .animation({
-        duration: this.animateColors ? PaletteMotionSpec.COLOR_TRANSITION_DURATION : 0,
-        curve: Curve.EaseInOut
-      })
+    if (this.showDuration) {
+      Text(this.durationLabel())
+        .fontSize(this.durationSize())
+        .fontColor(this.tertiaryColor)
+        .animation({
+          duration: this.animateColors ? PaletteMotionSpec.COLOR_TRANSITION_DURATION : 0,
+          curve: Curve.EaseInOut
+        })
+    }
 
-    if (this.actionTrack !== undefined) {
+    if (this.customTrailingMenuEnabled) {
+      Button() {
+        Image($r('app.media.control_more'))
+          .width(18)
+          .height(18)
+          .fillColor(this.primaryColor)
+          .animation({
+            duration: this.animateColors ? PaletteMotionSpec.COLOR_TRANSITION_DURATION : 0,
+            curve: Curve.EaseInOut
+          })
+      }
+      .width(38)
+      .height(38)
+      .borderRadius(19)
+      .backgroundColor(Color.Transparent)
+      .accessibilityText(this.customTrailingMenuAccessibilityText)
+      .id(this.actionAnchorId())
+      .bindMenu(this.customContextMenu, { placement: Placement.BottomRight })
+    } else if (this.actionTrack !== undefined) {
       Button() {
         Image($r('app.media.control_more'))
           .width(18)
@@ -353,7 +400,9 @@ export struct SongListItem {
 
   @Builder
   private ContextMenu() {
-    if (this.libraryStore !== undefined && this.actionTrack !== undefined) {
+    if (this.customContextMenuEnabled) {
+      this.customContextMenu()
+    } else if (this.libraryStore !== undefined && this.actionTrack !== undefined) {
       TrackContextMenu({
         store: this.libraryStore,
         track: this.actionTrack,

@@ -145,6 +145,7 @@ export struct ResponsiveNavigationShell {
   compactTabsController: HdsTabsController = new HdsTabsController();
   expandedTabsController: HdsTabsController = new HdsTabsController();
   rootTitleContents: Array<ComponentContent<AppPrimaryTitleParams> | undefined> = [];
+  @Prop moreTitleContent: ComponentContent<AppPrimaryTitleParams> | undefined = undefined;
   rootPathStacks: Array<NavPathStack> = [];
   rootScrollers: Array<Scroller> = [];
   morePathStack: NavPathStack = new NavPathStack();
@@ -1127,7 +1128,12 @@ export struct ResponsiveNavigationShell {
     .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
     .titleMode(HdsNavigationTitleMode.MINI)
     .hideBackButton(true)
-    .titleBar(AppNavigationStyle.primaryTitleBar('更多', this.appearancePalette))
+    .titleBar(AppNavigationStyle.primaryTitleBar(
+      '更多',
+      this.appearancePalette,
+      undefined,
+      this.moreTitleContent
+    ))
     .bindToScrollable([this.moreScroller])
     .navDestination(this.DestinationBuilder)
   }

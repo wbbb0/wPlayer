@@ -38,14 +38,18 @@ interface QueuedArtworkWork {
 export class ArtworkWorkSession implements ArtworkWorkCancellation {
   private readonly processor: ArtworkWorkProcessor;
   private readonly queue: Array<QueuedArtworkWork> = [];
+  private queueHead: number = 0;
   private readonly idleWaiters: Array<() => void> = [];
-  private running: boolean = false;
+  private runningWorkers: number = 0;
   private cancelled: boolean = false;
   private processingEnabled: boolean;
+  private readonly concurrency: number;
 
-  constructor(processor: ArtworkWorkProcessor, startImmediately: boolean = true) {
+  constructor(processor: ArtworkWorkProcessor, startImmediately: boolean = true,
+    concurrency: number = 1) {
     this.processor = processor;
     this.processingEnabled = startImmediately;
+    this.concurrency = Math.max(1, concurrency);
   }
 
   enqueue(request: ArtworkWorkRequest): Promise<ArtworkWorkResult> {
@@ -73,9 +77,11 @@ export class ArtworkWorkSession implements ArtworkWorkCancellation {
       return;
     }
     this.cancelled = true;
-    while (this.queue.length > 0) {
-      this.queue.shift()?.resolve(ArtworkWorkSession.skipped());
+    for (let index = this.queueHead; index < this.queue.length; index += 1) {
+      this.queue[index].resolve(ArtworkWorkSession.skipped());
     }
+    this.queue.splice(0, this.queue.length);
+    this.queueHead = 0;
     this.notifyIdleIfNeeded();
   }
 
@@ -84,11 +90,11 @@ export class ArtworkWorkSession implements ArtworkWorkCancellation {
   }
 
   hasScheduledWork(): boolean {
-    return this.running || this.queue.length > 0;
+    return this.runningWorkers > 0 || this.pendingCount() > 0;
   }
 
   waitForIdle(): Promise<void> {
-    if (!this.running && this.queue.length === 0) {
+    if (this.runningWorkers === 0 && this.pendingCount() === 0) {
       return Promise.resolve();
     }
     return new Promise<void>((resolve: () => void) => {
@@ -97,51 +103,67 @@ export class ArtworkWorkSession implements ArtworkWorkCancellation {
   }
 
   private start(): void {
-    if (this.running) {
+    if (!this.processingEnabled || this.cancelled) {
       return;
     }
-    this.run().catch((_error: Object): void => {
-      this.running = false;
-      this.cancel();
-      this.notifyIdleIfNeeded();
-    });
+    while (this.runningWorkers < this.concurrency && this.pendingCount() > 0) {
+      this.runningWorkers += 1;
+      this.runWorker().catch((_error: Object): void => {
+        this.cancel();
+      }).finally((): void => {
+        this.runningWorkers -= 1;
+        this.start();
+        this.notifyIdleIfNeeded();
+      });
+    }
   }
 
-  private async run(): Promise<void> {
-    this.running = true;
-    try {
-      while (this.queue.length > 0 && !this.cancelled) {
-        const item = this.queue.shift();
-        if (item === undefined) {
-          continue;
-        }
-        try {
-          item.resolve(await this.processor(item.request, this));
-        } catch (error) {
-          item.resolve({
-            outcome: ArtworkWorkOutcome.FAILED,
-            sourceHasArtwork: false,
-            errorMessage: error instanceof Error ? error.message : `${error}`
-          });
-        }
+  private async runWorker(): Promise<void> {
+    while (this.pendingCount() > 0 && !this.cancelled) {
+      const item = this.takeNext();
+      if (item === undefined) {
+        return;
       }
-      if (this.cancelled) {
-        while (this.queue.length > 0) {
-          this.queue.shift()?.resolve(ArtworkWorkSession.skipped());
-        }
+      try {
+        item.resolve(await this.processor(item.request, this));
+      } catch (error) {
+        item.resolve({
+          outcome: ArtworkWorkOutcome.FAILED,
+          sourceHasArtwork: false,
+          errorMessage: error instanceof Error ? error.message : `${error}`
+        });
       }
-    } finally {
-      this.running = false;
-      this.notifyIdleIfNeeded();
     }
+  }
+
+  private takeNext(): QueuedArtworkWork | undefined {
+    if (this.queueHead >= this.queue.length) {
+      return undefined;
+    }
+    const item = this.queue[this.queueHead];
+    this.queueHead += 1;
+    if (this.queueHead >= this.queue.length) {
+      this.queue.splice(0, this.queue.length);
+      this.queueHead = 0;
+    } else if (this.queueHead >= 256 && this.queueHead * 2 >= this.queue.length) {
+      this.queue.splice(0, this.queueHead);
+      this.queueHead = 0;
+    }
+    return item;
+  }
+
+  private pendingCount(): number {
+    return this.queue.length - this.queueHead;
   }
 
   private notifyIdleIfNeeded(): void {
-    if (this.running || this.queue.length > 0) {
+    if (this.runningWorkers > 0 || this.pendingCount() > 0) {
       return;
     }
     const waiters = this.idleWaiters.splice(0, this.idleWaiters.length);
-    waiters.forEach((resolve: () => void) => resolve());
+    waiters.forEach((resolve: () => void) => {
+      resolve();
+    });
   }
 
   private static skipped(): ArtworkWorkResult {

@@ -91,9 +91,19 @@ interface FileCheckWorkResult {
   artworkRebuilt: boolean;
   item?: FileCheckItemResult;
   availabilityUpdate?: TrackAvailabilityUpdate;
-  artworkTask?: Promise<ArtworkWorkResult>;
+  artworkRequest?: ArtworkWorkRequest;
   artworkItem?: FileCheckItemResult;
 }
+
+interface PendingArtworkWork {
+  request: ArtworkWorkRequest;
+  item?: FileCheckItemResult;
+}
+
+type ArtworkWorkResultCallback = (
+  work: PendingArtworkWork,
+  result: ArtworkWorkResult
+) => void;
 
 export class MediaImporter {
   private readonly context: common.UIAbilityContext;
@@ -269,6 +279,7 @@ export class MediaImporter {
       const accessibleUris = new Set<string>(permissions.successfulUris);
       const availabilityUpdates: Array<TrackAvailabilityUpdate> = [];
       const itemResults: Array<FileCheckItemResult> = [];
+      const artworkWorks: Array<PendingArtworkWork> = [];
       const accessibleCandidates: Array<MediaFileCheckCandidate> = [];
       const classifyStartedAt = Date.now();
       for (let index = 0; index < candidates.length; index += 1) {
@@ -341,7 +352,7 @@ export class MediaImporter {
           `${accessibleCandidates.length} in ${Date.now() - inspectionStartedAt}ms`);
         for (let index = 0; index < batch.length; index += 1) {
           const outcome = await this.checkOneFile(
-            batch[index], inspections[index], artworkSession
+            batch[index], inspections[index]
           );
           if (outcome.updated) {
             progress.updated += 1;
@@ -355,43 +366,11 @@ export class MediaImporter {
           if (outcome.artworkRebuilt) {
             progress.artworkRebuilt += 1;
           }
-          if (outcome.artworkTask !== undefined) {
+          if (outcome.artworkRequest !== undefined) {
             progress.artworkTotal += 1;
-            outcome.artworkTask.then((artworkResult: ArtworkWorkResult): void => {
-              progress.artworkProcessed += 1;
-              if (artworkResult.outcome === ArtworkWorkOutcome.COMPLETED) {
-                if (artworkResult.sourceHasArtwork) {
-                  progress.artworkRebuilt += 1;
-                }
-                if (outcome.artworkItem !== undefined) {
-                  itemResults.push({
-                    trackId: outcome.artworkItem.trackId,
-                    displayName: outcome.artworkItem.displayName,
-                    uri: outcome.artworkItem.uri,
-                    outcome: artworkResult.sourceHasArtwork ?
-                      outcome.artworkItem.outcome : FileCheckItemOutcome.ARTWORK_ABSENT,
-                    reason: artworkResult.sourceHasArtwork ?
-                      outcome.artworkItem.reason : '已确认源文件没有封面'
-                  });
-                }
-              } else if (artworkResult.outcome === ArtworkWorkOutcome.SKIPPED) {
-                progress.artworkSkipped += 1;
-              } else if (artworkResult.outcome === ArtworkWorkOutcome.FAILED) {
-                progress.artworkFailed += 1;
-                if (outcome.artworkItem !== undefined) {
-                  itemResults.push({
-                    trackId: outcome.artworkItem.trackId,
-                    displayName: outcome.artworkItem.displayName,
-                    uri: outcome.artworkItem.uri,
-                    outcome: FileCheckItemOutcome.ARTWORK_FAILED,
-                    reason: artworkResult.errorMessage.length > 0 ?
-                      artworkResult.errorMessage : '封面处理失败'
-                  });
-                }
-              }
-              if (progress.metadataCompleted) {
-                this.notifyFileCheck(onProgress, progress);
-              }
+            artworkWorks.push({
+              request: outcome.artworkRequest,
+              item: outcome.artworkItem
             });
           }
           if (outcome.item !== undefined) {
@@ -425,6 +404,50 @@ export class MediaImporter {
       this.notifyFileCheck(onProgress, progress);
       await this.notifyLibraryChanged(onLibraryChanged, ImportRefreshPhase.METADATA);
       artworkSession.startProcessing();
+      let lastArtworkProgressAt = 0;
+      await this.processArtworkWorks(
+        artworkSession,
+        artworkWorks,
+        (work: PendingArtworkWork, artworkResult: ArtworkWorkResult): void => {
+          progress.artworkProcessed += 1;
+          if (artworkResult.outcome === ArtworkWorkOutcome.COMPLETED) {
+            if (artworkResult.sourceHasArtwork) {
+              progress.artworkRebuilt += 1;
+            }
+            if (work.item !== undefined) {
+              itemResults.push({
+                trackId: work.item.trackId,
+                displayName: work.item.displayName,
+                uri: work.item.uri,
+                outcome: artworkResult.sourceHasArtwork ?
+                  work.item.outcome : FileCheckItemOutcome.ARTWORK_ABSENT,
+                reason: artworkResult.sourceHasArtwork ?
+                  work.item.reason : '已确认源文件没有封面'
+              });
+            }
+          } else if (artworkResult.outcome === ArtworkWorkOutcome.SKIPPED) {
+            progress.artworkSkipped += 1;
+          } else if (artworkResult.outcome === ArtworkWorkOutcome.FAILED) {
+            progress.artworkFailed += 1;
+            if (work.item !== undefined) {
+              itemResults.push({
+                trackId: work.item.trackId,
+                displayName: work.item.displayName,
+                uri: work.item.uri,
+                outcome: FileCheckItemOutcome.ARTWORK_FAILED,
+                reason: artworkResult.errorMessage.length > 0 ?
+                  artworkResult.errorMessage : '封面处理失败'
+              });
+            }
+          }
+          const now = Date.now();
+          if (now - lastArtworkProgressAt >= 100 ||
+            progress.artworkProcessed >= progress.artworkTotal) {
+            lastArtworkProgressAt = now;
+            this.notifyFileCheck(onProgress, progress);
+          }
+        }
+      );
       await artworkSession.waitForIdle();
       progress.cancelled = progress.cancelled || this.cancelRequested ||
         artworkSession.isCancelled();
@@ -461,8 +484,7 @@ export class MediaImporter {
   }
 
   private async checkOneFile(candidate: MediaFileCheckCandidate,
-    inspection: MediaFileInspectionResult,
-    artworkSession: ArtworkWorkSession): Promise<FileCheckWorkResult> {
+    inspection: MediaFileInspectionResult): Promise<FileCheckWorkResult> {
     if (!inspection.available) {
       return {
         updated: false,
@@ -488,13 +510,13 @@ export class MediaImporter {
         if (!this.needsArtworkRepair(candidate, inspection.artworkFilesAvailable)) {
           return { updated: false, unavailable: false, recovered: false, artworkRebuilt: false };
         }
-        return this.repairArtwork(candidate, artworkSession);
+        return this.repairArtwork(candidate);
       }
-      let artworkTask: Promise<ArtworkWorkResult> | undefined;
+      let artworkRequest: ArtworkWorkRequest | undefined;
       let artworkItem: FileCheckItemResult | undefined;
       if (this.needsArtworkRepair(candidate, inspection.artworkFilesAvailable)) {
-        const repairResult = this.repairArtwork(candidate, artworkSession);
-        artworkTask = repairResult.artworkTask;
+        const repairResult = this.repairArtwork(candidate);
+        artworkRequest = repairResult.artworkRequest;
         artworkItem = repairResult.artworkItem;
       }
       return {
@@ -502,7 +524,7 @@ export class MediaImporter {
         unavailable: false,
         recovered: true,
         artworkRebuilt: false,
-        artworkTask: artworkTask,
+        artworkRequest: artworkRequest,
         artworkItem: artworkItem,
         availabilityUpdate: {
           trackId: candidate.trackId,
@@ -530,16 +552,16 @@ export class MediaImporter {
         metadata: readResult.metadata,
         artworks: MediaImporter.artworkMetadataOnly(readResult.metadata.artworks)
       });
-      let artworkTask: Promise<ArtworkWorkResult> | undefined;
+      let artworkRequest: ArtworkWorkRequest | undefined;
       let artworkItem: FileCheckItemResult | undefined;
       if (readResult.metadata.artworks.length > 0) {
-        artworkTask = artworkSession.enqueue({
+        artworkRequest = {
           trackId: candidate.trackId,
           uri: candidate.uri,
           fileSize: readResult.fileSize,
           modifiedAt: readResult.modifiedAt,
           metadata: readResult.metadata
-        });
+        };
         artworkItem = {
           trackId: candidate.trackId,
           displayName: readResult.fileName,
@@ -553,7 +575,7 @@ export class MediaImporter {
         unavailable: false,
         recovered: candidate.availability !== AvailabilityState.AVAILABLE,
         artworkRebuilt: false,
-        artworkTask: artworkTask,
+        artworkRequest: artworkRequest,
         artworkItem: artworkItem,
         item: {
           trackId: candidate.trackId,
@@ -594,6 +616,7 @@ export class MediaImporter {
     onItem?: ImportItemCallback,
     onLibraryChanged?: ImportLibraryChangedCallback): Promise<ImportResult> {
     const itemResults: Array<ImportItemResult> = [];
+    const artworkWorks: Array<PendingArtworkWork> = [];
     const progress: ImportProgress = {
       total: uris.length,
       processed: 0,
@@ -715,22 +738,13 @@ export class MediaImporter {
             if (uniqueInputs[index].metadata.artworks.length > 0 &&
               results[index].trackId !== undefined) {
               progress.artworkTotal += 1;
-              const artworkTask = artworkSession.enqueue({
-                trackId: results[index].trackId as number,
-                uri: uniqueInputs[index].uri,
-                fileSize: uniqueInputs[index].fileSize,
-                modifiedAt: uniqueInputs[index].modifiedAt,
-                metadata: uniqueInputs[index].metadata
-              });
-              artworkTask.then((result: ArtworkWorkResult): void => {
-                progress.artworkProcessed += 1;
-                if (result.outcome === ArtworkWorkOutcome.SKIPPED) {
-                  progress.artworkSkipped += 1;
-                } else if (result.outcome === ArtworkWorkOutcome.FAILED) {
-                  progress.artworkFailed += 1;
-                }
-                if (progress.metadataCompleted) {
-                  this.notify(onProgress, progress);
+              artworkWorks.push({
+                request: {
+                  trackId: results[index].trackId as number,
+                  uri: uniqueInputs[index].uri,
+                  fileSize: uniqueInputs[index].fileSize,
+                  modifiedAt: uniqueInputs[index].modifiedAt,
+                  metadata: uniqueInputs[index].metadata
                 }
               });
             }
@@ -766,7 +780,7 @@ export class MediaImporter {
       ImportPerformanceTrace.mark('permission_revoke', revokeStartedAt, 0,
         `count=${revokeAfterBatch.length}`);
     }
-    const artworkPendingAtMetadataRefresh = artworkSession.hasScheduledWork();
+    const artworkPendingAtMetadataRefresh = artworkWorks.length > 0;
     progress.metadataCompleted = true;
     progress.cancelled = this.cancelRequested;
     progress.currentName = artworkPendingAtMetadataRefresh ?
@@ -776,6 +790,25 @@ export class MediaImporter {
       await this.notifyLibraryChanged(onLibraryChanged, ImportRefreshPhase.METADATA);
     }
     artworkSession.startProcessing();
+    let lastArtworkProgressAt = 0;
+    await this.processArtworkWorks(
+      artworkSession,
+      artworkWorks,
+      (_work: PendingArtworkWork, result: ArtworkWorkResult): void => {
+        progress.artworkProcessed += 1;
+        if (result.outcome === ArtworkWorkOutcome.SKIPPED) {
+          progress.artworkSkipped += 1;
+        } else if (result.outcome === ArtworkWorkOutcome.FAILED) {
+          progress.artworkFailed += 1;
+        }
+        const now = Date.now();
+        if (now - lastArtworkProgressAt >= 100 ||
+          progress.artworkProcessed >= progress.artworkTotal) {
+          lastArtworkProgressAt = now;
+          this.notify(onProgress, progress);
+        }
+      }
+    );
     await artworkSession.waitForIdle();
     progress.cancelled = progress.cancelled || this.cancelRequested ||
       artworkSession.isCancelled();
@@ -1274,20 +1307,18 @@ export class MediaImporter {
     );
   }
 
-  private repairArtwork(candidate: MediaFileCheckCandidate,
-    artworkSession: ArtworkWorkSession): FileCheckWorkResult {
-    const artworkTask = artworkSession.enqueue({
-      trackId: candidate.trackId,
-      uri: candidate.uri,
-      fileSize: candidate.fileSize,
-      modifiedAt: candidate.modifiedAt
-    });
+  private repairArtwork(candidate: MediaFileCheckCandidate): FileCheckWorkResult {
     return {
       updated: false,
       unavailable: false,
       recovered: false,
       artworkRebuilt: false,
-      artworkTask: artworkTask,
+      artworkRequest: {
+        trackId: candidate.trackId,
+        uri: candidate.uri,
+        fileSize: candidate.fileSize,
+        modifiedAt: candidate.modifiedAt
+      },
       artworkItem: {
         trackId: candidate.trackId,
         displayName: candidate.displayName,
@@ -1303,8 +1334,37 @@ export class MediaImporter {
       (request: ArtworkWorkRequest,
         cancellation: ArtworkWorkCancellation): Promise<ArtworkWorkResult> =>
         this.processArtworkItem(request, cancellation),
-      false
+      false,
+      ImportConcurrencyPolicy.ARTWORK_PROCESS_CONCURRENCY
     );
+  }
+
+  private async processArtworkWorks(artworkSession: ArtworkWorkSession,
+    works: Array<PendingArtworkWork>, onResult: ArtworkWorkResultCallback): Promise<void> {
+    let offset = 0;
+    while (offset < works.length) {
+      if (artworkSession.isCancelled()) {
+        const skipped = MediaImporter.artworkWorkResult(ArtworkWorkOutcome.SKIPPED);
+        for (let index = offset; index < works.length; index += 1) {
+          onResult(works[index], skipped);
+        }
+        return;
+      }
+      const batch = works.slice(
+        offset,
+        Math.min(offset + ImportConcurrencyPolicy.ARTWORK_PROCESS_BATCH_SIZE, works.length)
+      );
+      const tasks: Array<Promise<ArtworkWorkResult>> = batch.map(
+        (work: PendingArtworkWork): Promise<ArtworkWorkResult> =>
+          artworkSession.enqueue(work.request)
+      );
+      const results = await Promise.all(tasks);
+      for (let index = 0; index < batch.length; index += 1) {
+        onResult(batch[index], results[index]);
+      }
+      offset += batch.length;
+      await MediaImporter.yieldToUi();
+    }
   }
 
   private async processArtworkItem(item: ArtworkWorkRequest,

@@ -3,6 +3,8 @@ import { ImportPerformanceSummary, ImportStagePerformance } from '../model/Libra
 
 const DOMAIN = 0x0000;
 const TAG = 'wPlayerImport';
+const FILE_LOG_SAMPLE_INTERVAL = 128;
+const FILE_LOG_INITIAL_SAMPLE_COUNT = 8;
 
 interface StageAccumulator {
   totalMs: number;
@@ -38,6 +40,9 @@ export class ImportPerformanceTrace {
     const elapsed = Math.max(0, Date.now() - startedAt);
     if (fileId > 0) {
       ImportPerformanceTrace.record(stage, elapsed, 1);
+      if (!ImportPerformanceTrace.shouldWriteFileSample(fileId)) {
+        return;
+      }
     }
     const filePart = fileId > 0 ? ` file=${fileId}` : '';
     const detailPart = details.length > 0 ? ` ${details}` : '';
@@ -57,6 +62,9 @@ export class ImportPerformanceTrace {
   }
 
   static event(name: string, fileId: number = 0, details: string = ''): void {
+    if (fileId > 0 && !ImportPerformanceTrace.shouldWriteFileSample(fileId)) {
+      return;
+    }
     const filePart = fileId > 0 ? ` file=${fileId}` : '';
     const detailPart = details.length > 0 ? ` ${details}` : '';
     ImportPerformanceTrace.write(`event=${name}${filePart}${detailPart}`);
@@ -125,5 +133,10 @@ export class ImportPerformanceTrace {
 
   private static write(message: string): void {
     hilog.info(DOMAIN, TAG, '%{public}s', `session=${ImportPerformanceTrace.sessionId} ${message}`);
+  }
+
+  private static shouldWriteFileSample(fileId: number): boolean {
+    return fileId <= FILE_LOG_INITIAL_SAMPLE_COUNT ||
+      fileId % FILE_LOG_SAMPLE_INTERVAL === 0;
   }
 }

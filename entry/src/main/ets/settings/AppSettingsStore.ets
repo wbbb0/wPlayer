@@ -1,6 +1,7 @@
 import { SettingsRepository } from './SettingsRepository';
 import { CompletedCollectionMode } from '../playback/model/PlaybackModels';
 import { CompletedCollectionSettingPolicy } from './CompletedCollectionSettingPolicy';
+import { DemoLibraryMode } from '../demo/DemoLibraryMode';
 
 @Observed
 export class AppSettingsStore {
@@ -12,6 +13,7 @@ export class AppSettingsStore {
   preserveShuffleOnManualPlay: boolean = false;
   autoRemoveUnavailableOnPlayback: boolean = false;
   completedCollectionMode: CompletedCollectionMode = CompletedCollectionMode.SMART;
+  demoLibraryEnabled: boolean = false;
 
   private repository?: SettingsRepository;
   private initialized: boolean = false;
@@ -32,6 +34,8 @@ export class AppSettingsStore {
     this.completedCollectionMode = CompletedCollectionSettingPolicy.normalize(
       repository.getCompletedCollectionMode(CompletedCollectionMode.SMART)
     );
+    this.demoLibraryEnabled = DemoLibraryMode.isAvailable() && repository.getDemoLibraryEnabled(false);
+    DemoLibraryMode.setEnabled(this.demoLibraryEnabled);
     this.initialized = true;
   }
 
@@ -81,6 +85,11 @@ export class AppSettingsStore {
   setCompletedCollectionMode(value: CompletedCollectionMode): void {
     this.completedCollectionMode = CompletedCollectionSettingPolicy.normalize(value);
     this.repository?.setCompletedCollectionMode(this.completedCollectionMode);
+  }
+
+  setDemoLibraryEnabled(value: boolean): void {
+    this.demoLibraryEnabled = DemoLibraryMode.isAvailable() && value;
+    this.repository?.setDemoLibraryEnabled(this.demoLibraryEnabled);
   }
 }
 

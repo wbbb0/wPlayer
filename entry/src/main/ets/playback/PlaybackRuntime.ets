@@ -4,7 +4,12 @@ import { ArtworkCache } from '../library/artwork/ArtworkCache';
 import { MusicRepository } from '../library/data/MusicRepository';
 import { ensureReadPermission } from '../library/importer/MediaPickerService';
 import { MetadataReader } from '../library/metadata/MetadataReader';
-import { AvailabilityState, TrackListItem } from '../library/model/LibraryModels';
+import {
+  AvailabilityState,
+  SortDirection,
+  TrackListItem,
+  TrackSortField
+} from '../library/model/LibraryModels';
 import { SettingsRepository } from '../settings/SettingsRepository';
 import { appSettings } from '../settings/AppSettingsStore';
 import { ArtworkMemoryCache, DecodedFullArtwork } from './artwork/ArtworkMemoryCache';
@@ -32,6 +37,8 @@ import { LibraryPlaybackBridge } from '../library/store/LibraryPlaybackBridge';
 import { PlaybackPowerPolicy } from './support/PlaybackPowerPolicy';
 import { PlaybackCoverageTracker } from './history/PlaybackCoverageTracker';
 import { PlaybackStateReducer } from './support/PlaybackStateReducer';
+import { DemoLibraryMode } from '../demo/DemoLibraryMode';
+import { DemoMusicLibrary } from '../demo/DemoMusicLibrary';
 
 const RESUME_MINIMUM_MS = 5000;
 const COMPLETION_REMAINING_MS = 10000;
@@ -63,6 +70,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   private coverageNeedsRestart: boolean = false;
   private fullArtwork?: DecodedFullArtwork;
   private paletteChangeListener?: (primary: string, secondary: string, accent: string) => void;
+  private demoProgressTimer: number = -1;
 
   constructor() {
     this.engine.setListener(this);
@@ -228,6 +236,13 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     if (!this.playerStore.hasCurrentTrack()) {
       return;
     }
+    if (DemoLibraryMode.isEnabled()) {
+      this.playerStore.playWhenReady = true;
+      this.playerStore.state = PlayerState.PLAYING;
+      this.playerStore.transportState = this.stateReducer.reduce(PlayerState.PLAYING, true);
+      this.startDemoProgress();
+      return;
+    }
     this.updatePlaybackIntent(true);
     if (this.playerStore.state === PlayerState.LOADING) {
       return;
@@ -245,6 +260,13 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
 
   pause(): void {
     if (!this.playerStore.hasCurrentTrack()) {
+      return;
+    }
+    if (DemoLibraryMode.isEnabled()) {
+      this.stopDemoProgress();
+      this.playerStore.playWhenReady = false;
+      this.playerStore.state = PlayerState.PAUSED;
+      this.playerStore.transportState = this.stateReducer.reduce(PlayerState.PAUSED, false);
       return;
     }
     this.updatePlaybackIntent(false);
@@ -299,6 +321,11 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
 
   seek(positionMs: number): void {
     const targetPositionMs = Math.max(0, Math.min(positionMs, this.playerStore.progress.durationMs));
+    if (DemoLibraryMode.isEnabled()) {
+      this.playerStore.progress.positionMs = targetPositionMs;
+      this.updateActiveLyricIndex(targetPositionMs);
+      return;
+    }
     const seekEpoch = ++this.seekEpoch;
     this.pendingSeekPositionMs = targetPositionMs;
     this.coverageTracker.seekTo(targetPositionMs);
@@ -351,6 +378,9 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   async prepareForLibraryClear(): Promise<void> {
+    if (DemoLibraryMode.isEnabled()) {
+      return;
+    }
     this.interruptCoverage();
     this.persistProgress(false);
     ++this.artworkEpoch;
@@ -381,6 +411,9 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   async prepareForTrackRemoval(trackIds: Array<number>): Promise<void> {
+    if (DemoLibraryMode.isEnabled()) {
+      return;
+    }
     if (trackIds.length === 0) {
       return;
     }
@@ -408,6 +441,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   async shutdown(): Promise<void> {
+    this.stopDemoProgress();
     this.interruptCoverage();
     this.persistProgress(false);
     ++this.artworkEpoch;
@@ -573,6 +607,24 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.notifyPaletteChange();
   }
 
+  async setDemoLibraryEnabled(enabled: boolean): Promise<void> {
+    if (!DemoLibraryMode.isAvailable() || DemoLibraryMode.isEnabled() === enabled) {
+      return;
+    }
+    if (enabled) {
+      this.persistProgress(false);
+      await this.engine.invalidateAndStop();
+      DemoLibraryMode.setEnabled(true);
+      this.activateDemoPlayback();
+      return;
+    }
+    this.stopDemoProgress();
+    await this.engine.invalidateAndStop();
+    DemoLibraryMode.setEnabled(false);
+    this.resetPlaybackPresentation();
+    await this.restoreLastPlayback();
+  }
+
   private async initializeInternal(context: common.UIAbilityContext,
     providedSettings?: SettingsRepository): Promise<void> {
     this.context = context;
@@ -589,7 +641,11 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.artworkCache = new ArtworkMemoryCache(context);
     this.session = new PlaybackSession(context, this);
     await this.session.initialize();
-    await this.restoreLastPlayback();
+    if (DemoLibraryMode.isEnabled()) {
+      this.activateDemoPlayback();
+    } else {
+      await this.restoreLastPlayback();
+    }
   }
 
   private async restoreLastPlayback(): Promise<void> {
@@ -706,6 +762,10 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
 
   private beginTrack(track: QueueTrack, playWhenReady: boolean = true,
     preserveStoredPosition: boolean = false): Promise<void> {
+    if (DemoLibraryMode.isEnabled()) {
+      this.beginDemoTrack(track, playWhenReady);
+      return Promise.resolve();
+    }
     this.interruptCoverage();
     this.persistProgress(false);
     ++this.seekEpoch;
@@ -953,7 +1013,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.setQueueCurrentIndex(snapshot.currentIndex);
     const currentTrackId = snapshot.currentIndex >= 0 && snapshot.currentIndex < snapshot.entries.length ?
       snapshot.entries[snapshot.currentIndex].track.id : -1;
-    if (persist) {
+    if (persist && !DemoLibraryMode.isEnabled()) {
       this.settings?.setPlaybackQueue(
         snapshot.entries.map((entry: QueueEntry) => entry.track.id),
         currentTrackId
@@ -962,6 +1022,9 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   private persistProgress(completed: boolean): void {
+    if (DemoLibraryMode.isEnabled()) {
+      return;
+    }
     const track = this.currentPlaybackTrack;
     if (track === undefined) {
       return;
@@ -1060,6 +1123,9 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   private resolveArtworkUri(relativePath: string): string {
+    if (DemoMusicLibrary.isArtworkPath(relativePath)) {
+      return relativePath;
+    }
     if (relativePath.length === 0 || this.context === undefined) {
       return '';
     }
@@ -1127,6 +1193,118 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       paletteSecondary: track.paletteSecondary,
       paletteAccent: track.paletteAccent
     };
+  }
+
+  private activateDemoPlayback(): void {
+    const tracks = DemoMusicLibrary.tracks(TrackSortField.TITLE, SortDirection.ASCENDING);
+    if (tracks.length === 0) {
+      this.resetPlaybackPresentation();
+      return;
+    }
+    const queueTracks = tracks.map((track: TrackListItem): QueueTrack => PlaybackRuntime.queueTrackOf(track));
+    const selected = DemoMusicLibrary.defaultTrack();
+    const selectedTrack = PlaybackRuntime.queueTrackOf(selected);
+    ++this.queueBuildEpoch;
+    this.queue.clear();
+    const phase = this.queue.build(queueTracks, selected.id, false);
+    this.playerStore.queuePhase = phase;
+    this.playerStore.queueSize = this.queue.size();
+    this.syncQueueSnapshot(false);
+    this.beginDemoTrack(selectedTrack, false, 42000);
+  }
+
+  private beginDemoTrack(track: QueueTrack, playWhenReady: boolean,
+    initialPositionMs: number = 0): void {
+    this.stopDemoProgress();
+    ++this.artworkEpoch;
+    ++this.seekEpoch;
+    this.pendingSeekPositionMs = undefined;
+    this.currentPlaybackTrack = DemoMusicLibrary.playbackTrack(track.id);
+    this.playerStore.currentTrack = track;
+    const lyrics = DemoMusicLibrary.lyrics(track.id);
+    this.playerStore.lyrics = lyrics;
+    this.playerStore.setTimedLyrics(LyricsParser.parse(lyrics).lines);
+    this.playerStore.progress.positionMs = Math.max(0, Math.min(initialPositionMs, track.durationMs));
+    this.playerStore.progress.durationMs = track.durationMs;
+    this.playerStore.palettePrimary = track.palettePrimary;
+    this.playerStore.paletteSecondary = track.paletteSecondary;
+    this.playerStore.paletteAccent = track.paletteAccent;
+    this.playerStore.setMiniArtwork(undefined, track.smallArtworkPath);
+    this.playerStore.heroArtwork = undefined;
+    this.playerStore.heroArtworkUri = track.largeArtworkPath;
+    this.playerStore.heroArtworkPreferPixelMap = false;
+    this.playerStore.heroArtworkRevision += 1;
+    this.playerStore.playWhenReady = playWhenReady;
+    this.playerStore.state = playWhenReady ? PlayerState.PLAYING : PlayerState.PAUSED;
+    this.playerStore.transportState = this.stateReducer.reduce(this.playerStore.state, playWhenReady);
+    this.playerStore.errorMessage = '';
+    this.updateActiveLyricIndex(this.playerStore.progress.positionMs);
+    this.notifyPaletteChange();
+    if (playWhenReady) {
+      this.startDemoProgress();
+    }
+  }
+
+  private startDemoProgress(): void {
+    this.stopDemoProgress();
+    this.demoProgressTimer = setInterval((): void => {
+      if (!DemoLibraryMode.isEnabled() || !this.playerStore.playWhenReady ||
+        this.playerStore.currentTrack === undefined) {
+        return;
+      }
+      const nextPosition = this.playerStore.progress.positionMs + 1000;
+      if (nextPosition < this.playerStore.progress.durationMs) {
+        this.playerStore.progress.positionMs = nextPosition;
+        this.updateActiveLyricIndex(nextPosition);
+        return;
+      }
+      const next = this.queue.next(this.playerStore.repeatMode, true);
+      this.syncQueueSnapshot(false);
+      if (next !== undefined) {
+        this.beginDemoTrack(next, true);
+      } else {
+        this.stopDemoProgress();
+        this.playerStore.progress.positionMs = this.playerStore.progress.durationMs;
+        this.playerStore.playWhenReady = false;
+        this.playerStore.state = PlayerState.COMPLETED;
+        this.playerStore.transportState = this.stateReducer.settleCompletion();
+      }
+    }, 1000);
+  }
+
+  private stopDemoProgress(): void {
+    if (this.demoProgressTimer >= 0) {
+      clearInterval(this.demoProgressTimer);
+      this.demoProgressTimer = -1;
+    }
+  }
+
+  private resetPlaybackPresentation(): void {
+    ++this.artworkEpoch;
+    ++this.queueBuildEpoch;
+    ++this.seekEpoch;
+    this.pendingSeekPositionMs = undefined;
+    this.queue.clear();
+    this.currentPlaybackTrack = undefined;
+    this.playerStore.currentTrack = undefined;
+    this.playerStore.setMiniArtwork(undefined, '');
+    this.playerStore.heroArtwork = undefined;
+    this.playerStore.heroArtworkUri = '';
+    this.playerStore.heroArtworkPreferPixelMap = false;
+    this.playerStore.heroArtworkRevision += 1;
+    this.playerStore.lyrics = '';
+    this.playerStore.setTimedLyrics([]);
+    this.playerStore.setActiveLyricIndex(-1);
+    this.playerStore.progress.positionMs = 0;
+    this.playerStore.progress.durationMs = 0;
+    this.playerStore.queuePhase = QueueBuildPhase.EMPTY;
+    this.playerStore.queueSize = 0;
+    this.playerStore.queueDataSource.replace([]);
+    this.playerStore.setQueueCurrentIndex(-1);
+    this.playerStore.playWhenReady = false;
+    this.playerStore.state = PlayerState.IDLE;
+    this.playerStore.transportState = this.stateReducer.reset();
+    this.playerStore.errorMessage = '';
   }
 
   private static validResumePosition(positionMs: number, durationMs: number): number {

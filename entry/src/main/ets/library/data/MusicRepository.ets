@@ -41,6 +41,8 @@ import {
 import { ArtworkPaletteUpdate, PaletteRefreshAsset } from './MusicRepositoryTypes';
 import { ARTWORK_PALETTE_VERSION } from '../artwork/ArtworkPaletteExtractor';
 import { PlaylistRepository } from '../../playlist/data/PlaylistRepository';
+import { DemoLibraryMode } from '../../demo/DemoLibraryMode';
+import { DemoMusicLibrary } from '../../demo/DemoMusicLibrary';
 
 export {
   ArtworkAssetLookup,
@@ -72,6 +74,9 @@ export class MusicRepository {
   }
 
   clearLibrary(): Promise<void> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve();
+    }
     return this.database.enqueueWrite(async (transaction: relationalStore.Transaction) => {
       const now = Date.now();
       await transaction.execute('DELETE FROM track_artwork');
@@ -93,10 +98,16 @@ export class MusicRepository {
   }
 
   rebuildSortIndexes(): Promise<void> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve();
+    }
     return this.database.rebuildSortIndexes();
   }
 
   getStatistics(): Promise<LibraryStatistics> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.statistics());
+    }
     return this.queries.getStatistics();
   }
 
@@ -104,31 +115,52 @@ export class MusicRepository {
     field: TrackSortField,
     direction: SortDirection
   ): Promise<LibrarySnapshot<TrackListItem>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.trackSnapshot(field, direction));
+    }
     return this.queries.getTracks(field, direction);
   }
 
   getTrackCatalog(field: TrackSortField, direction: SortDirection): Promise<LibraryCatalog> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.trackCatalog(field, direction));
+    }
     return this.queries.getTrackCatalog(field, direction);
   }
 
   getTrackPage(field: TrackSortField, direction: SortDirection,
     offset: number, limit: number): Promise<LibraryPage<TrackListItem>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.trackPage(field, direction, offset, limit));
+    }
     return this.queries.getTrackPage(field, direction, offset, limit);
   }
 
   getPlaybackTrack(trackId: number): Promise<PlaybackTrack | undefined> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.playbackTrack(trackId));
+    }
     return this.queries.getPlaybackTrack(trackId);
   }
 
   getPlaybackQueueTracks(trackIds: Array<number>): Promise<Array<QueueTrack>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.playbackQueueTracks(trackIds));
+    }
     return this.queries.getPlaybackQueueTracks(trackIds);
   }
 
   getResumeState(trackId: number): Promise<ResumeState> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.resumeState(trackId));
+    }
     return this.queries.getResumeState(trackId);
   }
 
   savePlaybackState(trackId: number, positionMs: number, durationMs: number, completed: boolean): Promise<void> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve();
+    }
     return this.queries.savePlaybackState(trackId, positionMs, durationMs, completed);
   }
 
@@ -136,22 +168,37 @@ export class MusicRepository {
     trackId: number,
     state: AvailabilityState
   ): Promise<void> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve();
+    }
     return this.queries.setTrackAvailability(trackId, state);
   }
 
   setTrackAvailabilities(updates: Array<TrackAvailabilityUpdate>): Promise<void> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve();
+    }
     return this.queries.setTrackAvailabilities(updates);
   }
 
   getMediaFileCheckCandidates(): Promise<Array<MediaFileCheckCandidate>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve([]);
+    }
     return this.queries.getMediaFileCheckCandidates();
   }
 
   getUnavailableTracks(): Promise<Array<UnavailableTrackItem>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve([]);
+    }
     return this.queries.getUnavailableTracks();
   }
 
   removeTracks(trackIds: Array<number>): Promise<number> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(0);
+    }
     const uniqueIds = Array.from(new Set<number>(trackIds.filter((id: number) => id >= 0)));
     if (uniqueIds.length === 0) {
       return Promise.resolve(0);
@@ -231,55 +278,94 @@ export class MusicRepository {
     field: AlbumSortField,
     direction: SortDirection
   ): Promise<LibrarySnapshot<AlbumListItem>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.albumSnapshot(field, direction));
+    }
     return this.queries.getAlbums(field, direction);
   }
 
   getAlbumCatalog(field: AlbumSortField, direction: SortDirection): Promise<LibraryCatalog> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.albumCatalog(field, direction));
+    }
     return this.queries.getAlbumCatalog(field, direction);
   }
 
   getAlbumPage(field: AlbumSortField, direction: SortDirection,
     offset: number, limit: number): Promise<LibraryPage<AlbumListItem>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.albumPage(field, direction, offset, limit));
+    }
     return this.queries.getAlbumPage(field, direction, offset, limit);
   }
 
   getAlbumDetail(albumId: number): Promise<AlbumDetail | undefined> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.albumDetail(albumId));
+    }
     return this.queries.getAlbumDetail(albumId);
   }
 
   getAlbumArtists(albumId: number): Promise<Array<ArtistReference>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.albumArtists(albumId));
+    }
     return this.queries.getAlbumArtists(albumId);
   }
 
   getArtistDetail(artistId: number): Promise<ArtistDetail | undefined> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.artistDetail(artistId));
+    }
     return this.queries.getArtistDetail(artistId);
   }
 
   getTrackNavigationTargets(trackId: number): Promise<TrackNavigationTargets | undefined> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.navigationTargets(trackId));
+    }
     return this.queries.getTrackNavigationTargets(trackId);
   }
 
   getPlaylists(field: PlaylistSortField, direction: SortDirection): Promise<Array<PlaylistSummary>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.playlists(field, direction));
+    }
     return this.playlists.getPlaylists(field, direction);
   }
 
   getPlaylist(playlistId: number): Promise<PlaylistSummary | undefined> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.playlist(playlistId));
+    }
     return this.playlists.getPlaylist(playlistId);
   }
 
   getCompletedPlaylist(): Promise<PlaylistSummary> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.completedPlaylist());
+    }
     return this.playlists.getCompletedPlaylist();
   }
 
   createPlaylist(name: string): Promise<PlaylistSummary> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.reject(new Error('演示音乐库为只读模式'));
+    }
     return this.playlists.createPlaylist(name);
   }
 
   renamePlaylist(playlistId: number, name: string): Promise<PlaylistSummary> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.reject(new Error('演示音乐库为只读模式'));
+    }
     return this.playlists.renamePlaylist(playlistId, name);
   }
 
   deletePlaylist(playlistId: number): Promise<void> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.reject(new Error('演示音乐库为只读模式'));
+    }
     return this.playlists.deletePlaylist(playlistId);
   }
 
@@ -288,10 +374,16 @@ export class MusicRepository {
     field: PlaylistTrackSortField,
     direction: SortDirection
   ): Promise<void> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve();
+    }
     return this.playlists.updateItemSort(playlistId, field, direction);
   }
 
   markPlaylistPlayed(playlistId: number, playedAt: number = Date.now()): Promise<void> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve();
+    }
     return this.playlists.markPlayed(playlistId, playedAt);
   }
 
@@ -302,6 +394,9 @@ export class MusicRepository {
     field?: PlaylistTrackSortField,
     direction?: SortDirection
   ): Promise<PlaylistDetail | undefined> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.playlistDetail(playlistId, offset, limit));
+    }
     return this.playlists.getPlaylistDetail(playlistId, offset, limit, field, direction);
   }
 
@@ -310,14 +405,23 @@ export class MusicRepository {
     field?: PlaylistTrackSortField,
     direction?: SortDirection
   ): Promise<Array<number>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.playlistTrackIds(playlistId));
+    }
     return this.playlists.getPlaylistTrackIds(playlistId, field, direction);
   }
 
   getPlaylistTransferCatalog(): Promise<Array<PlaylistTransferTrack>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve([]);
+    }
     return this.playlists.getTransferCatalog();
   }
 
   getPlaylistTransferTracks(playlistId: number): Promise<Array<PlaylistTransferTrack>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve([]);
+    }
     return this.playlists.getPlaylistTransferTracks(playlistId);
   }
 
@@ -325,6 +429,11 @@ export class MusicRepository {
     playlistId: number,
     items: Array<PlaylistItemInput>
   ): Promise<PlaylistMutationResult> {
+    if (DemoLibraryMode.isEnabled()) {
+      const result: PlaylistMutationResult =
+        { requested: items.length, inserted: 0, alreadyPresent: 0, unavailable: 0 };
+      return Promise.resolve(result);
+    }
     return this.playlists.addItems(playlistId, items);
   }
 
@@ -332,6 +441,11 @@ export class MusicRepository {
     playlistId: number,
     items: Array<PlaylistItemInput>
   ): Promise<PlaylistMutationResult> {
+    if (DemoLibraryMode.isEnabled()) {
+      const result: PlaylistMutationResult =
+        { requested: items.length, inserted: 0, alreadyPresent: 0, unavailable: 0 };
+      return Promise.resolve(result);
+    }
     return this.playlists.mergeItems(playlistId, items);
   }
 
@@ -339,14 +453,25 @@ export class MusicRepository {
     playlistId: number,
     items: Array<PlaylistItemInput>
   ): Promise<PlaylistMutationResult> {
+    if (DemoLibraryMode.isEnabled()) {
+      const result: PlaylistMutationResult =
+        { requested: items.length, inserted: 0, alreadyPresent: 0, unavailable: 0 };
+      return Promise.resolve(result);
+    }
     return this.playlists.replaceItems(playlistId, items);
   }
 
   removePlaylistItems(playlistId: number, trackIds: Array<number>): Promise<number> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(0);
+    }
     return this.playlists.removeItems(playlistId, trackIds);
   }
 
   reorderPlaylistItems(playlistId: number, reorderedTrackIds: Array<number>): Promise<void> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve();
+    }
     return this.playlists.reorderItems(playlistId, reorderedTrackIds);
   }
 
@@ -355,6 +480,9 @@ export class MusicRepository {
     completedAt: number = Date.now(),
     collectInPlaylist: boolean = true
   ): Promise<void> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve();
+    }
     return this.playlists.recordCompletedPlayback(trackId, completedAt, collectInPlaylist);
   }
 
@@ -363,6 +491,9 @@ export class MusicRepository {
   }
 
   getPersistedMediaUris(): Promise<Array<string>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve([]);
+    }
     return this.queries.getPersistedMediaUris();
   }
 
@@ -383,14 +514,23 @@ export class MusicRepository {
   }
 
   getUnreferencedArtworkAssets(): Promise<Array<ArtworkCleanupCandidate>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve([]);
+    }
     return this.queries.getUnreferencedArtworkAssets();
   }
 
   getReferencedArtworkPaths(): Promise<Array<string>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve([]);
+    }
     return this.queries.getReferencedArtworkPaths();
   }
 
   getPaletteRefreshAssets(): Promise<Array<PaletteRefreshAsset>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve([]);
+    }
     return this.queries.getPaletteRefreshAssets();
   }
 
@@ -413,14 +553,23 @@ export class MusicRepository {
   }
 
   importTrack(input: TrackImportInput): Promise<ImportTrackResult> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.reject(new Error('演示音乐库开启时不能导入音乐'));
+    }
     return this.importer.importTrack(input);
   }
 
   importTracks(inputs: Array<TrackImportInput>): Promise<Array<ImportTrackResult>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.reject(new Error('演示音乐库开启时不能导入音乐'));
+    }
     return this.importer.importTracks(inputs);
   }
 
   refreshTrack(trackId: number, input: TrackImportInput): Promise<void> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve();
+    }
     return this.importer.refreshTrack(trackId, input);
   }
 

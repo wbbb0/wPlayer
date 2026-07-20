@@ -33,6 +33,8 @@ import { LibraryPlaybackBridge } from './LibraryPlaybackBridge';
 import { ImportPerformanceTrace } from '../importer/ImportPerformanceTrace';
 import { ImportDetailPolicy } from '../importer/ImportDetailPolicy';
 import { ArtworkPaletteUpdate, PaletteRefreshAsset } from '../data/MusicRepositoryTypes';
+import { DemoLibraryMode } from '../../demo/DemoLibraryMode';
+import { DemoMusicLibrary } from '../../demo/DemoMusicLibrary';
 
 const PALETTE_REFRESH_CONCURRENCY: number = 4;
 
@@ -295,6 +297,10 @@ export class LibraryStore {
   }
 
   async selectAndImport(onStarted?: () => void): Promise<void> {
+    if (DemoLibraryMode.isEnabled()) {
+      this.lastMessage = '请先关闭演示音乐库，再导入本地音乐';
+      return;
+    }
     if (this.importer === undefined || this.importing) {
       return;
     }
@@ -541,6 +547,9 @@ export class LibraryStore {
   }
 
   resolveArtworkPath(relativePath: string): string {
+    if (DemoMusicLibrary.isArtworkPath(relativePath)) {
+      return relativePath;
+    }
     if (relativePath.length === 0 || this.artworkCache === undefined) {
       return '';
     }

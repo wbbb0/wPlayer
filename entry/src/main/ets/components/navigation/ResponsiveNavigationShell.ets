@@ -142,6 +142,7 @@ export struct ResponsiveNavigationShell {
   @Prop selectedRouteId: string = NavigationRoute.PLAYLISTS;
   @Prop appearancePalette: AppAppearancePalette = AppAppearancePalette.fallback();
   @Prop themePageBackground: string = '#FF000000';
+  onDemoLibraryChange: (value: boolean) => void = (_value: boolean): void => {};
 
   compactTabsController: HdsTabsController = new HdsTabsController();
   condensedCompactTabsController: HdsTabsController = new HdsTabsController();
@@ -906,7 +907,8 @@ export struct ResponsiveNavigationShell {
           name: NavigationRoute.OPEN_SOURCE_LICENSES
         }),
         onRememberLastTabChange: this.onRememberLastTabChange,
-        onRememberSortChange: this.onRememberSortChange
+        onRememberSortChange: this.onRememberSortChange,
+        onDemoLibraryChange: this.onDemoLibraryChange
       })
     }
   }

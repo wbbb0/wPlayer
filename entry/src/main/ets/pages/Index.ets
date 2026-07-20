@@ -336,6 +336,9 @@ struct Index {
       onRememberLastTabChange: (value: boolean): void =>
         this.navigationController.setRememberLastTab(value),
       onRememberSortChange: (value: boolean): void => this.libraryStore.setRememberSort(value),
+      onDemoLibraryChange: (value: boolean): void => {
+        this.setDemoLibraryEnabled(value);
+      },
       onNavigationItemMove: (from: number, to: number): void =>
         this.navigationController.moveNavigationItem(from, to),
       onRequestCreatePlaylist: (): void => this.playlistController.openCreator(),
@@ -345,6 +348,23 @@ struct Index {
         this.playlistController.requestAddToPlaylist(items),
       onNavigateLibrary: (target: LibraryNavigationTarget): void => this.navigateLibrary(target)
     })
+  }
+
+  private async setDemoLibraryEnabled(enabled: boolean): Promise<void> {
+    if (this.settingsStore.demoLibraryEnabled === enabled) {
+      return;
+    }
+    try {
+      await playbackRuntime.setDemoLibraryEnabled(enabled);
+      this.settingsStore.setDemoLibraryEnabled(enabled);
+      await Promise.all([
+        this.libraryStore.refresh(),
+        this.libraryStore.loadUnavailableTracks(),
+        this.playlistStore.refresh()
+      ]);
+    } catch (error) {
+      console.warn(`Unable to switch demo library: ${error instanceof Error ? error.message : error}`);
+    }
   }
 
   @Builder

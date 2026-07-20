@@ -28,6 +28,7 @@ const AUTO_REMOVE_UNAVAILABLE_ON_PLAYBACK_KEY: string = 'playback.auto_remove_un
 const COMPLETED_COLLECTION_MODE_KEY: string = 'playback.completed_collection.mode';
 const COMPLETED_COLLECTION_CURRENT_KEY: string = 'playback.completed_collection.current_enabled';
 const RECENT_PLAYLIST_TARGET_IDS_KEY: string = 'playlist.recent_target_ids';
+const DEMO_LIBRARY_ENABLED_KEY: string = 'debug.demo_library_enabled';
 
 interface SettingUpdate {
   key: string;
@@ -278,6 +279,14 @@ export class SettingsRepository {
 
   setRecentPlaylistTargetIds(value: Array<number>): void {
     this.setValue(RECENT_PLAYLIST_TARGET_IDS_KEY, value);
+  }
+
+  getDemoLibraryEnabled(defaultValue: boolean = false): boolean {
+    return this.getBoolean(DEMO_LIBRARY_ENABLED_KEY, defaultValue);
+  }
+
+  setDemoLibraryEnabled(value: boolean): void {
+    this.setValue(DEMO_LIBRARY_ENABLED_KEY, value);
   }
 
   private ensureDefaults(): void {

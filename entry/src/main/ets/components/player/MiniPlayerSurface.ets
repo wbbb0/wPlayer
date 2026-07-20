@@ -120,6 +120,9 @@ export struct MiniPlayerSurface {
     .id('mini_player_surface')
     .borderRadius(28)
     .clip(true)
+    .onTouch((event: TouchEvent) => {
+      event.stopPropagation();
+    })
     .onClick(() => {
       if (!this.binding.expanded) {
         this.onShowFullPlayer();

@@ -25,6 +25,7 @@ import { DynamicColor, DynamicContainerRole, ForegroundEmphasis } from
 import { LyricTimeline } from '../main/ets/playback/lyrics/LyricTimeline';
 import { LyricsParser, TimedLyricLine } from '../main/ets/playback/lyrics/LyricsParser';
 import { LayoutLength } from '../main/ets/components/layout/LayoutLength';
+import { AppShellLayoutSpec } from '../main/ets/components/layout/AppShellLayoutSpec';
 import { PlayerStore } from '../main/ets/playback/model/PlaybackModels';
 
 class FakeResource {
@@ -75,6 +76,23 @@ export default function riskRegressionTest() {
       expect(FullPlayerPagerSpec.positionForPage(FullPlayerPage.LYRICS, 2)).assertEqual(1);
       expect(Math.round(FullPlayerPagerSpec.swipeCompletionDistance(360))).assertEqual(43);
       expect(FullPlayerPagerSpec.swipeCompletionDistance(800)).assertEqual(56);
+    });
+
+    it('keeps the expanded compact mini player clear of collapsed navigation', 0, () => {
+      expect(AppShellLayoutSpec.compactExpandedMiniPlayerStart(440, 286)).assertEqual(77);
+      expect(AppShellLayoutSpec.compactExpandedMiniPlayerStart(377, 258)).assertEqual(103);
+    });
+
+    it('selects a dedicated hidden-tab host only below the horizontal fit threshold', 0, () => {
+      expect(AppShellLayoutSpec.hasResolvedRootSize(0, 0)).assertFalse();
+      expect(AppShellLayoutSpec.hasResolvedRootSize(326, 0)).assertFalse();
+      expect(AppShellLayoutSpec.hasResolvedRootSize(326, 980)).assertTrue();
+      expect(AppShellLayoutSpec.usesCondensedCompactNavigation(326)).assertTrue();
+      expect(AppShellLayoutSpec.compactTabsHostId(326))
+        .assertEqual(AppShellLayoutSpec.CONDENSED_COMPACT_TABS_HOST_ID);
+      expect(AppShellLayoutSpec.usesCondensedCompactNavigation(360)).assertFalse();
+      expect(AppShellLayoutSpec.compactTabsHostId(377))
+        .assertEqual(AppShellLayoutSpec.COMPACT_TABS_HOST_ID);
     });
 
     it('reveals the artwork proxy only while a side page hands off', 0, () => {

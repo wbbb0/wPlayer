@@ -45,15 +45,21 @@ import { systemBarStyleController } from '../appearance/SystemBarStyleController
 @Component
 struct Index {
   private readonly compactTabsController: HdsTabsController = new HdsTabsController();
+  private readonly condensedCompactTabsController: HdsTabsController = new HdsTabsController();
   private readonly expandedTabsController: HdsTabsController = new HdsTabsController();
   private compactMiniPlayerContent?: ComponentContent<MiniPlayerHostParams>;
+  private condensedCompactMiniPlayerContent?: ComponentContent<MiniPlayerHostParams>;
   private wideMiniPlayerContent?: ComponentContent<MiniPlayerHostParams>;
   @State statusBarAvoidHeight: number = 0;
   @State navigationAvoidHeight: number = 0;
   @State appearancePalette: AppAppearancePalette = AppAppearancePalette.fallback();
   @State navigationController: IndexNavigationController = new IndexNavigationController();
   @State playerMorphController: PlayerMorphController =
-    new PlayerMorphController(playbackRuntime.playerStore, this.compactTabsController);
+    new PlayerMorphController(
+      playbackRuntime.playerStore,
+      this.compactTabsController,
+      this.condensedCompactTabsController
+    );
   @State libraryStore: LibraryStore = new LibraryStore(playbackRuntime.repository, playbackRuntime);
   @State playlistStore: PlaylistStore = new PlaylistStore(playbackRuntime.repository);
   @State playlistController: IndexPlaylistController = new IndexPlaylistController(this.playlistStore);
@@ -85,6 +91,11 @@ struct Index {
       (): void => this.playerMorphController.finishMiniPlayerGesture()
     );
     this.compactMiniPlayerContent = new ComponentContent(
+      this.getUIContext(),
+      wrapBuilder(MiniPlayerHost),
+      miniPlayerParams
+    );
+    this.condensedCompactMiniPlayerContent = new ComponentContent(
       this.getUIContext(),
       wrapBuilder(MiniPlayerHost),
       miniPlayerParams
@@ -138,6 +149,8 @@ struct Index {
     this.playerMorphController.dispose();
     this.compactMiniPlayerContent?.dispose();
     this.compactMiniPlayerContent = undefined;
+    this.condensedCompactMiniPlayerContent?.dispose();
+    this.condensedCompactMiniPlayerContent = undefined;
     this.wideMiniPlayerContent?.dispose();
     this.wideMiniPlayerContent = undefined;
     this.playlistController.dispose();
@@ -286,6 +299,7 @@ struct Index {
       settingsStore: this.settingsStore,
       miniPlayerBinding: this.playerMorphController.miniPlayerBinding,
       compactMiniPlayerContent: this.compactMiniPlayerContent,
+      condensedCompactMiniPlayerContent: this.condensedCompactMiniPlayerContent,
       wideMiniPlayerContent: this.wideMiniPlayerContent,
       topInset: this.statusBarAvoidHeight,
       bottomInset: this.navigationAvoidHeight,
@@ -296,6 +310,7 @@ struct Index {
       appearancePalette: this.appearancePalette,
       themePageBackground: this.animatedPageBackground(),
       compactTabsController: this.compactTabsController,
+      condensedCompactTabsController: this.condensedCompactTabsController,
       expandedTabsController: this.expandedTabsController,
       rootTitleContents: this.navigationController.rootTitleContents,
       moreTitleContent: this.navigationController.moreTitleContent,
@@ -308,6 +323,8 @@ struct Index {
         this.navigationController.handleCompactTabChange(index),
       onCompactTabClick: (index: number): void =>
         this.navigationController.handleCompactTabBarClick(index),
+      onCondensedOutsideTouch: (): void =>
+        this.playerMorphController.collapseCondensedMiniBar(),
       onExpandedTabChange: (index: number): void =>
         this.navigationController.handleExpandedTabChange(index),
       onExpandedTabClick: (index: number): void =>

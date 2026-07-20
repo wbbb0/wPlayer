@@ -69,10 +69,25 @@ export class PlayerMorphController {
   private uiContext?: UIContext;
   private readonly playerStore: PlayerStore;
   private readonly compactTabsController: HdsTabsController;
+  private readonly condensedCompactTabsController: HdsTabsController;
 
-  constructor(playerStore: PlayerStore, compactTabsController: HdsTabsController) {
+  constructor(playerStore: PlayerStore, compactTabsController: HdsTabsController,
+    condensedCompactTabsController: HdsTabsController) {
     this.playerStore = playerStore;
     this.compactTabsController = compactTabsController;
+    this.condensedCompactTabsController = condensedCompactTabsController;
+  }
+
+  private applyCompactMiniBarStyle(style: HdsBarStyle): void {
+    this.compactTabsController.applyMiniBarStyle(style);
+    this.condensedCompactTabsController.applyMiniBarStyle(style);
+  }
+
+  collapseCondensedMiniBar(): void {
+    if (!this.miniBarExpanded || this.isMorphActive()) {
+      return;
+    }
+    this.condensedCompactTabsController.applyMiniBarStyle(HdsBarStyle.COLLAPSE);
   }
 
   get miniBarExpanded(): boolean {
@@ -180,19 +195,26 @@ export class PlayerMorphController {
       const componentUtils = uiContext.getComponentUtils();
       const miniPlayerRectangle = componentUtils.getRectangleById('mini_player_surface');
       const rootRectangle = componentUtils.getRectangleById('player_page_root');
-      const wideLayout = this.usesWideLayout(uiContext.px2vp(rootRectangle.size.width));
+      const hostWidth = uiContext.px2vp(rootRectangle.size.width);
+      const wideLayout = this.usesWideLayout(hostWidth);
       const sourceHostId = wideLayout ?
-        'wide_mini_player_hds_host' : 'player_tabs_compact_content_host';
+        AppShellLayoutSpec.WIDE_MINI_PLAYER_HOST_ID :
+        AppShellLayoutSpec.compactTabsHostId(hostWidth);
       const sourceHostRectangle = componentUtils.getRectangleById(sourceHostId);
       const horizontalMargin = uiContext.vp2px(AppShellLayoutSpec.COMPACT_SIDE_MARGIN);
       const bottomMargin = uiContext.vp2px(AppShellLayoutSpec.FLOATING_BAR_BOTTOM_MARGIN);
+      const compactExpandedStart = uiContext.vp2px(
+        AppShellLayoutSpec.compactExpandedMiniPlayerStart(
+          uiContext.px2vp(sourceHostRectangle.size.width),
+          uiContext.px2vp(miniPlayerRectangle.size.width)
+        )
+      );
       const visibleMiniPlayerX = wideLayout ?
         sourceHostRectangle.windowOffset.x + sourceHostRectangle.size.width -
           miniPlayerRectangle.size.width -
           uiContext.vp2px(AppShellLayoutSpec.WIDE_SIDE_MARGIN) :
         this.miniBarExpanded ?
-        sourceHostRectangle.windowOffset.x +
-          (sourceHostRectangle.size.width - miniPlayerRectangle.size.width) / 2 :
+        sourceHostRectangle.windowOffset.x + compactExpandedStart :
         sourceHostRectangle.windowOffset.x + sourceHostRectangle.size.width -
           miniPlayerRectangle.size.width - horizontalMargin;
       const visibleMiniPlayerY = sourceHostRectangle.windowOffset.y + sourceHostRectangle.size.height -
@@ -516,7 +538,7 @@ export class PlayerMorphController {
 
   showFullPlayer(): void {
     if (!this.miniBarExpanded) {
-      this.compactTabsController.applyMiniBarStyle(HdsBarStyle.EXPAND);
+      this.applyCompactMiniBarStyle(HdsBarStyle.EXPAND);
       return;
     }
     this.freezeMiniPlayerGeometry();
@@ -556,7 +578,7 @@ export class PlayerMorphController {
     if (this.miniBarExpanded === this.returnToExpandedMiniBar) {
       return;
     }
-    this.compactTabsController.applyMiniBarStyle(
+    this.applyCompactMiniBarStyle(
       this.returnToExpandedMiniBar ? HdsBarStyle.EXPAND : HdsBarStyle.COLLAPSE
     );
   }

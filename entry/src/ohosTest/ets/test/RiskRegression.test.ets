@@ -23,6 +23,7 @@ import {
   FullPlayerPagerSpec,
   PlayerMotionSpec
 } from '../../../main/ets/components/player/PlayerMotion';
+import { AppShellLayoutSpec } from '../../../main/ets/components/layout/AppShellLayoutSpec';
 
 class FakeResource {
   released: number = 0;
@@ -40,6 +41,23 @@ export default function riskRegressionTest() {
       expect(FullPlayerPagerSpec.sidePageArtworkOpacity(0)).assertEqual(1);
       expect(FullPlayerPagerSpec.sidePageArtworkOpacity(0.6)).assertEqual(0);
       expect(FullPlayerPagerSpec.sidePageArtworkOpacity(1)).assertEqual(0);
+    });
+
+    it('keepsExpandedCompactMiniPlayerClearOfCollapsedNavigation', 0, () => {
+      expect(AppShellLayoutSpec.compactExpandedMiniPlayerStart(440, 286)).assertEqual(77);
+      expect(AppShellLayoutSpec.compactExpandedMiniPlayerStart(377, 258)).assertEqual(103);
+    });
+
+    it('selectsDedicatedHiddenTabHostOnlyBelowTheHorizontalFitThreshold', 0, () => {
+      expect(AppShellLayoutSpec.hasResolvedRootSize(0, 0)).assertFalse();
+      expect(AppShellLayoutSpec.hasResolvedRootSize(326, 0)).assertFalse();
+      expect(AppShellLayoutSpec.hasResolvedRootSize(326, 980)).assertTrue();
+      expect(AppShellLayoutSpec.usesCondensedCompactNavigation(326)).assertTrue();
+      expect(AppShellLayoutSpec.compactTabsHostId(326))
+        .assertEqual(AppShellLayoutSpec.CONDENSED_COMPACT_TABS_HOST_ID);
+      expect(AppShellLayoutSpec.usesCondensedCompactNavigation(360)).assertFalse();
+      expect(AppShellLayoutSpec.compactTabsHostId(377))
+        .assertEqual(AppShellLayoutSpec.COMPACT_TABS_HOST_ID);
     });
 
     it('containsLandscapeAndPortraitArtwork', 0, () => {

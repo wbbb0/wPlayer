@@ -132,6 +132,7 @@ export struct ResponsiveNavigationShell {
   @ObjectLink settingsStore: AppSettingsStore;
   @ObjectLink miniPlayerBinding: MiniPlayerBinding;
   compactMiniPlayerContent?: ComponentContent<MiniPlayerHostParams>;
+  condensedCompactMiniPlayerContent?: ComponentContent<MiniPlayerHostParams>;
   wideMiniPlayerContent?: ComponentContent<MiniPlayerHostParams>;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
@@ -143,6 +144,7 @@ export struct ResponsiveNavigationShell {
   @Prop themePageBackground: string = '#FF000000';
 
   compactTabsController: HdsTabsController = new HdsTabsController();
+  condensedCompactTabsController: HdsTabsController = new HdsTabsController();
   expandedTabsController: HdsTabsController = new HdsTabsController();
   rootTitleContents: Array<ComponentContent<AppPrimaryTitleParams> | undefined> = [];
   @Prop moreTitleContent: ComponentContent<AppPrimaryTitleParams> | undefined = undefined;
@@ -158,6 +160,7 @@ export struct ResponsiveNavigationShell {
 
   onCompactTabChange: (index: number) => void = (_index: number): void => {};
   onCompactTabClick: (index: number) => void = (_index: number): void => {};
+  onCondensedOutsideTouch: () => void = (): void => {};
   onExpandedTabChange: (index: number) => void = (_index: number): void => {};
   onExpandedTabClick: (index: number) => void = (_index: number): void => {};
   onOpenMoreDestination: (routeId: string) => void = (_routeId: string): void => {};
@@ -314,12 +317,19 @@ export struct ResponsiveNavigationShell {
     return this.rootPathStacks[navigationItemIndex(routeId)];
   }
 
-  private compactTabsFloatingStyle(): HdsTabsFloatingStyle {
+  private compactTabsFloatingStyle(
+    miniPlayerContent: ComponentContent<MiniPlayerHostParams> | undefined =
+      this.compactMiniPlayerContent,
+    smallWidth: number = AppShellLayoutSpec.COMPACT_TAB_SMALL_WIDTH,
+    mediumWidth: number = AppShellLayoutSpec.COMPACT_TAB_MEDIUM_WIDTH,
+    largeWidth: number = AppShellLayoutSpec.COMPACT_TAB_LARGE_WIDTH,
+    barOpacity: number = 1
+  ): HdsTabsFloatingStyle {
     return {
       barWidth: {
-        smallWidth: AppShellLayoutSpec.COMPACT_TAB_SMALL_WIDTH,
-        mediumWidth: AppShellLayoutSpec.COMPACT_TAB_MEDIUM_WIDTH,
-        largeWidth: AppShellLayoutSpec.COMPACT_TAB_LARGE_WIDTH
+        smallWidth: smallWidth,
+        mediumWidth: mediumWidth,
+        largeWidth: largeWidth
       },
       barBottomMargin: AppShellLayoutSpec.FLOATING_BAR_BOTTOM_MARGIN,
       gradientMask: {
@@ -330,8 +340,9 @@ export struct ResponsiveNavigationShell {
         materialType: hdsMaterial.MaterialType.ADAPTIVE,
         materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
       },
+      barOpacity: barOpacity,
       miniBar: {
-        miniBarBuilder: this.compactMiniPlayerContent ?? this.miniPlayerBuilder,
+        miniBarBuilder: miniPlayerContent ?? this.miniPlayerBuilder,
         miniBarWidth: {
           smallWidth: AppShellLayoutSpec.MINI_PLAYER_SMALL_WIDTH,
           mediumWidth: AppShellLayoutSpec.MINI_PLAYER_MEDIUM_WIDTH,
@@ -347,6 +358,16 @@ export struct ResponsiveNavigationShell {
         enableMiniBarClip: true
       }
     };
+  }
+
+  private condensedCompactTabsFloatingStyle(): HdsTabsFloatingStyle {
+    return this.compactTabsFloatingStyle(
+      this.condensedCompactMiniPlayerContent,
+      AppShellLayoutSpec.HIDDEN_TAB_BAR_WIDTH,
+      AppShellLayoutSpec.HIDDEN_TAB_BAR_WIDTH,
+      AppShellLayoutSpec.HIDDEN_TAB_BAR_WIDTH,
+      0
+    );
   }
 
   private wideMiniPlayerFloatingStyle(): HdsTabsFloatingStyle {
@@ -1211,9 +1232,11 @@ export struct ResponsiveNavigationShell {
   }
 
   @Builder
-  private CompactTabsContent() {
-    HdsTabs({ controller: this.compactTabsController, index: this.compactTabIndex() }) {
-      ForEach(this.primaryItems(), (item: NavigationPageItem, index: number) => {
+  private RegularCompactTabsContent() {
+    HdsTabs({ controller: this.compactTabsController,
+      index: this.compactTabIndex() }) {
+      ForEach(this.primaryItems(),
+        (item: NavigationPageItem, index: number) => {
         TabContent() {
           this.RootNavigation(item)
         }
@@ -1237,6 +1260,37 @@ export struct ResponsiveNavigationShell {
     .onSelected(this.onCompactTabChange)
     .onTabBarClick(this.onCompactTabClick)
     .barFloatingStyle(this.compactTabsFloatingStyle())
+  }
+
+  @Builder
+  private CondensedCompactTabsContent() {
+    HdsTabs({ controller: this.condensedCompactTabsController,
+      index: this.compactTabIndex() }) {
+      ForEach(this.primaryItems(),
+        (item: NavigationPageItem, index: number) => {
+        TabContent() {
+          this.RootNavigation(item)
+        }
+        .tabBar(this.NativeCompactTabBar(item.symbol, item.label))
+      }, (item: NavigationPageItem) => item.routeId)
+      TabContent() {
+        this.MoreNavigation()
+      }
+      .tabBar(this.NativeCompactTabBar(
+        $r('sys.symbol.square_fill_grid_2x2'),
+        '更多'
+      ))
+    }
+    .width('100%')
+    .height('100%')
+    .barOverlap(true)
+    .barPosition(BarPosition.End)
+    .vertical(false)
+    .barMode(BarMode.Fixed)
+    .scrollable(true)
+    .onSelected(this.onCompactTabChange)
+    .onTabBarClick(this.onCompactTabClick)
+    .barFloatingStyle(this.condensedCompactTabsFloatingStyle())
   }
 
   @Builder
@@ -1286,23 +1340,39 @@ export struct ResponsiveNavigationShell {
       .scrollable(false)
       .barFloatingStyle(this.wideMiniPlayerFloatingStyle())
     }
-    .id('wide_mini_player_hds_host')
+    .id(AppShellLayoutSpec.WIDE_MINI_PLAYER_HOST_ID)
     .width('100%')
     .height(AppShellLayoutSpec.WIDE_MINI_PLAYER_HOST_HEIGHT)
     .clip(true)
   }
 
   build() {
-    if (this.usesWideLayout()) {
-      Stack() { this.ExpandedTabsContent() }
-      .id('player_tabs_wide_content_host')
-      .width('100%')
-      .height('100%')
-    } else {
-      Stack() { this.CompactTabsContent() }
-        .id('player_tabs_compact_content_host')
+    if (!AppShellLayoutSpec.hasResolvedRootSize(this.rootWidth, this.rootHeight)) {
+      Stack()
+        .id('player_tabs_layout_pending')
         .width('100%')
         .height('100%')
+        .hitTestBehavior(HitTestMode.None)
+    } else if (this.usesWideLayout()) {
+      Stack() { this.ExpandedTabsContent() }
+      .id(AppShellLayoutSpec.WIDE_TABS_HOST_ID)
+      .width('100%')
+      .height('100%')
+    } else if (AppShellLayoutSpec.usesCondensedCompactNavigation(this.rootWidth)) {
+      Stack() { this.CondensedCompactTabsContent() }
+      .id(AppShellLayoutSpec.CONDENSED_COMPACT_TABS_HOST_ID)
+      .width('100%')
+      .height('100%')
+      .onTouch((event: TouchEvent) => {
+        if (event.type === TouchType.Down) {
+          this.onCondensedOutsideTouch();
+        }
+      })
+    } else {
+      Stack() { this.RegularCompactTabsContent() }
+      .id(AppShellLayoutSpec.COMPACT_TABS_HOST_ID)
+      .width('100%')
+      .height('100%')
     }
   }
 }

@@ -3,7 +3,6 @@ export class NavigationRoute {
   static readonly SONGS: string = 'songs';
   static readonly ALBUMS: string = 'albums';
   static readonly LIBRARY_MANAGEMENT: string = 'libraryManagement';
-  static readonly MATERIAL_DEBUG: string = 'materialDebug';
   static readonly SETTINGS: string = 'settings';
   static readonly NAVIGATION_CUSTOMIZATION: string = 'navigationCustomization';
 }
@@ -13,8 +12,7 @@ export enum NavigationPageKind {
   SONGS = 1,
   ALBUMS = 2,
   LIBRARY_MANAGEMENT = 3,
-  MATERIAL_DEBUG = 4,
-  SETTINGS = 5
+  SETTINGS = 4
 }
 
 export interface NavigationPageItem {
@@ -55,13 +53,6 @@ export const DYNAMIC_NAVIGATION_ITEMS: Array<NavigationPageItem> = [
     label: '音乐库',
     description: '添加音乐、查看统计或清空测试数据',
     symbol: $r('sys.symbol.externaldrive_fill')
-  },
-  {
-    routeId: NavigationRoute.MATERIAL_DEBUG,
-    kind: NavigationPageKind.MATERIAL_DEBUG,
-    label: '材质调试',
-    description: '比较 HDS、模糊背板与各类弹出组件',
-    symbol: $r('sys.symbol.square_fill_grid_2x2')
   }
 ];
 

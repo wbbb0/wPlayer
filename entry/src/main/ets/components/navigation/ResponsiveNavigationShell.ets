@@ -65,7 +65,6 @@ import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { AlbumsPage } from '../../pages/library/AlbumsPage';
 import { AlbumDetailPage } from '../../pages/library/AlbumDetailPage';
 import { ArtistDetailPage } from '../../pages/library/ArtistDetailPage';
-import { MaterialDebugPage } from '../../pages/debug/MaterialDebugPage';
 import { LibraryManagementPage } from '../../pages/library/LibraryManagementPage';
 import { MorePage } from '../../pages/library/MorePage';
 import { PlaylistsPage } from '../../pages/library/PlaylistsPage';
@@ -856,9 +855,6 @@ export struct ResponsiveNavigationShell {
       })
     } else if (navigationPageKind(routeId) === NavigationPageKind.LIBRARY_MANAGEMENT) {
       LibraryManagementPage({ store: this.libraryStore, topInset: this.topInset, bottomInset: this.bottomInset,
-        scroller: this.routeScroller(routeId) })
-    } else if (navigationPageKind(routeId) === NavigationPageKind.MATERIAL_DEBUG) {
-      MaterialDebugPage({ topInset: this.topInset, bottomInset: this.bottomInset,
         scroller: this.routeScroller(routeId) })
     } else if (navigationPageKind(routeId) === NavigationPageKind.SETTINGS) {
       SettingsPage({

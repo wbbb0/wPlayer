@@ -75,6 +75,22 @@ export struct LibraryManagementPage {
       if (this.store.statistics.unavailableTrackCount === 0) {
         this.showPageSheet = false;
       }
+      this.showSuccessDialog(this.store.lastMessage);
+    });
+  }
+
+  private showSuccessDialog(message: string): void {
+    if (message.length === 0) {
+      return;
+    }
+    this.getUIContext().getPromptAction().showDialog({
+      title: '操作完成',
+      message: message,
+      buttons: [
+        { text: '确定', color: $r('app.color.text_primary') }
+      ]
+    }).catch((_error: Object): void => {
+      // The message is informational; dismissing it needs no recovery.
     });
   }
 
@@ -467,7 +483,9 @@ export struct LibraryManagementPage {
         value: '清空',
         fontColor: $r('app.color.destructive'),
         action: () => {
-          this.store.clearLibrary();
+          this.store.clearLibrary().then((): void => {
+            this.showSuccessDialog(this.store.lastMessage);
+          });
         }
       }
     });
@@ -535,7 +553,7 @@ export struct LibraryManagementPage {
             this.openTaskReport();
           })
 
-        if (this.hasTaskReport() || this.store.lastMessage.length > 0 || this.store.errorMessage.length > 0) {
+        if (this.hasTaskReport() || this.store.errorMessage.length > 0) {
           Divider()
             .strokeWidth(1)
             .color($r('app.color.text_tertiary'))
@@ -551,12 +569,6 @@ export struct LibraryManagementPage {
               .onClick(() => this.openTaskReport())
           }
 
-          if (this.store.lastMessage.length > 0) {
-            Text(this.store.lastMessage)
-              .fontSize(13)
-              .fontColor($r('app.color.message_success'))
-              .width('100%')
-          }
           if (this.store.errorMessage.length > 0) {
             Text(this.store.errorMessage)
               .fontSize(13)
@@ -715,7 +727,13 @@ export struct LibraryManagementPage {
       secondaryButton: {
         value: '清理',
         fontColor: $r('app.color.destructive'),
-        action: () => this.store.clearAllUnavailableTracks()
+        action: () => {
+          this.store.clearAllUnavailableTracks().then((): void => {
+            this.selectedUnavailableIds = [];
+            this.showPageSheet = false;
+            this.showSuccessDialog(this.store.lastMessage);
+          });
+        }
       }
     });
   }

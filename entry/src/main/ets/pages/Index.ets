@@ -119,6 +119,9 @@ struct Index {
       this.playlistController.bindVisibility((visible: boolean): void => {
         this.playlistSheetVisible = visible;
       });
+      this.playlistController.bindSuccessMessage((message: string): void => {
+        this.showPlaylistSuccessDialog(message);
+      });
       try {
         this.settingsRepository = new SettingsRepository(abilityContext);
         this.settingsStore.initialize(this.settingsRepository);
@@ -234,6 +237,21 @@ struct Index {
     this.playerMorphController.syncSystemBarContentColor();
   }
 
+  private showPlaylistSuccessDialog(message: string): void {
+    if (message.length === 0) {
+      return;
+    }
+    this.getUIContext().getPromptAction().showDialog({
+      title: '操作完成',
+      message: message,
+      buttons: [
+        { text: '确定', color: $r('app.color.text_primary') }
+      ]
+    }).catch((_error: Object): void => {
+      // The message is informational; dismissing it needs no recovery.
+    });
+  }
+
   private pageThemeTintOpacity(): number {
     return this.appearancePalette.windowBackground.toUpperCase() === '#FF000000' ? 0.24 : 0.16;
   }
@@ -285,8 +303,10 @@ struct Index {
       },
       onSaveCreate: (): void => this.playlistController.saveNewPlaylist(),
       onSaveRename: (): void => this.playlistController.saveRename(),
-      onAddedToPlaylist: (playlistId: number): void =>
-        this.playlistController.recordRecentPlaylistTarget(playlistId),
+      onAddedToPlaylist: (playlistId: number, message: string): void => {
+        this.playlistController.recordRecentPlaylistTarget(playlistId);
+        this.playlistController.showAddedToPlaylistMessage(message);
+      },
       onClose: (): void => this.playlistController.close()
     })
   }

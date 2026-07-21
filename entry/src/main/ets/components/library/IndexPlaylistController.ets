@@ -17,6 +17,7 @@ export class IndexPlaylistController {
   recentPlaylistTargetIds: Array<number> = [];
   private settingsRepository?: SettingsRepository;
   private visibilityListener?: (visible: boolean) => void;
+  private successMessageListener?: (message: string) => void;
   private readonly store: PlaylistStore;
 
   constructor(store: PlaylistStore) {
@@ -25,6 +26,10 @@ export class IndexPlaylistController {
 
   bindVisibility(visibilityListener: (visible: boolean) => void): void {
     this.visibilityListener = visibilityListener;
+  }
+
+  bindSuccessMessage(successMessageListener: (message: string) => void): void {
+    this.successMessageListener = successMessageListener;
   }
 
   bindSettings(settingsRepository?: SettingsRepository): void {
@@ -40,6 +45,7 @@ export class IndexPlaylistController {
 
   dispose(): void {
     this.visibilityListener = undefined;
+    this.successMessageListener = undefined;
   }
 
   openCreator(): void {
@@ -55,6 +61,7 @@ export class IndexPlaylistController {
     this.store.create(name).then((created) => {
       if (created !== undefined) {
         this.close();
+        this.showSuccessMessage();
       }
     });
   }
@@ -82,6 +89,10 @@ export class IndexPlaylistController {
     this.settingsRepository?.setRecentPlaylistTargetIds(this.recentPlaylistTargetIds);
   }
 
+  showAddedToPlaylistMessage(message: string): void {
+    this.showSuccessMessage(message);
+  }
+
   openRenamer(playlist: PlaylistSummary): void {
     this.renameId = playlist.id;
     this.renameName = playlist.name;
@@ -96,6 +107,7 @@ export class IndexPlaylistController {
     this.store.rename(this.renameId, name).then((renamed) => {
       if (renamed !== undefined) {
         this.close();
+        this.showSuccessMessage();
       }
     });
   }
@@ -112,5 +124,11 @@ export class IndexPlaylistController {
   private open(kind: IndexPlaylistSheetKind): void {
     this.kind = kind;
     this.visibilityListener?.(true);
+  }
+
+  private showSuccessMessage(message: string = this.store.lastMessage): void {
+    if (message.length > 0) {
+      this.successMessageListener?.(message);
+    }
   }
 }

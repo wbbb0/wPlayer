@@ -46,6 +46,12 @@ import { MiniPlayerBinding } from '../player/MiniPlayerBinding';
 import { QueueActionMenu, QueueActionMenuParams } from '../library/QueueActionMenu';
 import { TrackActionMenuPresenter } from '../library/TrackActionMenu';
 import {
+  TaskResultDetailItem,
+  TaskResultDetailSection,
+  TaskResultDetails,
+  TaskResultTone
+} from '../library/TaskResultDetails';
+import {
   AlbumSortField,
   LibraryEntityIdentity,
   LibraryNavigationTarget,
@@ -85,8 +91,12 @@ import {
   artistTarget
 } from './LibraryNavigation';
 import {
+  M3uImportNameConflictAction,
+  M3uImportDetail,
   M3uImportMode,
+  M3uImportStage,
   M3uImportReport,
+  M3uImportSource,
   M3uTransferService
 } from '../../playlist/m3u/M3uTransferService';
 import { AlbumAction } from '../library/AlbumGridItem';
@@ -109,6 +119,11 @@ const PLAYLIST_CREATE_MENU_ID: string = 'playlist_create_menu';
 const PLAYLIST_DETAIL_ROUTE: string = 'playlist_detail';
 const MORE_TAB_INDEX: number = PRIMARY_NAVIGATION_COUNT;
 let playlistRouteInstanceId: number = 0;
+
+enum PlaylistImportSheetKind {
+  PROGRESS = 'progress',
+  REPORT = 'report'
+}
 
 class PlaylistDetailRouteParams {
   readonly instanceId: number;
@@ -184,6 +199,11 @@ export struct ResponsiveNavigationShell {
   private readonly playlistTransferService: M3uTransferService =
     new M3uTransferService(playbackRuntime.repository);
   private playlistTransferBusy: boolean = false;
+  @State private playlistImportSheetVisible: boolean = false;
+  @State private playlistImportSheetKind: PlaylistImportSheetKind = PlaylistImportSheetKind.PROGRESS;
+  @State private playlistImportStage: M3uImportStage = M3uImportStage.READING;
+  @State private playlistImportSourceName: string = '';
+  @State private playlistImportReports: Array<M3uImportReport> = [];
   @State private songsSelection: MultiSelectController = new MultiSelectController();
   @State private albumsSelection: MultiSelectController = new MultiSelectController();
   @State private playlistsSelection: MultiSelectController = new MultiSelectController();
@@ -490,19 +510,84 @@ export struct ResponsiveNavigationShell {
     }
     this.playlistTransferBusy = true;
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-    this.playlistTransferService.importAsNew(context)
-      .then((report: M3uImportReport | undefined): void => {
-        if (report === undefined) {
-          return;
+    this.importSelectedPlaylistSourcesAsNew(context)
+      .then((reports: Array<M3uImportReport>): void => {
+        if (reports.length > 0) {
+          this.showPlaylistImportReports(reports);
         }
-        this.playlistStore.lastMessage =
-          `已导入 ${report.inserted} 首，${report.unmatched} 项未在音乐库中找到`;
-        this.playlistStore.refresh();
       }).catch((error: Object): void => {
         this.playlistStore.errorMessage = error instanceof Error ? error.message : `${error}`;
       }).finally((): void => {
         this.playlistTransferBusy = false;
       });
+  }
+
+  private async importSelectedPlaylistSourcesAsNew(
+    context: common.UIAbilityContext
+  ): Promise<Array<M3uImportReport>> {
+    const sources = await this.playlistTransferService.selectImportSources(context);
+    const reports: Array<M3uImportReport> = [];
+    for (let index = 0; index < sources.length; index += 1) {
+      const source = sources[index];
+      await this.playlistStore.refresh();
+      const conflict = this.playlistTransferService.findNameConflict(source, this.playlistStore.playlists);
+      if (conflict === undefined) {
+        reports.push(await this.importPlaylistSourceAsNewForBatch(source));
+        await this.playlistStore.refresh();
+        continue;
+      }
+      const action = await this.choosePlaylistNameConflictAction(source, conflict);
+      if (action === undefined) {
+        continue;
+      }
+      if (action === M3uImportNameConflictAction.SAVE_AS_NEW) {
+        reports.push(await this.importPlaylistSourceAsNewForBatch(source));
+      } else {
+        const mode = action === M3uImportNameConflictAction.REPLACE ? M3uImportMode.REPLACE : M3uImportMode.MERGE;
+        reports.push(await this.importPlaylistSourceIntoForBatch(source, conflict.id, mode));
+      }
+      await this.playlistStore.refresh();
+    }
+    this.hidePlaylistImportProgress();
+    return reports;
+  }
+
+  private importPlaylistSourceAsNewForBatch(source: M3uImportSource): Promise<M3uImportReport> {
+    this.playlistImportSourceName = source.suggestedName;
+    return this.playlistTransferService.importSourceAsNew(
+      source,
+      (stage: M3uImportStage): void => this.showPlaylistImportProgress(stage)
+    );
+  }
+
+  private async choosePlaylistNameConflictAction(
+    source: M3uImportSource,
+    playlist: PlaylistSummary
+  ): Promise<M3uImportNameConflictAction | undefined> {
+    try {
+      const result = await this.getUIContext().getPromptAction().showDialog({
+        title: '播放列表已存在',
+        message: `“${source.suggestedName}”与现有播放列表“${playlist.name}”重名。请选择导入方式。`,
+        buttons: [
+          { text: '合并', color: $r('app.color.text_primary') },
+          { text: '另存', color: $r('app.color.text_primary') },
+          { text: '替换', color: $r('sys.color.ohos_id_color_warning') },
+          { text: '取消', color: $r('app.color.text_primary') }
+        ]
+      });
+      if (result.index === 0) {
+        return M3uImportNameConflictAction.MERGE;
+      }
+      if (result.index === 1) {
+        return M3uImportNameConflictAction.SAVE_AS_NEW;
+      }
+      if (result.index === 2) {
+        return M3uImportNameConflictAction.REPLACE;
+      }
+    } catch (_error) {
+      // Closing the dialog is equivalent to cancelling this file.
+    }
+    return undefined;
   }
 
   private openPlaylistCreateMenu(): void {
@@ -730,20 +815,102 @@ export struct ResponsiveNavigationShell {
     }
     this.playlistTransferBusy = true;
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-    this.playlistTransferService.importInto(context, playlistId, mode)
+    this.playlistTransferService.importInto(
+      context,
+      playlistId,
+      mode,
+      (stage: M3uImportStage): void => this.showPlaylistImportProgress(stage)
+    )
       .then((report: M3uImportReport | undefined): void => {
         if (report === undefined) {
+          this.hidePlaylistImportProgress();
           return;
         }
-        this.playlistStore.lastMessage = `${mode === M3uImportMode.REPLACE ? '替换' : '合并'}完成：` +
-          `${report.inserted} 首写入，${report.unmatched} 项未匹配`;
+        this.showPlaylistImportReport(report);
         this.playlistStore.loadDetail(playlistId);
         this.playlistStore.refresh();
       }).catch((error: Object): void => {
-        this.playlistStore.errorMessage = error instanceof Error ? error.message : `${error}`;
+        this.finishPlaylistImportWithError(error);
       }).finally((): void => {
         this.playlistTransferBusy = false;
       });
+  }
+
+  private importPlaylistSourceIntoForBatch(
+    source: M3uImportSource,
+    playlistId: number,
+    mode: M3uImportMode
+  ): Promise<M3uImportReport> {
+    this.playlistImportSourceName = source.suggestedName;
+    return this.playlistTransferService.importSource(
+      source,
+      playlistId,
+      mode,
+      (stage: M3uImportStage): void => this.showPlaylistImportProgress(stage)
+    );
+  }
+
+  private promptPlaylistImportMode(playlistId: number): void {
+    this.getUIContext().getPromptAction().showDialog({
+      title: '导入 M3U',
+      message: '请选择导入到当前播放列表的方式。',
+      buttons: [
+        { text: '合并', color: $r('app.color.text_primary') },
+        { text: '替换', color: $r('sys.color.ohos_id_color_warning') },
+        { text: '取消', color: $r('app.color.text_primary') }
+      ]
+    }).then((result: promptAction.ShowDialogSuccessResponse): void => {
+      if (result.index === 0) {
+        this.importIntoPlaylist(playlistId, M3uImportMode.MERGE);
+      } else if (result.index === 1) {
+        this.importIntoPlaylist(playlistId, M3uImportMode.REPLACE);
+      }
+    }).catch((_error: Object): void => {
+      // Closing the dialog is equivalent to cancelling the import.
+    });
+  }
+
+  private showPlaylistImportProgress(stage: M3uImportStage): void {
+    this.playlistImportStage = stage;
+    this.playlistImportReports = [];
+    this.playlistImportSheetKind = PlaylistImportSheetKind.PROGRESS;
+    this.playlistImportSheetVisible = true;
+  }
+
+  private hidePlaylistImportProgress(): void {
+    if (this.playlistImportSheetKind === PlaylistImportSheetKind.PROGRESS) {
+      this.playlistImportSheetVisible = false;
+    }
+  }
+
+  private finishPlaylistImportWithError(error: Object): void {
+    this.hidePlaylistImportProgress();
+    this.playlistStore.errorMessage = error instanceof Error ? error.message : `${error}`;
+  }
+
+  private showPlaylistSuccessDialog(message: string): void {
+    if (message.length === 0) {
+      return;
+    }
+    this.getUIContext().getPromptAction().showDialog({
+      title: '操作完成',
+      message: message,
+      buttons: [
+        { text: '确定', color: $r('app.color.text_primary') }
+      ]
+    }).catch((_error: Object): void => {
+      // The message is informational; dismissing it needs no recovery.
+    });
+  }
+
+  private showPlaylistImportReport(report: M3uImportReport): void {
+    this.showPlaylistImportReports([report]);
+  }
+
+  private showPlaylistImportReports(reports: Array<M3uImportReport>): void {
+    this.playlistImportReports = reports;
+    this.playlistImportSheetKind = PlaylistImportSheetKind.REPORT;
+    this.playlistImportSheetVisible = true;
   }
 
   private exportPlaylist(playlistId: number): void {
@@ -759,7 +926,7 @@ export struct ResponsiveNavigationShell {
     this.playlistTransferService.exportPlaylist(context, playlist)
       .then((exported: boolean): void => {
         if (exported) {
-          this.playlistStore.lastMessage = 'M3U8 播放列表已导出';
+          this.showPlaylistSuccessDialog('M3U8 播放列表已导出');
         }
       }).catch((error: Object): void => {
         this.playlistStore.errorMessage = error instanceof Error ? error.message : `${error}`;
@@ -786,6 +953,7 @@ export struct ResponsiveNavigationShell {
       }
       this.playlistStore.delete(playlistId).then((deleted: boolean): void => {
         if (deleted) {
+          this.showPlaylistSuccessDialog(this.playlistStore.lastMessage);
           this.routePathStack(NavigationRoute.PLAYLISTS).pop(true);
         }
       });
@@ -801,8 +969,7 @@ export struct ResponsiveNavigationShell {
       wrapBuilder(PlaylistTransferMenu),
       new PlaylistTransferMenuParams(
         (): void => this.exportPlaylist(playlistId),
-        (): void => this.importIntoPlaylist(playlistId, M3uImportMode.MERGE),
-        (): void => this.importIntoPlaylist(playlistId, M3uImportMode.REPLACE),
+        (): void => this.promptPlaylistImportMode(playlistId),
         playlist?.kind === PlaylistKind.USER && playlist !== undefined ?
           (): void => this.onRequestRenamePlaylist(playlist) : undefined,
         playlist?.kind === PlaylistKind.USER ?
@@ -1177,6 +1344,201 @@ export struct ResponsiveNavigationShell {
     })
   }
 
+  private playlistImportSheetHeight(): SheetSize {
+    return this.playlistImportSheetKind === PlaylistImportSheetKind.REPORT ?
+      SheetSize.LARGE : SheetSize.FIT_CONTENT;
+  }
+
+  private playlistImportStageText(): string {
+    const prefix = this.playlistImportSourceName.length > 0 ? `${this.playlistImportSourceName}：` : '';
+    if (this.playlistImportStage === M3uImportStage.READING) {
+      return `${prefix}正在读取 M3U 文件`;
+    }
+    if (this.playlistImportStage === M3uImportStage.MATCHING) {
+      return `${prefix}正在匹配音乐库歌曲`;
+    }
+    return `${prefix}正在写入播放列表`;
+  }
+
+  private playlistImportReportTitle(reports: Array<M3uImportReport>): string {
+    if (reports.length === 1) {
+      const report = reports[0];
+      return report.playlistName.length > 0 ? `已导入“${report.playlistName}”` : '播放列表导入完成';
+    }
+    return `已导入 ${reports.length} 个播放列表`;
+  }
+
+  private playlistImportReportSummary(reports: Array<M3uImportReport>): string {
+    let parsed = 0;
+    let matched = 0;
+    let inserted = 0;
+    let alreadyPresent = 0;
+    let unmatched = 0;
+    let issues = 0;
+    for (let index = 0; index < reports.length; index += 1) {
+      parsed += reports[index].parsed;
+      matched += reports[index].matched;
+      inserted += reports[index].inserted;
+      alreadyPresent += reports[index].alreadyPresent;
+      unmatched += reports[index].unmatched;
+      issues += reports[index].issues;
+    }
+    const modeLabel = reports.length === 1 ?
+      (reports[0].mode === M3uImportMode.REPLACE ? '替换' : '合并') : '导入';
+    return `${modeLabel}完成：匹配 ${matched}/${parsed} 项，` +
+      `写入 ${inserted} 首，已存在 ${alreadyPresent} 首，` +
+      `未匹配 ${unmatched} 项，解析问题 ${issues} 项`;
+  }
+
+  private playlistImportDetailItem(
+    detail: M3uImportDetail,
+    tone: TaskResultTone,
+    keyPrefix: string,
+    playlistName: string
+  ): TaskResultDetailItem {
+    const item: TaskResultDetailItem = {
+      key: `${keyPrefix}_${detail.key}`,
+      status: detail.status,
+      title: detail.title,
+      reason: playlistName.length > 0 ? `${playlistName} · ${detail.reason}` : detail.reason,
+      uri: detail.uri,
+      tone: tone
+    };
+    if (detail.secondaryUri !== undefined) {
+      item.secondaryUri = detail.secondaryUri;
+    }
+    return item;
+  }
+
+  private playlistImportDetailItems(
+    reports: Array<M3uImportReport>,
+    selector: (report: M3uImportReport) => Array<M3uImportDetail>,
+    tone: TaskResultTone
+  ): Array<TaskResultDetailItem> {
+    const items: Array<TaskResultDetailItem> = [];
+    for (let reportIndex = 0; reportIndex < reports.length; reportIndex += 1) {
+      const details = selector(reports[reportIndex]);
+      for (let detailIndex = 0; detailIndex < details.length; detailIndex += 1) {
+        items.push(this.playlistImportDetailItem(
+          details[detailIndex],
+          tone,
+          `report_${reportIndex}`,
+          reports.length > 1 ? reports[reportIndex].playlistName : ''
+        ));
+      }
+    }
+    return items;
+  }
+
+  private playlistImportDetailSections(reports: Array<M3uImportReport>): Array<TaskResultDetailSection> {
+    return [{
+      key: 'matched',
+      title: '已匹配歌曲',
+      emptyText: '没有匹配到音乐库中的歌曲',
+      items: this.playlistImportDetailItems(
+        reports,
+        (report: M3uImportReport): Array<M3uImportDetail> => report.matchedDetails,
+        TaskResultTone.SUCCESS
+      ),
+      tone: TaskResultTone.SUCCESS
+    }, {
+      key: 'unmatched',
+      title: '未匹配项目',
+      emptyText: '所有项目均已匹配',
+      items: this.playlistImportDetailItems(
+        reports,
+        (report: M3uImportReport): Array<M3uImportDetail> => report.unmatchedDetails,
+        TaskResultTone.ERROR
+      ),
+      tone: TaskResultTone.ERROR
+    }, {
+      key: 'issues',
+      title: '解析问题',
+      emptyText: '没有解析问题',
+      items: this.playlistImportDetailItems(
+        reports,
+        (report: M3uImportReport): Array<M3uImportDetail> => report.issueDetails,
+        TaskResultTone.ERROR
+      ),
+      tone: TaskResultTone.ERROR
+    }];
+  }
+
+  private clearPlaylistImportReportIfClosed(): void {
+    if (!this.playlistImportSheetVisible && this.playlistImportSheetKind === PlaylistImportSheetKind.REPORT) {
+      this.playlistImportReports = [];
+      this.playlistImportSheetKind = PlaylistImportSheetKind.PROGRESS;
+      this.playlistImportStage = M3uImportStage.READING;
+      this.playlistImportSourceName = '';
+    }
+  }
+
+  @Builder
+  private PlaylistImportProgressSheet() {
+    Column({ space: 14 }) {
+      Row({ space: 12 }) {
+        LoadingProgress()
+          .width(28)
+          .height(28)
+        Column({ space: 4 }) {
+          Text('正在导入播放列表')
+            .fontSize(18)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.text_primary'))
+            .width('100%')
+          Text(this.playlistImportStageText())
+            .fontSize(13)
+            .fontColor($r('app.color.text_secondary'))
+            .width('100%')
+        }
+        .layoutWeight(1)
+      }
+      .width('100%')
+    }
+    .width('100%')
+    .padding({ left: 24, right: 24, top: 26, bottom: 28 })
+  }
+
+  @Builder
+  private PlaylistImportReportSheet(reports: Array<M3uImportReport>) {
+    Column({ space: 16 }) {
+      Text(this.playlistImportReportTitle(reports))
+        .fontSize(24)
+        .fontWeight(FontWeight.Bold)
+        .fontColor($r('app.color.text_primary'))
+        .width('100%')
+      Text(this.playlistImportReportSummary(reports))
+        .fontSize(13)
+        .fontColor($r('app.color.text_secondary'))
+        .width('100%')
+      TaskResultDetails({
+        title: '导入明细',
+        emptyText: '没有可显示的明细',
+        sections: this.playlistImportDetailSections(reports)
+      })
+      Button('完成')
+        .width('100%')
+        .height(48)
+        .onClick((): void => {
+          this.playlistImportSheetVisible = false;
+        })
+    }
+    .width('100%')
+    .height('100%')
+    .padding({ left: 20, right: 20, top: 28, bottom: 24 })
+    .onDisAppear((): void => this.clearPlaylistImportReportIfClosed())
+  }
+
+  @Builder
+  private PlaylistImportSheet() {
+    if (this.playlistImportSheetKind === PlaylistImportSheetKind.REPORT &&
+      this.playlistImportReports.length > 0) {
+      this.PlaylistImportReportSheet(this.playlistImportReports)
+    } else {
+      this.PlaylistImportProgressSheet()
+    }
+  }
+
   private NativeCompactTabBar(symbol: Resource, label: string): BottomTabBarStyle {
     return new BottomTabBarStyle({
       normal: new SymbolGlyphModifier(symbol)
@@ -1357,32 +1719,41 @@ export struct ResponsiveNavigationShell {
   }
 
   build() {
-    if (!AppShellLayoutSpec.hasResolvedRootSize(this.rootWidth, this.rootHeight)) {
-      Stack()
-        .id('player_tabs_layout_pending')
+    Stack() {
+      if (!AppShellLayoutSpec.hasResolvedRootSize(this.rootWidth, this.rootHeight)) {
+        Stack()
+          .id('player_tabs_layout_pending')
+          .width('100%')
+          .height('100%')
+          .hitTestBehavior(HitTestMode.None)
+      } else if (this.usesWideLayout()) {
+        Stack() { this.ExpandedTabsContent() }
+        .id(AppShellLayoutSpec.WIDE_TABS_HOST_ID)
         .width('100%')
         .height('100%')
-        .hitTestBehavior(HitTestMode.None)
-    } else if (this.usesWideLayout()) {
-      Stack() { this.ExpandedTabsContent() }
-      .id(AppShellLayoutSpec.WIDE_TABS_HOST_ID)
-      .width('100%')
-      .height('100%')
-    } else if (AppShellLayoutSpec.usesCondensedCompactNavigation(this.rootWidth)) {
-      Stack() { this.CondensedCompactTabsContent() }
-      .id(AppShellLayoutSpec.CONDENSED_COMPACT_TABS_HOST_ID)
-      .width('100%')
-      .height('100%')
-      .onTouch((event: TouchEvent) => {
-        if (event.type === TouchType.Down) {
-          this.onCondensedOutsideTouch();
-        }
-      })
-    } else {
-      Stack() { this.RegularCompactTabsContent() }
-      .id(AppShellLayoutSpec.COMPACT_TABS_HOST_ID)
-      .width('100%')
-      .height('100%')
+      } else if (AppShellLayoutSpec.usesCondensedCompactNavigation(this.rootWidth)) {
+        Stack() { this.CondensedCompactTabsContent() }
+        .id(AppShellLayoutSpec.CONDENSED_COMPACT_TABS_HOST_ID)
+        .width('100%')
+        .height('100%')
+        .onTouch((event: TouchEvent) => {
+          if (event.type === TouchType.Down) {
+            this.onCondensedOutsideTouch();
+          }
+        })
+      } else {
+        Stack() { this.RegularCompactTabsContent() }
+        .id(AppShellLayoutSpec.COMPACT_TABS_HOST_ID)
+        .width('100%')
+        .height('100%')
+      }
     }
-  }
+    .width('100%')
+    .height('100%')
+    .bindSheet($$this.playlistImportSheetVisible, this.PlaylistImportSheet(), {
+      height: this.playlistImportSheetHeight(),
+      dragBar: true,
+      showClose: !this.playlistTransferBusy
+    })
+    }
 }

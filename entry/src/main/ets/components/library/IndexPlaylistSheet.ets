@@ -19,7 +19,8 @@ export struct IndexPlaylistSheet {
   onRenameNameChange: (value: string) => void = (_value: string): void => {};
   onSaveCreate: () => void = (): void => {};
   onSaveRename: () => void = (): void => {};
-  onAddedToPlaylist: (playlistId: number) => void = (_playlistId: number): void => {};
+  onAddedToPlaylist: (playlistId: number, message: string) => void =
+    (_playlistId: number, _message: string): void => {};
   onClose: () => void = (): void => {};
 
   @Builder
@@ -61,7 +62,8 @@ export struct IndexPlaylistSheet {
       store: this.store,
       trackIds: this.pickerTrackIds,
       recentPlaylistIds: this.recentPlaylistTargetIds,
-      onAddedToPlaylist: (playlistId: number): void => this.onAddedToPlaylist(playlistId),
+      onAddedToPlaylist: (playlistId: number, message: string): void =>
+        this.onAddedToPlaylist(playlistId, message),
       onClose: (): void => {
         this.onClose();
       }

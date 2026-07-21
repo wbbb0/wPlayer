@@ -21,21 +21,18 @@ export function PlaylistCreateMenu(params: PlaylistCreateMenuParams) {
 
 export class PlaylistTransferMenuParams {
   readonly onExport: () => void;
-  readonly onMerge: () => void;
-  readonly onReplace: () => void;
+  readonly onImport: () => void;
   readonly onRename?: () => void;
   readonly onDelete?: () => void;
 
   constructor(
     onExport: () => void,
-    onMerge: () => void,
-    onReplace: () => void,
+    onImport: () => void,
     onRename?: () => void,
     onDelete?: () => void
   ) {
     this.onExport = onExport;
-    this.onMerge = onMerge;
-    this.onReplace = onReplace;
+    this.onImport = onImport;
     this.onRename = onRename;
     this.onDelete = onDelete;
   }
@@ -46,10 +43,8 @@ export function PlaylistTransferMenu(params: PlaylistTransferMenuParams) {
   Menu() {
     MenuItem({ content: '导出为 M3U8' })
       .onClick(params.onExport)
-    MenuItem({ content: '导入并合并' })
-      .onClick(params.onMerge)
-    MenuItem({ content: '导入并替换全部内容' })
-      .onClick(params.onReplace)
+    MenuItem({ content: '导入 M3U' })
+      .onClick(params.onImport)
     if (params.onRename !== undefined) {
       MenuItem({ content: '播放列表改名' })
         .onClick(() => params.onRename?.())

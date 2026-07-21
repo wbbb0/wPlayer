@@ -9,7 +9,8 @@ export struct PlaylistSelectionSheet {
   @Prop trackIds: Array<number> = [];
   @Prop recentPlaylistIds: Array<number> = [];
   onClose: () => void = (): void => {};
-  onAddedToPlaylist: (playlistId: number) => void = (_playlistId: number): void => {};
+  onAddedToPlaylist: (playlistId: number, message: string) => void =
+    (_playlistId: number, _message: string): void => {};
   private readonly recentDataSource: LibraryListDataSource<PlaylistSummary> =
     new LibraryListDataSource<PlaylistSummary>();
   private readonly otherDataSource: LibraryListDataSource<PlaylistSummary> =
@@ -26,7 +27,7 @@ export struct PlaylistSelectionSheet {
     }
     this.store.addTrackIds(playlist.id, this.trackIds).then((result) => {
       if (result !== undefined) {
-        this.onAddedToPlaylist(playlist.id);
+        this.onAddedToPlaylist(playlist.id, this.store.lastMessage);
         this.onClose();
       }
     });

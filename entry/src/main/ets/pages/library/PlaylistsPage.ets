@@ -83,6 +83,21 @@ export struct PlaylistsPage {
     });
   }
 
+  private showSuccessDialog(message: string): void {
+    if (message.length === 0) {
+      return;
+    }
+    this.getUIContext().getPromptAction().showDialog({
+      title: '操作完成',
+      message: message,
+      buttons: [
+        { text: '确定', color: $r('app.color.text_primary') }
+      ]
+    }).catch((_error: Object): void => {
+      // The message is informational; dismissing it needs no recovery.
+    });
+  }
+
   private isRemovingPlaylist(playlistId: number): boolean {
     return this.removingPlaylistIds.includes(playlistId);
   }
@@ -148,6 +163,7 @@ export struct PlaylistsPage {
       onFinish: (): void => {
         this.store.delete(playlistId).then((deleted: boolean): void => {
           if (deleted) {
+            this.showSuccessDialog(this.store.lastMessage);
             this.removingPlaylistIds =
               this.removingPlaylistIds.filter((id: number): boolean => id !== playlistId);
             return;
@@ -237,15 +253,6 @@ export struct PlaylistsPage {
           Text(this.store.errorMessage)
             .fontSize(13)
             .fontColor($r('sys.color.ohos_id_color_warning'))
-            .width('100%')
-            .textAlign(TextAlign.Center)
-        }
-      }
-      if (this.store.lastMessage.length > 0) {
-        ListItem() {
-          Text(this.store.lastMessage)
-            .fontSize(13)
-            .fontColor($r('app.color.text_secondary'))
             .width('100%')
             .textAlign(TextAlign.Center)
         }

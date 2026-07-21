@@ -132,6 +132,7 @@ export struct PlaylistDetailPage {
         if (removed) {
           this.selectedItems = [];
           this.selection.cancel();
+          this.showSuccessDialog(this.store.lastMessage);
         }
       });
     }).catch((_error: Object): void => {});
@@ -241,6 +242,21 @@ export struct PlaylistDetailPage {
     });
   }
 
+  private showSuccessDialog(message: string): void {
+    if (message.length === 0) {
+      return;
+    }
+    this.getUIContext().getPromptAction().showDialog({
+      title: '操作完成',
+      message: message,
+      buttons: [
+        { text: '确定', color: $r('app.color.text_primary') }
+      ]
+    }).catch((_error: Object): void => {
+      // The message is informational; dismissing it needs no recovery.
+    });
+  }
+
   private animateTrackRemoval(trackId: number): void {
     if (this.isRemovingTrack(trackId)) {
       return;
@@ -251,6 +267,7 @@ export struct PlaylistDetailPage {
       onFinish: (): void => {
         this.store.removeTrack(this.playlistId, trackId).then((removed: boolean): void => {
           if (removed) {
+            this.showSuccessDialog(this.store.lastMessage);
             this.removingTrackIds = this.removingTrackIds.filter((id: number): boolean => id !== trackId);
             return;
           }
@@ -338,12 +355,11 @@ export struct PlaylistDetailPage {
           LoadingProgress().width(36).height(36).margin({ top: 18, bottom: 18 })
         }
       }
-      if (this.store.errorMessage.length > 0 || this.store.lastMessage.length > 0) {
+      if (this.store.errorMessage.length > 0) {
         ListItem() {
-          Text(this.store.errorMessage.length > 0 ? this.store.errorMessage : this.store.lastMessage)
+          Text(this.store.errorMessage)
             .fontSize(13)
-            .fontColor(this.store.errorMessage.length > 0 ?
-              $r('sys.color.ohos_id_color_warning') : $r('app.color.text_secondary'))
+            .fontColor($r('sys.color.ohos_id_color_warning'))
             .width('100%')
             .textAlign(TextAlign.Center)
             .margin({ top: 12, bottom: 12 })

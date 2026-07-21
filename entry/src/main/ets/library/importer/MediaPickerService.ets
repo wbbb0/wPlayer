@@ -1,5 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import { fileShare, picker } from '@kit.CoreFileKit';
+import { ImportConcurrencyPolicy } from './ImportConcurrencyPolicy';
 
 const MAX_SELECT_NUMBER: number = 59160;
 const PERSIST_BATCH_SIZE: number = 128;
@@ -53,6 +54,7 @@ export async function persistReadPermissions(uris: Array<string>): Promise<Persi
     } catch (_) {
       await persistIndividually(batch, successfulUris, failedUris);
     }
+    await yieldToUi();
   }
 
   return {
@@ -89,8 +91,12 @@ export async function ensureReadPermissions(uris: Array<string>,
   const failedUris: Array<string> = [];
   const uniqueUris = uniqueNonEmptyUris(uris, failedUris);
   let processed = 0;
-  for (let offset = 0; offset < uniqueUris.length; offset += PERSIST_BATCH_SIZE) {
-    const batch = uniqueUris.slice(offset, Math.min(offset + PERSIST_BATCH_SIZE, uniqueUris.length));
+  for (let offset = 0; offset < uniqueUris.length;
+    offset += ImportConcurrencyPolicy.FILE_PERMISSION_BATCH_SIZE) {
+    const batch = uniqueUris.slice(
+      offset,
+      Math.min(offset + ImportConcurrencyPolicy.FILE_PERMISSION_BATCH_SIZE, uniqueUris.length)
+    );
     const startedAt = Date.now();
     await checkAndActivateBatch(batch, successfulUris, failedUris);
     processed += batch.length;
@@ -122,6 +128,7 @@ export async function revokeReadPermissions(uris: Array<string>): Promise<void> 
         }
       }
     }
+    await yieldToUi();
   }
 }
 
@@ -171,6 +178,7 @@ async function checkAndActivateBatch(uris: Array<string>, successfulUris: Array<
     }
     const middle = Math.floor(uris.length / 2);
     await checkAndActivateBatch(uris.slice(0, middle), successfulUris, failedUris);
+    await yieldToUi();
     await checkAndActivateBatch(uris.slice(middle), successfulUris, failedUris);
     return;
   }
@@ -182,6 +190,7 @@ async function checkAndActivateBatch(uris: Array<string>, successfulUris: Array<
       failedUris.push(uris[index]);
     }
   }
+  await yieldToUi();
   await activateBatchWithSplit(activatableUris, successfulUris, failedUris);
 }
 
@@ -200,6 +209,7 @@ async function activateBatchWithSplit(uris: Array<string>, successfulUris: Array
     }
     const middle = Math.floor(uris.length / 2);
     await activateBatchWithSplit(uris.slice(0, middle), successfulUris, failedUris);
+    await yieldToUi();
     await activateBatchWithSplit(uris.slice(middle), successfulUris, failedUris);
   }
 }

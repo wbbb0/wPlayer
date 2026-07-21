@@ -1,7 +1,9 @@
 export class ImportConcurrencyPolicy {
   static readonly FILE_PROBE_CONCURRENCY: number = 3;
   static readonly FILE_CHECK_BATCH_SIZE: number = 32;
-  static readonly FILE_CHECK_CLASSIFY_CHUNK_SIZE: number = 512;
+  static readonly FILE_CHECK_CLASSIFY_CHUNK_SIZE: number = 128;
+  static readonly FILE_PERMISSION_BATCH_SIZE: number = 16;
+  static readonly IMPORT_PROGRESS_INTERVAL_MS: number = 100;
   static readonly FULL_FINGERPRINT_CONCURRENCY: number = 2;
   static readonly URI_PREFLIGHT_BATCH_SIZE: number = 256;
   static readonly IMPORT_WORK_BATCH_SIZE: number = 16;

@@ -103,6 +103,10 @@ export default function riskRegressionTest() {
       expect(ImportConcurrencyPolicy.FILE_PROBE_CONCURRENCY).assertEqual(3);
       expect(ImportConcurrencyPolicy.URI_PREFLIGHT_BATCH_SIZE)
         .assertLarger(ImportConcurrencyPolicy.IMPORT_WORK_BATCH_SIZE);
+      expect(ImportConcurrencyPolicy.URI_PREFLIGHT_BATCH_SIZE)
+        .assertLarger(ImportConcurrencyPolicy.FILE_PERMISSION_BATCH_SIZE);
+      expect(ImportConcurrencyPolicy.FILE_CHECK_CLASSIFY_CHUNK_SIZE)
+        .assertLess(512);
     });
 
     it('classifiesImportDetailsForDisclosureGroups', 0, () => {

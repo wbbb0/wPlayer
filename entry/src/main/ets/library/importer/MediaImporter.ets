@@ -64,6 +64,11 @@ export enum ImportRefreshPhase {
 }
 export type ImportLibraryChangedCallback = (phase: ImportRefreshPhase) => Promise<void>;
 
+interface ProgressNotificationGate {
+  lastAt: number;
+  intervalMs: number;
+}
+
 interface PreparedImport {
   uri: string;
   displayName: string;
@@ -261,21 +266,30 @@ export class MediaImporter {
       cancelled: false,
       currentName: ''
       };
-      this.notifyFileCheck(onProgress, progress);
+      const progressGate: ProgressNotificationGate = {
+        lastAt: 0,
+        intervalMs: ImportConcurrencyPolicy.IMPORT_PROGRESS_INTERVAL_MS
+      };
+      this.notifyFileCheck(onProgress, progress, progressGate, true);
       const startedAt = Date.now();
       progress.currentName = '正在激活文件访问权限';
-      this.notifyFileCheck(onProgress, progress);
+      this.notifyFileCheck(onProgress, progress, progressGate, true);
       const permissionStartedAt = Date.now();
       const permissions = await ensureReadPermissions(
         candidates.map((candidate: MediaFileCheckCandidate): string => candidate.uri),
         (permissionProgress: ReadPermissionProgress): void => {
           progress.currentName = `正在激活文件访问权限 ` +
             `${permissionProgress.processed} / ${permissionProgress.total}`;
-          this.notifyFileCheck(onProgress, progress);
-          console.info(`[FileCheck] permission batch ${permissionProgress.processed}/` +
-            `${permissionProgress.total} in ${permissionProgress.batchDurationMs}ms`);
+          if (this.notifyFileCheck(
+            onProgress, progress, progressGate,
+            permissionProgress.processed >= permissionProgress.total
+          )) {
+            console.info(`[FileCheck] permission batch ${permissionProgress.processed}/` +
+              `${permissionProgress.total} in ${permissionProgress.batchDurationMs}ms`);
+          }
         }
       );
+      await MediaImporter.yieldToUi();
       const accessibleUris = new Set<string>(permissions.successfulUris);
       const availabilityUpdates: Array<TrackAvailabilityUpdate> = [];
       const itemResults: Array<FileCheckItemResult> = [];
@@ -303,7 +317,7 @@ export class MediaImporter {
         }
         if ((index + 1) % ImportConcurrencyPolicy.FILE_CHECK_CLASSIFY_CHUNK_SIZE === 0) {
           progress.currentName = `正在整理待检查文件 ${index + 1} / ${candidates.length}`;
-          this.notifyFileCheck(onProgress, progress);
+          this.notifyFileCheck(onProgress, progress, progressGate);
           await MediaImporter.yieldToUi();
         }
       }
@@ -345,7 +359,7 @@ export class MediaImporter {
         }
         progress.currentName = `正在后台检查音乐文件 ` +
           `${offset} / ${accessibleCandidates.length}`;
-        this.notifyFileCheck(onProgress, progress);
+        this.notifyFileCheck(onProgress, progress, progressGate, true);
         const inspectionStartedAt = Date.now();
         const inspections = await currentInspections;
         console.info(`[FileCheck] inspected batch ${offset + batch.length}/` +
@@ -381,9 +395,10 @@ export class MediaImporter {
           }
           progress.processed += 1;
           const now = Date.now();
-          if (now - lastProgressAt >= 100 || progress.processed >= progress.total) {
+          if (now - lastProgressAt >= ImportConcurrencyPolicy.IMPORT_PROGRESS_INTERVAL_MS ||
+            progress.processed >= progress.total) {
             lastProgressAt = now;
-            this.notifyFileCheck(onProgress, progress);
+            this.notifyFileCheck(onProgress, progress, progressGate, true);
           }
         }
         await MediaImporter.yieldToUi();
@@ -395,13 +410,13 @@ export class MediaImporter {
         }
       }
       progress.currentName = '正在保存检查结果';
-      this.notifyFileCheck(onProgress, progress);
+      this.notifyFileCheck(onProgress, progress, progressGate, true);
       await this.repository.setTrackAvailabilities(availabilityUpdates);
       const artworkWasScheduled = progress.artworkTotal > 0;
       progress.metadataCompleted = true;
       progress.cancelled = this.cancelRequested;
       progress.currentName = artworkWasScheduled ? '正在处理封面' : '';
-      this.notifyFileCheck(onProgress, progress);
+      this.notifyFileCheck(onProgress, progress, progressGate, true);
       await this.notifyLibraryChanged(onLibraryChanged, ImportRefreshPhase.METADATA);
       artworkSession.startProcessing();
       let lastArtworkProgressAt = 0;
@@ -441,10 +456,10 @@ export class MediaImporter {
             }
           }
           const now = Date.now();
-          if (now - lastArtworkProgressAt >= 100 ||
+          if (now - lastArtworkProgressAt >= ImportConcurrencyPolicy.IMPORT_PROGRESS_INTERVAL_MS ||
             progress.artworkProcessed >= progress.artworkTotal) {
             lastArtworkProgressAt = now;
-            this.notifyFileCheck(onProgress, progress);
+            this.notifyFileCheck(onProgress, progress, progressGate, true);
           }
         }
       );
@@ -455,7 +470,7 @@ export class MediaImporter {
         await this.notifyLibraryChanged(onLibraryChanged, ImportRefreshPhase.ARTWORK);
       }
       progress.currentName = '';
-      this.notifyFileCheck(onProgress, progress);
+      this.notifyFileCheck(onProgress, progress, progressGate, true);
       console.info(`[FileCheck] completed ${progress.processed}/${progress.total} in ` +
         `${Date.now() - startedAt}ms, updated=${progress.updated}, unavailable=${progress.unavailable}, ` +
         `recovered=${progress.recovered}`);
@@ -631,9 +646,15 @@ export class MediaImporter {
       cancelled: false,
       currentName: '正在处理音乐文件'
     };
-    this.notify(onProgress, progress);
+    const progressGate: ProgressNotificationGate = {
+      lastAt: 0,
+      intervalMs: ImportConcurrencyPolicy.IMPORT_PROGRESS_INTERVAL_MS
+    };
+    this.notify(onProgress, progress, progressGate, true);
 
-    const pendingUris = await this.preflightUris(uris, itemResults, progress, onProgress, onItem);
+    const pendingUris = await this.preflightUris(
+      uris, itemResults, progress, progressGate, onProgress, onItem
+    );
     for (let batchOffset = 0; batchOffset < pendingUris.length;
       batchOffset += ImportConcurrencyPolicy.IMPORT_WORK_BATCH_SIZE) {
       if (this.cancelRequested) {
@@ -659,7 +680,7 @@ export class MediaImporter {
           detailKind: ImportItemDetailKind.FAILED
         }, onItem);
       });
-      this.notify(onProgress, progress);
+      this.notify(onProgress, progress, progressGate, true);
 
       const preparedInputs: Array<TrackImportInput> = [];
       const revokeAfterBatch: Array<string> = [];
@@ -699,8 +720,12 @@ export class MediaImporter {
         } else {
           preparedInputs.push(item.input as TrackImportInput);
         }
+        if ((index + 1) % ImportConcurrencyPolicy.FILE_CHECK_CLASSIFY_CHUNK_SIZE === 0) {
+          this.notify(onProgress, progress, progressGate);
+          await MediaImporter.yieldToUi();
+        }
       }
-      this.notify(onProgress, progress);
+      this.notify(onProgress, progress, progressGate, true);
 
       if (this.cancelRequested) {
         await revokeReadPermissions(permissionResult.successfulUris);
@@ -772,8 +797,12 @@ export class MediaImporter {
             revokeAfterBatch.push(uniqueInputs[index].uri);
           }
           progress.processed += 1;
+          if ((index + 1) % ImportConcurrencyPolicy.FILE_CHECK_CLASSIFY_CHUNK_SIZE === 0) {
+            this.notify(onProgress, progress, progressGate);
+            await MediaImporter.yieldToUi();
+          }
         }
-        this.notify(onProgress, progress);
+        this.notify(onProgress, progress, progressGate, true);
       }
       const revokeStartedAt = Date.now();
       await revokeReadPermissions(revokeAfterBatch);
@@ -785,7 +814,7 @@ export class MediaImporter {
     progress.cancelled = this.cancelRequested;
     progress.currentName = artworkPendingAtMetadataRefresh ?
       '正在处理封面' : '';
-    this.notify(onProgress, progress);
+    this.notify(onProgress, progress, progressGate, true);
     if (progress.imported > 0) {
       await this.notifyLibraryChanged(onLibraryChanged, ImportRefreshPhase.METADATA);
     }
@@ -802,10 +831,10 @@ export class MediaImporter {
           progress.artworkFailed += 1;
         }
         const now = Date.now();
-        if (now - lastArtworkProgressAt >= 100 ||
+        if (now - lastArtworkProgressAt >= ImportConcurrencyPolicy.IMPORT_PROGRESS_INTERVAL_MS ||
           progress.artworkProcessed >= progress.artworkTotal) {
           lastArtworkProgressAt = now;
-          this.notify(onProgress, progress);
+          this.notify(onProgress, progress, progressGate, true);
         }
       }
     );
@@ -816,7 +845,7 @@ export class MediaImporter {
       await this.notifyLibraryChanged(onLibraryChanged, ImportRefreshPhase.ARTWORK);
     }
     progress.currentName = '';
-    this.notify(onProgress, progress);
+    this.notify(onProgress, progress, progressGate, true);
     return {
       imported: progress.imported,
       duplicates: progress.duplicates,
@@ -829,7 +858,8 @@ export class MediaImporter {
   }
 
   private async preflightUris(uris: Array<string>, itemResults: Array<ImportItemResult>,
-    progress: ImportProgress, onProgress?: ImportProgressCallback,
+    progress: ImportProgress, progressGate: ProgressNotificationGate,
+    onProgress?: ImportProgressCallback,
     onItem?: ImportItemCallback): Promise<Array<string>> {
     const uniqueUris: Array<string> = [];
     const selectedUris: Set<string> = new Set();
@@ -860,8 +890,12 @@ export class MediaImporter {
         selectedUris.add(uri);
         uniqueUris.push(uri);
       }
+      if ((index + 1) % ImportConcurrencyPolicy.FILE_CHECK_CLASSIFY_CHUNK_SIZE === 0) {
+        this.notify(onProgress, progress, progressGate);
+        await MediaImporter.yieldToUi();
+      }
     }
-    this.notify(onProgress, progress);
+    this.notify(onProgress, progress, progressGate, true);
 
     const pendingUris: Array<string> = [];
     for (let batchOffset = 0; batchOffset < uniqueUris.length;
@@ -874,7 +908,7 @@ export class MediaImporter {
         Math.min(batchOffset + ImportConcurrencyPolicy.URI_PREFLIGHT_BATCH_SIZE, uniqueUris.length)
       );
       progress.currentName = '正在检查重复文件';
-      this.notify(onProgress, progress);
+      this.notify(onProgress, progress, progressGate, true);
       const uriCheckStartedAt = Date.now();
       const existingUris = await this.repository.hasUris(uriBatch);
       const existingUriSet: Set<string> = new Set(existingUris);
@@ -897,7 +931,8 @@ export class MediaImporter {
           pendingUris.push(uri);
         }
       }
-      this.notify(onProgress, progress);
+      this.notify(onProgress, progress, progressGate, true);
+      await MediaImporter.yieldToUi();
     }
     return pendingUris;
   }
@@ -913,6 +948,7 @@ export class MediaImporter {
           return;
         }
         prepared[index] = await this.prepareImport(uris[index]);
+        await MediaImporter.yieldToUi();
       }
     };
     const workers: Array<Promise<void>> = [];
@@ -1050,6 +1086,9 @@ export class MediaImporter {
       const group = groups.get(key) ?? [];
       group.push(input);
       groups.set(key, group);
+      if ((index + 1) % ImportConcurrencyPolicy.FILE_CHECK_CLASSIFY_CHUNK_SIZE === 0) {
+        await MediaImporter.yieldToUi();
+      }
     }
     const pendingInputs: Array<TrackImportInput> = [];
     groups.forEach((group: Array<TrackImportInput>) => {
@@ -1071,6 +1110,7 @@ export class MediaImporter {
         input.fullFingerprint = await calculateFullFingerprint(input.uri);
         ImportPerformanceTrace.mark('batch_hash', startedAt, fileId,
           MediaImporter.throughputDetails(input.fileSize, startedAt));
+        await MediaImporter.yieldToUi();
       }
     };
     const workers: Array<Promise<void>> = [];
@@ -1146,6 +1186,7 @@ export class MediaImporter {
           console.warn(`Music database write failed: ${message}`);
           results.push({ imported: false, failed: true, errorMessage: message });
         }
+        await MediaImporter.yieldToUi();
       }
       return results;
     }
@@ -1522,9 +1563,13 @@ export class MediaImporter {
     });
   }
 
-  private notify(callback: ImportProgressCallback | undefined, progress: ImportProgress): void {
+  private notify(callback: ImportProgressCallback | undefined, progress: ImportProgress,
+    gate?: ProgressNotificationGate, force: boolean = false): boolean {
     if (callback === undefined) {
-      return;
+      return false;
+    }
+    if (!MediaImporter.shouldNotify(gate, force)) {
+      return false;
     }
     callback({
       total: progress.total,
@@ -1540,6 +1585,7 @@ export class MediaImporter {
       cancelled: progress.cancelled,
       currentName: progress.currentName
     });
+    return true;
   }
 
   private async notifyLibraryChanged(callback: ImportLibraryChangedCallback | undefined,
@@ -1557,8 +1603,15 @@ export class MediaImporter {
   }
 
   private notifyFileCheck(callback: FileCheckProgressCallback | undefined,
-    progress: FileCheckProgress): void {
-    callback?.({
+    progress: FileCheckProgress, gate?: ProgressNotificationGate,
+    force: boolean = false): boolean {
+    if (callback === undefined) {
+      return false;
+    }
+    if (!MediaImporter.shouldNotify(gate, force)) {
+      return false;
+    }
+    callback({
       total: progress.total,
       processed: progress.processed,
       updated: progress.updated,
@@ -1573,6 +1626,7 @@ export class MediaImporter {
       cancelled: progress.cancelled,
       currentName: progress.currentName
     });
+    return true;
   }
 
   private recordItem(items: Array<ImportItemResult>, item: ImportItemResult,
@@ -1585,6 +1639,19 @@ export class MediaImporter {
 
   private static errorMessage(error: Object): string {
     return error instanceof Error ? error.message : `${error}`;
+  }
+
+  private static shouldNotify(gate: ProgressNotificationGate | undefined,
+    force: boolean): boolean {
+    if (gate === undefined) {
+      return true;
+    }
+    const now = Date.now();
+    if (!force && now - gate.lastAt < gate.intervalMs) {
+      return false;
+    }
+    gate.lastAt = now;
+    return true;
   }
 
   private static artworkWorkResult(outcome: ArtworkWorkOutcome,

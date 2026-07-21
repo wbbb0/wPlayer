@@ -7,11 +7,15 @@ import {
   ImportItemResult,
   ImportStagePerformance,
   FileCheckItemOutcome,
-  FileCheckItemResult,
   UnavailableTrackItem
 } from '../../library/model/LibraryModels';
-import { LibraryListDataSource } from '../../library/store/LibraryListDataSource';
 import { LibraryItemAvailability } from '../../components/library/LibraryItemAvailability';
+import {
+  TaskResultDetailItem,
+  TaskResultDetails,
+  TaskResultDetailSection,
+  TaskResultTone
+} from '../../components/library/TaskResultDetails';
 
 class TaskReportLayoutSpec {
   static readonly TOP_PADDING: number = 20;
@@ -24,67 +28,6 @@ enum LibraryManagementSheet {
   UNAVAILABLE_FILES = 1
 }
 
-@Reusable
-@Component
-struct ImportDetailListItem {
-  @Prop item: ImportItemResult;
-
-  private readableUri(uri: string): string {
-    try {
-      return decodeURIComponent(uri);
-    } catch (_error) {
-      return uri;
-    }
-  }
-
-  build() {
-    Column({ space: 6 }) {
-      Row({ space: 10 }) {
-        Text(this.item.outcome === ImportItemOutcome.DUPLICATE ? '重复' : '失败')
-          .fontSize(12)
-          .fontColor(this.item.outcome === ImportItemOutcome.DUPLICATE ?
-            $r('app.color.text_secondary') : $r('app.color.message_error'))
-        Text(this.readableUri(this.item.displayName))
-          .fontSize(15)
-          .fontColor($r('app.color.text_primary'))
-          .maxLines(2)
-          .layoutWeight(1)
-      }.width('100%')
-      if (this.item.reason.length > 0) {
-        Text(this.item.reason)
-          .fontSize(12)
-          .fontColor(this.item.outcome === ImportItemOutcome.DUPLICATE ?
-            $r('app.color.text_secondary') : $r('app.color.message_error'))
-          .width('100%')
-      }
-      Text(`文件 URI：${this.readableUri(this.item.uri)}`)
-        .fontSize(11)
-        .fontColor($r('app.color.text_secondary'))
-        .width('100%')
-        .maxLines(4)
-      if (this.item.outcome === ImportItemOutcome.DUPLICATE &&
-        this.item.duplicateSourceUri !== undefined) {
-        Text(`已有文件 URI：${this.readableUri(this.item.duplicateSourceUri)}`)
-          .fontSize(11)
-          .fontColor($r('app.color.text_secondary'))
-          .width('100%')
-          .maxLines(4)
-      }
-      if (this.item.outcome === ImportItemOutcome.DUPLICATE &&
-        this.item.duplicateTrackId !== undefined) {
-        Text(`已有音乐库记录：#${this.item.duplicateTrackId}`)
-          .fontSize(11)
-          .fontColor($r('app.color.text_secondary'))
-          .width('100%')
-      }
-    }
-    .width('100%')
-    .padding(14)
-    .borderRadius(16)
-    .backgroundColor($r('app.color.glass_surface'))
-  }
-}
-
 @Component
 export struct LibraryManagementPage {
   @ObjectLink store: LibraryStore;
@@ -92,7 +35,6 @@ export struct LibraryManagementPage {
   @Prop bottomInset: number = 0;
   @State showPageSheet: boolean = false;
   @State activeSheet: LibraryManagementSheet = LibraryManagementSheet.TASK_REPORT;
-  @State expandedImportDetail?: ImportItemDetailKind = undefined;
   @State performanceExpanded: boolean = false;
   @State selectedUnavailableIds: Array<number> = [];
   scroller: Scroller = new Scroller();
@@ -142,70 +84,113 @@ export struct LibraryManagementPage {
     this.showPageSheet = true;
   }
 
-  private detailCount(kind: ImportItemDetailKind): number {
-    switch (kind) {
-      case ImportItemDetailKind.URI_DUPLICATE:
-        return this.store.uriDuplicateCount;
-      case ImportItemDetailKind.CONTENT_DUPLICATE:
-        return this.store.contentDuplicateCount;
-      case ImportItemDetailKind.BATCH_DUPLICATE:
-        return this.store.batchDuplicateCount;
-      case ImportItemDetailKind.FAILED:
-        return this.store.failedImportCount;
+  private importDetailSections(): Array<TaskResultDetailSection> {
+    return [
+      this.importDetailSection('uri_duplicate', 'URI 已存在', ImportItemDetailKind.URI_DUPLICATE),
+      this.importDetailSection('content_duplicate', '文件内容重复', ImportItemDetailKind.CONTENT_DUPLICATE),
+      this.importDetailSection('batch_duplicate', '本次选择中重复', ImportItemDetailKind.BATCH_DUPLICATE),
+      this.importDetailSection('failed', '导入失败', ImportItemDetailKind.FAILED)
+    ];
+  }
+
+  private importDetailSection(key: string, title: string,
+    kind: ImportItemDetailKind): TaskResultDetailSection {
+    const items: Array<TaskResultDetailItem> = [];
+    const resultItems = this.store.lastImportResult?.items ?? [];
+    for (let index = 0; index < resultItems.length; index += 1) {
+      const item = resultItems[index];
+      if (item.detailKind !== kind) {
+        continue;
+      }
+      items.push({
+        key: `${key}:${index}:${item.uri}`,
+        status: item.outcome === ImportItemOutcome.DUPLICATE ? '重复' : '失败',
+        title: item.displayName,
+        reason: item.reason,
+        uri: item.uri,
+        secondaryUri: item.duplicateSourceUri,
+        recordLabel: item.duplicateTrackId !== undefined ?
+          `已有音乐库记录：#${item.duplicateTrackId}` : undefined,
+        tone: item.outcome === ImportItemOutcome.FAILED ? TaskResultTone.ERROR : TaskResultTone.NORMAL
+      });
+    }
+    return {
+      key: key,
+      title: title,
+      emptyText: '',
+      items: items,
+      tone: kind === ImportItemDetailKind.FAILED ? TaskResultTone.ERROR : TaskResultTone.NORMAL
+    };
+  }
+
+  private fileCheckDetailSections(): Array<TaskResultDetailSection> {
+    return [
+      this.fileCheckDetailSection('updated', '文件信息变化', FileCheckItemOutcome.UPDATED),
+      this.fileCheckDetailSection('recovered', '文件恢复可用', FileCheckItemOutcome.RECOVERED),
+      this.fileCheckDetailSection('artwork_rebuilt', '封面已修复', FileCheckItemOutcome.ARTWORK_REBUILT),
+      this.fileCheckDetailSection('artwork_absent', '源文件无封面', FileCheckItemOutcome.ARTWORK_ABSENT),
+      this.fileCheckDetailSection('authorization_revoked', '授权失效', FileCheckItemOutcome.AUTHORIZATION_REVOKED),
+      this.fileCheckDetailSection('unavailable', '文件不可用', FileCheckItemOutcome.UNAVAILABLE),
+      this.fileCheckDetailSection('corrupted', '解析失败', FileCheckItemOutcome.CORRUPTED),
+      this.fileCheckDetailSection('artwork_failed', '封面失败', FileCheckItemOutcome.ARTWORK_FAILED)
+    ];
+  }
+
+  private fileCheckDetailSection(key: string, title: string,
+    outcome: FileCheckItemOutcome): TaskResultDetailSection {
+    const items: Array<TaskResultDetailItem> = [];
+    for (let index = 0; index < this.store.fileCheckItems.length; index += 1) {
+      const item = this.store.fileCheckItems[index];
+      if (item.outcome !== outcome) {
+        continue;
+      }
+      items.push({
+        key: `${key}:${item.trackId}:${index}:${item.uri}`,
+        status: this.fileCheckOutcomeLabel(item.outcome),
+        title: item.displayName,
+        reason: item.reason,
+        uri: item.uri,
+        tone: this.fileCheckOutcomeTone(item.outcome)
+      });
+    }
+    return {
+      key: key,
+      title: title,
+      emptyText: '',
+      items: items,
+      tone: this.fileCheckOutcomeTone(outcome)
+    };
+  }
+
+  private fileCheckOutcomeLabel(outcome: FileCheckItemOutcome): string {
+    switch (outcome) {
+      case FileCheckItemOutcome.UPDATED:
+        return '已更新';
+      case FileCheckItemOutcome.RECOVERED:
+        return '已恢复';
+      case FileCheckItemOutcome.ARTWORK_REBUILT:
+        return '封面已修复';
+      case FileCheckItemOutcome.ARTWORK_ABSENT:
+        return '无内嵌封面';
+      case FileCheckItemOutcome.ARTWORK_FAILED:
+        return '封面失败';
+      case FileCheckItemOutcome.AUTHORIZATION_REVOKED:
+        return '授权失效';
+      case FileCheckItemOutcome.CORRUPTED:
+        return '解析失败';
+      default:
+        return '不可用';
     }
   }
 
-  private toggleImportDetail(kind: ImportItemDetailKind): void {
-    this.expandedImportDetail = this.expandedImportDetail === kind ? undefined : kind;
-  }
-
-  @Builder
-  private ImportDetailHeader(title: string, kind: ImportItemDetailKind) {
-    Button() {
-      Row({ space: 12 }) {
-        Text(title)
-          .fontSize(15)
-          .fontWeight(FontWeight.Medium)
-          .fontColor(kind === ImportItemDetailKind.FAILED ?
-            $r('app.color.message_error') : $r('app.color.text_primary'))
-          .layoutWeight(1)
-          .textAlign(TextAlign.Start)
-        Text(`${this.detailCount(kind)}`)
-          .fontSize(13)
-          .fontColor($r('app.color.text_secondary'))
-          .fontFeature('tnum')
-        SymbolGlyph($r('sys.symbol.chevron_right'))
-          .fontSize(16)
-          .fontColor([$r('app.color.text_tertiary')])
-          .rotate({ angle: this.expandedImportDetail === kind ? 90 : 0 })
-      }
-      .width('100%')
-      .height(48)
-      .padding({ left: 14, right: 14 })
+  private fileCheckOutcomeTone(outcome: FileCheckItemOutcome): TaskResultTone {
+    if (outcome === FileCheckItemOutcome.UPDATED ||
+      outcome === FileCheckItemOutcome.RECOVERED ||
+      outcome === FileCheckItemOutcome.ARTWORK_REBUILT ||
+      outcome === FileCheckItemOutcome.ARTWORK_ABSENT) {
+      return TaskResultTone.SUCCESS;
     }
-    .width('100%')
-    .height(48)
-    .buttonStyle(ButtonStyleMode.TEXTUAL)
-    .backgroundColor($r('app.color.glass_surface'))
-    .backgroundBlurStyle(BlurStyle.COMPONENT_THICK, {
-      adaptiveColor: AdaptiveColor.AVERAGE,
-      policy: BlurStyleActivePolicy.ALWAYS_ACTIVE,
-      scale: 1
-    })
-    .borderRadius(16)
-    .accessibilityText(`${title}，${this.detailCount(kind)} 项`)
-    .onClick(() => this.toggleImportDetail(kind))
-  }
-
-  @Builder
-  private ImportDetailItems(kind: ImportItemDetailKind,
-    dataSource: LibraryListDataSource<ImportItemResult>) {
-    LazyForEach(dataSource, (item: ImportItemResult, index: number) => {
-      ListItem() {
-        ImportDetailListItem({ item: item })
-          .reuseId('import_detail')
-      }
-    }, (item: ImportItemResult, index: number) => `${kind}:${index}:${item.uri}`)
+    return TaskResultTone.ERROR;
   }
 
   @Builder
@@ -442,86 +427,17 @@ export struct LibraryManagementPage {
 
       if (this.store.lastTaskWasFileCheck && !this.store.checkingFiles &&
         this.store.fileCheckResult.length > 0) {
-        if (this.store.fileCheckItems.length > 0) {
-          Text('变化与问题明细')
-            .fontSize(17)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.text_primary'))
-            .width('100%')
-          List({ space: 10 }) {
-            ForEach(this.store.fileCheckItems, (item: FileCheckItemResult) => {
-              ListItem() {
-                FileCheckResultListItem({ item: item })
-                  .reuseId('file_check_result')
-              }
-            }, (item: FileCheckItemResult) => `${item.trackId}:${item.outcome}`)
-          }
-          .width('100%')
-          .layoutWeight(1)
-          .edgeEffect(EdgeEffect.Spring)
-          .cachedCount(PageLayoutSpec.VIRTUAL_LIST_CACHE_COUNT, true)
-        } else {
-          Text('所有文件均可访问，且文件大小和修改时间没有变化')
-            .fontColor($r('app.color.text_secondary'))
-            .width('100%')
-        }
+        TaskResultDetails({
+          title: '变化与问题明细',
+          emptyText: '所有文件均可访问，且文件大小和修改时间没有变化',
+          sections: this.fileCheckDetailSections()
+        })
       } else if (!this.store.lastTaskWasFileCheck && this.store.importDetailCount > 0) {
-        Text('重复与错误明细')
-          .fontSize(17)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_primary'))
-          .width('100%')
-        List({ space: 10 }) {
-          if (this.store.uriDuplicateCount > 0) {
-            ListItemGroup({
-              header: this.ImportDetailHeader('URI 已存在', ImportItemDetailKind.URI_DUPLICATE)
-            }) {
-              if (this.expandedImportDetail === ImportItemDetailKind.URI_DUPLICATE) {
-                this.ImportDetailItems(
-                  ImportItemDetailKind.URI_DUPLICATE, this.store.uriDuplicateDataSource
-                )
-              }
-            }
-          }
-          if (this.store.contentDuplicateCount > 0) {
-            ListItemGroup({
-              header: this.ImportDetailHeader('文件内容重复', ImportItemDetailKind.CONTENT_DUPLICATE)
-            }) {
-              if (this.expandedImportDetail === ImportItemDetailKind.CONTENT_DUPLICATE) {
-                this.ImportDetailItems(
-                  ImportItemDetailKind.CONTENT_DUPLICATE, this.store.contentDuplicateDataSource
-                )
-              }
-            }
-          }
-          if (this.store.batchDuplicateCount > 0) {
-            ListItemGroup({
-              header: this.ImportDetailHeader('本次选择中重复', ImportItemDetailKind.BATCH_DUPLICATE)
-            }) {
-              if (this.expandedImportDetail === ImportItemDetailKind.BATCH_DUPLICATE) {
-                this.ImportDetailItems(
-                  ImportItemDetailKind.BATCH_DUPLICATE, this.store.batchDuplicateDataSource
-                )
-              }
-            }
-          }
-          if (this.store.failedImportCount > 0) {
-            ListItemGroup({
-              header: this.ImportDetailHeader('导入失败', ImportItemDetailKind.FAILED)
-            }) {
-              if (this.expandedImportDetail === ImportItemDetailKind.FAILED) {
-                this.ImportDetailItems(
-                  ImportItemDetailKind.FAILED, this.store.failedImportDataSource
-                )
-              }
-            }
-          }
-        }
-        .width('100%')
-        .layoutWeight(1)
-        .edgeEffect(EdgeEffect.Spring)
-        .sticky(StickyStyle.Header)
-        .cachedCount(PageLayoutSpec.VIRTUAL_LIST_CACHE_COUNT, true)
+        TaskResultDetails({
+          title: '重复与错误明细',
+          emptyText: '',
+          sections: this.importDetailSections()
+        })
       } else if (!this.store.lastTaskWasFileCheck && !this.store.importing &&
         this.store.lastImportResult !== undefined) {
         Text('本次导入没有重复或错误')
@@ -603,7 +519,6 @@ export struct LibraryManagementPage {
           .height(52)
           .enabled(!this.store.importing && !this.store.loading)
           .onClick(() => {
-            this.expandedImportDetail = undefined;
             this.store.selectAndImport(() => {
               this.openTaskReport();
             });
@@ -803,71 +718,5 @@ export struct LibraryManagementPage {
         action: () => this.store.clearAllUnavailableTracks()
       }
     });
-  }
-}
-
-@Reusable
-@Component
-struct FileCheckResultListItem {
-  @Prop item: FileCheckItemResult;
-
-  private outcomeLabel(): string {
-    switch (this.item.outcome) {
-      case FileCheckItemOutcome.UPDATED:
-        return '已更新';
-      case FileCheckItemOutcome.RECOVERED:
-        return '已恢复';
-      case FileCheckItemOutcome.ARTWORK_REBUILT:
-        return '封面已修复';
-      case FileCheckItemOutcome.ARTWORK_ABSENT:
-        return '无内嵌封面';
-      case FileCheckItemOutcome.ARTWORK_FAILED:
-        return '封面失败';
-      case FileCheckItemOutcome.AUTHORIZATION_REVOKED:
-        return '授权失效';
-      case FileCheckItemOutcome.CORRUPTED:
-        return '解析失败';
-      default:
-        return '不可用';
-    }
-  }
-
-  private success(): boolean {
-    return this.item.outcome === FileCheckItemOutcome.UPDATED ||
-      this.item.outcome === FileCheckItemOutcome.RECOVERED ||
-      this.item.outcome === FileCheckItemOutcome.ARTWORK_REBUILT ||
-      this.item.outcome === FileCheckItemOutcome.ARTWORK_ABSENT;
-  }
-
-  build() {
-    Column({ space: 6 }) {
-      Row({ space: 10 }) {
-        Text(this.outcomeLabel())
-          .fontSize(12)
-          .fontColor(this.success() ?
-            $r('app.color.message_success') : $r('app.color.message_error'))
-        Text(this.item.displayName)
-          .fontSize(15)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_primary'))
-          .maxLines(2)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .layoutWeight(1)
-      }
-      .width('100%')
-      Text(this.item.reason)
-        .fontSize(12)
-        .fontColor($r('app.color.text_secondary'))
-        .width('100%')
-      Text(this.item.uri)
-        .fontSize(11)
-        .fontColor($r('app.color.text_tertiary'))
-        .maxLines(3)
-        .width('100%')
-    }
-    .width('100%')
-    .padding(14)
-    .borderRadius(16)
-    .backgroundColor($r('app.color.glass_surface'))
   }
 }

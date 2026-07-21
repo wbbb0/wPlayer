@@ -23,10 +23,15 @@ export class IndexPlaylistController {
     this.store = store;
   }
 
-  bind(settingsRepository: SettingsRepository,
-    visibilityListener: (visible: boolean) => void): void {
-    this.settingsRepository = settingsRepository;
+  bindVisibility(visibilityListener: (visible: boolean) => void): void {
     this.visibilityListener = visibilityListener;
+  }
+
+  bindSettings(settingsRepository?: SettingsRepository): void {
+    this.settingsRepository = settingsRepository;
+    if (settingsRepository === undefined) {
+      return;
+    }
     this.recentPlaylistTargetIds = PlaylistSelectionPolicy.recordRecentTarget(
       settingsRepository.getRecentPlaylistTargetIds(),
       -1

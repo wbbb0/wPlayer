@@ -142,6 +142,10 @@ export struct ResponsiveNavigationShell {
   @Prop selectedRouteId: string = NavigationRoute.PLAYLISTS;
   @Prop appearancePalette: AppAppearancePalette = AppAppearancePalette.fallback();
   @Prop themePageBackground: string = '#FF000000';
+  onShowFullPlayer: () => void = (): void => {};
+  onMiniPlayerGestureStart: () => void = (): void => {};
+  onMiniPlayerGestureUpdate: (event: GestureEvent) => void = (_event: GestureEvent): void => {};
+  onMiniPlayerGestureFinish: () => void = (): void => {};
   onDemoLibraryChange: (value: boolean) => void = (_value: boolean): void => {};
 
   compactTabsController: HdsTabsController = new HdsTabsController();
@@ -1165,7 +1169,11 @@ export struct ResponsiveNavigationShell {
   private MiniPlayer() {
     MiniPlayerSurface({
       playerStore: this.playerStore,
-      binding: this.miniPlayerBinding
+      binding: this.miniPlayerBinding,
+      onShowFullPlayer: this.onShowFullPlayer,
+      onGestureStart: this.onMiniPlayerGestureStart,
+      onGestureUpdate: this.onMiniPlayerGestureUpdate,
+      onGestureFinish: this.onMiniPlayerGestureFinish
     })
   }
 

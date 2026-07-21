@@ -37,6 +37,7 @@ import { LibraryPlaybackBridge } from '../library/store/LibraryPlaybackBridge';
 import { PlaybackPowerPolicy } from './support/PlaybackPowerPolicy';
 import { PlaybackCoverageTracker } from './history/PlaybackCoverageTracker';
 import { PlaybackStateReducer } from './support/PlaybackStateReducer';
+import { OutputReconnectPolicy } from './support/OutputReconnectPolicy';
 import { DemoLibraryMode } from '../demo/DemoLibraryMode';
 import { DemoMusicLibrary } from '../demo/DemoMusicLibrary';
 
@@ -53,6 +54,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   private readonly queue: PlaybackQueue = new PlaybackQueue();
   private readonly coverageTracker: PlaybackCoverageTracker = new PlaybackCoverageTracker();
   private readonly stateReducer: PlaybackStateReducer = new PlaybackStateReducer();
+  private readonly outputReconnectPolicy: OutputReconnectPolicy = new OutputReconnectPolicy();
   private context?: common.UIAbilityContext;
   private settings?: SettingsRepository;
   private libraryMutationListener?: () => void;
@@ -200,6 +202,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   private clearRemovedQueuePlayback(): void {
+    this.outputReconnectPolicy.clear();
     this.interruptCoverage();
     ++this.artworkEpoch;
     ++this.seekEpoch;
@@ -262,6 +265,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     if (!this.playerStore.hasCurrentTrack()) {
       return;
     }
+    this.outputReconnectPolicy.clear();
     if (DemoLibraryMode.isEnabled()) {
       this.stopDemoProgress();
       this.playerStore.playWhenReady = false;
@@ -280,6 +284,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   stop(): void {
+    this.outputReconnectPolicy.clear();
     this.pause();
     this.interruptCoverage();
     this.persistProgress(false);
@@ -292,6 +297,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     const next = this.queue.next(this.playerStore.repeatMode, false);
     this.syncQueueSnapshot();
     if (next !== undefined) {
+      this.outputReconnectPolicy.clear();
       this.beginTrack(next);
     }
   }
@@ -303,6 +309,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     const previous = this.queue.previous();
     this.syncQueueSnapshot();
     if (previous !== undefined) {
+      this.outputReconnectPolicy.clear();
       this.beginTrack(previous);
     }
   }
@@ -315,6 +322,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     const selected = this.queue.select(trackId);
     this.syncQueueSnapshot();
     if (selected !== undefined) {
+      this.outputReconnectPolicy.clear();
       this.beginTrack(selected);
     }
   }
@@ -381,6 +389,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     if (DemoLibraryMode.isEnabled()) {
       return;
     }
+    this.outputReconnectPolicy.clear();
     this.interruptCoverage();
     this.persistProgress(false);
     ++this.artworkEpoch;
@@ -441,6 +450,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   async shutdown(): Promise<void> {
+    this.outputReconnectPolicy.clear();
     this.stopDemoProgress();
     this.interruptCoverage();
     this.persistProgress(false);
@@ -762,6 +772,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
 
   private beginTrack(track: QueueTrack, playWhenReady: boolean = true,
     preserveStoredPosition: boolean = false): Promise<void> {
+    this.outputReconnectPolicy.clear();
     if (DemoLibraryMode.isEnabled()) {
       this.beginDemoTrack(track, playWhenReady);
       return Promise.resolve();
@@ -947,10 +958,31 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   onOutputDeviceUnavailable(): void {
-    if (this.playerStore.hasCurrentTrack() &&
-      (this.playerStore.playWhenReady || this.playerStore.state === PlayerState.PLAYING)) {
-      this.pause();
+    if (!this.outputReconnectPolicy.recordOutputUnavailable(
+      this.playerStore.hasCurrentTrack(),
+      this.playerStore.playWhenReady,
+      this.playerStore.state
+    )) {
+      return;
     }
+    this.coverageTracker.recordPause(this.playerStore.progress.positionMs);
+    if (this.playerStore.state !== PlayerState.PLAYING) {
+      return;
+    }
+    this.engine.pause().catch((error: Object) => {
+      this.outputReconnectPolicy.clear();
+      this.onStateChanged(PlayerState.ERROR, PlaybackRuntime.messageOf(error));
+    });
+  }
+
+  onOutputDeviceAvailable(): void {
+    if (!this.outputReconnectPolicy.shouldResume(
+      this.playerStore.hasCurrentTrack(),
+      this.playerStore.state
+    )) {
+      return;
+    }
+    this.play();
   }
 
   private async loadCurrentLyrics(track: PlaybackTrack, epoch: number): Promise<void> {

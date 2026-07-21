@@ -32,6 +32,20 @@ export enum FullPlayerPage {
   LYRICS = 2
 }
 
+export class MiniPlayerClickSuppressor {
+  private suppressNextClick: boolean = false;
+
+  markPanRecognized(): void {
+    this.suppressNextClick = true;
+  }
+
+  consumeClickSuppression(): boolean {
+    const suppress = this.suppressNextClick;
+    this.suppressNextClick = false;
+    return suppress;
+  }
+}
+
 export const FULL_PLAYER_VERTICAL_GESTURE_HOST_ID: string = 'full_player_vertical_gesture_host';
 export const FULL_PLAYER_HORIZONTAL_GESTURE_HOST_ID: string = 'full_player_horizontal_gesture_host';
 

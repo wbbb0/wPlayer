@@ -116,12 +116,13 @@ struct Index {
     if (context !== undefined) {
       const abilityContext = context as common.UIAbilityContext;
       this.avoidAreaController.start(abilityContext);
+      this.playlistController.bindVisibility((visible: boolean): void => {
+        this.playlistSheetVisible = visible;
+      });
       try {
         this.settingsRepository = new SettingsRepository(abilityContext);
         this.settingsStore.initialize(this.settingsRepository);
-        this.playlistController.bind(this.settingsRepository, (visible: boolean): void => {
-          this.playlistSheetVisible = visible;
-        });
+        this.playlistController.bindSettings(this.settingsRepository);
         this.navigationController.bindSettings(this.settingsRepository, this.settingsStore);
       } catch (error) {
         const businessError = error as BusinessError;
@@ -309,6 +310,11 @@ struct Index {
       selectedRouteId: this.navigationController.selectedRouteId,
       appearancePalette: this.appearancePalette,
       themePageBackground: this.animatedPageBackground(),
+      onShowFullPlayer: (): void => this.playerMorphController.showFullPlayer(),
+      onMiniPlayerGestureStart: (): void => this.playerMorphController.beginMiniPlayerGesture(),
+      onMiniPlayerGestureUpdate: (event: GestureEvent): void =>
+        this.playerMorphController.updateMiniPlayerGesture(event),
+      onMiniPlayerGestureFinish: (): void => this.playerMorphController.finishMiniPlayerGesture(),
       compactTabsController: this.compactTabsController,
       condensedCompactTabsController: this.condensedCompactTabsController,
       expandedTabsController: this.expandedTabsController,

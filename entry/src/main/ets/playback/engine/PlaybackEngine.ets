@@ -16,6 +16,7 @@ export interface PlaybackEngineListener {
   onDurationChanged(durationMs: number): void;
   onCompleted(): void;
   onOutputDeviceUnavailable(): void;
+  onOutputDeviceAvailable(): void;
 }
 
 interface PendingStateWait {
@@ -361,6 +362,11 @@ export class PlaybackEngine {
           if (event.changeReason ===
             audio.AudioStreamDeviceChangeReason.REASON_OLD_DEVICE_UNAVAILABLE) {
             this.listener?.onOutputDeviceUnavailable();
+            return;
+          }
+          if (event.changeReason ===
+            audio.AudioStreamDeviceChangeReason.REASON_NEW_DEVICE_AVAILABLE) {
+            this.listener?.onOutputDeviceAvailable();
           }
         };
         this.audioSessionManager.on('currentOutputDeviceChanged', callback);

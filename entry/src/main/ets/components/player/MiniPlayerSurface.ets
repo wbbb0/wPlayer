@@ -1,4 +1,4 @@
-import { PlayerMotionSpec } from './PlayerMotion';
+import { MiniPlayerClickSuppressor, PlayerMotionSpec } from './PlayerMotion';
 import { MiniPlayerBinding } from './MiniPlayerBinding';
 import { PlayerMiniArtwork } from './PlayerArtworkViews';
 import { PlayerPlaybackButton } from './PlayerControls';
@@ -99,6 +99,7 @@ export struct MiniPlayerContent {
 export struct MiniPlayerSurface {
   @ObjectLink playerStore: PlayerStore;
   @ObjectLink binding: MiniPlayerBinding;
+  private readonly clickSuppressor: MiniPlayerClickSuppressor = new MiniPlayerClickSuppressor();
   onShowFullPlayer: () => void = (): void => {};
   onGestureStart: () => void = (): void => {};
   onGestureUpdate: (event: GestureEvent) => void = (_event: GestureEvent): void => {};
@@ -112,7 +113,7 @@ export struct MiniPlayerSurface {
         showArtwork: true,
         followsSwipeOffset: true,
         marqueeActive: this.binding.sourceVisible,
-        onShowFullPlayer: this.onShowFullPlayer
+        onShowFullPlayer: (): void => this.requestShowFullPlayer()
       })
     }
     .height(56)
@@ -125,7 +126,7 @@ export struct MiniPlayerSurface {
     })
     .onClick(() => {
       if (!this.binding.expanded) {
-        this.onShowFullPlayer();
+        this.requestShowFullPlayer();
       }
     })
     .opacity(this.binding.sourceVisible ? 1 : 0)
@@ -137,9 +138,10 @@ export struct MiniPlayerSurface {
         height: LayoutLength.toNumber(newValue.height, this.binding.measuredFrame.height)
       };
     })
-    .parallelGesture(
+    .priorityGesture(
       PanGesture({ direction: PanDirection.All, distance: PlayerMotionSpec.GESTURE_AXIS_LOCK_DISTANCE })
         .onActionStart(() => {
+          this.clickSuppressor.markPanRecognized();
           this.onGestureStart();
         })
         .onActionUpdate((event: GestureEvent) => {
@@ -150,7 +152,15 @@ export struct MiniPlayerSurface {
         })
         .onActionCancel(() => {
           this.onGestureFinish();
-        })
+        }),
+      GestureMask.Normal
     )
+  }
+
+  private requestShowFullPlayer(): void {
+    if (this.clickSuppressor.consumeClickSuppression()) {
+      return;
+    }
+    this.onShowFullPlayer();
   }
 }

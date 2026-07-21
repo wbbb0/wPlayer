@@ -14,6 +14,8 @@ import playlistInteractionPolicyTest from './PlaylistInteractionPolicy.test';
 import playlistPolicyTest from './PlaylistPolicy.test';
 import playbackStateReducerTest from './PlaybackStateReducer.test';
 import artworkWorkSessionTest from './ArtworkWorkSession.test';
+import miniPlayerGesturePolicyTest from './MiniPlayerGesturePolicy.test';
+import outputReconnectPolicyTest from './OutputReconnectPolicy.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -32,4 +34,6 @@ export default function testsuite() {
   playlistPolicyTest();
   playbackStateReducerTest();
   artworkWorkSessionTest();
+  miniPlayerGesturePolicyTest();
+  outputReconnectPolicyTest();
 }

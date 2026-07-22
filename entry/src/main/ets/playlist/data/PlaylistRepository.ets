@@ -640,7 +640,7 @@ export class PlaylistRepository {
 
   private summarySelect(whereClause: string = ''): string {
     return `SELECT p.id, p.kind, p.name, p.item_sort_field, p.item_sort_direction,
-      COUNT(pi.track_id) AS track_count,
+      COUNT(t.id) AS track_count,
       COALESCE(SUM(t.duration_ms), 0) AS total_duration_ms,
       p.created_at, p.updated_at, p.last_played_at
       FROM playlist p

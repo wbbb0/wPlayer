@@ -17,6 +17,7 @@ import artworkWorkSessionTest from './ArtworkWorkSession.test';
 import miniPlayerGesturePolicyTest from './MiniPlayerGesturePolicy.test';
 import outputReconnectPolicyTest from './OutputReconnectPolicy.test';
 import repositoryInvalidationTest from './RepositoryInvalidation.test';
+import libraryListDataSourceTest from './LibraryListDataSource.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -38,4 +39,5 @@ export default function testsuite() {
   miniPlayerGesturePolicyTest();
   outputReconnectPolicyTest();
   repositoryInvalidationTest();
+  libraryListDataSourceTest();
 }

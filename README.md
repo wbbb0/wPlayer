@@ -65,7 +65,8 @@ devecocli build
 ```
 
 本地签名由 DevEco Studio 直接写入根目录 `build-profile.json5`。Git 中该文件的
-`signingConfigs` 必须保持为空数组，且产品不得引用 `signingConfig`。仓库提供
+`signingConfigs` 必须保持为空数组；产品保留 `default → default`、`release → release`
+两条签名名称映射。仓库提供
 pre-commit 与 CI 检查，阻止密码、证书、Profile、KeyStore 路径或其他签名材料进入提交。
 
 ## 项目文档

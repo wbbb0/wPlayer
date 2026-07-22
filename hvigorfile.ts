@@ -20,14 +20,14 @@ const releaseSigningPlugin: HvigorPlugin = {
               signingConfigs?: Array<{ name?: string }>;
             };
           };
-          const product = buildProfile.app?.products?.find(item => item.name === 'default');
+          const product = buildProfile.app?.products?.find(item => item.name === 'release');
           const selectedSigningConfig = product?.signingConfig;
           const signingConfig = buildProfile.app?.signingConfigs?.find(
             item => item.name === selectedSigningConfig
           );
           if (selectedSigningConfig !== 'release' || signingConfig === undefined) {
             throw new Error(
-              `${releaseSignedAppTaskName} requires build-profile.json5 product "default" ` +
+              `${releaseSignedAppTaskName} requires build-profile.json5 product "release" ` +
               'to select a local signing configuration named "release"'
             );
           }

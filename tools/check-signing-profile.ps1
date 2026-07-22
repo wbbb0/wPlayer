@@ -34,8 +34,15 @@ if ($signingConfigBlocks.Count -ne 1) {
 if ($profileText -notmatch '"signingConfigs"\s*:\s*\[\s*\]') {
   $errors.Add('app.signingConfigs must be an empty array in Git.')
 }
-if ($profileText -match '"signingConfig"\s*:') {
-  $errors.Add('Product-level signingConfig references must be removed before committing.')
+$productSigningConfigMatches = [regex]::Matches($profileText, '"signingConfig"\s*:\s*"([^"]+)"')
+if ($productSigningConfigMatches.Count -ne 2) {
+  $errors.Add('Git must retain exactly two product signingConfig references.')
+} else {
+  $productSigningConfigNames = @($productSigningConfigMatches | ForEach-Object { $_.Groups[1].Value })
+  if ($productSigningConfigNames -notcontains 'default' -or
+    $productSigningConfigNames -notcontains 'release') {
+    $errors.Add('Product signingConfig references must include both "default" and "release".')
+  }
 }
 
 $forbiddenKeys = @('storeFile', 'storePassword', 'keyAlias', 'keyPassword', 'profile', 'certpath')

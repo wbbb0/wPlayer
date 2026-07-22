@@ -273,8 +273,9 @@ Never commit signing passwords, private keys, certificate stores, provisioning p
 
 - Use the tracked root `build-profile.json5` as the only signing configuration source so DevEco Studio can manage it.
   Local signing makes this tracked file intentionally dirty.
-- The Git version of `build-profile.json5` must contain exactly one empty `app.signingConfigs: []`, no product-level
-  `signingConfig`, and no signing passwords or machine-specific certificate, profile, and keystore paths.
+- The Git version of `build-profile.json5` must contain exactly one empty `app.signingConfigs: []`, product mappings
+  `default → default` and `release → release`, and no signing passwords or machine-specific certificate, profile,
+  and keystore paths.
 - Do not use Git `assume-unchanged` or `skip-worktree` to hide signing changes. Hidden tracked changes are too easy to
   publish accidentally. `.gitignore` also does not suppress changes to an already tracked file.
 - Enable the repository hook with `git config core.hooksPath .githooks`. Before every commit, run
@@ -304,11 +305,11 @@ the automatically generated debug key or debug Profile for a `release` build.
   generated (currently `wplayerRelease`), and `SHA256withECDSA`. Validate that the `.cer`, `.p7b`, bundle name, alias,
   and `.p12` belong to the same release identity before publishing.
 - DevEco Studio writes the local release signing object directly into tracked `build-profile.json5`; this is expected
-  for local builds but must never be committed. Before committing, restore the portable empty array and remove every
-  product-level `signingConfig` reference.
-- Keep debug and release signing material as separate local entries in `build-profile.json5`. Select the required
-  entry on product `default`; `assembleReleaseSignedApp` additionally requires the selected name to be `release`.
-- Before a release build, confirm the local product selects the dedicated `release` entry. Build with
+  for local builds but must never be committed. Before committing, restore the portable empty array while retaining
+  the `default → default` and `release → release` product mappings.
+- Keep debug and release signing material as separate local entries in `build-profile.json5`: product `default`
+  selects `default`, and product `release` selects `release`. `assembleReleaseSignedApp` verifies the latter.
+- Before a release build, confirm the local `release` product selects the dedicated `release` entry. Build with
   `buildMode=release` and verify the generated metadata reports `BUILD_MODE: release`, `debug: false`, and a signed
   `.app` output. Do not infer release readiness only from the output filename.
 - Backing up the release `.p12`, its alias, both passwords, `.cer`, and `.p7b` is the user's responsibility. Advise

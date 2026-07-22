@@ -58,7 +58,7 @@ entry/build/default/outputs/default/entry-default-unsigned.hap
    ```
 
 2. 在 DevEco Studio 的 Signing Configs 界面中创建或选择调试、发布签名。IDE 会把本机配置直接写入根目录 `build-profile.json5`。
-3. 在产品 `default` 上选择要使用的 `signingConfig`，然后正常执行 `devecocli build`。
+3. 保持产品 `default` 选择 `default` 签名、产品 `release` 选择 `release` 签名；然后按对应产品执行构建。
 
 `build-profile.json5` 是唯一签名配置源。本地签名存在时，该 tracked 文件会长期显示为已修改；不要使用 `assume-unchanged`、`skip-worktree` 或 `.gitignore` 隐藏它。
 
@@ -67,7 +67,7 @@ entry/build/default/outputs/default/entry-default-unsigned.hap
 Git 中的便携基线必须同时满足：
 
 - `app.signingConfigs` 为 `[]`；
-- `app.products[*]` 不包含 `signingConfig`；
+- `app.products` 保留 `default → default`、`release → release` 的签名名称映射；
 - 不包含密码、KeyStore、证书或 Profile 的路径和材料字段。
 
 提交前先把本机文件备份到仓库外，清空上述字段后再暂存：
@@ -75,7 +75,7 @@ Git 中的便携基线必须同时满足：
 ```powershell
 $signingBackup = Join-Path $env:TEMP 'wplayer-build-profile.local.json5'
 Copy-Item build-profile.json5 $signingBackup
-# 在 build-profile.json5 中清空 signingConfigs，并删除产品 signingConfig 引用
+# 在 build-profile.json5 中清空 signingConfigs，并保留两个产品的签名名称映射
 git add build-profile.json5
 ./tools/check-signing-profile.ps1 -Staged
 git commit

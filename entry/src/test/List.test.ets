@@ -16,6 +16,7 @@ import playbackStateReducerTest from './PlaybackStateReducer.test';
 import artworkWorkSessionTest from './ArtworkWorkSession.test';
 import miniPlayerGesturePolicyTest from './MiniPlayerGesturePolicy.test';
 import outputReconnectPolicyTest from './OutputReconnectPolicy.test';
+import repositoryInvalidationTest from './RepositoryInvalidation.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -36,4 +37,5 @@ export default function testsuite() {
   artworkWorkSessionTest();
   miniPlayerGesturePolicyTest();
   outputReconnectPolicyTest();
+  repositoryInvalidationTest();
 }

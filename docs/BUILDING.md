@@ -1,12 +1,12 @@
 # 构建 w音乐
 
-本文说明如何在新的 Windows 开发环境中构建 w音乐。项目主要模块为 `entry`，目标 HarmonyOS SDK 为 6.1.1/API 24。
+本文说明如何在新的 Windows 开发环境中构建 w音乐。项目主要模块为 `entry`，最低兼容 HarmonyOS SDK 为 6.1.0/API 23，目标及编译 SDK 为 6.1.1/API 24。
 
 ## 环境要求
 
 - Windows 10 或 Windows 11
 - Git
-- 能够提供 HarmonyOS SDK 6.1.1/API 24 的 DevEco Studio
+- 能够提供目标及编译用 HarmonyOS SDK 6.1.1/API 24 的 DevEco Studio；生成的应用最低兼容 API 23
 - Node.js 和 npm
 - DevEco CLI
 - 可选：已启用开发者模式的 HarmonyOS 设备及 HDC

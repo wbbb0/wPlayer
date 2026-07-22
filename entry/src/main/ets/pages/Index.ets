@@ -158,6 +158,8 @@ struct Index {
     this.wideMiniPlayerContent?.dispose();
     this.wideMiniPlayerContent = undefined;
     this.playlistController.dispose();
+    this.libraryStore.dispose();
+    this.playlistStore.dispose();
     playbackRuntime.setPaletteChangeListener(undefined);
     systemBarStyleController.setPlayerContentColor(false, '');
     appAppearanceController.removeListener(this.appearanceListener);

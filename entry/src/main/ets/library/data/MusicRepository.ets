@@ -43,6 +43,14 @@ import { ARTWORK_PALETTE_VERSION } from '../artwork/ArtworkPaletteExtractor';
 import { PlaylistRepository } from '../../playlist/data/PlaylistRepository';
 import { DemoLibraryMode } from '../../demo/DemoLibraryMode';
 import { DemoMusicLibrary } from '../../demo/DemoMusicLibrary';
+import {
+  PlaylistDetailTarget,
+  RepositoryContentChangeKind,
+  RepositoryInvalidationHub,
+  RepositoryInvalidationListener,
+  RepositoryInvalidationReason,
+  RepositoryProjection
+} from './RepositoryInvalidation';
 
 export {
   ArtworkAssetLookup,
@@ -64,6 +72,47 @@ export class MusicRepository {
   private readonly queries: MusicLibraryQueries = new MusicLibraryQueries(this.database);
   private readonly importer: MusicLibraryImporter = new MusicLibraryImporter(this.database);
   private readonly playlists: PlaylistRepository = new PlaylistRepository(this.database);
+  private readonly invalidations: RepositoryInvalidationHub = new RepositoryInvalidationHub();
+
+  addInvalidationListener(listener: RepositoryInvalidationListener): void {
+    this.invalidations.addListener(listener);
+  }
+
+  removeInvalidationListener(listener: RepositoryInvalidationListener): void {
+    this.invalidations.removeListener(listener);
+  }
+
+  currentInvalidationRevision(): number {
+    return this.invalidations.currentRevision();
+  }
+
+  notifyContentChanged(kind: RepositoryContentChangeKind): void {
+    if (kind === RepositoryContentChangeKind.METADATA) {
+      this.invalidations.publish(
+        [
+          RepositoryProjection.LIBRARY_SUMMARY,
+          RepositoryProjection.LIBRARY_TRACKS,
+          RepositoryProjection.LIBRARY_ALBUMS,
+          RepositoryProjection.UNAVAILABLE_TRACKS,
+          RepositoryProjection.PLAYLIST_SUMMARIES,
+          RepositoryProjection.PLAYLIST_DETAILS
+        ],
+        RepositoryInvalidationReason.LIBRARY_METADATA_CHANGED,
+        PlaylistDetailTarget.ALL
+      );
+      return;
+    }
+    this.invalidations.publish(
+      [
+        RepositoryProjection.LIBRARY_SUMMARY,
+        RepositoryProjection.LIBRARY_TRACKS,
+        RepositoryProjection.LIBRARY_ALBUMS,
+        RepositoryProjection.PLAYLIST_DETAILS
+      ],
+      RepositoryInvalidationReason.LIBRARY_ARTWORK_CHANGED,
+      PlaylistDetailTarget.ALL
+    );
+  }
 
   initialize(context: common.Context): Promise<boolean> {
     return this.database.initialize(context);
@@ -73,11 +122,11 @@ export class MusicRepository {
     return this.database.close();
   }
 
-  clearLibrary(): Promise<void> {
+  async clearLibrary(): Promise<void> {
     if (DemoLibraryMode.isEnabled()) {
-      return Promise.resolve();
+      return;
     }
-    return this.database.enqueueWrite(async (transaction: relationalStore.Transaction) => {
+    await this.database.enqueueWrite(async (transaction: relationalStore.Transaction) => {
       const now = Date.now();
       await transaction.execute('DELETE FROM track_artwork');
       await transaction.execute('DELETE FROM track_credit');
@@ -95,13 +144,27 @@ export class MusicRepository {
         [now]
       );
     });
+    this.invalidations.publish(
+      MusicRepository.allLibraryAndPlaylistProjections(),
+      RepositoryInvalidationReason.LIBRARY_CLEARED,
+      PlaylistDetailTarget.ALL
+    );
   }
 
-  rebuildSortIndexes(): Promise<void> {
+  async rebuildSortIndexes(): Promise<void> {
     if (DemoLibraryMode.isEnabled()) {
-      return Promise.resolve();
+      return;
     }
-    return this.database.rebuildSortIndexes();
+    await this.database.rebuildSortIndexes();
+    this.invalidations.publish(
+      [
+        RepositoryProjection.LIBRARY_TRACKS,
+        RepositoryProjection.LIBRARY_ALBUMS,
+        RepositoryProjection.PLAYLIST_DETAILS
+      ],
+      RepositoryInvalidationReason.SORT_INDEXES_REBUILT,
+      PlaylistDetailTarget.ALL
+    );
   }
 
   getStatistics(): Promise<LibraryStatistics> {
@@ -164,21 +227,25 @@ export class MusicRepository {
     return this.queries.savePlaybackState(trackId, positionMs, durationMs, completed);
   }
 
-  setTrackAvailability(
+  async setTrackAvailability(
     trackId: number,
     state: AvailabilityState
   ): Promise<void> {
     if (DemoLibraryMode.isEnabled()) {
-      return Promise.resolve();
+      return;
     }
-    return this.queries.setTrackAvailability(trackId, state);
+    await this.queries.setTrackAvailability(trackId, state);
+    this.publishAvailabilityChanged();
   }
 
-  setTrackAvailabilities(updates: Array<TrackAvailabilityUpdate>): Promise<void> {
+  async setTrackAvailabilities(updates: Array<TrackAvailabilityUpdate>): Promise<void> {
     if (DemoLibraryMode.isEnabled()) {
-      return Promise.resolve();
+      return;
     }
-    return this.queries.setTrackAvailabilities(updates);
+    if (updates.length === 0) {
+      return;
+    }
+    await this.queries.setTrackAvailabilities(updates);
   }
 
   getMediaFileCheckCandidates(): Promise<Array<MediaFileCheckCandidate>> {
@@ -195,15 +262,16 @@ export class MusicRepository {
     return this.queries.getUnavailableTracks();
   }
 
-  removeTracks(trackIds: Array<number>): Promise<number> {
+  async removeTracks(trackIds: Array<number>): Promise<number> {
     if (DemoLibraryMode.isEnabled()) {
-      return Promise.resolve(0);
+      return 0;
     }
     const uniqueIds = Array.from(new Set<number>(trackIds.filter((id: number) => id >= 0)));
     if (uniqueIds.length === 0) {
-      return Promise.resolve(0);
+      return 0;
     }
-    return this.database.enqueueWrite(async (transaction: relationalStore.Transaction): Promise<number> => {
+    const removed = await this.database.enqueueWrite(
+      async (transaction: relationalStore.Transaction): Promise<number> => {
       const now = Date.now();
       let removed = 0;
       const affectedAlbums: Set<number> = new Set<number>();
@@ -271,7 +339,16 @@ export class MusicRepository {
       );
       await transaction.execute('DELETE FROM genre WHERE id NOT IN (SELECT genre_id FROM track_genre)');
       return removed;
-    });
+      }
+    );
+    if (removed > 0) {
+      this.invalidations.publish(
+        MusicRepository.allLibraryAndPlaylistProjections(),
+        RepositoryInvalidationReason.TRACKS_REMOVED,
+        PlaylistDetailTarget.ALL
+      );
+    }
+    return removed;
   }
 
   getAlbums(
@@ -348,43 +425,56 @@ export class MusicRepository {
     return this.playlists.getCompletedPlaylist();
   }
 
-  createPlaylist(name: string): Promise<PlaylistSummary> {
+  async createPlaylist(name: string): Promise<PlaylistSummary> {
     if (DemoLibraryMode.isEnabled()) {
       return Promise.reject(new Error('演示音乐库为只读模式'));
     }
-    return this.playlists.createPlaylist(name);
+    const playlist = await this.playlists.createPlaylist(name);
+    this.invalidations.publish(
+      [RepositoryProjection.PLAYLIST_SUMMARIES],
+      RepositoryInvalidationReason.PLAYLIST_CREATED
+    );
+    return playlist;
   }
 
-  renamePlaylist(playlistId: number, name: string): Promise<PlaylistSummary> {
+  async renamePlaylist(playlistId: number, name: string): Promise<PlaylistSummary> {
     if (DemoLibraryMode.isEnabled()) {
       return Promise.reject(new Error('演示音乐库为只读模式'));
     }
-    return this.playlists.renamePlaylist(playlistId, name);
+    const playlist = await this.playlists.renamePlaylist(playlistId, name);
+    this.publishPlaylistChanged(RepositoryInvalidationReason.PLAYLIST_RENAMED, playlistId);
+    return playlist;
   }
 
-  deletePlaylist(playlistId: number): Promise<void> {
+  async deletePlaylist(playlistId: number): Promise<void> {
     if (DemoLibraryMode.isEnabled()) {
       return Promise.reject(new Error('演示音乐库为只读模式'));
     }
-    return this.playlists.deletePlaylist(playlistId);
+    await this.playlists.deletePlaylist(playlistId);
+    this.publishPlaylistChanged(RepositoryInvalidationReason.PLAYLIST_DELETED, playlistId);
   }
 
-  updatePlaylistItemSort(
+  async updatePlaylistItemSort(
     playlistId: number,
     field: PlaylistTrackSortField,
     direction: SortDirection
   ): Promise<void> {
     if (DemoLibraryMode.isEnabled()) {
-      return Promise.resolve();
+      return;
     }
-    return this.playlists.updateItemSort(playlistId, field, direction);
+    await this.playlists.updateItemSort(playlistId, field, direction);
+    this.publishPlaylistChanged(RepositoryInvalidationReason.PLAYLIST_ORDER_CHANGED, playlistId);
   }
 
-  markPlaylistPlayed(playlistId: number, playedAt: number = Date.now()): Promise<void> {
+  async markPlaylistPlayed(playlistId: number, playedAt: number = Date.now()): Promise<void> {
     if (DemoLibraryMode.isEnabled()) {
-      return Promise.resolve();
+      return;
     }
-    return this.playlists.markPlayed(playlistId, playedAt);
+    await this.playlists.markPlayed(playlistId, playedAt);
+    this.invalidations.publish(
+      [RepositoryProjection.PLAYLIST_SUMMARIES],
+      RepositoryInvalidationReason.PLAYLIST_PLAYED
+    );
   }
 
   getPlaylistDetail(
@@ -425,65 +515,97 @@ export class MusicRepository {
     return this.playlists.getPlaylistTransferTracks(playlistId);
   }
 
-  addPlaylistItems(
+  async addPlaylistItems(
     playlistId: number,
     items: Array<PlaylistItemInput>
   ): Promise<PlaylistMutationResult> {
     if (DemoLibraryMode.isEnabled()) {
       const result: PlaylistMutationResult =
         { requested: items.length, inserted: 0, alreadyPresent: 0, unavailable: 0 };
-      return Promise.resolve(result);
+      return result;
     }
-    return this.playlists.addItems(playlistId, items);
+    const result = await this.playlists.addItems(playlistId, items);
+    if (result.inserted > 0) {
+      this.publishPlaylistChanged(RepositoryInvalidationReason.PLAYLIST_ITEMS_CHANGED, playlistId);
+    }
+    return result;
   }
 
-  mergePlaylistItems(
+  async mergePlaylistItems(
     playlistId: number,
     items: Array<PlaylistItemInput>
   ): Promise<PlaylistMutationResult> {
     if (DemoLibraryMode.isEnabled()) {
       const result: PlaylistMutationResult =
         { requested: items.length, inserted: 0, alreadyPresent: 0, unavailable: 0 };
-      return Promise.resolve(result);
+      return result;
     }
-    return this.playlists.mergeItems(playlistId, items);
+    const result = await this.playlists.mergeItems(playlistId, items);
+    if (result.inserted > 0) {
+      this.publishPlaylistChanged(RepositoryInvalidationReason.PLAYLIST_ITEMS_CHANGED, playlistId);
+    }
+    return result;
   }
 
-  replacePlaylistItems(
+  async replacePlaylistItems(
     playlistId: number,
     items: Array<PlaylistItemInput>
   ): Promise<PlaylistMutationResult> {
     if (DemoLibraryMode.isEnabled()) {
       const result: PlaylistMutationResult =
         { requested: items.length, inserted: 0, alreadyPresent: 0, unavailable: 0 };
-      return Promise.resolve(result);
+      return result;
     }
-    return this.playlists.replaceItems(playlistId, items);
+    const result = await this.playlists.replaceItems(playlistId, items);
+    this.publishPlaylistChanged(RepositoryInvalidationReason.PLAYLIST_ITEMS_CHANGED, playlistId);
+    return result;
   }
 
-  removePlaylistItems(playlistId: number, trackIds: Array<number>): Promise<number> {
+  async removePlaylistItems(playlistId: number, trackIds: Array<number>): Promise<number> {
     if (DemoLibraryMode.isEnabled()) {
-      return Promise.resolve(0);
+      return 0;
     }
-    return this.playlists.removeItems(playlistId, trackIds);
+    const removed = await this.playlists.removeItems(playlistId, trackIds);
+    if (removed > 0) {
+      this.publishPlaylistChanged(RepositoryInvalidationReason.PLAYLIST_ITEMS_CHANGED, playlistId);
+    }
+    return removed;
   }
 
-  reorderPlaylistItems(playlistId: number, reorderedTrackIds: Array<number>): Promise<void> {
+  async reorderPlaylistItems(playlistId: number, reorderedTrackIds: Array<number>): Promise<void> {
     if (DemoLibraryMode.isEnabled()) {
-      return Promise.resolve();
+      return;
     }
-    return this.playlists.reorderItems(playlistId, reorderedTrackIds);
+    await this.playlists.reorderItems(playlistId, reorderedTrackIds);
+    this.publishPlaylistChanged(RepositoryInvalidationReason.PLAYLIST_ORDER_CHANGED, playlistId);
   }
 
-  recordCompletedPlayback(
+  async recordCompletedPlayback(
     trackId: number,
     completedAt: number = Date.now(),
     collectInPlaylist: boolean = true
   ): Promise<void> {
     if (DemoLibraryMode.isEnabled()) {
-      return Promise.resolve();
+      return;
     }
-    return this.playlists.recordCompletedPlayback(trackId, completedAt, collectInPlaylist);
+    const completedPlaylistId = await this.playlists.recordCompletedPlayback(
+      trackId,
+      completedAt,
+      collectInPlaylist
+    );
+    const projections = completedPlaylistId === undefined ?
+      [RepositoryProjection.PLAYLIST_PLAYBACK_ORDER] :
+      [
+        RepositoryProjection.PLAYLIST_SUMMARIES,
+        RepositoryProjection.PLAYLIST_DETAILS,
+        RepositoryProjection.PLAYLIST_PLAYBACK_ORDER
+      ];
+    this.invalidations.publish(
+      projections,
+      RepositoryInvalidationReason.PLAYBACK_COMPLETED,
+      completedPlaylistId === undefined ? PlaylistDetailTarget.NONE : PlaylistDetailTarget.IDS,
+      completedPlaylistId === undefined ? [] : [completedPlaylistId]
+    );
   }
 
   hasUri(uri: string): Promise<boolean> {
@@ -534,8 +656,11 @@ export class MusicRepository {
     return this.queries.getPaletteRefreshAssets();
   }
 
-  updateArtworkPalettes(updates: Array<ArtworkPaletteUpdate>): Promise<void> {
-    return this.database.enqueueWrite(async (transaction: relationalStore.Transaction) => {
+  async updateArtworkPalettes(updates: Array<ArtworkPaletteUpdate>): Promise<void> {
+    if (updates.length === 0) {
+      return;
+    }
+    await this.database.enqueueWrite(async (transaction: relationalStore.Transaction) => {
       for (let index = 0; index < updates.length; index += 1) {
         const update = updates[index];
         await transaction.execute(
@@ -546,6 +671,7 @@ export class MusicRepository {
         );
       }
     });
+    this.notifyContentChanged(RepositoryContentChangeKind.ARTWORK);
   }
 
   removeUnreferencedArtwork(assetId: number): Promise<void> {
@@ -588,5 +714,39 @@ export class MusicRepository {
 
   deferArtwork(trackId: number, fileSize: number, modifiedAt: number): Promise<void> {
     return this.importer.deferArtwork(trackId, fileSize, modifiedAt);
+  }
+
+  private publishAvailabilityChanged(): void {
+    this.invalidations.publish(
+      [
+        RepositoryProjection.LIBRARY_SUMMARY,
+        RepositoryProjection.LIBRARY_TRACKS,
+        RepositoryProjection.LIBRARY_ALBUMS,
+        RepositoryProjection.UNAVAILABLE_TRACKS,
+        RepositoryProjection.PLAYLIST_DETAILS
+      ],
+      RepositoryInvalidationReason.TRACK_AVAILABILITY_CHANGED,
+      PlaylistDetailTarget.ALL
+    );
+  }
+
+  private publishPlaylistChanged(reason: RepositoryInvalidationReason, playlistId: number): void {
+    this.invalidations.publish(
+      [RepositoryProjection.PLAYLIST_SUMMARIES, RepositoryProjection.PLAYLIST_DETAILS],
+      reason,
+      PlaylistDetailTarget.IDS,
+      [playlistId]
+    );
+  }
+
+  private static allLibraryAndPlaylistProjections(): Array<RepositoryProjection> {
+    return [
+      RepositoryProjection.LIBRARY_SUMMARY,
+      RepositoryProjection.LIBRARY_TRACKS,
+      RepositoryProjection.LIBRARY_ALBUMS,
+      RepositoryProjection.UNAVAILABLE_TRACKS,
+      RepositoryProjection.PLAYLIST_SUMMARIES,
+      RepositoryProjection.PLAYLIST_DETAILS
+    ];
   }
 }

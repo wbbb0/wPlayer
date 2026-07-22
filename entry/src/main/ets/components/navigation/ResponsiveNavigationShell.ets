@@ -534,11 +534,11 @@ export struct ResponsiveNavigationShell {
     const importContext = await this.playlistTransferService.createImportContext();
     for (let index = 0; index < sources.length; index += 1) {
       const source = sources[index];
-      await this.playlistStore.refresh();
+      await this.playlistStore.synchronizeRepositoryChanges();
       const conflict = this.playlistTransferService.findNameConflict(source, this.playlistStore.playlists);
       if (conflict === undefined) {
         reports.push(await this.importPlaylistSourceAsNewForBatch(source, importContext));
-        await this.playlistStore.refresh();
+        await this.playlistStore.synchronizeCommittedRepositoryChanges();
         continue;
       }
       const action = await this.choosePlaylistNameConflictAction(source, conflict);
@@ -551,7 +551,7 @@ export struct ResponsiveNavigationShell {
         const mode = action === M3uImportNameConflictAction.REPLACE ? M3uImportMode.REPLACE : M3uImportMode.MERGE;
         reports.push(await this.importPlaylistSourceIntoForBatch(source, conflict.id, mode, importContext));
       }
-      await this.playlistStore.refresh();
+      await this.playlistStore.synchronizeCommittedRepositoryChanges();
     }
     this.hidePlaylistImportProgress();
     return reports;
@@ -836,8 +836,7 @@ export struct ResponsiveNavigationShell {
           return;
         }
         this.showPlaylistImportReport(report);
-        this.playlistStore.loadDetail(playlistId);
-        this.playlistStore.refresh();
+        this.playlistStore.synchronizeCommittedRepositoryChanges();
       }).catch((error: Object): void => {
         this.finishPlaylistImportWithError(error);
       }).finally((): void => {

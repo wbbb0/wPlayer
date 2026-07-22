@@ -451,10 +451,10 @@ export class PlaylistRepository {
     trackId: number,
     completedAt: number = Date.now(),
     collectInPlaylist: boolean = true
-  ): Promise<void> {
-    return this.database.enqueueWrite(async (transaction: relationalStore.Transaction) => {
+  ): Promise<number | undefined> {
+    return this.database.enqueueWrite(async (transaction: relationalStore.Transaction): Promise<number | undefined> => {
       if (!await this.trackExists(transaction, trackId)) {
-        return;
+        return undefined;
       }
       await transaction.execute(
         `INSERT OR IGNORE INTO track_playback_stats(
@@ -470,8 +470,10 @@ export class PlaylistRepository {
          WHERE track_id = ?`,
         [completedAt, completedAt, trackId]
       );
+      let completedPlaylistId: number | undefined;
       if (collectInPlaylist) {
         const playlistId = await this.ensureCompletedPlaylistInTransaction(transaction, completedAt);
+        completedPlaylistId = playlistId;
         const existing = await this.hasMember(transaction, playlistId, trackId);
         if (!existing) {
           const position = await this.nextPosition(transaction, playlistId);
@@ -500,6 +502,7 @@ export class PlaylistRepository {
           last_played_at = ?, updated_at = ? WHERE track_id = ?`,
         [completedAt, completedAt, trackId]
       );
+      return completedPlaylistId;
     });
   }
 

@@ -57,7 +57,6 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   private readonly outputReconnectPolicy: OutputReconnectPolicy = new OutputReconnectPolicy();
   private context?: common.UIAbilityContext;
   private settings?: SettingsRepository;
-  private libraryMutationListener?: () => void;
   private session?: PlaybackSession;
   private artworkCache?: ArtworkMemoryCache;
   private initializePromise?: Promise<void>;
@@ -443,10 +442,6 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       this.syncQueueSnapshot();
       this.clearRemovedQueuePlayback();
     }
-  }
-
-  setLibraryMutationListener(listener: () => void): void {
-    this.libraryMutationListener = listener;
   }
 
   async shutdown(): Promise<void> {
@@ -940,12 +935,10 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     state: AvailabilityState): Promise<void> {
     await this.repository.setTrackAvailability(trackId, state);
     if (!appSettings.autoRemoveUnavailableOnPlayback) {
-      this.libraryMutationListener?.();
       return;
     }
     await this.prepareForTrackRemoval([trackId]);
     await this.repository.removeTracks([trackId]);
-    this.libraryMutationListener?.();
   }
 
   private async loadCurrentHeroArtwork(track: QueueTrack, epoch: number): Promise<void> {

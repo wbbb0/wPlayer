@@ -24,6 +24,7 @@ import {
 } from '../metadata/MediaFileTasks';
 import { ImportConcurrencyPolicy } from './ImportConcurrencyPolicy';
 import { ImportPerformanceTrace } from './ImportPerformanceTrace';
+import { RepositoryContentChangeKind } from '../data/RepositoryInvalidation';
 import { DuplicatePolicy } from './DuplicatePolicy';
 import { ImportDetailPolicy } from './ImportDetailPolicy';
 import { ImportPreparationPolicy, PreparedItemState } from './ImportPreparationPolicy';
@@ -1590,6 +1591,8 @@ export class MediaImporter {
 
   private async notifyLibraryChanged(callback: ImportLibraryChangedCallback | undefined,
     phase: ImportRefreshPhase): Promise<void> {
+    this.repository.notifyContentChanged(phase === ImportRefreshPhase.METADATA ?
+      RepositoryContentChangeKind.METADATA : RepositoryContentChangeKind.ARTWORK);
     if (callback === undefined) {
       return;
     }

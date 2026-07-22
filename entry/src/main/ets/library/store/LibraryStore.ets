@@ -35,6 +35,11 @@ import { ImportDetailPolicy } from '../importer/ImportDetailPolicy';
 import { ArtworkPaletteUpdate, PaletteRefreshAsset } from '../data/MusicRepositoryTypes';
 import { DemoLibraryMode } from '../../demo/DemoLibraryMode';
 import { DemoMusicLibrary } from '../../demo/DemoMusicLibrary';
+import {
+  RepositoryInvalidation,
+  RepositoryInvalidationListener,
+  RepositoryProjection
+} from '../data/RepositoryInvalidation';
 
 const PALETTE_REFRESH_CONCURRENCY: number = 4;
 
@@ -166,27 +171,36 @@ export class LibraryStore {
   private refreshGeneration: number = 0;
   private trackSortGeneration: number = 0;
   private albumSortGeneration: number = 0;
+  private observingInvalidations: boolean = false;
+  private active: boolean = false;
+  private needsActivationRefresh: boolean = false;
+  private lastSeenInvalidationRevision: number = 0;
+  private pendingLibraryRefresh: boolean = false;
+  private pendingUnavailableRefresh: boolean = false;
+  private invalidationRefreshPromise?: Promise<void>;
+  private readonly invalidationListener: RepositoryInvalidationListener =
+    (invalidation: RepositoryInvalidation): void => {
+      this.lastSeenInvalidationRevision = invalidation.revision;
+      this.queueInvalidation(invalidation);
+    };
   private readonly trackNavigationCache: Map<number, TrackNavigationTargets> =
     new Map<number, TrackNavigationTargets>();
 
   constructor(repository?: MusicRepository, playbackBridge?: LibraryPlaybackBridge) {
     this.repository = repository === undefined ? new MusicRepository() : repository;
     this.playbackBridge = playbackBridge;
-    this.playbackBridge?.setLibraryMutationListener((): void => {
-      if (this.initialized) {
-        this.refresh().then((): Promise<void> => this.loadUnavailableTracks()).catch((error: Object): void => {
-          console.warn(`Unable to refresh after playback library change: ${LibraryStore.errorMessageOf(error)}`);
-        });
-      }
-    });
   }
 
   async initialize(context: common.UIAbilityContext, settings?: SettingsRepository): Promise<void> {
+    this.active = true;
     if (this.initialized) {
+      await this.reactivateIfNeeded();
       return;
     }
     if (this.initializePromise !== undefined) {
-      return this.initializePromise;
+      await this.initializePromise;
+      await this.reactivateIfNeeded();
+      return;
     }
     this.initializePromise = this.initializeInternal(context, settings);
     try {
@@ -210,8 +224,12 @@ export class LibraryStore {
       }
       this.importer = new MediaImporter(context, this.repository, this.artworkCache);
       await this.importer.cleanupArtworkStorage();
+      this.lastSeenInvalidationRevision = this.repository.currentInvalidationRevision();
       await this.refresh();
       this.initialized = true;
+      if (this.active && !this.needsActivationRefresh) {
+        await this.startObservingInvalidations();
+      }
     } catch (error) {
       this.errorMessage = LibraryStore.errorMessageOf(error);
     } finally {
@@ -316,7 +334,7 @@ export class LibraryStore {
       const result = await this.importer.selectAndImport((progress: ImportProgress) => {
         this.importProgress = progress;
       }, onStarted, undefined, async (phase: ImportRefreshPhase): Promise<void> => {
-        await this.refresh();
+        await this.synchronizeCommittedChanges();
         ImportPerformanceTrace.event('library_refresh_completed', 0, `phase=${phase}`);
       });
       this.lastImportResult = result;
@@ -393,12 +411,153 @@ export class LibraryStore {
     try {
       await this.playbackBridge?.prepareForLibraryClear();
       await this.importer.clearLibrary();
+      await this.synchronizeCommittedChanges();
       this.lastMessage = '音乐库已清空，原始音乐文件没有被删除';
-      await this.refresh();
     } catch (error) {
       this.errorMessage = LibraryStore.errorMessageOf(error);
     } finally {
       this.loading = false;
+    }
+  }
+
+  dispose(): void {
+    this.active = false;
+    this.needsActivationRefresh = true;
+    ++this.refreshGeneration;
+    ++this.trackSortGeneration;
+    ++this.albumSortGeneration;
+    this.pendingLibraryRefresh = false;
+    this.pendingUnavailableRefresh = false;
+    if (this.observingInvalidations) {
+      this.repository.removeInvalidationListener(this.invalidationListener);
+      this.observingInvalidations = false;
+    }
+  }
+
+  private startObservingInvalidations(): Promise<void> {
+    if (!this.active) {
+      return Promise.resolve();
+    }
+    if (!this.observingInvalidations) {
+      this.attachInvalidationListener();
+      const currentRevision = this.repository.currentInvalidationRevision();
+      if (currentRevision > this.lastSeenInvalidationRevision) {
+        this.lastSeenInvalidationRevision = currentRevision;
+        this.pendingLibraryRefresh = true;
+        this.pendingUnavailableRefresh = true;
+        return this.synchronizeInvalidations();
+      }
+    }
+    return Promise.resolve();
+  }
+
+  private attachInvalidationListener(): void {
+    if (!this.observingInvalidations) {
+      this.repository.addInvalidationListener(this.invalidationListener);
+      this.observingInvalidations = true;
+    }
+  }
+
+  private async reactivateIfNeeded(): Promise<void> {
+    if (!this.active || !this.initialized) {
+      return;
+    }
+    if (this.needsActivationRefresh) {
+      const baselineRevision = this.repository.currentInvalidationRevision();
+      try {
+        await this.refresh();
+        await this.loadUnavailableTracks();
+      } catch (error) {
+        if (this.active) {
+          this.pendingLibraryRefresh = true;
+          this.pendingUnavailableRefresh = true;
+          this.attachInvalidationListener();
+        }
+        throw new Error(LibraryStore.errorMessageOf(error));
+      }
+      if (!this.active) {
+        return;
+      }
+      this.lastSeenInvalidationRevision = baselineRevision;
+      this.needsActivationRefresh = false;
+    }
+    await this.startObservingInvalidations();
+  }
+
+  private queueInvalidation(invalidation: RepositoryInvalidation): void {
+    if (!this.active || !this.initialized) {
+      return;
+    }
+    if (invalidation.hasProjection(RepositoryProjection.LIBRARY_SUMMARY) ||
+      invalidation.hasProjection(RepositoryProjection.LIBRARY_TRACKS) ||
+      invalidation.hasProjection(RepositoryProjection.LIBRARY_ALBUMS)) {
+      this.pendingLibraryRefresh = true;
+    }
+    if (invalidation.hasProjection(RepositoryProjection.UNAVAILABLE_TRACKS)) {
+      this.pendingUnavailableRefresh = true;
+    }
+    if (!this.pendingLibraryRefresh && !this.pendingUnavailableRefresh) {
+      return;
+    }
+    this.synchronizeInvalidations().catch((error: Object): void => {
+      console.warn(`Unable to refresh invalidated library data: ${LibraryStore.errorMessageOf(error)}`);
+    });
+  }
+
+  private synchronizeInvalidations(): Promise<void> {
+    if (this.invalidationRefreshPromise !== undefined) {
+      return this.invalidationRefreshPromise;
+    }
+    const running = this.drainInvalidations();
+    this.invalidationRefreshPromise = running;
+    const completeSuccess = (): void => {
+      if (this.invalidationRefreshPromise === running) {
+        this.invalidationRefreshPromise = undefined;
+      }
+      if (this.pendingLibraryRefresh || this.pendingUnavailableRefresh) {
+        this.synchronizeInvalidations().catch((error: Object): void => {
+          console.warn(`Unable to continue invalidated library refresh: ${LibraryStore.errorMessageOf(error)}`);
+        });
+      }
+    };
+    const completeFailure = (): void => {
+      if (this.invalidationRefreshPromise === running) {
+        this.invalidationRefreshPromise = undefined;
+      }
+    };
+    running.then(completeSuccess, completeFailure);
+    return running;
+  }
+
+  private async synchronizeCommittedChanges(): Promise<void> {
+    try {
+      await this.synchronizeInvalidations();
+    } catch (error) {
+      this.errorMessage = LibraryStore.errorMessageOf(error);
+      console.warn(`Library change committed but projection refresh is pending: ${this.errorMessage}`);
+    }
+  }
+
+  private async drainInvalidations(): Promise<void> {
+    while (this.pendingLibraryRefresh || this.pendingUnavailableRefresh) {
+      const refreshLibrary = this.pendingLibraryRefresh;
+      const refreshUnavailable = this.pendingUnavailableRefresh;
+      this.pendingLibraryRefresh = false;
+      this.pendingUnavailableRefresh = false;
+      try {
+        if (refreshLibrary) {
+          await this.refresh();
+        }
+        if (refreshUnavailable) {
+          await this.loadUnavailableTracks();
+        }
+      } catch (error) {
+        if (this.active) {
+          this.pendingLibraryRefresh = this.pendingLibraryRefresh || refreshLibrary;
+          this.pendingUnavailableRefresh = this.pendingUnavailableRefresh || refreshUnavailable;
+        }
+        throw new Error(LibraryStore.errorMessageOf(error));
+      }
     }
   }
 
@@ -417,10 +576,9 @@ export class LibraryStore {
           this.fileCheckProgress = progress;
         },
         async (_phase: ImportRefreshPhase): Promise<void> => {
-          await this.refresh();
+          await this.synchronizeCommittedChanges();
         }
       );
-      await this.loadUnavailableTracks();
       this.fileCheckItems = result.items;
       this.fileCheckResult = `已检查 ${result.checked} 首，更新 ${result.updated} 首，` +
         `恢复 ${result.recovered} 首，重建封面 ${result.artworkRebuilt} 首，` +
@@ -439,7 +597,10 @@ export class LibraryStore {
   }
 
   async loadUnavailableTracks(): Promise<void> {
-    this.unavailableTracks = await this.repository.getUnavailableTracks();
+    const tracks = await this.repository.getUnavailableTracks();
+    if (this.active) {
+      this.unavailableTracks = tracks;
+    }
   }
 
   async removeUnavailableTracks(trackIds: Array<number>): Promise<void> {
@@ -451,8 +612,7 @@ export class LibraryStore {
     try {
       await this.playbackBridge?.prepareForTrackRemoval(trackIds);
       const removed = await this.repository.removeTracks(trackIds);
-      await this.refresh();
-      await this.loadUnavailableTracks();
+      await this.synchronizeCommittedChanges();
       this.lastMessage = `已从音乐库移除 ${removed} 首失效文件记录`;
     } catch (error) {
       this.errorMessage = LibraryStore.errorMessageOf(error);
@@ -478,7 +638,7 @@ export class LibraryStore {
     this.sortIndexError = '';
     try {
       await this.repository.rebuildSortIndexes();
-      await this.refresh();
+      await this.synchronizeCommittedChanges();
       this.lastMessage = '排序索引已根据音乐库元数据重建';
       this.sortIndexResult = this.lastMessage;
     } catch (error) {
@@ -515,7 +675,7 @@ export class LibraryStore {
         await this.repository.updateArtworkPalettes(updates);
         await this.playbackBridge?.refreshCurrentTrackPalette();
       }
-      await this.refresh();
+      await this.synchronizeCommittedChanges();
       this.paletteRefreshResult = `已刷新 ${updates.length} 张封面` +
         (cursor.failed > 0 ? `，失败 ${cursor.failed} 张` : '');
       this.lastMessage = this.paletteRefreshResult;

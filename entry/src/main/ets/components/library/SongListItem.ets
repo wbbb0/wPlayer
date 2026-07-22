@@ -66,6 +66,8 @@ export struct SongListItem {
   @Prop rowCornerRadius: number = 0;
   @Prop artworkSize: number = 52;
   @Prop artworkCornerRadius: number = 10;
+  @Prop artworkPlaceholderBackgroundOnly: boolean = false;
+  @Prop artworkPlaceholderBackgroundColor: ResourceColor = $r('app.color.glass_surface_subtle');
   @Prop leadingSymbol: Resource | undefined = undefined;
   @Prop leadingSymbolSize: number = 28;
   @Prop leadingSymbolColor: ResourceColor = $r('app.color.theme_accent');
@@ -212,6 +214,10 @@ export struct SongListItem {
       (this.actionTrack !== undefined && this.libraryStore !== undefined));
   }
 
+  private usesArtworkBackgroundPlaceholder(): boolean {
+    return this.artworkPlaceholderBackgroundOnly && this.artworkPath.length === 0;
+  }
+
   @Builder
   private QueuePosition() {
     Stack({ alignContent: Alignment.Center }) {
@@ -264,6 +270,12 @@ export struct SongListItem {
         .height(this.artworkSize)
         .borderRadius(this.artworkCornerRadius)
         .backgroundColor(this.leadingSymbolBackgroundColor)
+      } else if (this.usesArtworkBackgroundPlaceholder()) {
+        Stack()
+          .width(this.artworkSize)
+          .height(this.artworkSize)
+          .borderRadius(this.artworkCornerRadius)
+          .backgroundColor(this.artworkPlaceholderBackgroundColor)
       } else {
         ArtworkView({
           sourcePath: this.artworkPath,

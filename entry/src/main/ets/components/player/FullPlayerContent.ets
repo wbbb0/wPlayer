@@ -159,6 +159,8 @@ export struct FullPlayerContent {
   @Prop rootFrame: PlayerFrame = { x: 0, y: 0, width: 0, height: 0 };
   @Prop pagePosition: number = FullPlayerPage.COVER;
   @Prop paneCount: number = 1;
+  @Prop activePage: FullPlayerPage = FullPlayerPage.COVER;
+  @Prop sideContentReady: boolean = true;
   @Prop primaryContentColor: string = '';
   @Prop previousArtworkTarget: PlayerPoint = {
     x: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_X,
@@ -345,6 +347,37 @@ export struct FullPlayerContent {
     return currentPosition === FullPlayerPagerSpec.positionForPage(page, this.paneCount);
   }
 
+  private isPageInActiveViewport(page: FullPlayerPage): boolean {
+    if (this.paneCount > 1) {
+      const startPosition = FullPlayerPagerSpec.positionForPage(this.activePage, this.paneCount);
+      return page >= startPosition && page < startPosition + this.paneCount;
+    }
+    return page === this.activePage;
+  }
+
+  private shouldRenderPage(page: FullPlayerPage): boolean {
+    return this.sideContentReady || this.isPageInActiveViewport(page);
+  }
+
+  private queueArtworkPath(relativePath: string): string {
+    if (!this.shouldLoadQueueArtwork()) {
+      return '';
+    }
+    return this.onResolveQueueArtwork(relativePath);
+  }
+
+  private shouldLoadQueueArtwork(): boolean {
+    return this.sideContentReady && this.isPageInActiveViewport(FullPlayerPage.QUEUE);
+  }
+
+  private queueCachedCount(): number {
+    return this.shouldLoadQueueArtwork() ? PageLayoutSpec.PLAYER_QUEUE_CACHE_COUNT : 0;
+  }
+
+  private queueArtworkPlaceholderOnly(): boolean {
+    return !this.shouldLoadQueueArtwork();
+  }
+
   aboutToAppear(): void {
     if (!this.measuresArtworkTarget) {
       this.playerStore.addQueueIndexListener(this.queueIndexListener);
@@ -368,9 +401,14 @@ export struct FullPlayerContent {
     if (this.measuresArtworkTarget) {
       return;
     }
-    if (this.playerStore.queueCurrentIndex >= 0 &&
+    if (this.sideContentReady &&
+      this.shouldRenderPage(FullPlayerPage.QUEUE) &&
+      this.playerStore.queueCurrentIndex >= 0 &&
       this.lastFocusedQueueIndex !== this.playerStore.queueCurrentIndex) {
       this.focusQueueIndex(this.playerStore.queueCurrentIndex, false);
+    }
+    if (!this.shouldRenderPage(FullPlayerPage.LYRICS)) {
+      return;
     }
     const lyricIndex = this.playerStore.activeLyricIndex;
     if (this.playerStore.timedLyrics.length === 0) {
@@ -398,9 +436,17 @@ export struct FullPlayerContent {
   private Header() {
     Stack({ alignContent: Alignment.TopStart }) {
       Row({ space: 0 }) {
-        this.QueueHeader()
+        if (this.shouldRenderPage(FullPlayerPage.QUEUE)) {
+          this.QueueHeader()
+        } else {
+          Stack().width(this.pageWidth()).height(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE)
+        }
         Stack().width(this.pageWidth()).height(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE)
-        this.LyricsHeader()
+        if (this.shouldRenderPage(FullPlayerPage.LYRICS)) {
+          this.LyricsHeader()
+        } else {
+          Stack().width(this.pageWidth()).height(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE)
+        }
       }
       .width(this.pageWidth() * FullPlayerPagerSpec.PAGE_COUNT)
       .height(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE)
@@ -588,7 +634,9 @@ export struct FullPlayerContent {
                     item: entry.track,
                     libraryStore: this.libraryStore,
                     layout: SongListItemLayout.PLAYER_QUEUE,
-                    artworkPath: this.onResolveQueueArtwork(entry.track.smallArtworkPath),
+                    artworkPath: this.queueArtworkPath(entry.track.smallArtworkPath),
+                    artworkPlaceholderBackgroundOnly: this.queueArtworkPlaceholderOnly(),
+                    artworkPlaceholderBackgroundColor: $r('app.color.glass_surface_subtle'),
                     queueIndex: index,
                     currentQueueIndex: this.playerStore.queueCurrentIndex,
                     primaryColor: this.playerStore.themeOnPrimary(),
@@ -636,7 +684,7 @@ export struct FullPlayerContent {
         .layoutWeight(1)
         .width('100%')
         .edgeEffect(EdgeEffect.Spring)
-        .cachedCount(PageLayoutSpec.PLAYER_QUEUE_CACHE_COUNT, true)
+        .cachedCount(this.queueCachedCount(), true)
         .scrollBar(BarState.Auto)
         .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) => {
           recognizers.forEach((recognizer: GestureRecognizer) => {
@@ -908,9 +956,17 @@ export struct FullPlayerContent {
   private PlayerPages() {
     Stack({ alignContent: Alignment.TopStart }) {
       Row({ space: 0 }) {
-        this.QueuePage()
+        if (this.shouldRenderPage(FullPlayerPage.QUEUE)) {
+          this.QueuePage()
+        } else {
+          Stack().width(this.pageWidth()).height('100%')
+        }
         this.CoverPage()
-        this.LyricsPage()
+        if (this.shouldRenderPage(FullPlayerPage.LYRICS)) {
+          this.LyricsPage()
+        } else {
+          Stack().width(this.pageWidth()).height('100%')
+        }
       }
       .width(this.pageWidth() * FullPlayerPagerSpec.PAGE_COUNT)
       .height('100%')

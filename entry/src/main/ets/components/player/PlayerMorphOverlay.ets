@@ -63,6 +63,8 @@ export struct PlayerMorphOverlay {
             rootFrame: this.controller.fullPlayerFrame(),
             pagePosition: this.controller.fullPlayerPagePosition,
             paneCount: this.controller.renderedFullPlayerPaneCount(),
+            activePage: this.controller.fullPlayerPage,
+            sideContentReady: this.controller.shouldRenderFullPlayerSideContent(),
             primaryContentColor: this.primaryContentColor,
             previousArtworkTarget: this.controller.artworkTarget,
             previousCenteredArtworkTarget: this.controller.centeredArtworkTarget,
@@ -192,16 +194,7 @@ export struct PlayerMorphOverlay {
     }
     .width('100%')
     .height('100%')
-    .opacity(this.controller.playerMorphPhase === PlayerMorphPhase.PREPARING ? 0 : 1)
-    .hitTestBehavior(this.controller.playerMorphPhase === PlayerMorphPhase.PREPARING ?
-      HitTestMode.None : HitTestMode.Default)
     .id(FULL_PLAYER_VERTICAL_GESTURE_HOST_ID)
-    .onAreaChange((_oldValue: Area, _newValue: Area) => {
-      this.controller.notifyMorphOverlayReady(
-        Number(_newValue.width),
-        Number(_newValue.height)
-      );
-    })
     .parallelGesture(
       PanGesture({
         direction: PanDirection.Vertical,

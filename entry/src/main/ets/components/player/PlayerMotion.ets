@@ -18,7 +18,6 @@ export enum PlayerGestureAxis {
 
 export enum PlayerMorphPhase {
   IDLE,
-  PREPARING,
   OPEN_DRAGGING,
   CLOSE_DRAGGING,
   OPENING,
@@ -34,15 +33,16 @@ export enum FullPlayerPage {
 }
 
 export class MiniPlayerClickSuppressor {
-  private suppressNextClick: boolean = false;
+  private suppressClickUntil: number = 0;
+  private static readonly SUPPRESS_CLICK_AFTER_PAN_MS: number = 180;
 
   markPanRecognized(): void {
-    this.suppressNextClick = true;
+    this.suppressClickUntil = Date.now() + MiniPlayerClickSuppressor.SUPPRESS_CLICK_AFTER_PAN_MS;
   }
 
   consumeClickSuppression(): boolean {
-    const suppress = this.suppressNextClick;
-    this.suppressNextClick = false;
+    const suppress = Date.now() <= this.suppressClickUntil;
+    this.suppressClickUntil = 0;
     return suppress;
   }
 }

@@ -302,7 +302,7 @@ export class PlaylistRepository {
     let resultSet: relationalStore.ResultSet | undefined;
     try {
       resultSet = await this.database.getStore().querySql(
-        `SELECT t.id, f.uri, f.display_name, t.title, t.artist_display, t.duration_ms,
+        `SELECT t.id, f.uri, f.display_name, t.title, t.artist_display, t.album_display, t.duration_ms,
         0, COALESCE(ps.last_completed_at, 0)
        FROM track t
        JOIN media_file f ON f.id = t.media_file_id
@@ -326,7 +326,7 @@ export class PlaylistRepository {
     let resultSet: relationalStore.ResultSet | undefined;
     try {
       resultSet = await this.database.getStore().querySql(
-        `SELECT t.id, f.uri, f.display_name, t.title, t.artist_display, t.duration_ms,
+        `SELECT t.id, f.uri, f.display_name, t.title, t.artist_display, t.album_display, t.duration_ms,
         pi.first_qualified_at, pi.last_qualified_at
        FROM playlist_item pi
        JOIN track t ON t.id = pi.track_id
@@ -355,9 +355,10 @@ export class PlaylistRepository {
           displayName: resultSet.getString(2),
           title: resultSet.getString(3),
           artistDisplay: resultSet.getString(4),
-          durationMs: resultSet.getLong(5),
-          firstQualifiedAt: resultSet.getLong(6),
-          lastQualifiedAt: resultSet.getLong(7)
+          albumDisplay: resultSet.getString(5),
+          durationMs: resultSet.getLong(6),
+          firstQualifiedAt: resultSet.getLong(7),
+          lastQualifiedAt: resultSet.getLong(8)
         });
       }
     } catch (error) {

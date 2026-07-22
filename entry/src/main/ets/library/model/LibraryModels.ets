@@ -323,6 +323,7 @@ export interface PlaylistTransferTrack {
   displayName: string;
   title: string;
   artistDisplay: string;
+  albumDisplay: string;
   durationMs: number;
   firstQualifiedAt: number;
   lastQualifiedAt: number;

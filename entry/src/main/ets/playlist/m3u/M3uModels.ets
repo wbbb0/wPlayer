@@ -18,6 +18,7 @@ export interface M3uEntry {
   displayTitle: string | null;
   artist: string | null;
   title: string | null;
+  album: string | null;
   firstCompletedAt: number | null;
   lastCompletedAt: number | null;
   duplicateOfIndex: number | null;
@@ -49,6 +50,7 @@ export interface M3uExportEntry {
   displayTitle?: string | null;
   artist?: string | null;
   title?: string | null;
+  album?: string | null;
   firstCompletedAt?: number | null;
   lastCompletedAt?: number | null;
 }

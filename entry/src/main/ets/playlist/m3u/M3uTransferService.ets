@@ -67,6 +67,14 @@ export class M3uImportReport {
 
 export type M3uImportProgressListener = (stage: M3uImportStage) => void;
 
+export class M3uImportContext {
+  readonly matcher: M3uImportMatcher;
+
+  constructor(matcher: M3uImportMatcher) {
+    this.matcher = matcher;
+  }
+}
+
 export class M3uTransferService {
   private readonly repository: MusicRepository;
 
@@ -110,13 +118,13 @@ export class M3uTransferService {
   }
 
   async importSourceAsNew(source: M3uImportSource,
-    onProgress?: M3uImportProgressListener): Promise<M3uImportReport> {
+    onProgress?: M3uImportProgressListener, importContext?: M3uImportContext): Promise<M3uImportReport> {
     const playlists = await this.repository.getPlaylists(PlaylistSortField.NAME, SortDirection.ASCENDING);
     const baseName = source.suggestedName;
     const uniqueName = this.uniquePlaylistName(baseName, playlists);
     const playlist = await this.repository.createPlaylist(uniqueName);
     try {
-      return await this.importSource(source, playlist.id, M3uImportMode.MERGE, onProgress);
+      return await this.importSource(source, playlist.id, M3uImportMode.MERGE, onProgress, importContext);
     } catch (error) {
       try {
         await this.repository.deletePlaylist(playlist.id);
@@ -130,8 +138,8 @@ export class M3uTransferService {
   }
 
   async importSource(source: M3uImportSource, playlistId: number, mode: M3uImportMode,
-    onProgress?: M3uImportProgressListener): Promise<M3uImportReport> {
-    const report = await this.importUri(source.uri, playlistId, mode, onProgress);
+    onProgress?: M3uImportProgressListener, importContext?: M3uImportContext): Promise<M3uImportReport> {
+    const report = await this.importUri(source.uri, playlistId, mode, onProgress, importContext);
     const playlists = await this.repository.getPlaylists(PlaylistSortField.NAME, SortDirection.ASCENDING);
     for (let index = 0; index < playlists.length; index += 1) {
       if (playlists[index].id === playlistId) {
@@ -140,6 +148,11 @@ export class M3uTransferService {
       }
     }
     return report;
+  }
+
+  async createImportContext(): Promise<M3uImportContext> {
+    const catalog = await this.repository.getPlaylistTransferCatalog();
+    return new M3uImportContext(new M3uImportMatcher(catalog));
   }
 
   findNameConflict(source: M3uImportSource, playlists: Array<PlaylistSummary>): PlaylistSummary | undefined {
@@ -161,6 +174,7 @@ export class M3uTransferService {
         durationSeconds: Math.round(track.durationMs / 1000),
         artist: track.artistDisplay,
         title: track.title,
+        album: track.albumDisplay,
         firstCompletedAt: track.firstQualifiedAt > 0 ? track.firstQualifiedAt : null,
         lastCompletedAt: track.lastQualifiedAt > 0 ? track.lastQualifiedAt : null
       });
@@ -197,12 +211,11 @@ export class M3uTransferService {
   }
 
   private async importUri(uri: string, playlistId: number, mode: M3uImportMode,
-    onProgress?: M3uImportProgressListener): Promise<M3uImportReport> {
+    onProgress?: M3uImportProgressListener, importContext?: M3uImportContext): Promise<M3uImportReport> {
     onProgress?.(M3uImportStage.READING);
     const parsed = M3uCodec.parse(await this.readText(uri));
     onProgress?.(M3uImportStage.MATCHING);
-    const catalog = await this.repository.getPlaylistTransferCatalog();
-    const matcher = new M3uImportMatcher(catalog);
+    const matcher = importContext?.matcher ?? (await this.createImportContext()).matcher;
     const inputs: Array<PlaylistItemInput> = [];
     const matchedDetails: Array<M3uImportDetail> = [];
     const unmatchedDetails: Array<M3uImportDetail> = [];

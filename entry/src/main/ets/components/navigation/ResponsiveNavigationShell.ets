@@ -92,6 +92,7 @@ import {
 } from './LibraryNavigation';
 import {
   M3uImportNameConflictAction,
+  M3uImportContext,
   M3uImportDetail,
   M3uImportMode,
   M3uImportStage,
@@ -526,13 +527,17 @@ export struct ResponsiveNavigationShell {
     context: common.UIAbilityContext
   ): Promise<Array<M3uImportReport>> {
     const sources = await this.playlistTransferService.selectImportSources(context);
+    if (sources.length === 0) {
+      return [];
+    }
     const reports: Array<M3uImportReport> = [];
+    const importContext = await this.playlistTransferService.createImportContext();
     for (let index = 0; index < sources.length; index += 1) {
       const source = sources[index];
       await this.playlistStore.refresh();
       const conflict = this.playlistTransferService.findNameConflict(source, this.playlistStore.playlists);
       if (conflict === undefined) {
-        reports.push(await this.importPlaylistSourceAsNewForBatch(source));
+        reports.push(await this.importPlaylistSourceAsNewForBatch(source, importContext));
         await this.playlistStore.refresh();
         continue;
       }
@@ -541,10 +546,10 @@ export struct ResponsiveNavigationShell {
         continue;
       }
       if (action === M3uImportNameConflictAction.SAVE_AS_NEW) {
-        reports.push(await this.importPlaylistSourceAsNewForBatch(source));
+        reports.push(await this.importPlaylistSourceAsNewForBatch(source, importContext));
       } else {
         const mode = action === M3uImportNameConflictAction.REPLACE ? M3uImportMode.REPLACE : M3uImportMode.MERGE;
-        reports.push(await this.importPlaylistSourceIntoForBatch(source, conflict.id, mode));
+        reports.push(await this.importPlaylistSourceIntoForBatch(source, conflict.id, mode, importContext));
       }
       await this.playlistStore.refresh();
     }
@@ -552,11 +557,15 @@ export struct ResponsiveNavigationShell {
     return reports;
   }
 
-  private importPlaylistSourceAsNewForBatch(source: M3uImportSource): Promise<M3uImportReport> {
+  private importPlaylistSourceAsNewForBatch(
+    source: M3uImportSource,
+    importContext: M3uImportContext
+  ): Promise<M3uImportReport> {
     this.playlistImportSourceName = source.suggestedName;
     return this.playlistTransferService.importSourceAsNew(
       source,
-      (stage: M3uImportStage): void => this.showPlaylistImportProgress(stage)
+      (stage: M3uImportStage): void => this.showPlaylistImportProgress(stage),
+      importContext
     );
   }
 
@@ -839,14 +848,16 @@ export struct ResponsiveNavigationShell {
   private importPlaylistSourceIntoForBatch(
     source: M3uImportSource,
     playlistId: number,
-    mode: M3uImportMode
+    mode: M3uImportMode,
+    importContext: M3uImportContext
   ): Promise<M3uImportReport> {
     this.playlistImportSourceName = source.suggestedName;
     return this.playlistTransferService.importSource(
       source,
       playlistId,
       mode,
-      (stage: M3uImportStage): void => this.showPlaylistImportProgress(stage)
+      (stage: M3uImportStage): void => this.showPlaylistImportProgress(stage),
+      importContext
     );
   }
 

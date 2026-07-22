@@ -12,6 +12,7 @@ interface PendingMetadata {
   displayTitle: string | null;
   artist: string | null;
   title: string | null;
+  album: string | null;
   firstCompletedAt: number | null;
   lastCompletedAt: number | null;
 }
@@ -79,6 +80,10 @@ export class M3uCodec {
           }
           continue;
         }
+        if (upper.startsWith('#WPLAYER-ALBUM') || upper.startsWith('#EXTALB')) {
+          pending.album = M3uCodec.parseTextDirective(line);
+          continue;
+        }
         ignoredCommentCount += 1;
         continue;
       }
@@ -102,6 +107,7 @@ export class M3uCodec {
         displayTitle: pending.displayTitle,
         artist: pending.artist,
         title: pending.title,
+        album: pending.album,
         firstCompletedAt: pending.firstCompletedAt,
         lastCompletedAt: pending.lastCompletedAt,
         duplicateOfIndex: duplicateOf,
@@ -134,6 +140,10 @@ export class M3uCodec {
       }
       if (lastCompletedAt !== null) {
         lines.push(`#WPLAYER-LAST-COMPLETED-AT:${M3uCodec.formatTimestamp(lastCompletedAt)}`);
+      }
+      const album = M3uCodec.cleanDisplayText(entry.album ?? '');
+      if (album.length > 0) {
+        lines.push(`#WPLAYER-ALBUM:${album}`);
       }
       const duration = M3uCodec.formatDuration(entry.durationSeconds ?? null);
       const displayTitle = M3uCodec.exportDisplayTitle(entry);
@@ -211,6 +221,15 @@ export class M3uCodec {
     return { value: null, valid: false };
   }
 
+  private static parseTextDirective(line: string): string | null {
+    const colonIndex = line.indexOf(':');
+    if (colonIndex < 0) {
+      return null;
+    }
+    const value = line.substring(colonIndex + 1).trim();
+    return value.length > 0 ? value : null;
+  }
+
   private static parseResource(line: string): string {
     if (line.length >= 2) {
       const first = line.charAt(0);
@@ -238,6 +257,7 @@ export class M3uCodec {
       displayTitle: null,
       artist: null,
       title: null,
+      album: null,
       firstCompletedAt: null,
       lastCompletedAt: null
     };

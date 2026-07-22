@@ -27,6 +27,7 @@ export default function m3uCodecTest() {
         durationSeconds: 213,
         artist: '周杰伦',
         title: '轨迹',
+        album: '寻找周杰伦',
         firstCompletedAt: 1700000000123,
         lastCompletedAt: 1700009000456
       }]);
@@ -40,6 +41,7 @@ export default function m3uCodecTest() {
       expect(parsed.entries[0].resource).assertEqual('file://media/周杰伦/轨迹.m4a');
       expect(parsed.entries[0].artist).assertEqual('周杰伦');
       expect(parsed.entries[0].title).assertEqual('轨迹');
+      expect(parsed.entries[0].album).assertEqual('寻找周杰伦');
       expect(parsed.entries[0].durationSeconds).assertEqual(213);
       expect(parsed.entries[0].firstCompletedAt).assertEqual(1700000000123);
       expect(parsed.entries[0].lastCompletedAt).assertEqual(1700009000456);
@@ -84,6 +86,12 @@ export default function m3uCodecTest() {
       const parsed = M3uCodec.parse(source);
       expect(parsed.entries[0].firstCompletedAt).assertEqual(1700000000000);
       expect(parsed.entries[0].lastCompletedAt).assertEqual(Date.parse('2024-01-02T03:04:05.000Z'));
+    });
+
+    it('parses album directives before resource rows', 0, () => {
+      const parsed = M3uCodec.parse('#EXTM3U\n#EXTALB:Album A\nsong-a.mp3\n#WPLAYER-ALBUM:Album B\nsong-b.mp3');
+      expect(parsed.entries[0].album).assertEqual('Album A');
+      expect(parsed.entries[1].album).assertEqual('Album B');
     });
 
     it('preserves duplicate rows for upper policy and reports invalid resource rows', 0, () => {

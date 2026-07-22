@@ -18,6 +18,7 @@ export enum PlayerGestureAxis {
 
 export enum PlayerMorphPhase {
   IDLE,
+  PREPARING,
   OPEN_DRAGGING,
   CLOSE_DRAGGING,
   OPENING,

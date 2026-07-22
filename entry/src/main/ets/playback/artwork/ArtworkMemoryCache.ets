@@ -67,18 +67,6 @@ export class ArtworkMemoryCache {
     }
   }
 
-  retain(pixelMap?: image.PixelMap): void {
-    if (pixelMap !== undefined) {
-      this.leases.acquire(pixelMap);
-    }
-  }
-
-  releaseRetained(pixelMap?: image.PixelMap): void {
-    if (pixelMap !== undefined) {
-      this.leases.release(pixelMap);
-    }
-  }
-
   private getVariant(track: QueueTrack, variant: ArtworkSizeVariant): image.PixelMap | undefined {
     const key = ArtworkMemoryCache.keyOf(track, variant);
     const entry = this.entries.get(key);

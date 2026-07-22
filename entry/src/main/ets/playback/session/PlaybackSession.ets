@@ -1,7 +1,6 @@
 import { common, wantAgent } from '@kit.AbilityKit';
 import { avSession } from '@kit.AVSessionKit';
 import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
-import { image } from '@kit.ImageKit';
 import { PlaybackTrack, PlaybackTransportState, RepeatMode } from '../model/PlaybackModels';
 
 export interface PlaybackSessionCommands {
@@ -43,7 +42,7 @@ export class PlaybackSession {
     return this.initializePromise;
   }
 
-  updateMetadata(track: PlaybackTrack, artwork?: image.PixelMap | string, lyrics: string = ''): Promise<void> {
+  updateMetadata(track: PlaybackTrack, artworkUri: string = '', lyrics: string = ''): Promise<void> {
     if (this.metadataTrackId !== track.id) {
       this.metadataTrackId = track.id;
       this.metadataLyrics = '';
@@ -66,8 +65,8 @@ export class PlaybackSession {
         avQueueName: '所有音乐',
         avQueueId: 'library.all'
       };
-      if (artwork !== undefined && (typeof artwork !== 'string' || artwork.length > 0)) {
-        metadata.mediaImage = artwork;
+      if (artworkUri.length > 0) {
+        metadata.mediaImage = artworkUri;
       }
       if (this.metadataLyrics.length > 0 && this.metadataLyrics.length < 40960) {
         if (/\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\]/.test(this.metadataLyrics)) {

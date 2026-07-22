@@ -556,14 +556,6 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     }
   }
 
-  retainArtwork(pixelMap?: image.PixelMap): void {
-    this.artworkCache?.retain(pixelMap);
-  }
-
-  releaseArtwork(pixelMap?: image.PixelMap): void {
-    this.artworkCache?.releaseRetained(pixelMap);
-  }
-
   queueArtworkUri(relativePath: string): string {
     return this.resolveArtworkUri(relativePath);
   }
@@ -884,7 +876,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       }
       this.currentPlaybackTrack = track;
       this.playerStore.progress.durationMs = track.durationMs;
-      this.session?.updateMetadata(track, this.playerStore.heroArtworkUri);
+      this.session?.updateMetadata(track, this.sessionArtworkUri(track));
       if (!await ensureReadPermission(track.uri)) {
         await this.markUnavailableAndMaybeRemove(
           trackId,
@@ -985,7 +977,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
         this.playerStore.lyrics = lyrics;
         this.playerStore.setTimedLyrics(LyricsParser.parse(lyrics).lines);
         this.updateActiveLyricIndex(this.playerStore.progress.positionMs);
-        this.session?.updateMetadata(track, this.playerStore.heroArtworkUri, lyrics);
+        this.session?.updateMetadata(track, this.sessionArtworkUri(track), lyrics);
       }
     } catch (error) {
       if (epoch === this.artworkEpoch) {
@@ -1011,14 +1003,13 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       this.playerStore.heroArtwork = artwork.pixelMap;
       this.playerStore.heroArtworkPreferPixelMap = true;
       this.playerStore.heroArtworkRevision += 1;
-      try {
-        await this.session?.updateMetadata(track, artwork.pixelMap);
-      } catch (error) {
-        console.warn(`Unable to publish full artwork to AVSession: ${PlaybackRuntime.messageOf(error)}`);
-      }
     } catch (error) {
       console.warn(`Unable to load full artwork: ${PlaybackRuntime.messageOf(error)}`);
     }
+  }
+
+  private sessionArtworkUri(track: PlaybackTrack): string {
+    return this.resolveArtworkUri(track.largeArtworkPath);
   }
 
   private prefetchCurrentWindow(): void {

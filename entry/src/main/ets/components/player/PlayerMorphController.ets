@@ -1,7 +1,6 @@
 import { HdsBarStyle, HdsTabsController } from '@kit.UIDesignKit';
 import { curves } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { image } from '@kit.ImageKit';
 import { vibrator } from '@kit.SensorServiceKit';
 import { systemBarStyleController } from '../../appearance/SystemBarStyleController';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
@@ -35,9 +34,7 @@ export class PlayerMorphController {
   playerMorphBackgroundOpacity: number = 1;
   fullPlayerPage: FullPlayerPage = FullPlayerPage.COVER;
   fullPlayerPagePosition: number = FullPlayerPage.COVER;
-  frozenMorphArtwork: image.PixelMap | undefined = undefined;
   frozenMorphArtworkUri: string = '';
-  frozenMorphArtworkPreferPixelMap: boolean = false;
   frozenMorphArtworkWidth: number = 0;
   frozenMorphArtworkHeight: number = 0;
   morphArtworkSourceFrozen: boolean = false;
@@ -62,6 +59,7 @@ export class PlayerMorphController {
     y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y
   };
   private returnToExpandedMiniBar: boolean = false;
+  private preparedOpenAnimation: boolean = false;
   private fullPlayerGestureStartPosition: number = FullPlayerPage.COVER;
   private morphTransitionEpoch: number = 0;
   private lifecycleEpoch: number = 0;
@@ -128,6 +126,7 @@ export class PlayerMorphController {
     this.playerExpandProgress = 0;
     this.playerMorphBackgroundOpacity = 1;
     this.miniPlayerBinding.sourceVisible = true;
+    this.preparedOpenAnimation = false;
     this.releaseMorphArtworkSource();
     this.uiContext = undefined;
   }
@@ -267,43 +266,33 @@ export class PlayerMorphController {
 
   private freezeMorphArtworkSource(): void {
     this.releaseMorphArtworkSource();
-    this.frozenMorphArtwork = this.playerStore.heroArtwork;
-    this.frozenMorphArtworkUri = this.playerStore.heroArtworkUri;
-    this.frozenMorphArtworkPreferPixelMap = this.playerStore.heroArtworkPreferPixelMap;
-    this.frozenMorphArtworkWidth = this.playerStore.currentTrack?.artworkWidth ?? 0;
-    this.frozenMorphArtworkHeight = this.playerStore.currentTrack?.artworkHeight ?? 0;
+    const track = this.playerStore.currentTrack;
+    this.frozenMorphArtworkUri = track !== undefined ?
+      playbackRuntime.queueArtworkUri(track.largeArtworkPath) : '';
+    this.frozenMorphArtworkWidth = track?.artworkWidth ?? 0;
+    this.frozenMorphArtworkHeight = track?.artworkHeight ?? 0;
     this.morphArtworkSourceFrozen = true;
-    if (this.frozenMorphArtworkPreferPixelMap) {
-      playbackRuntime.retainArtwork(this.frozenMorphArtwork);
-    }
   }
 
   private releaseMorphArtworkSource(): void {
-    if (this.morphArtworkSourceFrozen && this.frozenMorphArtworkPreferPixelMap) {
-      playbackRuntime.releaseArtwork(this.frozenMorphArtwork);
-    }
     this.morphArtworkSourceFrozen = false;
-    this.frozenMorphArtwork = undefined;
     this.frozenMorphArtworkUri = '';
-    this.frozenMorphArtworkPreferPixelMap = false;
     this.frozenMorphArtworkWidth = 0;
     this.frozenMorphArtworkHeight = 0;
   }
 
-  morphArtworkSource(): image.PixelMap | ResourceStr {
+  morphArtworkSource(): ResourceStr {
     if (this.morphArtworkSourceFrozen) {
-      if (this.frozenMorphArtworkPreferPixelMap && this.frozenMorphArtwork !== undefined) {
-        return this.frozenMorphArtwork;
-      }
       if (this.frozenMorphArtworkUri.length > 0) {
         return this.frozenMorphArtworkUri;
       }
     } else {
-      if (this.playerStore.heroArtworkPreferPixelMap && this.playerStore.heroArtwork !== undefined) {
-        return this.playerStore.heroArtwork;
-      }
-      if (this.playerStore.heroArtworkUri.length > 0) {
-        return this.playerStore.heroArtworkUri;
+      const track = this.playerStore.currentTrack;
+      if (track !== undefined) {
+        const artworkUri = playbackRuntime.queueArtworkUri(track.largeArtworkPath);
+        if (artworkUri.length > 0) {
+          return artworkUri;
+        }
       }
     }
     return $r('app.media.default_album_cover');
@@ -363,10 +352,73 @@ export class PlayerMorphController {
 
   private beginMorphPhase(phase: PlayerMorphPhase): number {
     this.morphTransitionEpoch += 1;
+    this.preparedOpenAnimation = false;
     this.playerMorphPhase = phase;
     this.miniPlayerBinding.sourceVisible = false;
     this.syncSystemBarContentColor();
     return this.morphTransitionEpoch;
+  }
+
+  private beginMorphPreparation(animateOnReady: boolean): number {
+    this.morphTransitionEpoch += 1;
+    this.preparedOpenAnimation = animateOnReady;
+    this.playerMorphPhase = PlayerMorphPhase.PREPARING;
+    this.miniPlayerBinding.sourceVisible = true;
+    this.syncSystemBarContentColor();
+    return this.morphTransitionEpoch;
+  }
+
+  private revealPreparedMorph(phase: PlayerMorphPhase): void {
+    this.preparedOpenAnimation = false;
+    this.playerMorphPhase = phase;
+    this.miniPlayerBinding.sourceVisible = false;
+    this.syncSystemBarContentColor();
+  }
+
+  private cancelMorphPreparation(): void {
+    this.morphTransitionEpoch += 1;
+    this.preparedOpenAnimation = false;
+    this.playerMorphPhase = PlayerMorphPhase.IDLE;
+    this.playerExpandProgress = 0;
+    this.playerMorphBackgroundOpacity = 1;
+    this.miniPlayerBinding.sourceVisible = true;
+    this.syncSystemBarContentColor();
+    this.releaseMorphArtworkSource();
+  }
+
+  notifyMorphOverlayReady(width: number, height: number): void {
+    if (this.playerMorphPhase !== PlayerMorphPhase.PREPARING) {
+      return;
+    }
+    if (width <= 0 || height <= 0) {
+      return;
+    }
+    const epoch = this.morphTransitionEpoch;
+    if (this.preparedOpenAnimation) {
+      this.revealPreparedMorph(PlayerMorphPhase.OPENING);
+      this.animatePreparedOpen(epoch);
+      return;
+    }
+    this.revealPreparedMorph(PlayerMorphPhase.OPEN_DRAGGING);
+  }
+
+  private animatePreparedOpen(epoch: number): void {
+    this.context().animateTo({
+      duration: PlayerMotionSpec.OPEN_DURATION,
+      curve: curves.springMotion(
+        PlayerMotionSpec.OPEN_SPRING_RESPONSE,
+        PlayerMotionSpec.OPEN_SPRING_DAMPING
+      ),
+      onFinish: () => {
+        if (!this.isCurrentMorphTransition(epoch)) {
+          return;
+        }
+        this.playerMorphPhase = PlayerMorphPhase.OPEN;
+        this.releaseMorphArtworkSource();
+      }
+    }, () => {
+      this.playerExpandProgress = 1;
+    });
   }
 
   private isCurrentMorphTransition(epoch: number): boolean {
@@ -460,11 +512,11 @@ export class PlayerMorphController {
       return;
     }
     if (this.playerGestureAxis === PlayerGestureAxis.VERTICAL) {
-      if (!this.isMorphActive()) {
+      if (this.playerMorphPhase === PlayerMorphPhase.IDLE) {
         this.freezeMiniPlayerGeometry();
         this.freezeMorphArtworkSource();
-        this.beginMorphPhase(PlayerMorphPhase.OPEN_DRAGGING);
         this.playerMorphBackgroundOpacity = 1;
+        this.beginMorphPreparation(false);
       }
       const verticalOffset = PlayerMotionSpec.distanceFromRecognitionOrigin(event.offsetY);
       const upwardDistance = Math.max(0, -verticalOffset);
@@ -509,6 +561,14 @@ export class PlayerMorphController {
       return;
     }
     const shouldExpand = this.playerExpandProgress >= this.morphGestureCompletionProgress();
+    if (this.playerMorphPhase === PlayerMorphPhase.PREPARING) {
+      if (shouldExpand) {
+        this.preparedOpenAnimation = true;
+      } else {
+        this.cancelMorphPreparation();
+      }
+      return;
+    }
     const duration = shouldExpand ? PlayerMotionSpec.OPEN_DURATION : PlayerMotionSpec.CANCEL_DURATION;
     const epoch = this.beginMorphPhase(
       shouldExpand ? PlayerMorphPhase.OPENING : PlayerMorphPhase.CLOSING
@@ -543,26 +603,16 @@ export class PlayerMorphController {
     }
     this.freezeMiniPlayerGeometry();
     this.freezeMorphArtworkSource();
-    const epoch = this.beginMorphPhase(PlayerMorphPhase.OPENING);
     this.playerMorphBackgroundOpacity = 1;
-    this.context().animateTo({
-      duration: PlayerMotionSpec.OPEN_DURATION,
-      curve: curves.springMotion(
-        PlayerMotionSpec.OPEN_SPRING_RESPONSE,
-        PlayerMotionSpec.OPEN_SPRING_DAMPING
-      ),
-      onFinish: () => {
-        if (this.isCurrentMorphTransition(epoch)) {
-          this.playerMorphPhase = PlayerMorphPhase.OPEN;
-          this.releaseMorphArtworkSource();
-        }
-      }
-    }, () => {
-      this.playerExpandProgress = 1;
-    });
+    this.playerExpandProgress = 0;
+    this.beginMorphPreparation(true);
   }
 
   hideFullPlayer(): void {
+    if (this.playerMorphPhase === PlayerMorphPhase.PREPARING) {
+      this.cancelMorphPreparation();
+      return;
+    }
     if (this.playerMorphPhase === PlayerMorphPhase.IDLE ||
       this.playerMorphPhase === PlayerMorphPhase.CLOSING ||
       this.playerMorphPhase === PlayerMorphPhase.BACKGROUND_HANDOFF) {

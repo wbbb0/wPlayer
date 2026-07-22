@@ -271,18 +271,18 @@ Never commit signing passwords, private keys, certificate stores, provisioning p
 
 ### Local signing workflow
 
-- Keep the tracked `build-profile.json5` portable and unsigned. It must not contain `signingConfigs`, a product-level
-  `signingConfig`, signing passwords, or machine-specific certificate, profile, and keystore paths.
-- Put developer-machine signing configuration in the ignored root file `signing.local.json`, using
-  `signing.local.example.json` as its schema. The root `hvigorfile.ts` injects this file through the documented
-  `afterNodeEvaluate` build-profile hook when it exists; builds remain unsigned when it does not exist.
+- Use the tracked root `build-profile.json5` as the only signing configuration source so DevEco Studio can manage it.
+  Local signing makes this tracked file intentionally dirty.
+- The Git version of `build-profile.json5` must contain exactly one empty `app.signingConfigs: []`, no product-level
+  `signingConfig`, and no signing passwords or machine-specific certificate, profile, and keystore paths.
 - Do not use Git `assume-unchanged` or `skip-worktree` to hide signing changes. Hidden tracked changes are too easy to
-  publish accidentally.
-- Before committing or pushing, verify that `git diff --cached -- build-profile.json5 hvigorfile.ts
-  signing.local.example.json` contains no local material and that `git ls-files signing.local.json` prints nothing.
-- After changing the signing workflow, validate both paths: run
-  `$env:WPLAYER_DISABLE_LOCAL_SIGNING='1'; devecocli build` for the unsigned path, clear the variable, build a signed
-  HAP, install it with `hdc install -r`, launch the main ability, and inspect startup logs.
+  publish accidentally. `.gitignore` also does not suppress changes to an already tracked file.
+- Enable the repository hook with `git config core.hooksPath .githooks`. Before every commit, run
+  `./tools/check-signing-profile.ps1 -Staged`; CI runs the same policy against committed content.
+- Preserve local signing configuration outside the repository only while preparing a commit, sanitize and commit the
+  portable profile, then restore the local `build-profile.json5`. Never stage the restored local version.
+- After changing the signing workflow, validate both paths: build the portable empty-signing profile, restore the
+  local profile, build a signed HAP, install it with `hdc install -r`, launch the main ability, and inspect startup logs.
 
 ### Release signing material
 
@@ -303,16 +303,14 @@ the automatically generated debug key or debug Profile for a `release` build.
 - Use a dedicated signing configuration name such as `release`, the KeyStore alias chosen when the release key was
   generated (currently `wplayerRelease`), and `SHA256withECDSA`. Validate that the `.cer`, `.p7b`, bundle name, alias,
   and `.p12` belong to the same release identity before publishing.
-- If DevEco Studio writes the release signing object into tracked `build-profile.json5`, immediately move that exact
-  object to ignored `signing.local.json`, set its `product` to `default`, and remove all signing material and the
-  product-level `signingConfig` reference from tracked files. Do not commit the intermediate IDE-generated change.
-- Keep debug and release signing material separate as entries in `signing.local.json`. Use `defaultConfiguration`
-  for ordinary local builds, `WPLAYER_SIGNING_CONFIG` for an explicit CLI selection, or
-  `assembleReleaseSignedApp` for the release identity in DevEco Studio.
-- Before a release build, confirm `git check-ignore signing.local.json` succeeds, `git ls-files signing.local.json`
-  prints nothing, and the tracked `build-profile.json5` remains portable. Build with `buildMode=release` and verify
-  the generated metadata reports `BUILD_MODE: release`, `debug: false`, and a signed `.app` output. Do not infer
-  release readiness only from the output filename.
+- DevEco Studio writes the local release signing object directly into tracked `build-profile.json5`; this is expected
+  for local builds but must never be committed. Before committing, restore the portable empty array and remove every
+  product-level `signingConfig` reference.
+- Keep debug and release signing material as separate local entries in `build-profile.json5`. Select the required
+  entry on product `default`; `assembleReleaseSignedApp` additionally requires the selected name to be `release`.
+- Before a release build, confirm the local product selects the dedicated `release` entry. Build with
+  `buildMode=release` and verify the generated metadata reports `BUILD_MODE: release`, `debug: false`, and a signed
+  `.app` output. Do not infer release readiness only from the output filename.
 - Backing up the release `.p12`, its alias, both passwords, `.cer`, and `.p7b` is the user's responsibility. Advise
   at least two encrypted backups. Never copy release material to the repository, Codex memory, temporary artifacts,
   or a new machine without explicit user authorization.
@@ -336,31 +334,24 @@ Use this checklist after cloning the repository onto a new Windows development m
    Allow enough command timeout for both Hvigor sync and compilation. Killing `devecocli build` after only a few
    seconds can surface a secondary Node.js `EPIPE` error because the CLI's output pipe was closed; that error does
    not identify the underlying project build result.
-   Hvigor daemons retain the environment from the process that started them. After an unsigned build with
-   `WPLAYER_DISABLE_LOCAL_SIGNING=1`, clearing the variable in a later shell may still produce only an unsigned HAP
-   and log `No signingConfig found`. Stop the daemon with the DevEco-provided `hvigorw --stop-daemon`, then run the
-   normal build again so `signing.local.json` is evaluated in a fresh process.
+   Hvigor daemons may retain evaluated build-profile state. After changing local signing in `build-profile.json5`,
+   stop the daemon with the DevEco-provided `hvigorw --stop-daemon`, then run the build again in a fresh process.
 3. Run `git status` before making changes. If Git reports dubious ownership after copying the repository from a
    different Windows account, verify the directory is trusted and then add this exact repository path to Git's
    global `safe.directory` list. Never use a wildcard safe-directory exception.
-4. Run `$env:WPLAYER_DISABLE_LOCAL_SIGNING='1'; devecocli build`, then
-   `Remove-Item Env:WPLAYER_DISABLE_LOCAL_SIGNING`. This validates dependency installation, Hvigor sync, SDK
-   discovery, ArkTS compilation, resources, and the portable unsigned build before local credentials are involved.
+4. Run `git config core.hooksPath .githooks`, then `./tools/check-signing-profile.ps1` and `devecocli build` against
+   the cloned portable profile. This validates the signing guard, dependency installation, Hvigor sync, SDK discovery,
+   ArkTS compilation, resources, and the unsigned build before local credentials are involved.
 5. For ordinary device development, create or select the machine's debug signing configuration once. For AppGallery
    publishing, first have the user copy the dedicated files listed under `Release signing material` to
    `C:\Users\<user>\.ohos\release`, then configure those files as a separate release signing identity in DevEco
-   Studio and have the user enter the two passwords locally. If the IDE writes
-   `app.signingConfigs` or a product-level `signingConfig` into `build-profile.json5`, immediately migrate the exact
-   generated signing object into the ignored `signing.local.json` using `signing.local.example.json` as the schema:
-   set `product` to the target product name and add the IDE-generated object under the matching `debug` or `release`
-   configuration entry. Then remove `app.signingConfigs` and every product-level `signingConfig` reference from
-   `build-profile.json5`. Do not copy
-   passwords, certificate paths, profiles, keystores, or private keys into any tracked file. If the IDE later writes
-   signing material back into `build-profile.json5`, repeat this migration before committing or pushing.
-6. Confirm `signing.local.json` exists, is ignored by Git, and is not tracked. Confirm `build-profile.json5` contains
-   no signing block, password, or machine-local material. Run a normal `devecocli build`; the root `hvigorfile.ts`
-   should inject the local configuration and produce `entry-default-signed.hap`, while the disabled-signing path
-   should continue to produce `entry-default-unsigned.hap`.
+   Studio and have the user enter the two passwords locally. The IDE writes `app.signingConfigs` and the product-level
+   `signingConfig` directly into `build-profile.json5`; keep that local file dirty and never stage it with signing
+   material. Before a commit, back it up outside the repository, restore the portable empty-signing shape, run the
+   staged signing guard, commit, and then restore the local file.
+6. Run a normal `devecocli build` with the locally configured profile and confirm it produces
+   `entry-default-signed.hap`. Before publishing source changes, run `./tools/check-signing-profile.ps1 -Staged` and
+   inspect `git diff --cached -- build-profile.json5` to confirm no local signing material is staged.
 7. Verify the target with `hdc list targets -v`, install with
    `hdc install -r entry/build/default/outputs/default/entry-default-signed.hap`, unlock the device, launch with
    `hdc shell aa start -a EntryAbility -b com.wabebabo.wplayer`, and inspect `hilog` for startup failures. A package

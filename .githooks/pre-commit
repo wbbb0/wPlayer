@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+
+if command -v pwsh >/dev/null 2>&1; then
+  POWERSHELL_COMMAND=pwsh
+else
+  POWERSHELL_COMMAND=powershell.exe
+fi
+
+"$POWERSHELL_COMMAND" -NoProfile -ExecutionPolicy Bypass \
+  -File tools/check-signing-profile.ps1 -Staged

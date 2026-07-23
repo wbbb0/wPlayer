@@ -33,6 +33,7 @@ import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { PlayerTrackMarquee } from './PlayerTrackMarquee';
 import { PageLayoutSpec } from '../layout/PageLayoutSpec';
 import { LibraryStore } from '../../library/store/LibraryStore';
+import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
 import {
   AvailabilityState,
   LibraryNavigationTarget,
@@ -371,7 +372,7 @@ export struct FullPlayerContent {
   }
 
   private queueCachedCount(): number {
-    return this.shouldLoadQueueArtwork() ? PageLayoutSpec.PLAYER_QUEUE_CACHE_COUNT : 0;
+    return this.shouldLoadQueueArtwork() ? LibraryPagingPolicy.TRACK_PAGE_SIZE : 0;
   }
 
   private queueArtworkPlaceholderOnly(): boolean {
@@ -883,7 +884,7 @@ export struct FullPlayerContent {
         .width('100%')
         .layoutWeight(1)
         .edgeEffect(EdgeEffect.Spring)
-        .cachedCount(PageLayoutSpec.LYRIC_LIST_CACHE_COUNT, true)
+        .cachedCount(LibraryPagingPolicy.TRACK_PAGE_SIZE, true)
         .scrollBar(BarState.Off)
         .contentEndOffset(this.lyricEndOffset())
         .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) => {

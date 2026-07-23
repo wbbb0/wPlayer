@@ -10,6 +10,7 @@ import {
 } from '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { AlbumDetailState } from '../../library/store/LibraryDetailState';
+import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
 import { ArtistReference } from '../../library/model/LibraryModels';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { AppShellLayoutSpec } from '../../components/layout/AppShellLayoutSpec';
@@ -36,7 +37,7 @@ export struct AlbumDetailPage {
   private multipleDiscResult: boolean = false;
   scroller: Scroller = new Scroller();
   private readonly scrollBehavior: PageListBehavior =
-    new PageListBehavior(PageLayoutSpec.DETAIL_TRACK_LIST_CACHE_COUNT);
+    new PageListBehavior(LibraryPagingPolicy.TRACK_PAGE_SIZE);
   onOpenArtist: (artist: ArtistReference) => void = (_artist: ArtistReference): void => {};
   onOpenAlbum: (album: AlbumListItem) => void = (_album: AlbumListItem): void => {};
   onAlbumAction: (album: AlbumListItem, action: AlbumAction) => void =

@@ -9,6 +9,7 @@ import {
   TrackListItem
 } from '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
+import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
 import { PlaylistStore } from '../../playlist/store/PlaylistStore';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { PlaybackOriginKind } from '../../playback/model/PlaybackModels';
@@ -37,7 +38,7 @@ export struct PlaylistDetailPage {
   onNavigateLibrary: (target: LibraryNavigationTarget) => void =
     (_target: LibraryNavigationTarget): void => {};
   private readonly scrollBehavior: PageListBehavior =
-    new PageListBehavior(PageLayoutSpec.DETAIL_TRACK_LIST_CACHE_COUNT);
+    new PageListBehavior(LibraryPagingPolicy.TRACK_PAGE_SIZE);
 
   aboutToAppear(): void {
     this.store.loadDetail(this.playlistId);

@@ -1,4 +1,4 @@
-import { PageLayoutSpec } from './PageLayoutSpec';
+import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
 
 export class PageScrollBehavior implements AttributeModifier<ScrollAttribute> {
   applyNormalAttribute(instance: ScrollAttribute): void {
@@ -32,7 +32,7 @@ export class PageScrollContentBehavior implements AttributeModifier<ColumnAttrib
 export class PageListBehavior implements AttributeModifier<ListAttribute> {
   private readonly cacheCount: number;
 
-  constructor(cacheCount: number = PageLayoutSpec.VIRTUAL_LIST_CACHE_COUNT) {
+  constructor(cacheCount: number = LibraryPagingPolicy.TRACK_PAGE_SIZE) {
     this.cacheCount = cacheCount;
   }
 
@@ -47,7 +47,7 @@ export class PageListBehavior implements AttributeModifier<ListAttribute> {
 export class PageGridBehavior implements AttributeModifier<GridAttribute> {
   private readonly cacheCount: number;
 
-  constructor(cacheCount: number = PageLayoutSpec.ALBUM_GRID_CACHE_COUNT) {
+  constructor(cacheCount: number = LibraryPagingPolicy.ALBUM_PAGE_SIZE) {
     this.cacheCount = cacheCount;
   }
 

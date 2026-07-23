@@ -1,7 +1,7 @@
 import { PlaylistKind, PlaylistSummary } from '../../library/model/LibraryModels';
 import { PlaylistStore } from '../../playlist/store/PlaylistStore';
 import { LibraryListDataSource } from '../../library/store/LibraryListDataSource';
-import { PageLayoutSpec } from '../layout/PageLayoutSpec';
+import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
 
 @Component
 export struct PlaylistSelectionSheet {
@@ -143,7 +143,7 @@ export struct PlaylistSelectionSheet {
         }
         .width('100%')
         .layoutWeight(1)
-        .cachedCount(PageLayoutSpec.VIRTUAL_LIST_CACHE_COUNT, true)
+        .cachedCount(LibraryPagingPolicy.TRACK_PAGE_SIZE, true)
       }
 
       if (this.store.errorMessage.length > 0) {

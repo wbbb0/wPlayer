@@ -10,6 +10,7 @@ import {
   TrackListItem
 } from '../../library/model/LibraryModels';
 import { ArtistDetailState } from '../../library/store/LibraryDetailState';
+import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
@@ -34,7 +35,7 @@ export struct ArtistDetailPage {
   onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
     (_items: Array<TrackListItem>): void => {};
   private readonly scrollBehavior: PageListBehavior =
-    new PageListBehavior(PageLayoutSpec.DETAIL_TRACK_LIST_CACHE_COUNT);
+    new PageListBehavior(LibraryPagingPolicy.TRACK_PAGE_SIZE);
 
   aboutToAppear(): void {
     this.state.load(this.store);

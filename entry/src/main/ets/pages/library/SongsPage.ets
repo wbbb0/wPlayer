@@ -34,7 +34,7 @@ export struct SongsPage {
     (_items: Array<TrackListItem>): void => {};
   scroller: Scroller = new Scroller();
   private readonly scrollBehavior: PageListBehavior =
-    new PageListBehavior(PageLayoutSpec.SONG_LIST_CACHE_COUNT);
+    new PageListBehavior(LibraryPagingPolicy.TRACK_PAGE_SIZE);
 
   aboutToAppear(): void {
     this.selection.deleteEnabled = false;

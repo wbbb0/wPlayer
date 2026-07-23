@@ -1,4 +1,4 @@
-import { PageLayoutSpec } from '../layout/PageLayoutSpec';
+import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
 
 export enum TaskResultTone {
   NORMAL = 'normal',
@@ -192,7 +192,7 @@ export struct TaskResultDetails {
         .layoutWeight(1)
         .edgeEffect(EdgeEffect.Spring)
         .sticky(StickyStyle.Header)
-        .cachedCount(PageLayoutSpec.VIRTUAL_LIST_CACHE_COUNT, true)
+        .cachedCount(LibraryPagingPolicy.TRACK_PAGE_SIZE, true)
       } else if (this.emptyText.length > 0) {
         Text(this.emptyText)
           .fontColor($r('app.color.text_secondary'))

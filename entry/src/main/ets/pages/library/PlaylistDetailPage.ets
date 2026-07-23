@@ -17,6 +17,7 @@ import {
   LibraryTrackRow,
   LibraryTrackRowVariant
 } from '../../components/library/LibraryTrackRow';
+import { LibraryEmptyState } from '../../components/library/LibraryEmptyState';
 import { TrackActionMenuPresenter } from '../../components/library/TrackActionMenu';
 import { promptAction } from '@kit.ArkUI';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
@@ -81,6 +82,22 @@ export struct PlaylistDetailPage {
   private detailItems(): Array<PlaylistTrackItem> {
     const detail = this.store.detail;
     return detail !== undefined && detail.playlist.id === this.playlistId ? detail.items : [];
+  }
+
+  private detailEmpty(): boolean {
+    const detail = this.store.detail;
+    return detail !== undefined && detail.playlist.id === this.playlistId && detail.items.length === 0 &&
+      !this.store.detailLoading && this.store.errorMessage.length === 0;
+  }
+
+  private emptyTitle(): string {
+    return this.playlist()?.kind === PlaylistKind.COMPLETED_HISTORY ? '还没有播放记录' : '播放列表是空的';
+  }
+
+  private emptyDescription(): string {
+    return this.playlist()?.kind === PlaylistKind.COMPLETED_HISTORY ?
+      '完整播放过的歌曲会自动出现在这里' :
+      '从歌曲或专辑的更多操作中添加音乐，之后就能按这个列表播放';
   }
 
   private markPlayed(): void {
@@ -322,61 +339,75 @@ export struct PlaylistDetailPage {
         .fontColor($r('app.color.text_secondary'))
         .width('100%')
 
-      this.PlaybackActions()
+      if (playlist.trackCount > 0) {
+        this.PlaybackActions()
+      }
     }
     .width('100%')
     .padding({ left: PageLayoutSpec.HORIZONTAL_INSET, right: PageLayoutSpec.HORIZONTAL_INSET, bottom: 12 })
   }
 
   build() {
-    Stack({ alignContent: Alignment.Bottom }) {
-    List({ space: 0, scroller: this.scroller }) {
-      if (this.playlist() !== undefined) {
-        ListItem() {
-          this.Header(this.playlist()!)
-        }
-      }
-      if (this.store.detail?.playlist.id === this.playlistId) {
-        LazyForEach(this.store.detailItemDataSource, (item: PlaylistTrackItem) => {
-          HdsListItem({
-            customItemBuilder: () => {
-              this.TrackContent(item)
-            },
-            swipeActionOptions: {
-              deleteIconOptions: {
-                onAction: () => this.confirmRemoveTrack(item)
-              }
+    if (this.detailEmpty()) {
+      LibraryEmptyState({
+        symbol: $r('sys.symbol.music_fill'),
+        title: this.emptyTitle(),
+        description: this.emptyDescription(),
+        loading: false,
+        topInset: this.topInset,
+        bottomInset: this.bottomInset,
+        scroller: this.scroller
+      })
+    } else {
+      Stack({ alignContent: Alignment.Bottom }) {
+        List({ space: 0, scroller: this.scroller }) {
+          if (this.playlist() !== undefined) {
+            ListItem() {
+              this.Header(this.playlist()!)
             }
-          })
-            .height(this.isRemovingTrack(item.id) ? 0 : 62)
-            .clip(true)
-            .opacity(this.isRemovingTrack(item.id) ? 0 : 1)
-            .translate({ x: this.isRemovingTrack(item.id) ? -28 : 0 })
-        }, (item: PlaylistTrackItem) => `${item.id}`)
-      }
-      if (this.store.detailLoading) {
-        ListItem() {
-          LoadingProgress().width(36).height(36).margin({ top: 18, bottom: 18 })
+          }
+          if (this.store.detail?.playlist.id === this.playlistId) {
+            LazyForEach(this.store.detailItemDataSource, (item: PlaylistTrackItem) => {
+              HdsListItem({
+                customItemBuilder: () => {
+                  this.TrackContent(item)
+                },
+                swipeActionOptions: {
+                  deleteIconOptions: {
+                    onAction: () => this.confirmRemoveTrack(item)
+                  }
+                }
+              })
+                .height(this.isRemovingTrack(item.id) ? 0 : 62)
+                .clip(true)
+                .opacity(this.isRemovingTrack(item.id) ? 0 : 1)
+                .translate({ x: this.isRemovingTrack(item.id) ? -28 : 0 })
+            }, (item: PlaylistTrackItem) => `${item.id}`)
+          }
+          if (this.store.detailLoading) {
+            ListItem() {
+              LoadingProgress().width(36).height(36).margin({ top: 18, bottom: 18 })
+            }
+          }
+          if (this.store.errorMessage.length > 0) {
+            ListItem() {
+              Text(this.store.errorMessage)
+                .fontSize(13)
+                .fontColor($r('sys.color.ohos_id_color_warning'))
+                .width('100%')
+                .textAlign(TextAlign.Center)
+                .margin({ top: 12, bottom: 12 })
+            }
+          }
         }
+        .width('100%')
+        .height('100%')
+        .contentStartOffset(PageLayoutSpec.primaryContentStart(this.topInset))
+        .contentEndOffset(PageLayoutSpec.contentEnd(this.bottomInset))
+        .attributeModifier(this.scrollBehavior)
       }
-      if (this.store.errorMessage.length > 0) {
-        ListItem() {
-          Text(this.store.errorMessage)
-            .fontSize(13)
-            .fontColor($r('sys.color.ohos_id_color_warning'))
-            .width('100%')
-            .textAlign(TextAlign.Center)
-            .margin({ top: 12, bottom: 12 })
-        }
-      }
+      .width('100%')
+      .height('100%')
     }
-    .width('100%')
-    .height('100%')
-    .contentStartOffset(PageLayoutSpec.primaryContentStart(this.topInset))
-    .contentEndOffset(PageLayoutSpec.contentEnd(this.bottomInset))
-    .attributeModifier(this.scrollBehavior)
-    }
-    .width('100%')
-    .height('100%')
   }
 }

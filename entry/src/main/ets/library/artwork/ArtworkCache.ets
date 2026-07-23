@@ -9,8 +9,6 @@ import { ArtworkPalette, ArtworkPaletteExtractor } from './ArtworkPaletteExtract
 import { extractArtworkPaletteAsync } from './ArtworkPaletteTasks';
 
 const ARTWORK_DIRECTORY = 'artwork';
-const SMALL_MAX_EDGE = 256;
-const LARGE_MAX_EDGE = 768;
 const TEMP_FILE_SUFFIX = '.tmp';
 const MAX_SOURCE_BYTES = 32 * 1024 * 1024;
 const MAX_SOURCE_EDGE = 32768;
@@ -66,19 +64,25 @@ export class ArtworkCache {
       if (!ArtworkCache.supportsFormat(imagePacker.supportedFormats, 'jpeg')) {
         throw new Error('JPEG encoding is not supported on this device');
       }
-      const small = await this.encodeVariant(
-        imageSource, imagePacker, sourceHash, imageInfo.size, SMALL_MAX_EDGE,
-        ArtworkEncodingPolicy.MIME_TYPE, ArtworkEncodingPolicy.QUALITY,
-        ArtworkEncodingPolicy.EXTENSION, 'small', traceFileId
-      );
-      ArtworkCache.ensureContinues(shouldContinue);
       const large = await this.encodeVariant(
-        imageSource, imagePacker, sourceHash, imageInfo.size, LARGE_MAX_EDGE,
+        sourceBuffer, imagePacker, sourceHash, imageInfo.size, ArtworkEncodingPolicy.LARGE_MAX_EDGE,
         ArtworkEncodingPolicy.MIME_TYPE, ArtworkEncodingPolicy.QUALITY,
         ArtworkEncodingPolicy.EXTENSION, 'large', traceFileId
       );
       ArtworkCache.ensureContinues(shouldContinue);
-      const palettePixels = await ArtworkPaletteExtractor.readPixelBuffer(imageSource, imageInfo.size);
+      const small = await this.encodeVariant(
+        sourceBuffer, imagePacker, sourceHash, imageInfo.size, ArtworkEncodingPolicy.SMALL_MAX_EDGE,
+        ArtworkEncodingPolicy.MIME_TYPE, ArtworkEncodingPolicy.QUALITY,
+        ArtworkEncodingPolicy.EXTENSION, 'small', traceFileId
+      );
+      ArtworkCache.ensureContinues(shouldContinue);
+      const paletteSource = image.createImageSource(ArtworkCache.copyArrayBuffer(sourceBuffer));
+      let palettePixels: ArrayBuffer;
+      try {
+        palettePixels = await ArtworkPaletteExtractor.readPixelBuffer(paletteSource, imageInfo.size);
+      } finally {
+        await paletteSource.release();
+      }
       ArtworkCache.ensureContinues(shouldContinue);
       const palette = await extractArtworkPaletteAsync(palettePixels);
       return { sourceHash: sourceHash, small: small, large: large, palette: palette };
@@ -111,10 +115,10 @@ export class ArtworkCache {
   }
 
   resolvePath(relativePath: string): string {
-    return ArtworkCache.resolvePath(this.context, relativePath);
+    return ArtworkCache.resolveContextPath(this.context, relativePath);
   }
 
-  static resolvePath(context: Context, relativePath: string): string {
+  static resolveContextPath(context: Context, relativePath: string): string {
     const normalizedPath = ArtworkCache.validateRelativePath(relativePath);
     return `${context.filesDir}/${normalizedPath}`;
   }
@@ -166,7 +170,7 @@ export class ArtworkCache {
   private async cleanupEntries(shouldDelete: (entry: string, isFile: boolean) => boolean,
     shouldContinue?: () => boolean): Promise<number> {
     try {
-      const artworkRoot = ArtworkCache.resolvePath(this.context, ARTWORK_DIRECTORY);
+      const artworkRoot = ArtworkCache.resolveContextPath(this.context, ARTWORK_DIRECTORY);
       if (!await fs.access(artworkRoot)) {
         return 0;
       }
@@ -220,7 +224,7 @@ export class ArtworkCache {
   }
 
   private async encodeVariant(
-    imageSource: image.ImageSource,
+    sourceBuffer: ArrayBuffer,
     imagePacker: image.ImagePacker,
     sourceHash: string,
     sourceSize: image.Size,
@@ -232,17 +236,19 @@ export class ArtworkCache {
     traceFileId: number
   ): Promise<ArtworkCacheVariantResult> {
     const variantStartedAt = Date.now();
-    const targetSize = ArtworkCache.calculateTargetSize(sourceSize.width, sourceSize.height, maxEdge);
-    const pixelMap = await imageSource.createPixelMap({
-      desiredSize: targetSize,
-      desiredPixelFormat: image.PixelMapFormat.RGBA_8888
-    });
+    const targetSize = ArtworkEncodingPolicy.targetSize(sourceSize.width, sourceSize.height, maxEdge);
+    const imageSource = image.createImageSource(ArtworkCache.copyArrayBuffer(sourceBuffer));
+    let pixelMap: image.PixelMap | undefined;
     let opaquePixelMap: image.PixelMap | undefined;
     let temporaryPath = '';
     try {
+      pixelMap = await imageSource.createPixelMap({
+        desiredSize: targetSize,
+        desiredPixelFormat: image.PixelMapFormat.RGBA_8888
+      });
       opaquePixelMap = await ArtworkCache.flattenOntoWhite(pixelMap);
       const actualInfo = await opaquePixelMap.getImageInfo();
-      const artworkRoot = ArtworkCache.resolvePath(this.context, ARTWORK_DIRECTORY);
+      const artworkRoot = ArtworkCache.resolveContextPath(this.context, ARTWORK_DIRECTORY);
       await ArtworkCache.ensureDirectoryAsync(artworkRoot);
       temporaryPath = `${artworkRoot}/.${sourceHash}.${variantName}.` +
         `${ArtworkCache.nextTemporaryId()}${TEMP_FILE_SUFFIX}`;
@@ -263,7 +269,7 @@ export class ArtworkCache {
 
       const contentHash = await hash.hash(temporaryPath, 'sha256');
       const relativePath = ArtworkCache.variantRelativePath(contentHash, extension);
-      const finalPath = ArtworkCache.resolvePath(this.context, relativePath);
+      const finalPath = ArtworkCache.resolveContextPath(this.context, relativePath);
       await ArtworkCache.ensureDirectoryAsync(ArtworkCache.parentDirectory(finalPath));
       if (await fs.access(finalPath)) {
         await ArtworkCache.deleteIfPresentAsync(temporaryPath);
@@ -304,9 +310,12 @@ export class ArtworkCache {
             await opaquePixelMap.release();
           }
         } finally {
-          await pixelMap.release();
+          if (pixelMap !== undefined) {
+            await pixelMap.release();
+          }
         }
       }
+      await imageSource.release();
     }
   }
 
@@ -358,15 +367,8 @@ export class ArtworkCache {
     return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
   }
 
-  private static calculateTargetSize(width: number, height: number, maxEdge: number): image.Size {
-    if (width <= 0 || height <= 0) {
-      throw new Error(`Invalid artwork dimensions: ${width}x${height}`);
-    }
-    const scale = Math.min(1, maxEdge / Math.max(width, height));
-    return {
-      width: Math.max(1, Math.round(width * scale)),
-      height: Math.max(1, Math.round(height * scale))
-    };
+  private static copyArrayBuffer(buffer: ArrayBuffer): ArrayBuffer {
+    return buffer.slice(0);
   }
 
   private static validateSourceDimensions(width: number, height: number): void {

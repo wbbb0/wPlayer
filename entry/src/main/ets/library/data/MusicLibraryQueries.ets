@@ -335,9 +335,13 @@ export class MusicLibraryQueries {
       resultSet = await this.database.getStore().querySql(
         `SELECT t.id, f.uri, f.display_name, f.file_size, f.modified_at, f.availability_state,
            f.artwork_state, f.artwork_attempt_count, f.artwork_last_attempt_at,
-           COALESCE(a.small_path, ''), COALESCE(a.large_path, '')
+           COALESCE(a.small_path, ''), COALESCE(a.large_path, ''),
+           COALESCE(a.small_width, 0), COALESCE(a.small_height, 0), COALESCE(a.small_byte_size, 0),
+           COALESCE(a.large_width, 0), COALESCE(a.large_height, 0), COALESCE(a.large_byte_size, 0),
+           COALESCE(s.width, 0), COALESCE(s.height, 0)
          FROM media_file f JOIN track t ON t.media_file_id = f.id
          LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
+         LEFT JOIN artwork_source s ON s.asset_id = a.id
          ORDER BY t.id`
       );
       while (resultSet.goToNextRow()) {
@@ -352,7 +356,15 @@ export class MusicLibraryQueries {
           artworkAttemptCount: resultSet.getLong(7),
           artworkLastAttemptAt: resultSet.getLong(8),
           artworkSmallPath: resultSet.getString(9),
-          artworkLargePath: resultSet.getString(10)
+          artworkLargePath: resultSet.getString(10),
+          artworkSmallWidth: resultSet.getLong(11),
+          artworkSmallHeight: resultSet.getLong(12),
+          artworkSmallByteSize: resultSet.getLong(13),
+          artworkLargeWidth: resultSet.getLong(14),
+          artworkLargeHeight: resultSet.getLong(15),
+          artworkLargeByteSize: resultSet.getLong(16),
+          artworkSourceWidth: resultSet.getLong(17),
+          artworkSourceHeight: resultSet.getLong(18)
         });
       }
       return items;
@@ -892,7 +904,7 @@ export class MusicLibraryQueries {
       resultSet = await this.database.getStore().querySql(
         `SELECT a.small_hash, a.small_path, a.small_format, a.small_width, a.small_height, a.small_byte_size,
           a.large_hash, a.large_path, a.large_format, a.large_width, a.large_height, a.large_byte_size,
-          a.palette_primary, a.palette_secondary, a.palette_accent
+          a.palette_primary, a.palette_secondary, a.palette_accent, s.width, s.height
          FROM artwork_source s JOIN artwork_asset a ON a.id = s.asset_id
          WHERE s.source_hash = ? LIMIT 1`,
         [sourceHash]
@@ -915,7 +927,9 @@ export class MusicLibraryQueries {
         largeByteSize: resultSet.getLong(11),
         palettePrimary: resultSet.getString(12),
         paletteSecondary: resultSet.getString(13),
-        paletteAccent: resultSet.getString(14)
+        paletteAccent: resultSet.getString(14),
+        sourceWidth: resultSet.getLong(15),
+        sourceHeight: resultSet.getLong(16)
       };
     } catch (error) {
       throw RelationalStoreSafety.operationError(`Unable to find artwork source ${sourceHash}`, error);

@@ -200,7 +200,7 @@ export class ArtworkMemoryCache {
 
   private async decodeThumbnail(relativePath: string, key: string,
     generation: number): Promise<image.PixelMap | undefined> {
-    const path = ArtworkCache.resolvePath(this.context, relativePath);
+    const path = ArtworkCache.resolveContextPath(this.context, relativePath);
     const source = image.createImageSource(path);
     let pixelMap: image.PixelMap | undefined;
     let ownershipTransferred = false;

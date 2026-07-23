@@ -1208,7 +1208,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     if (relativePath.length === 0 || this.context === undefined) {
       return '';
     }
-    return `file://${ArtworkCache.resolvePath(this.context, relativePath)}`;
+    return `file://${ArtworkCache.resolveContextPath(this.context, relativePath)}`;
   }
 
   private retireFullArtwork(): void {

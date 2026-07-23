@@ -1288,7 +1288,23 @@ export class MediaImporter {
     const lookupStartedAt = Date.now();
     const existing = await this.repository.findArtworkBySourceHash(sourceHash);
     if (existing !== undefined && await this.artworkCache.existsAsync(existing.smallPath) &&
-      await this.artworkCache.existsAsync(existing.largePath)) {
+      await this.artworkCache.existsAsync(existing.largePath) &&
+      !ArtworkRepairPolicy.hasSuspiciousLargeVariant(
+        existing.smallWidth,
+        existing.smallHeight,
+        existing.smallByteSize,
+        existing.largeWidth,
+        existing.largeHeight,
+        existing.largeByteSize
+      ) &&
+      !ArtworkRepairPolicy.hasOutdatedVariantDimensions(
+        existing.sourceWidth,
+        existing.sourceHeight,
+        existing.smallWidth,
+        existing.smallHeight,
+        existing.largeWidth,
+        existing.largeHeight
+      )) {
       ImportPerformanceTrace.mark('artwork_cache_lookup', lookupStartedAt, traceFileId, 'hit=1');
       return {
         sourceHash: sourceHash,
@@ -1315,19 +1331,40 @@ export class MediaImporter {
         }
       };
     }
-    ImportPerformanceTrace.mark('artwork_cache_lookup', lookupStartedAt, traceFileId, 'hit=0');
+    ImportPerformanceTrace.mark('artwork_cache_lookup', lookupStartedAt, traceFileId,
+      existing === undefined ? 'hit=0' : 'hit=0 reason=suspicious');
     return this.artworkCache.cache(
       sourceBytes, sourceHash, traceFileId, shouldContinue
     );
   }
 
   private needsArtworkRepair(candidate: MediaFileCheckCandidate, filesAvailable: boolean): boolean {
-    return ArtworkRepairPolicy.needsRepair(
+    if (ArtworkRepairPolicy.needsRepair(
       candidate.artworkState,
       filesAvailable,
       filesAvailable,
       candidate.artworkAttemptCount,
       candidate.artworkLastAttemptAt
+    )) {
+      return true;
+    }
+    return candidate.artworkState === ArtworkState.READY && filesAvailable && (
+      ArtworkRepairPolicy.hasSuspiciousLargeVariant(
+        candidate.artworkSmallWidth,
+        candidate.artworkSmallHeight,
+        candidate.artworkSmallByteSize,
+        candidate.artworkLargeWidth,
+        candidate.artworkLargeHeight,
+        candidate.artworkLargeByteSize
+      ) ||
+      ArtworkRepairPolicy.hasOutdatedVariantDimensions(
+        candidate.artworkSourceWidth,
+        candidate.artworkSourceHeight,
+        candidate.artworkSmallWidth,
+        candidate.artworkSmallHeight,
+        candidate.artworkLargeWidth,
+        candidate.artworkLargeHeight
+      )
     );
   }
 

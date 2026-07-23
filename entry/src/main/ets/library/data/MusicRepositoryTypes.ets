@@ -72,6 +72,8 @@ export interface ArtworkAssetLookup {
   palettePrimary: string;
   paletteSecondary: string;
   paletteAccent: string;
+  sourceWidth: number;
+  sourceHeight: number;
 }
 
 export interface ArtworkCleanupCandidate {

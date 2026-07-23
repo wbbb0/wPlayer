@@ -335,6 +335,14 @@ export interface MediaFileCheckCandidate {
   artworkLastAttemptAt: number;
   artworkSmallPath: string;
   artworkLargePath: string;
+  artworkSmallWidth: number;
+  artworkSmallHeight: number;
+  artworkSmallByteSize: number;
+  artworkLargeWidth: number;
+  artworkLargeHeight: number;
+  artworkLargeByteSize: number;
+  artworkSourceWidth: number;
+  artworkSourceHeight: number;
 }
 
 export enum ArtworkState {

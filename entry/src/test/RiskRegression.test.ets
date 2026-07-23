@@ -206,6 +206,21 @@ export default function riskRegressionTest() {
       expect(ArtworkRepairPolicy.needsRepair(
         ArtworkState.FAILED, false, false, 3, now - 25 * 60 * 60 * 1000, now
       )).assertTrue();
+      expect(ArtworkRepairPolicy.hasSuspiciousLargeVariant(
+        256, 256, 25074, 512, 512, 27569
+      )).assertTrue();
+      expect(ArtworkRepairPolicy.hasSuspiciousLargeVariant(
+        256, 256, 34722, 640, 640, 51610
+      )).assertTrue();
+      expect(ArtworkRepairPolicy.hasSuspiciousLargeVariant(
+        256, 256, 28498, 768, 768, 154836
+      )).assertFalse();
+      expect(ArtworkRepairPolicy.hasOutdatedVariantDimensions(
+        640, 640, 256, 256, 640, 640
+      )).assertFalse();
+      expect(ArtworkRepairPolicy.hasOutdatedVariantDimensions(
+        640, 640, 192, 192, 640, 640
+      )).assertTrue();
       expect(ArtworkRepairPolicy.shouldRebindSource(7, 8)).assertTrue();
       expect(ArtworkRepairPolicy.shouldRebindSource(7, 7)).assertFalse();
     });

@@ -115,6 +115,8 @@ The full-player transition is a shared-element morph:
 ## HarmonyOS API rules
 
 Before using an unfamiliar API, run an official documentation search with DevEco CLI.
+Use `devecocli docs search <keywords...>` to find official HarmonyOS documents and
+`devecocli docs read "<documentId>"` with the full document path returned by search to read details.
 
 Examples:
 

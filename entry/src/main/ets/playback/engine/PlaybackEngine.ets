@@ -17,6 +17,9 @@ export interface PlaybackEngineListener {
   onCompleted(): void;
   onOutputDeviceUnavailable(): void;
   onOutputDeviceAvailable(): void;
+  onAudioSessionPauseHint(): void;
+  onAudioSessionResumeHint(): void;
+  onAudioSessionStopHint(): void;
 }
 
 interface PendingStateWait {
@@ -46,6 +49,7 @@ export class PlaybackEngine {
   private sourceFile?: fs.File;
   private audioSessionManager?: audio.AudioSessionManager;
   private outputDeviceChangedCallback?: (event: audio.CurrentOutputDeviceChangedEvent) => void;
+  private audioSessionStateChangedCallback?: (event: audio.AudioSessionStateChangedEvent) => void;
   private rawState: string = 'idle';
   private listener?: PlaybackEngineListener;
   private commandTail: Promise<void> = Promise.resolve();
@@ -150,6 +154,7 @@ export class PlaybackEngine {
     await this.deactivateAudioSession();
     this.audioSessionManager = undefined;
     this.outputDeviceChangedCallback = undefined;
+    this.audioSessionStateChangedCallback = undefined;
     this.shuttingDown = false;
   }
 
@@ -372,6 +377,28 @@ export class PlaybackEngine {
         this.audioSessionManager.on('currentOutputDeviceChanged', callback);
         this.outputDeviceChangedCallback = callback;
       }
+      if (this.audioSessionStateChangedCallback === undefined) {
+        const callback = (event: audio.AudioSessionStateChangedEvent): void => {
+          if (event.stateChangeHint ===
+            audio.AudioSessionStateChangeHint.AUDIO_SESSION_STATE_CHANGE_HINT_RESUME) {
+            this.listener?.onAudioSessionResumeHint();
+            return;
+          }
+          if (event.stateChangeHint ===
+            audio.AudioSessionStateChangeHint.AUDIO_SESSION_STATE_CHANGE_HINT_PAUSE) {
+            this.listener?.onAudioSessionPauseHint();
+            return;
+          }
+          if (event.stateChangeHint ===
+            audio.AudioSessionStateChangeHint.AUDIO_SESSION_STATE_CHANGE_HINT_STOP ||
+            event.stateChangeHint ===
+              audio.AudioSessionStateChangeHint.AUDIO_SESSION_STATE_CHANGE_HINT_TIME_OUT_STOP) {
+            this.listener?.onAudioSessionStopHint();
+          }
+        };
+        this.audioSessionManager.on('audioSessionStateChanged', callback);
+        this.audioSessionStateChangedCallback = callback;
+      }
       if (!this.audioSessionManager.isAudioSessionActivated()) {
         await this.audioSessionManager.activateAudioSession({
           concurrencyMode: audio.AudioConcurrencyMode.CONCURRENCY_DEFAULT
@@ -383,15 +410,25 @@ export class PlaybackEngine {
   }
 
   private unsubscribeOutputDeviceChanges(): void {
-    if (this.audioSessionManager === undefined || this.outputDeviceChangedCallback === undefined) {
+    if (this.audioSessionManager === undefined) {
       return;
     }
-    try {
-      this.audioSessionManager.off('currentOutputDeviceChanged', this.outputDeviceChangedCallback);
-    } catch (error) {
-      console.warn(`Unable to stop audio output monitoring: ${PlaybackEngine.messageOf(error)}`);
+    if (this.outputDeviceChangedCallback !== undefined) {
+      try {
+        this.audioSessionManager.off('currentOutputDeviceChanged', this.outputDeviceChangedCallback);
+      } catch (error) {
+        console.warn(`Unable to stop audio output monitoring: ${PlaybackEngine.messageOf(error)}`);
+      }
+      this.outputDeviceChangedCallback = undefined;
     }
-    this.outputDeviceChangedCallback = undefined;
+    if (this.audioSessionStateChangedCallback !== undefined) {
+      try {
+        this.audioSessionManager.off('audioSessionStateChanged', this.audioSessionStateChangedCallback);
+      } catch (error) {
+        console.warn(`Unable to stop audio session monitoring: ${PlaybackEngine.messageOf(error)}`);
+      }
+      this.audioSessionStateChangedCallback = undefined;
+    }
   }
 
   private async deactivateAudioSession(): Promise<void> {

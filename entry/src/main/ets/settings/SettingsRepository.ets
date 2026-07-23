@@ -21,6 +21,7 @@ const PLAYBACK_LAST_POSITION_MS_KEY: string = 'playback.last_position_ms';
 const HIGH_QUALITY_HERO_ARTWORK_KEY: string = 'appearance.high_quality_hero_artwork';
 const FOLLOW_PLAYBACK_THEME_KEY: string = 'appearance.follow_playback_theme';
 const REMEMBER_PLAYBACK_POSITION_KEY: string = 'playback.remember_position';
+const AUTO_RESUME_AFTER_OUTPUT_RECONNECT_KEY: string = 'playback.auto_resume_after_output_reconnect';
 const REMEMBER_LAST_TAB_KEY: string = 'navigation.remember_last_tab';
 const REMEMBER_LIBRARY_SORT_KEY: string = 'library.remember_sort';
 const PRESERVE_SHUFFLE_ON_MANUAL_PLAY_KEY: string = 'playback.preserve_shuffle_on_manual_play';
@@ -206,6 +207,14 @@ export class SettingsRepository {
 
   setRememberPlaybackPositionEnabled(value: boolean): void {
     this.setValue(REMEMBER_PLAYBACK_POSITION_KEY, value);
+  }
+
+  getAutoResumeAfterOutputReconnectEnabled(defaultValue: boolean = true): boolean {
+    return this.getBoolean(AUTO_RESUME_AFTER_OUTPUT_RECONNECT_KEY, defaultValue);
+  }
+
+  setAutoResumeAfterOutputReconnectEnabled(value: boolean): void {
+    this.setValue(AUTO_RESUME_AFTER_OUTPUT_RECONNECT_KEY, value);
   }
 
   getRememberLastTabEnabled(defaultValue: boolean = true): boolean {

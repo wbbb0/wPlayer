@@ -45,6 +45,7 @@ const RESUME_MINIMUM_MS = 5000;
 const COMPLETION_REMAINING_MS = 10000;
 const COMPLETION_POSITION_FRACTION = 0.95;
 const QUEUE_BUILD_CHUNK_SIZE = 64;
+const OUTPUT_RECONNECT_RESUME_WINDOW_MS = 5 * 60 * 1000;
 
 class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands, LibraryPlaybackBridge {
   readonly repository: MusicRepository = new MusicRepository();
@@ -72,6 +73,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   private fullArtwork?: DecodedFullArtwork;
   private paletteChangeListener?: (primary: string, secondary: string, accent: string) => void;
   private demoProgressTimer: number = -1;
+  private resumeAfterAudioFocusRelease: boolean = false;
 
   constructor() {
     this.engine.setListener(this);
@@ -105,6 +107,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   private startLibraryPlayback(selected: TrackListItem, libraryItems: Array<TrackListItem>): void {
     const selectedTrack = PlaybackRuntime.queueTrackOf(selected);
     const buildEpoch = ++this.queueBuildEpoch;
+    this.clearAutomaticResumeIntents();
     this.queue.clear();
     this.playerStore.queuePhase = QueueBuildPhase.BUILDING;
     this.playerStore.queueSize = 0;
@@ -201,7 +204,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   private clearRemovedQueuePlayback(): void {
-    this.outputReconnectPolicy.clear();
+    this.clearAutomaticResumeIntents();
     this.interruptCoverage();
     ++this.artworkEpoch;
     ++this.seekEpoch;
@@ -264,7 +267,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     if (!this.playerStore.hasCurrentTrack()) {
       return;
     }
-    this.outputReconnectPolicy.clear();
+    this.clearAutomaticResumeIntents();
     if (DemoLibraryMode.isEnabled()) {
       this.stopDemoProgress();
       this.playerStore.playWhenReady = false;
@@ -283,7 +286,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   stop(): void {
-    this.outputReconnectPolicy.clear();
+    this.clearAutomaticResumeIntents();
     this.pause();
     this.interruptCoverage();
     this.persistProgress(false);
@@ -296,7 +299,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     const next = this.queue.next(this.playerStore.repeatMode, false);
     this.syncQueueSnapshot();
     if (next !== undefined) {
-      this.outputReconnectPolicy.clear();
+      this.clearAutomaticResumeIntents();
       this.beginTrack(next);
     }
   }
@@ -308,7 +311,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     const previous = this.queue.previous();
     this.syncQueueSnapshot();
     if (previous !== undefined) {
-      this.outputReconnectPolicy.clear();
+      this.clearAutomaticResumeIntents();
       this.beginTrack(previous);
     }
   }
@@ -321,7 +324,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     const selected = this.queue.select(trackId);
     this.syncQueueSnapshot();
     if (selected !== undefined) {
-      this.outputReconnectPolicy.clear();
+      this.clearAutomaticResumeIntents();
       this.beginTrack(selected);
     }
   }
@@ -388,7 +391,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     if (DemoLibraryMode.isEnabled()) {
       return;
     }
-    this.outputReconnectPolicy.clear();
+    this.clearAutomaticResumeIntents();
     this.interruptCoverage();
     this.persistProgress(false);
     ++this.artworkEpoch;
@@ -445,7 +448,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   async shutdown(): Promise<void> {
-    this.outputReconnectPolicy.clear();
+    this.clearAutomaticResumeIntents();
     this.stopDemoProgress();
     this.interruptCoverage();
     this.persistProgress(false);
@@ -759,7 +762,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
 
   private beginTrack(track: QueueTrack, playWhenReady: boolean = true,
     preserveStoredPosition: boolean = false): Promise<void> {
-    this.outputReconnectPolicy.clear();
+    this.clearAutomaticResumeIntents();
     if (DemoLibraryMode.isEnabled()) {
       this.beginDemoTrack(track, playWhenReady);
       return Promise.resolve();
@@ -946,28 +949,88 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     if (!this.outputReconnectPolicy.recordOutputUnavailable(
       this.playerStore.hasCurrentTrack(),
       this.playerStore.playWhenReady,
-      this.playerStore.state
+      this.playerStore.state,
+      appSettings.autoResumeAfterOutputReconnect
     )) {
       return;
     }
+    this.updatePlaybackIntent(false);
     this.coverageTracker.recordPause(this.playerStore.progress.positionMs);
     if (this.playerStore.state !== PlayerState.PLAYING) {
       return;
     }
     this.engine.pause().catch((error: Object) => {
-      this.outputReconnectPolicy.clear();
+      this.clearAutomaticResumeIntents();
       this.onStateChanged(PlayerState.ERROR, PlaybackRuntime.messageOf(error));
     });
   }
 
   onOutputDeviceAvailable(): void {
+    if (!appSettings.autoResumeAfterOutputReconnect) {
+      this.outputReconnectPolicy.clear();
+      return;
+    }
     if (!this.outputReconnectPolicy.shouldResume(
       this.playerStore.hasCurrentTrack(),
-      this.playerStore.state
+      this.playerStore.state,
+      OUTPUT_RECONNECT_RESUME_WINDOW_MS
     )) {
       return;
     }
     this.play();
+  }
+
+  onAudioSessionPauseHint(): void {
+    if (!this.playerStore.hasCurrentTrack() || !this.playerStore.playWhenReady) {
+      this.resumeAfterAudioFocusRelease = false;
+      return;
+    }
+    this.resumeAfterAudioFocusRelease = true;
+    this.updatePlaybackIntent(false);
+    this.coverageTracker.recordPause(this.playerStore.progress.positionMs);
+    if (this.playerStore.state !== PlayerState.PLAYING) {
+      return;
+    }
+    this.engine.pause().catch((error: Object) => {
+      this.resumeAfterAudioFocusRelease = false;
+      this.onStateChanged(PlayerState.ERROR, PlaybackRuntime.messageOf(error));
+    });
+  }
+
+  onAudioSessionResumeHint(): void {
+    if (!this.resumeAfterAudioFocusRelease) {
+      return;
+    }
+    this.resumeAfterAudioFocusRelease = false;
+    if (!this.playerStore.hasCurrentTrack() ||
+      (this.playerStore.state !== PlayerState.PAUSED &&
+        this.playerStore.state !== PlayerState.READY &&
+        this.playerStore.state !== PlayerState.COMPLETED &&
+        this.playerStore.state !== PlayerState.LOADING)) {
+      return;
+    }
+    this.play();
+  }
+
+  onAudioSessionStopHint(): void {
+    this.clearAutomaticResumeIntents();
+    if (!this.playerStore.hasCurrentTrack()) {
+      return;
+    }
+    this.updatePlaybackIntent(false);
+    this.coverageTracker.recordPause(this.playerStore.progress.positionMs);
+    if (this.playerStore.state !== PlayerState.PLAYING) {
+      this.onStateChanged(PlayerState.PAUSED);
+      return;
+    }
+    this.engine.pause().catch((error: Object) => {
+      this.onStateChanged(PlayerState.ERROR, PlaybackRuntime.messageOf(error));
+    });
+  }
+
+  private clearAutomaticResumeIntents(): void {
+    this.outputReconnectPolicy.clear();
+    this.resumeAfterAudioFocusRelease = false;
   }
 
   private async loadCurrentLyrics(track: PlaybackTrack, epoch: number): Promise<void> {

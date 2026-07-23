@@ -8,6 +8,7 @@ export class AppSettingsStore {
   highQualityHeroArtwork: boolean = true;
   followPlaybackTheme: boolean = true;
   rememberPlaybackPosition: boolean = true;
+  autoResumeAfterOutputReconnect: boolean = true;
   rememberLastTab: boolean = true;
   rememberLibrarySort: boolean = true;
   preserveShuffleOnManualPlay: boolean = false;
@@ -26,6 +27,7 @@ export class AppSettingsStore {
     this.highQualityHeroArtwork = repository.getHighQualityHeroArtworkEnabled(true);
     this.followPlaybackTheme = repository.getFollowPlaybackThemeEnabled(true);
     this.rememberPlaybackPosition = repository.getRememberPlaybackPositionEnabled(true);
+    this.autoResumeAfterOutputReconnect = repository.getAutoResumeAfterOutputReconnectEnabled(true);
     this.rememberLastTab = repository.getRememberLastTabEnabled(true);
     this.rememberLibrarySort = repository.getRememberLibrarySortEnabled(true);
     this.preserveShuffleOnManualPlay = repository.getPreserveShuffleOnManualPlayEnabled(false);
@@ -56,6 +58,11 @@ export class AppSettingsStore {
       const trackId = this.repository?.getPlaybackLastTrackId(-1) ?? -1;
       this.repository?.setPlaybackResumeState(trackId, 0);
     }
+  }
+
+  setAutoResumeAfterOutputReconnect(value: boolean): void {
+    this.autoResumeAfterOutputReconnect = value;
+    this.repository?.setAutoResumeAfterOutputReconnectEnabled(value);
   }
 
   setRememberLastTab(value: boolean): void {

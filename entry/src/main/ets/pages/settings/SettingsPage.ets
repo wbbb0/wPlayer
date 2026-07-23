@@ -79,6 +79,14 @@ export struct SettingsPage {
             })
             this.ItemDivider()
             SettingsToggleItem({
+              symbol: $r('sys.symbol.headphones'),
+              title: '耳机重连后自动续播',
+              description: '因输出设备断开暂停后，5 分钟内重连才自动继续播放',
+              isOn: this.settingsStore.autoResumeAfterOutputReconnect,
+              onChange: (value: boolean): void => this.settingsStore.setAutoResumeAfterOutputReconnect(value)
+            })
+            this.ItemDivider()
+            SettingsToggleItem({
               symbol: $r('sys.symbol.shuffle'),
               title: '保留随机播放状态',
               description: '从普通播放入口开始播放时，不自动关闭随机播放',

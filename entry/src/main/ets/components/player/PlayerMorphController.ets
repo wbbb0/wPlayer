@@ -1,6 +1,7 @@
 import { HdsBarStyle, HdsTabsController } from '@kit.UIDesignKit';
 import { curves } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { image } from '@kit.ImageKit';
 import { vibrator } from '@kit.SensorServiceKit';
 import { systemBarStyleController } from '../../appearance/SystemBarStyleController';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
@@ -10,6 +11,7 @@ import { LayoutLength } from '../layout/LayoutLength';
 import {
   FullPlayerPage,
   FullPlayerPagerSpec,
+  MiniPlayerGestureRegion,
   PlayerFrame,
   PlayerGestureAxis,
   PlayerLayoutSpec,
@@ -35,7 +37,9 @@ export class PlayerMorphController {
   playerMorphBackgroundOpacity: number = 1;
   fullPlayerPage: FullPlayerPage = FullPlayerPage.COVER;
   fullPlayerPagePosition: number = FullPlayerPage.COVER;
+  frozenMorphArtwork: image.PixelMap | undefined = undefined;
   frozenMorphArtworkUri: string = '';
+  frozenMorphArtworkPreferPixelMap: boolean = false;
   frozenMorphArtworkWidth: number = 0;
   frozenMorphArtworkHeight: number = 0;
   morphArtworkSourceFrozen: boolean = false;
@@ -59,8 +63,22 @@ export class PlayerMorphController {
     x: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_X,
     y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y
   };
+  playbackButtonTarget: PlayerFrame = {
+    x: 0,
+    y: 0,
+    width: PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE,
+    height: PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE
+  };
+  frozenPlaybackButtonTarget: PlayerFrame = {
+    x: 0,
+    y: 0,
+    width: PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE,
+    height: PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE
+  };
   private returnToExpandedMiniBar: boolean = false;
   private fullPlayerGestureStartPosition: number = FullPlayerPage.COVER;
+  private miniPlayerGestureRegion: MiniPlayerGestureRegion = MiniPlayerGestureRegion.OTHER;
+  private miniPlayerHorizontalGestureOffset: number = 0;
   private morphTransitionEpoch: number = 0;
   private lifecycleEpoch: number = 0;
   private attached: boolean = false;
@@ -181,7 +199,13 @@ export class PlayerMorphController {
     const nextPlayerPaneCount = this.fullPlayerPaneCount(nextWidth, nextHeight);
     this.reconcileFullPlayerPager(previousPlayerPaneCount, nextPlayerPaneCount);
     if (previousWideLayout !== nextWideLayout) {
-      this.miniBarExpanded = nextWideLayout;
+      if (this.isMorphActive() && !nextWideLayout) {
+        this.returnToExpandedMiniBar = true;
+        this.miniBarExpanded = true;
+        this.applyCompactMiniBarStyle(HdsBarStyle.EXPAND);
+      } else {
+        this.miniBarExpanded = nextWideLayout;
+      }
     }
     return { previousWideLayout, nextWideLayout };
   }
@@ -232,6 +256,7 @@ export class PlayerMorphController {
         height: uiContext.px2vp(rootRectangle.size.height)
       };
       this.freezeArtworkTargetForCurrentPage();
+      this.freezePlaybackButtonTarget();
     } catch (error) {
       const businessError = error as BusinessError;
       console.warn(`Unable to query mini player geometry: ${businessError.code}, ${businessError.message}`);
@@ -248,6 +273,7 @@ export class PlayerMorphController {
         height: this.rootFrame.height
       };
       this.freezeArtworkTargetForCurrentPage();
+      this.freezePlaybackButtonTarget();
     }
   }
 
@@ -265,29 +291,49 @@ export class PlayerMorphController {
     this.frozenArtworkTarget = { x: target.x, y: target.y };
   }
 
+  private freezePlaybackButtonTarget(): void {
+    this.frozenPlaybackButtonTarget = {
+      x: this.playbackButtonTarget.x,
+      y: this.playbackButtonTarget.y,
+      width: this.playbackButtonTarget.width,
+      height: this.playbackButtonTarget.height
+    };
+  }
+
   private freezeMorphArtworkSource(): void {
     this.releaseMorphArtworkSource();
-    const track = this.playerStore.currentTrack;
-    this.frozenMorphArtworkUri = track !== undefined ?
-      playbackRuntime.queueArtworkUri(track.largeArtworkPath) : '';
-    this.frozenMorphArtworkWidth = track?.artworkWidth ?? 0;
-    this.frozenMorphArtworkHeight = track?.artworkHeight ?? 0;
+    this.frozenMorphArtwork = this.playerStore.heroArtwork;
+    this.frozenMorphArtworkUri = this.playerStore.heroArtworkUri;
+    this.frozenMorphArtworkPreferPixelMap = this.playerStore.heroArtworkPreferPixelMap;
+    this.frozenMorphArtworkWidth = this.playerStore.currentTrack?.artworkWidth ?? 0;
+    this.frozenMorphArtworkHeight = this.playerStore.currentTrack?.artworkHeight ?? 0;
     this.morphArtworkSourceFrozen = true;
   }
 
   private releaseMorphArtworkSource(): void {
     this.morphArtworkSourceFrozen = false;
+    this.frozenMorphArtwork = undefined;
     this.frozenMorphArtworkUri = '';
+    this.frozenMorphArtworkPreferPixelMap = false;
     this.frozenMorphArtworkWidth = 0;
     this.frozenMorphArtworkHeight = 0;
   }
 
-  morphArtworkSource(): ResourceStr {
+  morphArtworkSource(): image.PixelMap | ResourceStr {
     if (this.morphArtworkSourceFrozen) {
+      if (this.frozenMorphArtworkPreferPixelMap && this.frozenMorphArtwork !== undefined) {
+        return this.frozenMorphArtwork;
+      }
       if (this.frozenMorphArtworkUri.length > 0) {
         return this.frozenMorphArtworkUri;
       }
     } else {
+      if (this.playerStore.heroArtworkPreferPixelMap && this.playerStore.heroArtwork !== undefined) {
+        return this.playerStore.heroArtwork;
+      }
+      if (this.playerStore.heroArtworkUri.length > 0) {
+        return this.playerStore.heroArtworkUri;
+      }
       const track = this.playerStore.currentTrack;
       if (track !== undefined) {
         const artworkUri = playbackRuntime.queueArtworkUri(track.largeArtworkPath);
@@ -326,6 +372,33 @@ export class PlayerMorphController {
   fullPlayerArtworkTarget(): PlayerPoint {
     return this.playerMorphPhase === PlayerMorphPhase.OPEN ?
       this.currentPagerArtworkTarget() : this.frozenArtworkTarget;
+  }
+
+  miniPlaybackButtonFrame(): PlayerFrame {
+    const size = PlayerLayoutSpec.MINI_PLAYBACK_BUTTON_SIZE;
+    return {
+      x: this.frozenMiniPlayerFrame.x + this.frozenMiniPlayerFrame.width - size - 8,
+      y: this.frozenMiniPlayerFrame.y + (this.frozenMiniPlayerFrame.height - size) / 2,
+      width: size,
+      height: size
+    };
+  }
+
+  morphPlaybackButtonFrame(): PlayerFrame {
+    const miniButton = this.miniPlaybackButtonFrame();
+    const fullButton = this.frozenPlaybackButtonTarget;
+    return {
+      x: this.morphValue(miniButton.x, fullButton.x),
+      y: this.morphValue(miniButton.y, fullButton.y),
+      width: this.morphValue(miniButton.width, fullButton.width),
+      height: this.morphValue(miniButton.height, fullButton.height)
+    };
+  }
+
+  shouldRenderPlaybackButtonProxy(): boolean {
+    return this.playerMorphPhase !== PlayerMorphPhase.OPEN &&
+      this.frozenMiniPlayerFrame.width > PlayerLayoutSpec.DEFAULT_MINI_PLAYER_SIZE +
+        PlayerLayoutSpec.MINI_PLAYBACK_BUTTON_SIZE;
   }
 
   private currentPagerArtworkTarget(): PlayerPoint {
@@ -432,8 +505,27 @@ export class PlayerMorphController {
     }
   }
 
+  beginMiniPlayerTouch(localX: number): void {
+    const miniPlayerWidth = Math.max(
+      this.miniPlayerBinding.measuredFrame.width,
+      PlayerLayoutSpec.DEFAULT_MINI_PLAYER_SIZE
+    );
+    if (localX <= PlayerLayoutSpec.DEFAULT_MINI_PLAYER_SIZE) {
+      this.miniPlayerGestureRegion = MiniPlayerGestureRegion.ARTWORK;
+      return;
+    }
+    const playbackButtonStart = miniPlayerWidth -
+      PlayerLayoutSpec.MINI_PLAYBACK_BUTTON_SIZE - 8;
+    if (this.miniBarExpanded && localX >= playbackButtonStart) {
+      this.miniPlayerGestureRegion = MiniPlayerGestureRegion.PLAYBACK_BUTTON;
+      return;
+    }
+    this.miniPlayerGestureRegion = MiniPlayerGestureRegion.OTHER;
+  }
+
   beginMiniPlayerGesture(): void {
     this.playerGestureAxis = PlayerGestureAxis.UNDECIDED;
+    this.miniPlayerHorizontalGestureOffset = 0;
   }
 
   updateMiniPlayerGesture(event: GestureEvent): void {
@@ -446,6 +538,15 @@ export class PlayerMorphController {
     }
     if (this.playerGestureAxis === PlayerGestureAxis.HORIZONTAL) {
       const horizontalOffset = PlayerMotionSpec.distanceFromRecognitionOrigin(event.offsetX);
+      this.miniPlayerHorizontalGestureOffset = horizontalOffset;
+      if (this.isMiniBarResizeGesture()) {
+        const reachedActionPoint = this.miniBarResizeStyle(horizontalOffset) !== undefined;
+        if (reachedActionPoint && !this.swipeHapticTriggered) {
+          this.swipeHapticTriggered = true;
+          this.triggerSwipeHaptic();
+        }
+        return;
+      }
       const renderDistance = Math.abs(horizontalOffset);
       this.miniPlayerOffsetX = horizontalOffset /
         (1 + renderDistance / PlayerMotionSpec.HORIZONTAL_SWIPE_RESISTANCE);
@@ -482,9 +583,18 @@ export class PlayerMorphController {
     this.playerGestureAxis = PlayerGestureAxis.UNDECIDED;
     this.swipeHapticTriggered = false;
     if (wasHorizontalGesture) {
+      const resizeStyle = this.miniBarResizeStyle(this.miniPlayerHorizontalGestureOffset);
+      if (resizeStyle !== undefined) {
+        this.applyCompactMiniBarStyle(resizeStyle);
+        this.miniPlayerOffsetX = 0;
+        this.miniPlayerHorizontalGestureOffset = 0;
+        this.miniPlayerGestureRegion = MiniPlayerGestureRegion.OTHER;
+        return;
+      }
       const shouldChangeTrack = Math.abs(swipeOffset) >=
         PlayerMotionSpec.HORIZONTAL_HAPTIC_THRESHOLD;
       const lifecycleEpoch = this.lifecycleEpoch;
+      this.miniPlayerGestureRegion = MiniPlayerGestureRegion.OTHER;
       this.context().animateTo({
         duration: PlayerMotionSpec.CANCEL_DURATION,
         curve: Curve.EaseOut,
@@ -500,11 +610,14 @@ export class PlayerMorphController {
         }
       }, () => {
         this.miniPlayerOffsetX = 0;
+        this.miniPlayerHorizontalGestureOffset = 0;
       });
       return;
     }
+    this.miniPlayerGestureRegion = MiniPlayerGestureRegion.OTHER;
     if (!wasVerticalGesture) {
       this.miniPlayerOffsetX = 0;
+      this.miniPlayerHorizontalGestureOffset = 0;
       return;
     }
     const shouldExpand = this.playerExpandProgress >= this.morphGestureCompletionProgress();
@@ -537,6 +650,26 @@ export class PlayerMorphController {
       this.miniPlayerOffsetX = 0;
       this.playerExpandProgress = shouldExpand ? 1 : 0;
     });
+  }
+
+  private isMiniBarResizeGesture(): boolean {
+    return this.miniPlayerGestureRegion === MiniPlayerGestureRegion.ARTWORK ||
+      this.miniPlayerGestureRegion === MiniPlayerGestureRegion.PLAYBACK_BUTTON;
+  }
+
+  private miniBarResizeStyle(horizontalOffset: number): HdsBarStyle | undefined {
+    if (!this.miniBarExpanded &&
+      this.miniPlayerGestureRegion === MiniPlayerGestureRegion.ARTWORK &&
+      horizontalOffset <= -PlayerMotionSpec.HORIZONTAL_HAPTIC_THRESHOLD) {
+      return HdsBarStyle.EXPAND;
+    }
+    if (this.miniBarExpanded &&
+      (this.miniPlayerGestureRegion === MiniPlayerGestureRegion.ARTWORK ||
+        this.miniPlayerGestureRegion === MiniPlayerGestureRegion.PLAYBACK_BUTTON) &&
+      horizontalOffset >= PlayerMotionSpec.HORIZONTAL_HAPTIC_THRESHOLD) {
+      return HdsBarStyle.COLLAPSE;
+    }
+    return undefined;
   }
 
   showFullPlayer(): void {

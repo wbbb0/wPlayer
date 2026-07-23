@@ -2,7 +2,7 @@ import { ComponentContent, window } from '@kit.ArkUI';
 import { HdsTabsController } from '@kit.UIDesignKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { common } from '@kit.AbilityKit';
-import { PlayerMotionSpec, PlayerPoint } from '../components/player/PlayerMotion';
+import { PlayerFrame, PlayerMotionSpec, PlayerPoint } from '../components/player/PlayerMotion';
 import { LibraryStore } from '../library/store/LibraryStore';
 import {
   LibraryNavigationTarget,
@@ -86,6 +86,7 @@ struct Index {
       this.playerStore,
       this.playerMorphController.miniPlayerBinding,
       (): void => this.playerMorphController.showFullPlayer(),
+      (localX: number): void => this.playerMorphController.beginMiniPlayerTouch(localX),
       (): void => this.playerMorphController.beginMiniPlayerGesture(),
       (event: GestureEvent): void => this.playerMorphController.updateMiniPlayerGesture(event),
       (): void => this.playerMorphController.finishMiniPlayerGesture()
@@ -433,6 +434,9 @@ struct Index {
       },
       onCenteredArtworkTarget: (target: PlayerPoint): void => {
         this.playerMorphController.centeredArtworkTarget = target;
+      },
+      onPlaybackButtonTarget: (target: PlayerFrame): void => {
+        this.playerMorphController.playbackButtonTarget = target;
       }
     })
   }

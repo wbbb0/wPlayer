@@ -155,6 +155,7 @@ export struct FullPlayerContent {
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @Prop showArtwork: boolean = true;
+  @Prop showPlaybackButton: boolean = true;
   @Prop heroArtworkInterpolation: ImageInterpolation = ImageInterpolation.High;
   @Prop measuresArtworkTarget: boolean = false;
   @Prop rootFrame: PlayerFrame = { x: 0, y: 0, width: 0, height: 0 };
@@ -186,6 +187,7 @@ export struct FullPlayerContent {
     (_enabled: boolean): void => {};
   onArtworkTarget: (target: PlayerPoint) => void = (_target: PlayerPoint): void => {};
   onCenteredArtworkTarget: (target: PlayerPoint) => void = (_target: PlayerPoint): void => {};
+  onPlaybackButtonTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
   private readonly queueScroller: Scroller = new Scroller();
   private readonly lyricScroller: Scroller = new Scroller();
   private lastFocusedQueueIndex: number = -1;
@@ -827,7 +829,35 @@ export struct FullPlayerContent {
           PlayerTransportButton({ playerStore: this.playerStore,
             action: PlayerTransportAction.PREVIOUS, buttonSize: 52,
             contentColor: this.contentColor() })
-          PlayerPlaybackButton({ playerStore: this.playerStore, buttonSize: 64 })
+          PlayerPlaybackButton({
+            playerStore: this.playerStore,
+            buttonSize: PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE
+          })
+            .opacity(this.showPlaybackButton ? 1 : 0)
+            .enabled(this.showPlaybackButton)
+            .onAreaChange((_oldValue: Area, newValue: Area) => {
+              if (!this.measuresArtworkTarget) {
+                return;
+              }
+              this.onPlaybackButtonTarget({
+                x: LayoutLength.toNumber(
+                  newValue.globalPosition.x,
+                  this.rootFrame.x
+                ) - this.rootFrame.x,
+                y: LayoutLength.toNumber(
+                  newValue.globalPosition.y,
+                  this.rootFrame.y
+                ) - this.rootFrame.y,
+                width: LayoutLength.toNumber(
+                  newValue.width,
+                  PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE
+                ),
+                height: LayoutLength.toNumber(
+                  newValue.height,
+                  PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE
+                )
+              });
+            })
           PlayerTransportButton({ playerStore: this.playerStore,
             action: PlayerTransportAction.NEXT, buttonSize: 52,
             contentColor: this.contentColor() })

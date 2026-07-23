@@ -22,6 +22,7 @@ export struct PlayerGeometryProbe {
   @Prop previousCenteredArtworkTarget: PlayerPoint = { x: 0, y: 0 };
   onArtworkTarget: (target: PlayerPoint) => void = (_target: PlayerPoint): void => {};
   onCenteredArtworkTarget: (target: PlayerPoint) => void = (_target: PlayerPoint): void => {};
+  onPlaybackButtonTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
 
   build() {
     Stack() {
@@ -46,6 +47,9 @@ export struct PlayerGeometryProbe {
         },
         onCenteredArtworkTarget: (target: PlayerPoint): void => {
           this.onCenteredArtworkTarget(target);
+        },
+        onPlaybackButtonTarget: (target: PlayerFrame): void => {
+          this.onPlaybackButtonTarget(target);
         }
       })
     }

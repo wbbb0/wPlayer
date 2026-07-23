@@ -1348,6 +1348,7 @@ export struct ResponsiveNavigationShell {
       playerStore: this.playerStore,
       binding: this.miniPlayerBinding,
       onShowFullPlayer: this.onShowFullPlayer,
+      onTouchDown: (_localX: number): void => {},
       onGestureStart: this.onMiniPlayerGestureStart,
       onGestureUpdate: this.onMiniPlayerGestureUpdate,
       onGestureFinish: this.onMiniPlayerGestureFinish

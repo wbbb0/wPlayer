@@ -5,6 +5,7 @@ import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { AppSettingsStore } from '../../settings/AppSettingsStore';
 import { FullPlayerContent } from './FullPlayerContent';
 import { MiniPlayerContent } from './MiniPlayerSurface';
+import { PlayerPlaybackButton } from './PlayerControls';
 import { PlayerMorphArtwork } from './PlayerMorphArtwork';
 import { PlayerMorphController } from './PlayerMorphController';
 import { LibraryStore } from '../../library/store/LibraryStore';
@@ -58,6 +59,7 @@ export struct PlayerMorphOverlay {
             topInset: this.topInset,
             bottomInset: this.bottomInset,
             showArtwork: false,
+            showPlaybackButton: this.controller.playerMorphPhase === PlayerMorphPhase.OPEN,
             heroArtworkInterpolation: this.settingsStore.highQualityHeroArtwork ?
               ImageInterpolation.High : ImageInterpolation.Medium,
             rootFrame: this.controller.fullPlayerFrame(),
@@ -95,6 +97,7 @@ export struct PlayerMorphOverlay {
               playerStore: this.playerStore,
               binding: this.controller.miniPlayerBinding,
               showArtwork: false,
+              showPlaybackButton: false,
               followsSwipeOffset: false,
               marqueeActive: false,
               onShowFullPlayer: (): void => this.controller.showFullPlayer()
@@ -158,6 +161,29 @@ export struct PlayerMorphOverlay {
     })
   }
 
+  private disablesMorphPlaybackButtonAnimation(): boolean {
+    return this.controller.playerMorphPhase === PlayerMorphPhase.CLOSE_DRAGGING ||
+      this.controller.playerMorphPhase === PlayerMorphPhase.CLOSING ||
+      this.controller.playerMorphPhase === PlayerMorphPhase.BACKGROUND_HANDOFF;
+  }
+
+  @Builder
+  private MorphPlaybackButton() {
+    if (this.controller.shouldRenderPlaybackButtonProxy()) {
+      PlayerPlaybackButton({
+        playerStore: this.playerStore,
+        buttonSize: this.controller.morphPlaybackButtonFrame().width,
+        rootAnimationEnabled: !this.disablesMorphPlaybackButtonAnimation(),
+        iconAnimationEnabled: !this.disablesMorphPlaybackButtonAnimation()
+      })
+        .position({ x: 0, y: 0 })
+        .translate({
+          x: this.controller.morphPlaybackButtonFrame().x,
+          y: this.controller.morphPlaybackButtonFrame().y
+        })
+    }
+  }
+
   build() {
     Stack() {
       Stack() {
@@ -165,6 +191,7 @@ export struct PlayerMorphOverlay {
 
         Stack() {
           this.MorphArtwork()
+          this.MorphPlaybackButton()
         }
         .width('100%')
         .height('100%')

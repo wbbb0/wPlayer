@@ -16,6 +16,13 @@ export enum PlayerGestureAxis {
   VERTICAL
 }
 
+export enum MiniPlayerGestureRegion {
+  OTHER,
+  ARTWORK,
+  TEXT,
+  PLAYBACK_BUTTON
+}
+
 export enum PlayerMorphPhase {
   IDLE,
   OPEN_DRAGGING,
@@ -155,11 +162,15 @@ export class PlayerMotionSpec {
   static readonly GESTURE_AXIS_LOCK_DISTANCE: number = 4;
   static readonly HORIZONTAL_SWIPE_RESISTANCE: number = 120;
   static readonly HORIZONTAL_HAPTIC_THRESHOLD: number = 48;
+  static readonly MINI_TEXT_SWIPE_EDGE_GUARD: number = 24;
   static readonly FULL_CONTENT_COLLAPSE_FADE_START: number = 0.2;
   static readonly FULL_CONTENT_COLLAPSE_FADE_END: number = 0.8;
   static readonly MINI_CONTENT_FADE_START: number = 0.08;
   static readonly MINI_CONTENT_FADE_RATE: number = 4.2;
   static readonly MINI_CONTENT_VISIBLE_LIMIT: number = 0.32;
+  static readonly MINI_BAR_CONTENT_FADE_DURATION: number = 180;
+  static readonly PLAYBACK_BUTTON_SHADOW_PROGRESS_RANGE: number = 0.6;
+  static readonly PLAYBACK_BUTTON_POSITION_SETTLE_PROGRESS: number = 0.25;
   static readonly FULL_ARTWORK_SHADOW_RADIUS: number = 52;
   static readonly FULL_ARTWORK_SHADOW_OFFSET_Y: number = 28;
   static readonly PAUSED_ARTWORK_SHADOW_RADIUS: number = 38;
@@ -183,6 +194,18 @@ export class PlayerMotionSpec {
     const opacity = 1 - Math.max(0, Math.min(1, fadeProgress));
     return Math.round(opacity * 1000000) / 1000000;
   }
+
+  static playbackButtonShadowProgress(expandProgress: number): number {
+    const normalizedRange = Math.max(0.01, PlayerMotionSpec.PLAYBACK_BUTTON_SHADOW_PROGRESS_RANGE);
+    return Math.max(0, Math.min(1, expandProgress / normalizedRange));
+  }
+
+  static playbackButtonPositionProgress(expandProgress: number): number {
+    const settle = Math.max(0, Math.min(0.99,
+      PlayerMotionSpec.PLAYBACK_BUTTON_POSITION_SETTLE_PROGRESS
+    ));
+    return Math.max(0, Math.min(1, (expandProgress - settle) / (1 - settle)));
+  }
 }
 
 export class PlayerLayoutSpec {
@@ -191,8 +214,10 @@ export class PlayerLayoutSpec {
   static readonly DEFAULT_ARTWORK_TARGET_Y: number = 180;
   static readonly MINI_ARTWORK_SIZE: number = 48;
   static readonly MINI_ARTWORK_RADIUS: number = 24;
+  static readonly MINI_PLAYBACK_BUTTON_SIZE: number = 40;
   static readonly FULL_ARTWORK_SIZE: number = 286;
   static readonly FULL_ARTWORK_RADIUS: number = 10;
+  static readonly FULL_PLAYBACK_BUTTON_SIZE: number = 64;
   static readonly MINI_ARTWORK_INSET: number = 4;
   static readonly FULL_PLAYER_HORIZONTAL_INSET: number = 28;
   static readonly FULL_PLAYER_NON_ARTWORK_HEIGHT: number = 310;

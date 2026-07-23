@@ -1,4 +1,4 @@
-import { MiniPlayerClickSuppressor, PlayerMotionSpec } from './PlayerMotion';
+import { MiniPlayerClickSuppressor, PlayerLayoutSpec, PlayerMotionSpec } from './PlayerMotion';
 import { MiniPlayerBinding } from './MiniPlayerBinding';
 import { PlayerMiniArtwork } from './PlayerArtworkViews';
 import { PlayerPlaybackButton } from './PlayerControls';
@@ -10,16 +10,18 @@ export class MiniPlayerHostParams {
   playerStore: PlayerStore;
   binding: MiniPlayerBinding;
   onShowFullPlayer: () => void;
+  onTouchDown: (localX: number) => void;
   onGestureStart: () => void;
   onGestureUpdate: (event: GestureEvent) => void;
   onGestureFinish: () => void;
 
   constructor(playerStore: PlayerStore, binding: MiniPlayerBinding, onShowFullPlayer: () => void,
-    onGestureStart: () => void, onGestureUpdate: (event: GestureEvent) => void,
-    onGestureFinish: () => void) {
+    onTouchDown: (localX: number) => void, onGestureStart: () => void,
+    onGestureUpdate: (event: GestureEvent) => void, onGestureFinish: () => void) {
     this.playerStore = playerStore;
     this.binding = binding;
     this.onShowFullPlayer = onShowFullPlayer;
+    this.onTouchDown = onTouchDown;
     this.onGestureStart = onGestureStart;
     this.onGestureUpdate = onGestureUpdate;
     this.onGestureFinish = onGestureFinish;
@@ -32,6 +34,7 @@ export function MiniPlayerHost(params: MiniPlayerHostParams) {
     playerStore: params.playerStore,
     binding: params.binding,
     onShowFullPlayer: params.onShowFullPlayer,
+    onTouchDown: params.onTouchDown,
     onGestureStart: params.onGestureStart,
     onGestureUpdate: params.onGestureUpdate,
     onGestureFinish: params.onGestureFinish
@@ -43,6 +46,7 @@ export struct MiniPlayerContent {
   @ObjectLink playerStore: PlayerStore;
   @ObjectLink binding: MiniPlayerBinding;
   @Prop showArtwork: boolean = true;
+  @Prop showPlaybackButton: boolean = true;
   @Prop followsSwipeOffset: boolean = true;
   @Prop marqueeActive: boolean = true;
   onShowFullPlayer: () => void = (): void => {};
@@ -83,7 +87,12 @@ export struct MiniPlayerContent {
           this.onShowFullPlayer();
         })
 
-        PlayerPlaybackButton({ playerStore: this.playerStore, buttonSize: 40 })
+        PlayerPlaybackButton({
+          playerStore: this.playerStore,
+          buttonSize: PlayerLayoutSpec.MINI_PLAYBACK_BUTTON_SIZE
+        })
+          .opacity(this.showPlaybackButton ? 1 : 0)
+          .enabled(this.showPlaybackButton)
       }
     }
     .height(56)
@@ -101,6 +110,7 @@ export struct MiniPlayerSurface {
   @ObjectLink binding: MiniPlayerBinding;
   private readonly clickSuppressor: MiniPlayerClickSuppressor = new MiniPlayerClickSuppressor();
   onShowFullPlayer: () => void = (): void => {};
+  onTouchDown: (localX: number) => void = (_localX: number): void => {};
   onGestureStart: () => void = (): void => {};
   onGestureUpdate: (event: GestureEvent) => void = (_event: GestureEvent): void => {};
   onGestureFinish: () => void = (): void => {};
@@ -111,6 +121,7 @@ export struct MiniPlayerSurface {
         playerStore: this.playerStore,
         binding: this.binding,
         showArtwork: true,
+        showPlaybackButton: true,
         followsSwipeOffset: true,
         marqueeActive: this.binding.sourceMarqueeActive,
         onShowFullPlayer: (): void => this.requestShowFullPlayer()
@@ -122,6 +133,9 @@ export struct MiniPlayerSurface {
     .borderRadius(28)
     .clip(true)
     .onTouch((event: TouchEvent) => {
+      if (event.type === TouchType.Down && event.touches.length > 0) {
+        this.onTouchDown(event.touches[0].x);
+      }
       event.stopPropagation();
     })
     .onClick(() => {

@@ -16,27 +16,66 @@ export enum PlayerModeAction {
 export struct PlayerPlaybackButton {
   @ObjectLink playerStore: PlayerStore;
   @Prop buttonSize: number = 40;
+  @Prop rootAnimationEnabled: boolean = true;
+  @Prop iconAnimationEnabled: boolean = true;
 
-  build() {
-    Stack() {
+  @Builder
+  private Icon() {
+    if (this.iconAnimationEnabled) {
       SymbolGlyph(this.playerStore.showsPauseControl() ?
         $r('sys.symbol.pause') : $r('sys.symbol.play_fill'))
         .fontSize(this.buttonSize * 0.42)
         .fontColor([this.playerStore.themeOnSecondary()])
         .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
         .renderingStrategy(SymbolRenderingStrategy.MULTIPLE_OPACITY)
+    } else {
+      SymbolGlyph(this.playerStore.showsPauseControl() ?
+        $r('sys.symbol.pause') : $r('sys.symbol.play_fill'))
+        .fontSize(this.buttonSize * 0.42)
+        .fontColor([this.playerStore.themeOnSecondary()])
+        .renderingStrategy(SymbolRenderingStrategy.MULTIPLE_OPACITY)
+    }
+  }
+
+  @Builder
+  private ButtonBody() {
+    Stack() {
+      this.Icon()
     }
     .width(this.buttonSize)
     .height(this.buttonSize)
     .borderRadius(this.buttonSize / 2)
     .backgroundColor(this.playerStore.themeSecondary())
-    .shadow({ radius: 12, color: this.playerStore.themeSecondary(), offsetY: 5 })
     .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
     .clickEffect({ level: ClickEffectLevel.MIDDLE })
     .accessibilityText(this.playerStore.showsPauseControl() ? '暂停' : '播放')
     .onClick(() => {
       playbackRuntime.togglePlayback();
     })
+  }
+
+  @Builder
+  private ButtonBodyWithoutAnimation() {
+    Stack() {
+      this.Icon()
+    }
+    .width(this.buttonSize)
+    .height(this.buttonSize)
+    .borderRadius(this.buttonSize / 2)
+    .backgroundColor(this.playerStore.themeSecondary())
+    .clickEffect({ level: ClickEffectLevel.MIDDLE })
+    .accessibilityText(this.playerStore.showsPauseControl() ? '暂停' : '播放')
+    .onClick(() => {
+      playbackRuntime.togglePlayback();
+    })
+  }
+
+  build() {
+    if (this.rootAnimationEnabled) {
+      this.ButtonBody()
+    } else {
+      this.ButtonBodyWithoutAnimation()
+    }
   }
 }
 

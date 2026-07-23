@@ -9,11 +9,7 @@ import { PlaylistStore } from '../../playlist/store/PlaylistStore';
 import { promptAction } from '@kit.ArkUI';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
-import {
-  SongListItem,
-  SongListItemData,
-  SongListItemLayout
-} from '../../components/library/SongListItem';
+import { PlaylistListRow } from '../../components/library/PlaylistListRow';
 
 const DELETE_ANIMATION_DURATION: number = 180;
 
@@ -56,15 +52,8 @@ export struct PlaylistsPage {
     return `${Math.floor(totalMinutes / 60)} 小时 ${totalMinutes % 60} 分钟`;
   }
 
-  private playlistItem(playlist: PlaylistSummary): SongListItemData {
-    return {
-      id: playlist.id,
-      title: playlist.name,
-      artistDisplay: `${playlist.trackCount} 首 · ${this.durationLabel(playlist.totalDurationMs)}`,
-      durationMs: 0,
-      artworkWidth: 0,
-      artworkHeight: 0
-    };
+  private playlistSubtitle(playlist: PlaylistSummary): string {
+    return `${playlist.trackCount} 首 · ${this.durationLabel(playlist.totalDurationMs)}`;
   }
 
   private confirmDelete(playlist: PlaylistSummary): void {
@@ -203,25 +192,21 @@ export struct PlaylistsPage {
 
   @Builder
   private PlaylistContent(playlist: PlaylistSummary) {
-    SongListItem({
-      item: this.playlistItem(playlist),
-      layout: SongListItemLayout.LIBRARY,
-      showDuration: false,
+    PlaylistListRow({
+      playlist: playlist,
+      subtitle: this.playlistSubtitle(playlist),
       leadingSymbol: playlist.kind === PlaylistKind.COMPLETED_HISTORY ?
         $r('sys.symbol.checkmark_circle_fill') : $r('sys.symbol.music_note_list_fill'),
       horizontalInset: 16,
       verticalInset: 8,
-      artworkSize: 52,
-      artworkCornerRadius: 10,
-      customContextMenuEnabled: true,
-      customTrailingMenuEnabled: !this.selection.active,
-      customTrailingMenuAccessibilityText: '更多播放列表操作',
-      customContextMenu: (): void => this.PlaylistMenu(playlist),
+      leadingSize: 52,
+      leadingCornerRadius: 10,
+      contextMenu: (): void => this.PlaylistMenu(playlist),
       actionAnchorPrefix: 'playlists',
       selectionMode: this.selection.active,
       selected: this.selection.isSelected(playlist.id),
-      onActivate: (): void => this.onOpenPlaylist(playlist),
-      onToggleSelection: (): void => this.toggleSelection(playlist)
+      onActivate: this.onOpenPlaylist,
+      onToggleSelection: (item: PlaylistSummary): void => this.toggleSelection(item)
     })
   }
 

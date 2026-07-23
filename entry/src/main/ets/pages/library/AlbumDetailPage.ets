@@ -15,9 +15,9 @@ import { ArtistReference } from '../../library/model/LibraryModels';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { AppShellLayoutSpec } from '../../components/layout/AppShellLayoutSpec';
 import {
-  SongListItem,
-  SongListItemLayout
-} from '../../components/library/SongListItem';
+  LibraryTrackRow,
+  LibraryTrackRowVariant
+} from '../../components/library/LibraryTrackRow';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import { DynamicColor, DynamicContainerRole } from '../../appearance/DynamicColor';
 import { AlbumAction, AlbumGridSection } from '../../components/library/AlbumGridItem';
@@ -402,37 +402,33 @@ export struct AlbumDetailPage {
                   .margin({ left: PageLayoutSpec.HORIZONTAL_INSET + 42,
                     right: PageLayoutSpec.HORIZONTAL_INSET })
               }
-              SongListItem({
-                item: track,
-                libraryStore: this.store,
+              LibraryTrackRow({
+                track: track,
+                store: this.store,
                 currentIdentity: this.currentIdentity,
-                layout: SongListItemLayout.ALBUM,
-                artworkPath: track.smallArtworkPath.length > 0 ?
-                  this.store.resolveArtworkPath(track.smallArtworkPath) : '',
+                variant: LibraryTrackRowVariant.ALBUM,
                 trackNumber: track.trackNumber,
                 showArtist: this.showTrackArtist(
                   track,
                   this.state.detail!.album.albumArtistDisplay
                 ),
-                actionTrack: track,
                 actionAnchorPrefix: this.actionAnchorPrefix,
                 horizontalInset: PageLayoutSpec.HORIZONTAL_INSET,
                 verticalInset: 0,
                 minimumHeight: 58,
                 rowCornerRadius: 14,
-                queueIndexWidth: 30,
                 selectionMode: this.selection.active,
                 selected: this.selection.isSelected(track.id),
-                onActivate: (): void => {
+                onActivate: (item: TrackListItem): void => {
                   const detail = this.detail();
                   if (detail !== undefined) {
-                    playbackRuntime.playInOrder(track, detail.tracks);
+                    playbackRuntime.playInOrder(item, detail.tracks);
                   }
                 },
                 onOpenActions: this.onOpenTrackActions,
                 onNavigateAction: this.onNavigateTrackAction,
                 onRequestAddToPlaylist: this.onRequestAddToPlaylist,
-                onToggleSelection: (): void => this.toggleSelection(track)
+                onToggleSelection: (item: TrackListItem): void => this.toggleSelection(item)
               })
                 .reuseId('album_detail_track')
             }

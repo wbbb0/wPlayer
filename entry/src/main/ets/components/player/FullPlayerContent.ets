@@ -25,10 +25,7 @@ import {
   QueueIndexListener
 } from '../../playback/model/PlaybackModels';
 import { TimedLyricLine } from '../../playback/lyrics/LyricsParser';
-import {
-  SongListItem,
-  SongListItemLayout
-} from '../library/SongListItem';
+import { QueueTrackRow } from './QueueTrackRow';
 import { LayoutLength } from '../layout/LayoutLength';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import { SymbolGlyphModifier } from '@kit.ArkUI';
@@ -363,25 +360,6 @@ export struct FullPlayerContent {
     return this.sideContentReady || this.isPageInActiveViewport(page);
   }
 
-  private queueArtworkPath(relativePath: string): string {
-    if (!this.shouldLoadQueueArtwork()) {
-      return '';
-    }
-    return this.onResolveQueueArtwork(relativePath);
-  }
-
-  private shouldLoadQueueArtwork(): boolean {
-    return this.sideContentReady && this.isPageInActiveViewport(FullPlayerPage.QUEUE);
-  }
-
-  private queueCachedCount(): number {
-    return this.shouldLoadQueueArtwork() ? LibraryPagingPolicy.TRACK_PAGE_SIZE : 0;
-  }
-
-  private queueArtworkPlaceholderOnly(): boolean {
-    return !this.shouldLoadQueueArtwork();
-  }
-
   aboutToAppear(): void {
     if (!this.measuresArtworkTarget) {
       this.playerStore.addQueueIndexListener(this.queueIndexListener);
@@ -634,13 +612,10 @@ export struct FullPlayerContent {
                     })
                 }
                 Row() {
-                  SongListItem({
-                    item: entry.track,
-                    libraryStore: this.libraryStore,
-                    layout: SongListItemLayout.PLAYER_QUEUE,
-                    artworkPath: this.queueArtworkPath(entry.track.smallArtworkPath),
-                    artworkPlaceholderBackgroundOnly: this.queueArtworkPlaceholderOnly(),
-                    artworkPlaceholderBackgroundColor: $r('app.color.glass_surface_subtle'),
+                  QueueTrackRow({
+                    track: this.queueActionTrack(entry.track),
+                    store: this.libraryStore,
+                    artworkPath: this.onResolveQueueArtwork(entry.track.smallArtworkPath),
                     queueIndex: index,
                     currentQueueIndex: this.playerStore.queueCurrentIndex,
                     primaryColor: this.playerStore.themeOnPrimary(),
@@ -659,7 +634,6 @@ export struct FullPlayerContent {
                     artworkCornerRadius: PlayerLayoutSpec.FULL_ARTWORK_RADIUS,
                     queueIndexWidth: PlayerLayoutSpec.FULL_PLAYER_QUEUE_INDEX_WIDTH,
                     queueGestureDistance: PlayerMotionSpec.GESTURE_AXIS_LOCK_DISTANCE,
-                    actionTrack: this.queueActionTrack(entry.track),
                     actionAnchorPrefix: `player_queue_${entry.queueEntryId}`,
                     menuPlacement: Placement.BottomLeft,
                     onNavigateAction: this.onNavigateLibrary,
@@ -667,12 +641,14 @@ export struct FullPlayerContent {
                       this.onRequestAddToPlaylist(items.map((item: TrackListItem): number => item.id)),
                     selectionMode: this.queueSelectionActive,
                     selected: this.queueEntrySelected(entry.queueEntryId),
-                    onActivate: (): void => {
-                      this.onPlayQueueTrack(entry.track.id);
+                    onActivate: (track: TrackListItem): void => {
+                      this.onPlayQueueTrack(track.id);
                     },
-                    onToggleSelection: (): void => this.toggleQueueSelection(entry)
+                    onToggleSelection: (_track: TrackListItem): void =>
+                      this.toggleQueueSelection(entry)
                   })
-                    .reuseId('player_queue_track')
+                    .reuseId(this.queueSelectionActive ?
+                      'player_queue_selection' : 'player_queue_track')
                 }
                 .width('100%')
                 .padding({
@@ -688,7 +664,7 @@ export struct FullPlayerContent {
         .layoutWeight(1)
         .width('100%')
         .edgeEffect(EdgeEffect.Spring)
-        .cachedCount(this.queueCachedCount(), true)
+        .cachedCount(LibraryPagingPolicy.TRACK_PAGE_SIZE, true)
         .scrollBar(BarState.Auto)
         .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) => {
           recognizers.forEach((recognizer: GestureRecognizer) => {

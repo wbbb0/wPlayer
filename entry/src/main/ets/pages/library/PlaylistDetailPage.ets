@@ -14,9 +14,9 @@ import { PlaylistStore } from '../../playlist/store/PlaylistStore';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { PlaybackOriginKind } from '../../playback/model/PlaybackModels';
 import {
-  SongListItem,
-  SongListItemLayout
-} from '../../components/library/SongListItem';
+  LibraryTrackRow,
+  LibraryTrackRowVariant
+} from '../../components/library/LibraryTrackRow';
 import { TrackActionMenuPresenter } from '../../components/library/TrackActionMenu';
 import { promptAction } from '@kit.ArkUI';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
@@ -290,27 +290,27 @@ export struct PlaylistDetailPage {
 
   @Builder
   private TrackContent(item: PlaylistTrackItem) {
-    SongListItem({
-      item: item,
-      libraryStore: this.libraryStore,
-      layout: SongListItemLayout.LIBRARY,
+    LibraryTrackRow({
+      track: item,
+      store: this.libraryStore,
+      variant: LibraryTrackRowVariant.LIBRARY,
       artworkPath: this.onResolveArtwork(item.artworkPath),
-      actionTrack: item,
       actionAnchorPrefix: `playlist_${this.playlistId}`,
       horizontalInset: PageLayoutSpec.HORIZONTAL_INSET,
       verticalInset: 7,
       artworkSize: 48,
       artworkCornerRadius: 9,
       removeActionLabel: '从此播放列表移除',
-      onActivate: (): void => this.play(item),
-      onOpenActions: (_track: TrackListItem, anchorId: string): void =>
-        this.openTrackActions(item, anchorId),
+      onActivate: (track: TrackListItem): void => this.play(track as PlaylistTrackItem),
+      onOpenActions: (track: TrackListItem, anchorId: string): void =>
+        this.openTrackActions(track as PlaylistTrackItem, anchorId),
       onNavigateAction: this.onNavigateLibrary,
       onRequestAddToPlaylist: this.onRequestAddToPlaylist,
       onRemoveAction: (): void => this.confirmRemoveTrack(item),
       selectionMode: this.selection.active,
       selected: this.selection.isSelected(item.id),
-      onToggleSelection: (): void => this.toggleSelection(item)
+      onToggleSelection: (track: TrackListItem): void =>
+        this.toggleSelection(track as PlaylistTrackItem)
     })
   }
 

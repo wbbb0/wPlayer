@@ -2,9 +2,9 @@ import { PageLayoutSpec } from '../../components/layout/PageLayoutSpec';
 import { PageListBehavior } from '../../components/layout/PageScrollBehavior';
 import { AlbumGridSection } from '../../components/library/AlbumGridItem';
 import {
-  SongListItem,
-  SongListItemLayout
-} from '../../components/library/SongListItem';
+  LibraryTrackRow,
+  LibraryTrackRowVariant
+} from '../../components/library/LibraryTrackRow';
 import {
   AlbumListItem,
   ArtistDetail,
@@ -206,22 +206,21 @@ export struct ArtistDetailPage {
           }
           LazyForEach(this.state.trackDataSource, (track: TrackListItem) => {
             ListItem() {
-              SongListItem({
-                item: track,
-                libraryStore: this.store,
+              LibraryTrackRow({
+                track: track,
+                store: this.store,
                 currentIdentity: this.currentIdentity,
-                layout: SongListItemLayout.LIBRARY,
+                variant: LibraryTrackRowVariant.LIBRARY,
                 artworkPath: track.smallArtworkPath.length > 0 ?
                   this.store.resolveArtworkPath(track.smallArtworkPath) : '',
-                actionTrack: track,
                 actionAnchorPrefix: this.actionAnchorPrefix,
                 horizontalInset: PageLayoutSpec.HORIZONTAL_INSET,
                 verticalInset: 6,
                 artworkSize: 48,
                 artworkCornerRadius: 9,
-                onActivate: (): void => {
+                onActivate: (item: TrackListItem): void => {
                   if (this.state.detail !== undefined) {
-                    playbackRuntime.playInOrder(track, this.state.detail.tracks);
+                    playbackRuntime.playInOrder(item, this.state.detail.tracks);
                   }
                 },
                 onOpenActions: this.onOpenTrackActions,
@@ -229,7 +228,7 @@ export struct ArtistDetailPage {
                 onRequestAddToPlaylist: this.onRequestAddToPlaylist,
                 selectionMode: this.selection.active,
                 selected: this.selection.isSelected(track.id),
-                onToggleSelection: (): void => this.toggleSelection(track)
+                onToggleSelection: (item: TrackListItem): void => this.toggleSelection(item)
               })
                 .reuseId('artist_detail_track')
             }

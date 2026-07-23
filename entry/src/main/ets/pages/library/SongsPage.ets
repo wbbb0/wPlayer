@@ -10,9 +10,9 @@ import {
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
 import {
-  SongListItem,
-  SongListItemLayout
-} from '../../components/library/SongListItem';
+  LibraryTrackRow,
+  LibraryTrackRowVariant
+} from '../../components/library/LibraryTrackRow';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 
@@ -92,13 +92,12 @@ export struct SongsPage {
                   .color($r('app.color.text_tertiary'))
                   .opacity(index > 0 ? 0.3 : 0)
                   .margin({ left: 80, right: PageLayoutSpec.HORIZONTAL_INSET })
-                SongListItem({
-                  item: track,
-                  libraryStore: this.store,
-                  layout: SongListItemLayout.LIBRARY,
+                LibraryTrackRow({
+                  track: track,
+                  store: this.store,
+                  variant: LibraryTrackRowVariant.LIBRARY,
                   artworkPath: track.smallArtworkPath.length > 0 ?
                     this.store.resolveArtworkPath(track.smallArtworkPath) : '',
-                  actionTrack: track,
                   actionAnchorPrefix: 'songs',
                   menuPlacement: Placement.BottomLeft,
                   horizontalInset: 16,
@@ -107,11 +106,11 @@ export struct SongsPage {
                   artworkCornerRadius: 10,
                   selectionMode: this.selection.active,
                   selected: this.selection.isSelected(track.id),
-                  onActivate: (): void => this.onPlayTrack(track),
+                  onActivate: this.onPlayTrack,
                   onOpenActions: this.onOpenTrackActions,
                   onNavigateAction: this.onNavigateTrackAction,
                   onRequestAddToPlaylist: this.onRequestAddToPlaylist,
-                  onToggleSelection: (): void => this.toggleSelection(track)
+                  onToggleSelection: (item: TrackListItem): void => this.toggleSelection(item)
                 })
                   .height(68)
                   .reuseId(this.selection.active ? 'songs_library_selection' : 'songs_library_actions')

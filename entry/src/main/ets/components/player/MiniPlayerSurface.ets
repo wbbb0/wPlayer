@@ -112,7 +112,7 @@ export struct MiniPlayerSurface {
         binding: this.binding,
         showArtwork: true,
         followsSwipeOffset: true,
-        marqueeActive: this.binding.sourceVisible,
+        marqueeActive: this.binding.sourceMarqueeActive,
         onShowFullPlayer: (): void => this.requestShowFullPlayer()
       })
     }

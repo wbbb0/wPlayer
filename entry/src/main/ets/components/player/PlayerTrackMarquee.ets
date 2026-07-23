@@ -58,7 +58,7 @@ export struct PlayerTrackMarquee {
         delay: PlayerMarqueeMotionSpec.START_DELAY,
         fadeout: false,
         marqueeStartPolicy: MarqueeStartPolicy.DEFAULT,
-        marqueeUpdatePolicy: MarqueeUpdatePolicy.PRESERVE_POSITION
+        marqueeUpdatePolicy: MarqueeUpdatePolicy.DEFAULT
       })
   }
 

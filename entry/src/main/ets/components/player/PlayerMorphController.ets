@@ -127,6 +127,7 @@ export class PlayerMorphController {
     this.playerExpandProgress = 0;
     this.playerMorphBackgroundOpacity = 1;
     this.miniPlayerBinding.sourceVisible = true;
+    this.miniPlayerBinding.sourceMarqueeActive = true;
     this.releaseMorphArtworkSource();
     this.uiContext = undefined;
   }
@@ -358,6 +359,7 @@ export class PlayerMorphController {
     this.morphTransitionEpoch += 1;
     this.playerMorphPhase = phase;
     this.miniPlayerBinding.sourceVisible = false;
+    this.miniPlayerBinding.sourceMarqueeActive = false;
     this.syncSystemBarContentColor();
     return this.morphTransitionEpoch;
   }
@@ -397,6 +399,7 @@ export class PlayerMorphController {
         this.playerMorphPhase = PlayerMorphPhase.IDLE;
         this.fullPlayerSideContentReady = false;
         this.miniPlayerBinding.sourceVisible = true;
+        this.miniPlayerBinding.sourceMarqueeActive = true;
         this.syncSystemBarContentColor();
         this.playerMorphBackgroundOpacity = 1;
         this.releaseMorphArtworkSource();

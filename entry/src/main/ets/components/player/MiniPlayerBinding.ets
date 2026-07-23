@@ -5,6 +5,7 @@ export class MiniPlayerBinding {
   expanded: boolean = false;
   offsetX: number = 0;
   sourceVisible: boolean = true;
+  sourceMarqueeActive: boolean = true;
   measuredFrame: PlayerFrame = {
     x: 0,
     y: 0,

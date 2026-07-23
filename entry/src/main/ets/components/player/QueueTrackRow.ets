@@ -274,9 +274,7 @@ export struct QueueTrackRow {
         placement: this.menuPlacement,
         previewBorderRadius: 0,
         layoutRegionMargin: ContextPreviewGeometry.layoutRegionMargin(),
-        previewAnimationOptions: {
-          scale: [1, 1]
-        },
+        previewAnimationOptions: ContextPreviewGeometry.animationOptions(),
         onDisappear: (): void => {
           this.contextMenuShown = false;
         }

@@ -6,6 +6,12 @@ export interface ContextPreviewFrame {
 }
 
 export class ContextPreviewGeometry {
+  static animationOptions(): ContextMenuAnimationOptions {
+    return {
+      scale: [1, 1.1]
+    };
+  }
+
   static layoutRegionMargin(): Margin {
     return {
       left: 16,

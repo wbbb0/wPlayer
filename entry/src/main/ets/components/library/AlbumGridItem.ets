@@ -226,6 +226,7 @@ export struct AlbumGridItem {
             preview: this.AlbumContextPreview,
             previewBorderRadius: 0,
             layoutRegionMargin: ContextPreviewGeometry.layoutRegionMargin(),
+            previewAnimationOptions: ContextPreviewGeometry.animationOptions(),
             onDisappear: (): void => {
               this.contextMenuShown = false;
             }

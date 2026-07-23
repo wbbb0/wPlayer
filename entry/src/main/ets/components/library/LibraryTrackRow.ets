@@ -308,6 +308,7 @@ export struct LibraryTrackRow {
         placement: this.menuPlacement,
         previewBorderRadius: 0,
         layoutRegionMargin: ContextPreviewGeometry.layoutRegionMargin(),
+        previewAnimationOptions: ContextPreviewGeometry.animationOptions(),
         onDisappear: (): void => {
           this.contextMenuShown = false;
         }

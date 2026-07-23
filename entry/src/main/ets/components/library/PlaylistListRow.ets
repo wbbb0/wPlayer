@@ -142,6 +142,7 @@ export struct PlaylistListRow {
         preview: this.ContextMenuPreview,
         previewBorderRadius: 0,
         layoutRegionMargin: ContextPreviewGeometry.layoutRegionMargin(),
+        previewAnimationOptions: ContextPreviewGeometry.animationOptions(),
         onDisappear: (): void => {
           this.contextMenuShown = false;
         }

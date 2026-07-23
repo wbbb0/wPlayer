@@ -19,6 +19,7 @@ import {
   LibraryIndexPresentation,
   LibrarySection,
   SortDirection,
+  TrackDetail,
   TrackListItem,
   TrackNavigationTargets,
   TrackSortField,
@@ -686,6 +687,10 @@ export class LibraryStore {
 
   getArtistDetail(artistId: number): Promise<ArtistDetail | undefined> {
     return this.repository.getArtistDetail(artistId);
+  }
+
+  getTrackDetail(trackId: number): Promise<TrackDetail | undefined> {
+    return this.repository.getTrackDetail(trackId);
   }
 
   async getTrackNavigationTargets(trackId: number): Promise<TrackNavigationTargets | undefined> {

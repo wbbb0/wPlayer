@@ -18,6 +18,7 @@ import {
   PlaylistTrackItem,
   PlaylistTrackSortField,
   SortDirection,
+  TrackDetail,
   TrackListItem,
   TrackNavigationTargets,
   TrackSortField
@@ -271,6 +272,51 @@ export class DemoMusicLibrary {
       return direction === SortDirection.ASCENDING ? result : -result;
     });
     return tracks;
+  }
+
+  static trackDetail(trackId: number): TrackDetail | undefined {
+    const track = DEMO_TRACKS.find((candidate: TrackListItem): boolean => candidate.id === trackId);
+    if (track === undefined) {
+      return undefined;
+    }
+    return {
+      id: track.id,
+      title: track.title,
+      sortTitle: track.title,
+      artistDisplay: track.artistDisplay,
+      albumDisplay: track.albumDisplay,
+      albumArtistDisplay: track.artistDisplay,
+      composerDisplay: '',
+      trackNumber: track.trackNumber,
+      totalTrackCount: 3,
+      trackNumberRaw: `${track.trackNumber}/3`,
+      discNumber: track.discNumber,
+      totalDiscCount: 1,
+      discNumberRaw: '1/1',
+      releaseDateRaw: '2026',
+      originalReleaseDateRaw: '',
+      durationMs: track.durationMs,
+      sampleRate: 44100,
+      channelCount: 2,
+      bitsPerSample: 16,
+      bitRate: 0,
+      displayName: `${track.title}.flac`,
+      uri: '',
+      fileSize: 0,
+      modifiedAt: 0,
+      format: MediaFormat.FLAC,
+      mimeType: 'audio/flac',
+      authorizationPersisted: false,
+      availability: track.availability,
+      artworkPath: track.artworkPath,
+      artworkWidth: track.artworkWidth,
+      artworkHeight: track.artworkHeight,
+      palettePrimary: track.palettePrimary,
+      credits: [],
+      genres: [],
+      rawTags: [],
+      artworks: []
+    };
   }
 
   static trackSnapshot(field: TrackSortField, direction: SortDirection): LibrarySnapshot<TrackListItem> {

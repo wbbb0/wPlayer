@@ -20,6 +20,7 @@ export class TrackActionMenuParams {
   readonly onRequestAddToPlaylist: (items: Array<TrackListItem>) => void;
   readonly removeLabel: string;
   readonly onRemove?: () => void;
+  readonly onOpenDetails?: (track: TrackListItem) => void;
 
   constructor(
     queueItems: Array<TrackListItem>,
@@ -28,7 +29,8 @@ export class TrackActionMenuParams {
     onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
       (_items: Array<TrackListItem>): void => {},
     removeLabel: string = '',
-    onRemove?: () => void
+    onRemove?: () => void,
+    onOpenDetails?: (track: TrackListItem) => void
   ) {
     this.queueItems = queueItems;
     this.linkActions = linkActions;
@@ -36,6 +38,7 @@ export class TrackActionMenuParams {
     this.onRequestAddToPlaylist = onRequestAddToPlaylist;
     this.removeLabel = removeLabel;
     this.onRemove = onRemove;
+    this.onOpenDetails = onOpenDetails;
   }
 }
 
@@ -58,6 +61,10 @@ export function TrackActionMenu(params: TrackActionMenuParams) {
         .onClick(() => params.onNavigate(action.target))
     }, (action: LibraryLinkAction) =>
       `${action.target.identity.kind}:${action.target.identity.id}`)
+    if (params.queueItems.length === 1 && params.onOpenDetails !== undefined) {
+      MenuItem({ content: '歌曲信息' })
+        .onClick(() => params.onOpenDetails?.(params.queueItems[0]))
+    }
     if (params.onRemove !== undefined && params.removeLabel.length > 0) {
       MenuItem({ content: params.removeLabel })
         .onClick(() => params.onRemove?.())
@@ -83,6 +90,7 @@ export struct TrackContextMenu {
     (_items: Array<TrackListItem>): void => {};
   @Prop removeLabel: string = '';
   onRemove: (() => void) | undefined = undefined;
+  onOpenDetails: ((track: TrackListItem) => void) | undefined = undefined;
   private active: boolean = false;
 
   aboutToAppear(): void {
@@ -115,7 +123,8 @@ export struct TrackContextMenu {
       this.onNavigate,
       this.onRequestAddToPlaylist,
       this.removeLabel,
-      this.onRemove
+      this.onRemove,
+      this.onOpenDetails
     ))
   }
 }
@@ -132,7 +141,8 @@ export class TrackActionMenuPresenter {
     onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
       (_items: Array<TrackListItem>): void => {},
     removeLabel: string = '',
-    onRemove?: () => void
+    onRemove?: () => void,
+    onOpenDetails?: (track: TrackListItem) => void
   ): Promise<void> {
     try {
       const targets = await store.getTrackNavigationTargets(trackId);
@@ -146,7 +156,8 @@ export class TrackActionMenuPresenter {
           onNavigate,
           onRequestAddToPlaylist,
           removeLabel,
-          onRemove
+          onRemove,
+          onOpenDetails
         )
       );
       await uiContext.getPromptAction().openMenu(

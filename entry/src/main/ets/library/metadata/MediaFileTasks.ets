@@ -251,6 +251,51 @@ function readArtworkBytesTask(uri: string, byteOffset: number, byteLength: numbe
 }
 
 @Concurrent
+function readArtworkBytesFromFdTask(fd: number, byteOffset: number, byteLength: number,
+  payloadOffset: number, unsynchronized: boolean): ArrayBuffer {
+  if (byteOffset < 0 || byteLength <= 0 || byteLength > 64 * 1024 * 1024) {
+    throw new Error(`Invalid artwork byte range: ${byteOffset}+${byteLength}`);
+  }
+  try {
+    const stat = fs.statSync(fd);
+    if (byteOffset + byteLength > stat.size) {
+      throw new Error(`Artwork byte range exceeds file: ${byteOffset}+${byteLength}/${stat.size}`);
+    }
+    const buffer = new ArrayBuffer(byteLength);
+    let totalRead = 0;
+    while (totalRead < byteLength) {
+      const bytesRead = fs.readSync(fd, buffer, {
+        offset: byteOffset + totalRead,
+        length: byteLength - totalRead
+      });
+      if (bytesRead <= 0) {
+        throw new Error(`Unexpected end of artwork at ${byteOffset + totalRead}`);
+      }
+      totalRead += bytesRead;
+    }
+    if (!unsynchronized) {
+      return buffer;
+    }
+    const source = new Uint8Array(buffer);
+    const output = new Uint8Array(source.length);
+    let outputLength = 0;
+    for (let index = 0; index < source.length; index += 1) {
+      output[outputLength++] = source[index];
+      if (source[index] === 0xFF && index + 1 < source.length && source[index + 1] === 0x00) {
+        index += 1;
+      }
+    }
+    if (payloadOffset < 0 || payloadOffset > outputLength) {
+      throw new Error(`Invalid artwork payload offset: ${payloadOffset}/${outputLength}`);
+    }
+    return output.buffer.slice(payloadOffset, outputLength);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : `${error}`;
+    throw new Error(`Unable to read embedded artwork from authorized file: ${message}`);
+  }
+}
+
+@Concurrent
 function flattenArtworkPixelsTask(sourceBuffer: ArrayBuffer, width: number, height: number,
   premultiplied: boolean): ArrayBuffer {
   const source = new Uint8Array(sourceBuffer);
@@ -318,6 +363,40 @@ export function readArtworkBytesAsync(uri: string, byteOffset: number, byteLengt
     ) as Promise<ArrayBuffer>;
   } catch (error) {
     return Promise.reject(operationError('Unable to submit artwork read task', error));
+  }
+}
+
+export async function readAuthorizedArtworkBytesAsync(
+  uri: string,
+  byteOffset: number,
+  byteLength: number,
+  payloadOffset: number,
+  unsynchronized: boolean
+): Promise<ArrayBuffer> {
+  let file: fs.File | undefined;
+  try {
+    // Opening the Picker URI must happen in the application execution context
+    // where its persisted authorization is available. The worker can then read
+    // from the already-authorized process file descriptor.
+    file = await fs.open(uri, fs.OpenMode.READ_ONLY);
+    return await taskpool.execute(
+      readArtworkBytesFromFdTask,
+      file.fd,
+      byteOffset,
+      byteLength,
+      payloadOffset,
+      unsynchronized
+    ) as ArrayBuffer;
+  } catch (error) {
+    return Promise.reject(operationError('Unable to read authorized artwork bytes', error));
+  } finally {
+    if (file !== undefined) {
+      try {
+        await fs.close(file);
+      } catch (error) {
+        console.warn(`Unable to close authorized artwork file: ${operationError('', error).message}`);
+      }
+    }
   }
 }
 

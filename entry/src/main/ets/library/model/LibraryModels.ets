@@ -227,6 +227,61 @@ export interface TrackNavigationTargets {
   album?: AlbumReference;
 }
 
+export interface TrackCreditDetail {
+  role: CreditRole;
+  name: string;
+  ordinal: number;
+}
+
+export interface TrackRawTag {
+  key: string;
+  ordinal: number;
+  value: string;
+}
+
+export interface EmbeddedArtwork extends ParsedArtwork {
+  id: number;
+}
+
+export interface TrackDetail {
+  id: number;
+  title: string;
+  sortTitle: string;
+  artistDisplay: string;
+  albumDisplay: string;
+  albumArtistDisplay: string;
+  composerDisplay: string;
+  trackNumber: number;
+  totalTrackCount: number;
+  trackNumberRaw: string;
+  discNumber: number;
+  totalDiscCount: number;
+  discNumberRaw: string;
+  releaseDateRaw: string;
+  originalReleaseDateRaw: string;
+  durationMs: number;
+  sampleRate: number;
+  channelCount: number;
+  bitsPerSample: number;
+  bitRate: number;
+  displayName: string;
+  uri: string;
+  fileSize: number;
+  modifiedAt: number;
+  format: MediaFormat;
+  mimeType: string;
+  authorizationPersisted: boolean;
+  availability: AvailabilityState;
+  artworkPath: string;
+  artworkWidth: number;
+  artworkHeight: number;
+  palettePrimary: string;
+  credits: Array<TrackCreditDetail>;
+  genres: Array<string>;
+  rawTags: Array<TrackRawTag>;
+  artworks: Array<EmbeddedArtwork>;
+}
+
 export interface AlbumListItem {
   id: number;
   title: string;

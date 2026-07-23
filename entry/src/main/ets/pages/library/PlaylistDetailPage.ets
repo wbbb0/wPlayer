@@ -41,6 +41,8 @@ export struct PlaylistDetailPage {
     (_items: Array<TrackListItem>): void => {};
   onNavigateLibrary: (target: LibraryNavigationTarget) => void =
     (_target: LibraryNavigationTarget): void => {};
+  onOpenTrackDetails: (track: TrackListItem) => void =
+    (_track: TrackListItem): void => {};
   private readonly scrollBehavior: PageListBehavior =
     new PageListBehavior(LibraryPagingPolicy.TRACK_PAGE_SIZE);
 
@@ -235,7 +237,8 @@ export struct PlaylistDetailPage {
       this.onNavigateLibrary,
       this.onRequestAddToPlaylist,
       '从此播放列表移除',
-      (): void => this.confirmRemoveTrack(item)
+      (): void => this.confirmRemoveTrack(item),
+      this.onOpenTrackDetails
     );
   }
 
@@ -321,6 +324,7 @@ export struct PlaylistDetailPage {
       onActivate: (track: TrackListItem): void => this.play(track as PlaylistTrackItem),
       onOpenActions: (track: TrackListItem, anchorId: string): void =>
         this.openTrackActions(track as PlaylistTrackItem, anchorId),
+      onOpenDetails: this.onOpenTrackDetails,
       onNavigateAction: this.onNavigateLibrary,
       onRequestAddToPlaylist: this.onRequestAddToPlaylist,
       onRemoveAction: (): void => this.confirmRemoveTrack(item),

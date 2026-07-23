@@ -4,11 +4,14 @@ import {
   LibraryEntityIdentity,
   LibraryEntityKind,
   LibraryNavigationTarget,
+  TrackDetail,
   TrackNavigationTargets
 } from '../../library/model/LibraryModels';
 import {
   AlbumDetailState,
-  ArtistDetailState
+  ArtistDetailState,
+  TrackArtworkViewerState,
+  TrackDetailState
 } from '../../library/store/LibraryDetailState';
 import { MultiSelectController } from '../library/MultiSelectController';
 
@@ -17,6 +20,8 @@ let routeInstanceId: number = 0;
 export class LibraryDetailRoute {
   static readonly ALBUM: string = 'libraryAlbumDetail';
   static readonly ARTIST: string = 'libraryArtistDetail';
+  static readonly TRACK: string = 'libraryTrackDetail';
+  static readonly ARTWORK_VIEWER: string = 'libraryTrackArtworkViewer';
 }
 
 export class AlbumDetailRouteParams {
@@ -66,6 +71,31 @@ export class ArtistDetailRouteParams {
 
   anchorPrefix(): string {
     return `artist_${this.instanceId}`;
+  }
+}
+
+export class TrackDetailRouteParams {
+  readonly instanceId: number;
+  readonly trackId: number;
+  readonly title: string;
+  readonly state: TrackDetailState;
+  readonly scroller: Scroller = new Scroller();
+
+  constructor(trackId: number, title: string) {
+    this.instanceId = ++routeInstanceId;
+    this.trackId = trackId;
+    this.title = title;
+    this.state = new TrackDetailState(trackId);
+  }
+}
+
+export class TrackArtworkViewerRouteParams {
+  readonly instanceId: number;
+  readonly state: TrackArtworkViewerState;
+
+  constructor(detail: TrackDetail, initialIndex: number) {
+    this.instanceId = ++routeInstanceId;
+    this.state = new TrackArtworkViewerState(detail, initialIndex);
   }
 }
 

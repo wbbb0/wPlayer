@@ -71,6 +71,8 @@ import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { AlbumsPage } from '../../pages/library/AlbumsPage';
 import { AlbumDetailPage } from '../../pages/library/AlbumDetailPage';
 import { ArtistDetailPage } from '../../pages/library/ArtistDetailPage';
+import { TrackDetailPage } from '../../pages/library/TrackDetailPage';
+import { TrackArtworkViewerPage } from '../../pages/library/TrackArtworkViewerPage';
 import { LibraryManagementPage } from '../../pages/library/LibraryManagementPage';
 import { MorePage } from '../../pages/library/MorePage';
 import { PlaylistsPage } from '../../pages/library/PlaylistsPage';
@@ -87,6 +89,8 @@ import {
   AlbumDetailRouteParams,
   ArtistDetailRouteParams,
   LibraryDetailRoute,
+  TrackArtworkViewerRouteParams,
+  TrackDetailRouteParams,
   albumTarget,
   artistTarget
 } from './LibraryNavigation';
@@ -748,8 +752,18 @@ export struct ResponsiveNavigationShell {
       [item],
       current,
       this.onNavigateLibrary,
-      this.onRequestAddToPlaylist
+      this.onRequestAddToPlaylist,
+      '',
+      undefined,
+      (track: TrackListItem): void => this.openTrackDetails(track)
     );
+  }
+
+  private openTrackDetails(item: TrackListItem): void {
+    this.routePathStack(this.selectedRouteId).pushPath({
+      name: LibraryDetailRoute.TRACK,
+      param: new TrackDetailRouteParams(item.id, item.title)
+    });
   }
 
   private performAlbumAction(albumId: number, action: AlbumAction): void {
@@ -1047,6 +1061,7 @@ export struct ResponsiveNavigationShell {
         onPlayTrack: (item) => this.playLibraryTrack(item),
         onOpenTrackActions: (item: TrackListItem, anchorId: string): void =>
           this.openTrackActions(item, anchorId),
+        onOpenTrackDetails: (item: TrackListItem): void => this.openTrackDetails(item),
         onNavigateTrackAction: this.onNavigateLibrary,
         onRequestAddToPlaylist: this.onRequestAddToPlaylist
       })
@@ -1110,7 +1125,8 @@ export struct ResponsiveNavigationShell {
           onResolveArtwork: (relativePath: string): string =>
             this.libraryStore.resolveArtworkPath(relativePath),
           onRequestAddToPlaylist: this.onRequestAddToPlaylist,
-          onNavigateLibrary: this.onNavigateLibrary
+          onNavigateLibrary: this.onNavigateLibrary,
+          onOpenTrackDetails: (item: TrackListItem): void => this.openTrackDetails(item)
         })
       }
       .width('100%')
@@ -1147,6 +1163,7 @@ export struct ResponsiveNavigationShell {
           onAlbumAction: (album, action): void => this.performAlbumAction(album.id, action),
           onOpenTrackActions: (item: TrackListItem, anchorId: string): void =>
             this.openTrackActions(item, anchorId, (_param as AlbumDetailRouteParams).identity()),
+          onOpenTrackDetails: (item: TrackListItem): void => this.openTrackDetails(item),
           onNavigateTrackAction: this.onNavigateLibrary,
           onRequestAddToPlaylist: this.onRequestAddToPlaylist
         })
@@ -1180,6 +1197,7 @@ export struct ResponsiveNavigationShell {
           })),
           onOpenTrackActions: (item: TrackListItem, anchorId: string): void =>
             this.openTrackActions(item, anchorId, (_param as ArtistDetailRouteParams).identity()),
+          onOpenTrackDetails: (item: TrackListItem): void => this.openTrackDetails(item),
           onNavigateTrackAction: this.onNavigateLibrary,
           onRequestAddToPlaylist: this.onRequestAddToPlaylist
         })
@@ -1198,6 +1216,47 @@ export struct ResponsiveNavigationShell {
         )
       ))
       .bindToScrollable([(_param as ArtistDetailRouteParams).scroller])
+    } else if (name === LibraryDetailRoute.TRACK) {
+      HdsNavDestination() {
+        TrackDetailPage({
+          store: this.libraryStore,
+          state: (_param as TrackDetailRouteParams).state,
+          topInset: this.topInset,
+          bottomInset: this.bottomInset,
+          rootWidth: this.rootWidth,
+          themeBackground: this.themePageBackground,
+          scroller: (_param as TrackDetailRouteParams).scroller,
+          onOpenArtwork: (detail, index: number): void => {
+            this.routePathStack(this.selectedRouteId).pushPath({
+              name: LibraryDetailRoute.ARTWORK_VIEWER,
+              param: new TrackArtworkViewerRouteParams(detail, index)
+            });
+          }
+        })
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(this.themePageBackground)
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        '歌曲信息',
+        this.appearancePalette
+      ))
+      .bindToScrollable([(_param as TrackDetailRouteParams).scroller])
+    } else if (name === LibraryDetailRoute.ARTWORK_VIEWER) {
+      HdsNavDestination() {
+        TrackArtworkViewerPage({
+          state: (_param as TrackArtworkViewerRouteParams).state,
+          topInset: this.topInset,
+          bottomInset: this.bottomInset,
+          rootWidth: this.rootWidth
+        })
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor('#FF000000')
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryBackOnlyTitleBar(this.appearancePalette))
     } else if (name === NavigationRoute.NAVIGATION_CUSTOMIZATION) {
       HdsNavDestination() {
         NavigationCustomizationPage({

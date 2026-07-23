@@ -66,6 +66,7 @@ export struct LibraryTrackRow {
     (_target: LibraryNavigationTarget): void => {};
   onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
     (_items: Array<TrackListItem>): void => {};
+  onOpenDetails: ((track: TrackListItem) => void) | undefined = undefined;
   onRemoveAction: (() => void) | undefined = undefined;
   @State contextMenuShown: boolean = false;
   @State linkActions: Array<LibraryLinkAction> = [];
@@ -87,6 +88,8 @@ export struct LibraryTrackRow {
       params.onNavigateAction as (target: LibraryNavigationTarget) => void;
     this.onRequestAddToPlaylist =
       params.onRequestAddToPlaylist as (items: Array<TrackListItem>) => void;
+    this.onOpenDetails =
+      params.onOpenDetails as ((track: TrackListItem) => void) | undefined;
     this.onRemoveAction = params.onRemoveAction as (() => void) | undefined;
   }
 
@@ -246,7 +249,8 @@ export struct LibraryTrackRow {
       this.onNavigateAction,
       this.onRequestAddToPlaylist,
       this.removeActionLabel,
-      this.onRemoveAction
+      this.onRemoveAction,
+      this.onOpenDetails
     ))
   }
 

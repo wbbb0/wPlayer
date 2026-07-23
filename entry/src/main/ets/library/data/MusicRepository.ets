@@ -18,6 +18,7 @@ import {
   LibraryStatistics,
   MediaFileCheckCandidate,
   SortDirection,
+  TrackDetail,
   TrackListItem,
   TrackNavigationTargets,
   TrackSortField,
@@ -370,6 +371,13 @@ export class MusicRepository {
       return Promise.resolve(DemoMusicLibrary.navigationTargets(trackId));
     }
     return this.queries.getTrackNavigationTargets(trackId);
+  }
+
+  getTrackDetail(trackId: number): Promise<TrackDetail | undefined> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.trackDetail(trackId));
+    }
+    return this.queries.getTrackDetail(trackId);
   }
 
   getPlaylists(field: PlaylistSortField, direction: SortDirection): Promise<Array<PlaylistSummary>> {

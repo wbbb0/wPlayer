@@ -51,6 +51,8 @@ export struct AlbumDetailPage {
     (_target: LibraryNavigationTarget): void => {};
   onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
     (_items: Array<TrackListItem>): void => {};
+  onOpenTrackDetails: (track: TrackListItem) => void =
+    (_track: TrackListItem): void => {};
 
   aboutToAppear(): void {
     this.state.load(this.store);
@@ -425,6 +427,7 @@ export struct AlbumDetailPage {
                   }
                 },
                 onOpenActions: this.onOpenTrackActions,
+                onOpenDetails: this.onOpenTrackDetails,
                 onNavigateAction: this.onNavigateTrackAction,
                 onRequestAddToPlaylist: this.onRequestAddToPlaylist,
                 onToggleSelection: (item: TrackListItem): void => this.toggleSelection(item)

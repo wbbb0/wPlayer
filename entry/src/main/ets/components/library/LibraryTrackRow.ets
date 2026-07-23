@@ -5,7 +5,6 @@ import {
 } from '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { ArtworkFitMode, ArtworkView } from '../artwork/ArtworkView';
-import { LayoutLength } from '../layout/LayoutLength';
 import { LibraryContextInteraction } from './LibraryContextInteraction';
 import { LibraryItemAvailability } from './LibraryItemAvailability';
 import {
@@ -16,6 +15,7 @@ import {
   LibraryLinkAction,
   libraryLinkActions
 } from '../navigation/LibraryNavigation';
+import { ContextPreviewGeometry } from './ContextPreviewGeometry';
 
 export enum LibraryTrackRowVariant {
   LIBRARY = 0,
@@ -35,7 +35,6 @@ export class LibraryTrackRowStyle {
   static readonly SELECTION_GAP: number = 8;
   static readonly ACTION_SIZE: number = 38;
   static readonly ACTION_ICON_SIZE: number = 18;
-  static readonly CONTEXT_PREVIEW_FALLBACK_WIDTH: number = 344;
 }
 
 @Reusable
@@ -129,26 +128,13 @@ export struct LibraryTrackRow {
     return `track_more_${this.actionAnchorPrefix}_${this.track.id}`;
   }
 
-  private contextPreviewAnchorId(): string {
-    return `track_context_preview_${this.actionAnchorPrefix}_${this.track.id}`;
-  }
-
-  private effectiveContextPreviewWidth(): number {
-    return this.measuredIdentityWidth > 0 ? this.measuredIdentityWidth :
-      LibraryTrackRowStyle.CONTEXT_PREVIEW_FALLBACK_WIDTH;
-  }
-
-  private showContextMenu(): void {
-    try {
-      const uiContext = this.getUIContext();
-      const info = uiContext.getComponentUtils().getRectangleById(this.contextPreviewAnchorId());
-      const width = uiContext.px2vp(LayoutLength.toNumber(info.size.width, 0));
-      if (width > 0) {
-        this.measuredIdentityWidth = width;
-      }
-    } catch (error) {
-      console.warn(`Unable to measure track context preview: ${error}`);
+  private showContextMenu(event: GestureEvent): void {
+    const frame = ContextPreviewGeometry.fromGesture(event);
+    if (frame.width <= 0) {
+      console.warn('Unable to measure track context preview from gesture target');
+      return;
     }
+    this.measuredIdentityWidth = frame.width;
     this.suppressActivationUntil =
       Date.now() + LibraryContextInteraction.ACTIVATION_SUPPRESSION_DURATION;
     LibraryContextInteraction.triggerHaptic('Track');
@@ -249,7 +235,7 @@ export struct LibraryTrackRow {
       .layoutWeight(1)
       .clip(true)
     }
-    .width(this.effectiveContextPreviewWidth())
+    .width(this.measuredIdentityWidth)
   }
 
   @Builder
@@ -313,7 +299,6 @@ export struct LibraryTrackRow {
     }
     .layoutWeight(1)
     .clip(true)
-    .id(this.contextPreviewAnchorId())
     .opacity(this.contextMenuShown ? 0 : 1)
     .bindContextMenu(
       this.contextMenuShown,
@@ -322,6 +307,7 @@ export struct LibraryTrackRow {
         preview: this.ContextMenuPreview,
         placement: this.menuPlacement,
         previewBorderRadius: 0,
+        layoutRegionMargin: ContextPreviewGeometry.layoutRegionMargin(),
         onDisappear: (): void => {
           this.contextMenuShown = false;
         }
@@ -331,7 +317,7 @@ export struct LibraryTrackRow {
       LongPressGesture({
         repeat: false,
         duration: LibraryContextInteraction.LONG_PRESS_DURATION
-      }).onAction(() => this.showContextMenu())
+      }).onAction((event: GestureEvent) => this.showContextMenu(event))
     )
   }
 

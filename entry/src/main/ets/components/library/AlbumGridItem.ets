@@ -11,6 +11,7 @@ import { LayoutLength } from '../layout/LayoutLength';
 import { LibraryItemAvailability } from './LibraryItemAvailability';
 import { AvailabilityState } from '../../library/model/LibraryModels';
 import { LibraryContextInteraction } from './LibraryContextInteraction';
+import { ContextPreviewGeometry } from './ContextPreviewGeometry';
 
 export enum AlbumAction {
   INSERT_NEXT = 0,
@@ -79,7 +80,6 @@ export struct AlbumGridItem {
   @ObjectLink store: LibraryStore;
   @Prop album: AlbumListItem;
   @Prop actionsEnabled: boolean = false;
-  @Prop actionAnchorPrefix: string = 'album_grid';
   @Prop selectionMode: boolean = false;
   @Prop selected: boolean = false;
   onActivate: (album: AlbumListItem) => void = (_album: AlbumListItem): void => {};
@@ -162,28 +162,14 @@ export struct AlbumGridItem {
     }
   }
 
-  private contextPreviewAnchorId(): string {
-    return `album_context_preview_${this.actionAnchorPrefix}_${this.album.id}`;
-  }
-
-  private showContextMenu(): void {
-    try {
-      const uiContext = this.getUIContext();
-      const info = uiContext.getComponentUtils()
-        .getRectangleById(this.contextPreviewAnchorId());
-      const widthPx = LayoutLength.toNumber(info.size.width, 0);
-      const heightPx = LayoutLength.toNumber(info.size.height, 0);
-      const width = uiContext.px2vp(widthPx);
-      const height = uiContext.px2vp(heightPx);
-      if (width > 0) {
-        this.measuredItemWidth = width;
-      }
-      if (height > 0) {
-        this.measuredItemHeight = height;
-      }
-    } catch (error) {
-      console.warn(`Unable to measure album context preview: ${error}`);
+  private showContextMenu(event: GestureEvent): void {
+    const frame = ContextPreviewGeometry.fromGesture(event);
+    if (frame.width <= 0 || frame.height <= 0) {
+      console.warn('Unable to measure album context preview from gesture target');
+      return;
     }
+    this.measuredItemWidth = frame.width;
+    this.measuredItemHeight = frame.height;
     this.suppressActivationUntil =
       Date.now() + LibraryContextInteraction.ACTIVATION_SUPPRESSION_DURATION;
     LibraryContextInteraction.triggerHaptic('Album');
@@ -233,13 +219,13 @@ export struct AlbumGridItem {
         .opacity(this.contextMenuShown ? 0 : 1)
       }
         .width('100%')
-        .id(this.contextPreviewAnchorId())
         .bindContextMenu(
           this.contextMenuShown,
           this.AlbumMenu(),
           {
             preview: this.AlbumContextPreview,
             previewBorderRadius: 0,
+            layoutRegionMargin: ContextPreviewGeometry.layoutRegionMargin(),
             onDisappear: (): void => {
               this.contextMenuShown = false;
             }
@@ -250,8 +236,8 @@ export struct AlbumGridItem {
             repeat: false,
             duration: LibraryContextInteraction.LONG_PRESS_DURATION
           })
-            .onAction(() => {
-              this.showContextMenu();
+            .onAction((event: GestureEvent) => {
+              this.showContextMenu(event);
             })
         )
     } else {
@@ -268,7 +254,6 @@ export struct AlbumGridSection {
   @State measuredContainerWidth: number = 0;
   @Prop horizontalInset: number = PageLayoutSpec.HORIZONTAL_INSET;
   @Prop actionsEnabled: boolean = false;
-  @Prop actionAnchorPrefix: string = 'album_section';
   onOpenAlbum: (album: AlbumListItem) => void = (_album: AlbumListItem): void => {};
   onAlbumAction: (album: AlbumListItem, action: AlbumAction) => void =
     (_album: AlbumListItem, _action: AlbumAction): void => {};
@@ -306,7 +291,6 @@ export struct AlbumGridSection {
             store: this.store,
             album: album,
             actionsEnabled: this.actionsEnabled,
-            actionAnchorPrefix: this.actionAnchorPrefix,
             onActivate: this.onOpenAlbum,
             onAction: this.onAlbumAction,
             onNavigate: this.onNavigate

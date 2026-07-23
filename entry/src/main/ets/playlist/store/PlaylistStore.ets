@@ -19,7 +19,7 @@ import {
   RepositoryProjection
 } from '../../library/data/RepositoryInvalidation';
 
-const PLAYLIST_PAGE_SIZE: number = 100;
+const PLAYLIST_QUERY_BATCH_SIZE: number = 500;
 
 @Observed
 export class PlaylistStore {
@@ -243,11 +243,7 @@ export class PlaylistStore {
       const currentPlaylistId = this.detail?.playlist.id;
       let detailRefreshed = true;
       if (currentPlaylistId !== undefined) {
-        const loadedCount = this.detail?.items.length ?? PLAYLIST_PAGE_SIZE;
-        detailRefreshed = await this.loadDetail(
-          currentPlaylistId,
-          Math.max(PLAYLIST_PAGE_SIZE, loadedCount)
-        );
+        detailRefreshed = await this.loadDetail(currentPlaylistId);
       }
       if (!this.active) {
         return;
@@ -282,11 +278,7 @@ export class PlaylistStore {
       const currentPlaylistId = this.detail?.playlist.id;
       if (currentPlaylistId !== undefined &&
         (refreshAllDetails || refreshPlaylistIds.includes(currentPlaylistId))) {
-        const loadedCount = this.detail?.items.length ?? PLAYLIST_PAGE_SIZE;
-        const refreshed = await this.loadDetail(
-          currentPlaylistId,
-          Math.max(PLAYLIST_PAGE_SIZE, loadedCount)
-        );
+        const refreshed = await this.loadDetail(currentPlaylistId);
         if (!refreshed) {
           this.restorePendingInvalidation(false, refreshAllDetails, refreshPlaylistIds);
           throw new Error(this.errorMessage || 'Unable to refresh playlist detail');
@@ -321,16 +313,12 @@ export class PlaylistStore {
     await this.refresh();
   }
 
-  async loadDetail(playlistId: number, limit: number = PLAYLIST_PAGE_SIZE): Promise<boolean> {
+  async loadDetail(playlistId: number): Promise<boolean> {
     const generation = ++this.detailGeneration;
     this.detailLoading = true;
     this.errorMessage = '';
     try {
-      const detail = await this.repository.getPlaylistDetail(
-        playlistId,
-        0,
-        Math.max(PLAYLIST_PAGE_SIZE, limit)
-      );
+      const detail = await this.getCompleteDetail(playlistId);
       if (generation === this.detailGeneration) {
         this.detailItemDataSource.replace(detail?.items ?? []);
         this.detail = detail;
@@ -346,42 +334,6 @@ export class PlaylistStore {
       }
     }
     return false;
-  }
-
-  async loadMore(): Promise<void> {
-    const current = this.detail;
-    if (current === undefined || this.detailLoading || current.items.length >= current.totalCount) {
-      return;
-    }
-    const generation = this.detailGeneration;
-    this.detailLoading = true;
-    try {
-      const next = await this.repository.getPlaylistDetail(
-        current.playlist.id,
-        current.items.length,
-        PLAYLIST_PAGE_SIZE,
-        current.playlist.itemSortField,
-        current.playlist.itemSortDirection
-      );
-      if (generation === this.detailGeneration && next !== undefined) {
-        const items = current.items.concat(next.items);
-        this.detailItemDataSource.replace(items);
-        this.detail = {
-          playlist: next.playlist,
-          items: items,
-          offset: 0,
-          totalCount: next.totalCount
-        };
-      }
-    } catch (error) {
-      if (generation === this.detailGeneration) {
-        this.errorMessage = PlaylistStore.messageOf(error);
-      }
-    } finally {
-      if (generation === this.detailGeneration) {
-        this.detailLoading = false;
-      }
-    }
   }
 
   async create(name: string): Promise<PlaylistSummary | undefined> {
@@ -495,21 +447,40 @@ export class PlaylistStore {
   }
 
   async getAllTracks(playlistId: number): Promise<Array<PlaylistTrackItem>> {
-    const items: Array<PlaylistTrackItem> = [];
-    let totalCount = 0;
-    do {
-      const detail = await this.repository.getPlaylistDetail(
+    return (await this.getCompleteDetail(playlistId))?.items ?? [];
+  }
+
+  private async getCompleteDetail(playlistId: number): Promise<PlaylistDetail | undefined> {
+    const first = await this.repository.getPlaylistDetail(
+      playlistId,
+      0,
+      PLAYLIST_QUERY_BATCH_SIZE
+    );
+    if (first === undefined) {
+      return undefined;
+    }
+    const items = first.items.slice();
+    let latest = first;
+    while (items.length < latest.totalCount) {
+      const next = await this.repository.getPlaylistDetail(
         playlistId,
         items.length,
-        PLAYLIST_PAGE_SIZE
+        PLAYLIST_QUERY_BATCH_SIZE,
+        first.playlist.itemSortField,
+        first.playlist.itemSortDirection
       );
-      if (detail === undefined) {
-        return items;
+      if (next === undefined || next.items.length === 0) {
+        throw new Error(`Unable to load complete playlist ${playlistId}`);
       }
-      totalCount = detail.totalCount;
-      items.push(...detail.items);
-    } while (items.length < totalCount);
-    return items;
+      items.push(...next.items);
+      latest = next;
+    }
+    return {
+      playlist: latest.playlist,
+      items: items,
+      offset: 0,
+      totalCount: latest.totalCount
+    };
   }
 
   private async runItemMutation(playlistId: number,

@@ -1,7 +1,7 @@
 import { PlaylistSummary } from '../../library/model/LibraryModels';
-import { LayoutLength } from '../layout/LayoutLength';
 import { LibraryContextInteraction } from './LibraryContextInteraction';
 import { LibraryTrackRowStyle } from './LibraryTrackRow';
+import { ContextPreviewGeometry } from './ContextPreviewGeometry';
 
 @Reusable
 @Component
@@ -44,26 +44,13 @@ export struct PlaylistListRow {
     return `playlist_more_${this.actionAnchorPrefix}_${this.playlist.id}`;
   }
 
-  private contextPreviewAnchorId(): string {
-    return `playlist_context_preview_${this.actionAnchorPrefix}_${this.playlist.id}`;
-  }
-
-  private effectiveContextPreviewWidth(): number {
-    return this.measuredIdentityWidth > 0 ? this.measuredIdentityWidth :
-      LibraryTrackRowStyle.CONTEXT_PREVIEW_FALLBACK_WIDTH;
-  }
-
-  private showContextMenu(): void {
-    try {
-      const uiContext = this.getUIContext();
-      const info = uiContext.getComponentUtils().getRectangleById(this.contextPreviewAnchorId());
-      const width = uiContext.px2vp(LayoutLength.toNumber(info.size.width, 0));
-      if (width > 0) {
-        this.measuredIdentityWidth = width;
-      }
-    } catch (error) {
-      console.warn(`Unable to measure playlist context preview: ${error}`);
+  private showContextMenu(event: GestureEvent): void {
+    const frame = ContextPreviewGeometry.fromGesture(event);
+    if (frame.width <= 0) {
+      console.warn('Unable to measure playlist context preview from gesture target');
+      return;
     }
+    this.measuredIdentityWidth = frame.width;
     this.suppressActivationUntil =
       Date.now() + LibraryContextInteraction.ACTIVATION_SUPPRESSION_DURATION;
     LibraryContextInteraction.triggerHaptic('Playlist');
@@ -120,7 +107,7 @@ export struct PlaylistListRow {
       this.LeadingContent()
       this.TextContent()
     }
-    .width(this.effectiveContextPreviewWidth())
+    .width(this.measuredIdentityWidth)
   }
 
   @Builder
@@ -147,7 +134,6 @@ export struct PlaylistListRow {
     }
     .layoutWeight(1)
     .clip(true)
-    .id(this.contextPreviewAnchorId())
     .opacity(this.contextMenuShown ? 0 : 1)
     .bindContextMenu(
       this.contextMenuShown,
@@ -155,6 +141,7 @@ export struct PlaylistListRow {
       {
         preview: this.ContextMenuPreview,
         previewBorderRadius: 0,
+        layoutRegionMargin: ContextPreviewGeometry.layoutRegionMargin(),
         onDisappear: (): void => {
           this.contextMenuShown = false;
         }
@@ -164,7 +151,7 @@ export struct PlaylistListRow {
       LongPressGesture({
         repeat: false,
         duration: LibraryContextInteraction.LONG_PRESS_DURATION
-      }).onAction(() => this.showContextMenu())
+      }).onAction((event: GestureEvent) => this.showContextMenu(event))
     )
   }
 

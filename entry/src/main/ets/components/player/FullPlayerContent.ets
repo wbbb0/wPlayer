@@ -634,7 +634,6 @@ export struct FullPlayerContent {
                     artworkCornerRadius: PlayerLayoutSpec.FULL_ARTWORK_RADIUS,
                     queueIndexWidth: PlayerLayoutSpec.FULL_PLAYER_QUEUE_INDEX_WIDTH,
                     queueGestureDistance: PlayerMotionSpec.GESTURE_AXIS_LOCK_DISTANCE,
-                    actionAnchorPrefix: `player_queue_${entry.queueEntryId}`,
                     menuPlacement: Placement.BottomLeft,
                     onNavigateAction: this.onNavigateLibrary,
                     onRequestAddToPlaylist: (items: Array<TrackListItem>): void =>

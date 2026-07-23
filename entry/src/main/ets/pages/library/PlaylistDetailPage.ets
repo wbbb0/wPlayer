@@ -374,7 +374,6 @@ export struct PlaylistDetailPage {
     .height('100%')
     .contentStartOffset(PageLayoutSpec.primaryContentStart(this.topInset))
     .contentEndOffset(PageLayoutSpec.contentEnd(this.bottomInset))
-    .onReachEnd(() => this.store.loadMore())
     .attributeModifier(this.scrollBehavior)
     }
     .width('100%')

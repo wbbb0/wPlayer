@@ -369,7 +369,6 @@ export struct AlbumDetailPage {
         albums: detail.relatedAlbums,
         containerWidth: this.rootWidth,
         actionsEnabled: true,
-        actionAnchorPrefix: this.actionAnchorPrefix,
         onOpenAlbum: this.onOpenAlbum,
         onAlbumAction: this.onAlbumAction,
         onNavigate: this.onNavigateTrackAction

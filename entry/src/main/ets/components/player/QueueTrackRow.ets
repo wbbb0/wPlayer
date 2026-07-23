@@ -5,7 +5,7 @@ import {
 } from '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { ArtworkFitMode, ArtworkView } from '../artwork/ArtworkView';
-import { LayoutLength } from '../layout/LayoutLength';
+import { ContextPreviewGeometry } from '../library/ContextPreviewGeometry';
 import { LibraryContextInteraction } from '../library/LibraryContextInteraction';
 import { LibraryItemAvailability } from '../library/LibraryItemAvailability';
 import {
@@ -42,7 +42,6 @@ export struct QueueTrackRow {
   @Prop artworkCornerRadius: number = 10;
   @Prop queueIndexWidth: number = 28;
   @Prop queueGestureDistance: number = 8;
-  @Prop actionAnchorPrefix: string = 'player_queue';
   @Prop menuPlacement: Placement = Placement.BottomLeft;
   @Prop selectionMode: boolean = false;
   @Prop selected: boolean = false;
@@ -98,26 +97,13 @@ export struct QueueTrackRow {
     return `${this.queueIndex - this.currentQueueIndex}`;
   }
 
-  private contextPreviewAnchorId(): string {
-    return `track_context_preview_${this.actionAnchorPrefix}_${this.track.id}`;
-  }
-
-  private effectiveContextPreviewWidth(): number {
-    return this.measuredIdentityWidth > 0 ? this.measuredIdentityWidth :
-      LibraryTrackRowStyle.CONTEXT_PREVIEW_FALLBACK_WIDTH;
-  }
-
-  private showContextMenu(): void {
-    try {
-      const uiContext = this.getUIContext();
-      const info = uiContext.getComponentUtils().getRectangleById(this.contextPreviewAnchorId());
-      const width = uiContext.px2vp(LayoutLength.toNumber(info.size.width, 0));
-      if (width > 0) {
-        this.measuredIdentityWidth = width;
-      }
-    } catch (error) {
-      console.warn(`Unable to measure queue context preview: ${error}`);
+  private showContextMenu(event: GestureEvent): void {
+    const frame = ContextPreviewGeometry.fromGesture(event);
+    if (frame.width <= 0) {
+      console.warn('Unable to measure queue context preview from gesture target');
+      return;
     }
+    this.measuredIdentityWidth = frame.width;
     this.suppressActivationUntil =
       Date.now() + LibraryContextInteraction.ACTIVATION_SUPPRESSION_DURATION;
     LibraryContextInteraction.triggerHaptic('Track');
@@ -232,7 +218,7 @@ export struct QueueTrackRow {
     Row() {
       this.IdentityContent()
     }
-    .width(this.effectiveContextPreviewWidth())
+    .width(this.measuredIdentityWidth)
     .justifyContent(FlexAlign.Start)
   }
 
@@ -278,7 +264,6 @@ export struct QueueTrackRow {
       this.IdentityContent()
     }
     .layoutWeight(1)
-    .id(this.contextPreviewAnchorId())
     .clip(true)
     .opacity(this.contextMenuShown ? 0 : 1)
     .bindContextMenu(
@@ -288,6 +273,7 @@ export struct QueueTrackRow {
         preview: this.ContextMenuPreview,
         placement: this.menuPlacement,
         previewBorderRadius: 0,
+        layoutRegionMargin: ContextPreviewGeometry.layoutRegionMargin(),
         previewAnimationOptions: {
           scale: [1, 1]
         },
@@ -295,6 +281,12 @@ export struct QueueTrackRow {
           this.contextMenuShown = false;
         }
       }
+    )
+    .gesture(
+      LongPressGesture({
+        repeat: false,
+        duration: LibraryContextInteraction.LONG_PRESS_DURATION
+      }).onAction((event: GestureEvent) => this.showContextMenu(event))
     )
   }
 
@@ -366,10 +358,6 @@ export struct QueueTrackRow {
           direction: PanDirection.Horizontal,
           distance: this.queueGestureDistance
         }),
-        LongPressGesture({
-          repeat: false,
-          duration: LibraryContextInteraction.LONG_PRESS_DURATION
-        }).onAction(() => this.showContextMenu()),
         TapGesture().onAction(() => {
           if (Date.now() < this.suppressActivationUntil) {
             return;

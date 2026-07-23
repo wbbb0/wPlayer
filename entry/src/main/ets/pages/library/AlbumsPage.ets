@@ -124,7 +124,6 @@ export struct AlbumsPage {
                 store: this.store,
                 album: album,
                 actionsEnabled: true,
-                actionAnchorPrefix: 'albums',
                 selectionMode: this.selection.active,
                 selected: this.selection.isSelected(album.id),
                 onActivate: this.onOpenAlbum,

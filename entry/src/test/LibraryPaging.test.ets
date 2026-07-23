@@ -7,30 +7,6 @@ import {
 } from '../main/ets/library/model/LibraryModels';
 import { LibrarySortPlan } from '../main/ets/library/data/LibrarySortPlan';
 import { LibraryPagingPolicy } from '../main/ets/library/store/LibraryPagingPolicy';
-import {
-  LibraryPageLoader,
-  LibrarySlot,
-  PagedLibraryDataSource
-} from '../main/ets/library/store/PagedLibraryDataSource';
-
-class PagingTestItem {
-  id: number = 0;
-}
-
-class PagingTestLoader implements LibraryPageLoader<PagingTestItem> {
-  loadCount: number = 0;
-
-  async load(offset: number, limit: number): Promise<Array<PagingTestItem>> {
-    this.loadCount += 1;
-    const items: Array<PagingTestItem> = [];
-    for (let index = offset; index < offset + limit; index += 1) {
-      const item = new PagingTestItem();
-      item.id = index;
-      items.push(item);
-    }
-    return items;
-  }
-}
 
 const CHARACTERIZED_SECTIONS: Array<LibrarySection> = [
   { label: '#', startIndex: 0 },
@@ -40,22 +16,10 @@ const CHARACTERIZED_SECTIONS: Array<LibrarySection> = [
 ];
 
 export default function libraryPagingTest() {
-  describe('Library paging and alphabet index', () => {
-    it('uses a bounded initial page for songs and albums', 0, () => {
-      expect(LibraryPagingPolicy.TRACK_PAGE_SIZE).assertEqual(16);
-      expect(LibraryPagingPolicy.ALBUM_PAGE_SIZE).assertEqual(16);
-      expect(LibraryPagingPolicy.TRACK_PAGE_SIZE)
-        .assertEqual(LibraryPagingPolicy.ALBUM_PAGE_SIZE);
-    });
-
-    it('maps global item indexes to stable page starts', 0, () => {
-      const pageSize = LibraryPagingPolicy.TRACK_PAGE_SIZE;
-      expect(LibraryPagingPolicy.pageStartForIndex(-1, pageSize)).assertEqual(0);
-      expect(LibraryPagingPolicy.pageStartForIndex(0, pageSize)).assertEqual(0);
-      expect(LibraryPagingPolicy.pageStartForIndex(pageSize - 1, pageSize)).assertEqual(0);
-      expect(LibraryPagingPolicy.pageStartForIndex(pageSize, pageSize)).assertEqual(pageSize);
-      expect(LibraryPagingPolicy.pageStartForIndex(pageSize * 2 + 5, pageSize))
-        .assertEqual(pageSize * 2);
+  describe('Library list cache and alphabet index', () => {
+    it('uses viewport-scaled cache sizes for songs and albums', 0, () => {
+      expect(LibraryPagingPolicy.TRACK_PAGE_SIZE).assertEqual(4);
+      expect(LibraryPagingPolicy.ALBUM_PAGE_SIZE).assertEqual(2);
     });
 
     it('shares exact alphabet ordering between pages and global sections', 0, () => {
@@ -105,37 +69,6 @@ export default function libraryPagingTest() {
         expect(LibraryPagingPolicy.selectedSectionIndex(CHARACTERIZED_SECTIONS, visibleIndexes[index]))
           .assertEqual(expectedSections[index]);
       }
-    });
-
-    it('keeps logical slots stable while loading one requested page', 0, async () => {
-      const loader = new PagingTestLoader();
-      const source = new PagedLibraryDataSource<PagingTestItem>(24, 3);
-      source.reset(60, loader);
-      const placeholder = source.getData(25);
-      expect(placeholder.index).assertEqual(25);
-      expect(placeholder.value === undefined).assertTrue();
-
-      await source.ensureRange(25, 25);
-      const loaded: LibrarySlot<PagingTestItem> = source.getData(25);
-      expect(loaded.value !== undefined).assertTrue();
-      if (loaded.value !== undefined) {
-        expect(loaded.value.id).assertEqual(25);
-      }
-      expect(loaded.revision > placeholder.revision).assertTrue();
-      expect(loader.loadCount).assertEqual(1);
-    });
-
-    it('invalidates loaded slots when the logical result set resets', 0, async () => {
-      const loader = new PagingTestLoader();
-      const source = new PagedLibraryDataSource<PagingTestItem>(24, 3);
-      source.reset(30, loader);
-      await source.ensureRange(0, 0);
-      const loaded = source.getData(0);
-      source.reset(12, loader);
-      const resetSlot = source.getData(0);
-      expect(resetSlot.generation > loaded.generation).assertTrue();
-      expect(resetSlot.value === undefined).assertTrue();
-      expect(source.totalCount()).assertEqual(12);
     });
   });
 }

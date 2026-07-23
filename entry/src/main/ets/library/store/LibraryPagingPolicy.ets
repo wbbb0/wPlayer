@@ -1,16 +1,9 @@
 import { LibrarySection } from '../model/LibraryModels';
 
-/** Paging and index-location rules shared by the store, UI and tests. */
+/** Virtual-list cache sizing and index-location rules shared by pages and tests. */
 export class LibraryPagingPolicy {
-  static readonly TRACK_PAGE_SIZE: number = 16;
-  static readonly ALBUM_PAGE_SIZE: number = 16;
-
-  static pageStartForIndex(index: number, pageSize: number): number {
-    if (index <= 0 || pageSize <= 0) {
-      return 0;
-    }
-    return Math.floor(index / pageSize) * pageSize;
-  }
+  static readonly TRACK_PAGE_SIZE: number = 4;
+  static readonly ALBUM_PAGE_SIZE: number = 2;
 
   static selectedSectionIndex(sections: Array<LibrarySection>, itemIndex: number): number {
     if (sections.length === 0) {

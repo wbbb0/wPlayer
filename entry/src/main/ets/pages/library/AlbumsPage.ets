@@ -4,8 +4,7 @@ import { LibraryAlphabetIndex } from '../../components/library/LibraryAlphabetIn
 import { LibraryEmptyState } from '../../components/library/LibraryEmptyState';
 import {
   AlbumAction,
-  AlbumGridItem,
-  AlbumGridItemPlaceholder
+  AlbumGridItem
 } from '../../components/library/AlbumGridItem';
 import {
   AlbumListItem,
@@ -15,7 +14,6 @@ import {
 } from '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
-import { LibrarySlot } from '../../library/store/PagedLibraryDataSource';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 
@@ -120,30 +118,24 @@ export struct AlbumsPage {
       Column() {
         Stack({ alignContent: Alignment.End }) {
         Grid(this.scroller) {
-          LazyForEach(this.store.albumDataSource, (slot: LibrarySlot<AlbumListItem>) => {
-            if (slot.value !== undefined) {
-              GridItem() {
-                AlbumGridItem({
-                  store: this.store,
-                  album: slot.value,
-                  actionsEnabled: true,
-                  actionAnchorPrefix: 'albums',
-                  selectionMode: this.selection.active,
-                  selected: this.selection.isSelected(slot.value.id),
-                  onActivate: this.onOpenAlbum,
-                  onToggleSelection: (album: AlbumListItem): void => this.toggleSelection(album),
-                  onAction: this.onAlbumAction,
-                  onNavigate: this.onNavigateAlbumAction
-                })
-                  .reuseId('albums_actions')
-              }
-            } else {
-              GridItem() {
-                AlbumGridItemPlaceholder()
-              }
+          LazyForEach(this.store.albumDataSource, (album: AlbumListItem) => {
+            GridItem() {
+              AlbumGridItem({
+                store: this.store,
+                album: album,
+                actionsEnabled: true,
+                actionAnchorPrefix: 'albums',
+                selectionMode: this.selection.active,
+                selected: this.selection.isSelected(album.id),
+                onActivate: this.onOpenAlbum,
+                onToggleSelection: (selectedAlbum: AlbumListItem): void =>
+                  this.toggleSelection(selectedAlbum),
+                onAction: this.onAlbumAction,
+                onNavigate: this.onNavigateAlbumAction
+              })
+                .reuseId(this.selection.active ? 'albums_selection' : 'albums_actions')
             }
-          }, (slot: LibrarySlot<AlbumListItem>) =>
-            `${slot.generation}:${slot.index}:${slot.revision}`)
+          }, (album: AlbumListItem) => `${album.id}`)
         }
         .columnsTemplate(PageLayoutSpec.albumColumnsTemplate())
         .columnsGap(PageLayoutSpec.ALBUM_COLUMN_GAP)
@@ -163,7 +155,6 @@ export struct AlbumsPage {
           if (sectionIndex >= 0 && sectionIndex !== this.selectedSectionIndex) {
             this.selectedSectionIndex = sectionIndex;
           }
-          this.store.ensureAlbumRange(firstIndex, lastIndex);
         })
         .attributeModifier(this.scrollBehavior)
 
@@ -175,7 +166,6 @@ export struct AlbumsPage {
             onSelect: (itemIndex: number, sectionIndex: number) => {
               this.selectedSectionIndex = sectionIndex;
               this.scroller.scrollToIndex(itemIndex, false, ScrollAlign.START);
-              this.store.ensureAlbumRange(itemIndex, itemIndex);
             }
           })
           .margin({ right: 2, bottom: PageLayoutSpec.contentEnd(this.bottomInset) / 2 })

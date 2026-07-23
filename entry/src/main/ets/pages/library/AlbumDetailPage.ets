@@ -14,7 +14,10 @@ import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
 import { ArtistReference } from '../../library/model/LibraryModels';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { AppShellLayoutSpec } from '../../components/layout/AppShellLayoutSpec';
-import { SongListItem, SongListItemLayout } from '../../components/library/SongListItem';
+import {
+  SongListItem,
+  SongListItemLayout
+} from '../../components/library/SongListItem';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import { DynamicColor, DynamicContainerRole } from '../../appearance/DynamicColor';
 import { AlbumAction, AlbumGridSection } from '../../components/library/AlbumGridItem';

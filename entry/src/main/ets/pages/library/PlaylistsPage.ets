@@ -9,7 +9,11 @@ import { PlaylistStore } from '../../playlist/store/PlaylistStore';
 import { promptAction } from '@kit.ArkUI';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
-import { SongListItem, SongListItemData, SongListItemLayout } from '../../components/library/SongListItem';
+import {
+  SongListItem,
+  SongListItemData,
+  SongListItemLayout
+} from '../../components/library/SongListItem';
 
 const DELETE_ANIMATION_DURATION: number = 180;
 

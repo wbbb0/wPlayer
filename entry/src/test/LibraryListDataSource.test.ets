@@ -66,5 +66,17 @@ export default function libraryListDataSourceTest() {
       expect(listener.operations[1].type).assertEqual(DataOperationType.DELETE);
       expect(source.totalCount()).assertEqual(1);
     });
+
+    it('returns an isolated snapshot for selection and playback operations', 0, () => {
+      const source = new LibraryListDataSource<ListTestItem>();
+      source.replace([item(1, 'one'), item(2, 'two')]);
+
+      const snapshot = source.snapshot();
+      snapshot.pop();
+
+      expect(snapshot.length).assertEqual(1);
+      expect(source.totalCount()).assertEqual(2);
+      expect(source.getData(1).label).assertEqual('two');
+    });
   });
 }

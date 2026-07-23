@@ -6,9 +6,7 @@ import {
   ArtistDetail,
   ArtistReference,
   AvailabilityState,
-  LibraryCatalog,
   LibraryIndexPresentation,
-  LibraryPage,
   LibrarySnapshot,
   LibraryStatistics,
   MediaFormat,
@@ -283,20 +281,6 @@ export class DemoMusicLibrary {
     };
   }
 
-  static trackCatalog(field: TrackSortField, direction: SortDirection): LibraryCatalog {
-    return {
-      totalCount: DemoMusicLibrary.tracks(field, direction).length,
-      sections: [],
-      indexPresentation: LibraryIndexPresentation.SCROLLBAR
-    };
-  }
-
-  static trackPage(field: TrackSortField, direction: SortDirection,
-    offset: number, limit: number): LibraryPage<TrackListItem> {
-    const tracks = DemoMusicLibrary.tracks(field, direction);
-    return { offset: offset, items: tracks.slice(offset, offset + limit) };
-  }
-
   static albums(field: AlbumSortField, direction: SortDirection): Array<AlbumListItem> {
     const albums = DEMO_ALBUMS.map((album: AlbumListItem): AlbumListItem => cloneAlbum(album));
     albums.sort((left: AlbumListItem, right: AlbumListItem): number => {
@@ -317,20 +301,6 @@ export class DemoMusicLibrary {
       sections: [],
       indexPresentation: LibraryIndexPresentation.SCROLLBAR
     };
-  }
-
-  static albumCatalog(field: AlbumSortField, direction: SortDirection): LibraryCatalog {
-    return {
-      totalCount: DemoMusicLibrary.albums(field, direction).length,
-      sections: [],
-      indexPresentation: LibraryIndexPresentation.SCROLLBAR
-    };
-  }
-
-  static albumPage(field: AlbumSortField, direction: SortDirection,
-    offset: number, limit: number): LibraryPage<AlbumListItem> {
-    const albums = DemoMusicLibrary.albums(field, direction);
-    return { offset: offset, items: albums.slice(offset, offset + limit) };
   }
 
   static statistics(): LibraryStatistics {

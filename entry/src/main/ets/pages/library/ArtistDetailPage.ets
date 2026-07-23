@@ -1,7 +1,10 @@
 import { PageLayoutSpec } from '../../components/layout/PageLayoutSpec';
 import { PageListBehavior } from '../../components/layout/PageScrollBehavior';
 import { AlbumGridSection } from '../../components/library/AlbumGridItem';
-import { SongListItem, SongListItemLayout } from '../../components/library/SongListItem';
+import {
+  SongListItem,
+  SongListItemLayout
+} from '../../components/library/SongListItem';
 import {
   AlbumListItem,
   ArtistDetail,

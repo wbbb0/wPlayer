@@ -13,7 +13,10 @@ import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
 import { PlaylistStore } from '../../playlist/store/PlaylistStore';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { PlaybackOriginKind } from '../../playback/model/PlaybackModels';
-import { SongListItem, SongListItemLayout } from '../../components/library/SongListItem';
+import {
+  SongListItem,
+  SongListItemLayout
+} from '../../components/library/SongListItem';
 import { TrackActionMenuPresenter } from '../../components/library/TrackActionMenu';
 import { promptAction } from '@kit.ArkUI';
 import { MultiSelectController } from '../../components/library/MultiSelectController';

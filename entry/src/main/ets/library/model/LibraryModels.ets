@@ -93,19 +93,6 @@ export interface LibrarySnapshot<T> {
   indexPresentation: LibraryIndexPresentation;
 }
 
-/** Stable metadata for the complete logical result set behind a paged list. */
-export interface LibraryCatalog {
-  totalCount: number;
-  sections: Array<LibrarySection>;
-  indexPresentation: LibraryIndexPresentation;
-}
-
-/** A page whose offset is expressed in complete-result-set indexes. */
-export interface LibraryPage<T> {
-  offset: number;
-  items: Array<T>;
-}
-
 export enum ArtworkPictureType {
   OTHER = 0,
   FILE_ICON = 1,

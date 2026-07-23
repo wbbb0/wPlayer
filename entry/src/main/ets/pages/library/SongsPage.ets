@@ -9,7 +9,6 @@ import {
 } from '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
-import { LibrarySlot } from '../../library/store/PagedLibraryDataSource';
 import {
   SongListItem,
   SongListItemLayout
@@ -86,90 +85,41 @@ export struct SongsPage {
     } else {
       Stack({ alignContent: Alignment.End }) {
         List({ space: 0, scroller: this.scroller }) {
-          LazyForEach(this.store.trackDataSource, (slot: LibrarySlot<TrackListItem>) => {
-            if (slot.value !== undefined) {
-              ListItem() {
-                Column() {
-                  if (slot.index > 0) {
-                    Divider()
-                      .color($r('app.color.text_tertiary'))
-                      .opacity(0.3)
-                      .margin({ left: 80, right: PageLayoutSpec.HORIZONTAL_INSET })
-                  }
-                  SongListItem({
-                    item: slot.value,
-                    libraryStore: this.store,
-                    layout: SongListItemLayout.LIBRARY,
-                    artworkPath: slot.value.smallArtworkPath.length > 0 ?
-                      this.store.resolveArtworkPath(slot.value.smallArtworkPath) : '',
-                    actionTrack: slot.value,
-                    actionAnchorPrefix: 'songs',
-                    menuPlacement: Placement.BottomLeft,
-                    horizontalInset: 16,
-                    verticalInset: 8,
-                    artworkSize: 52,
-                    artworkCornerRadius: 10,
-                    selectionMode: this.selection.active,
-                    selected: this.selection.isSelected(slot.value.id),
-                    onActivate: (): void => {
-                      if (slot.value !== undefined) {
-                        this.onPlayTrack(slot.value);
-                      }
-                    },
-                    onOpenActions: this.onOpenTrackActions,
-                    onNavigateAction: this.onNavigateTrackAction,
-                    onRequestAddToPlaylist: this.onRequestAddToPlaylist
-                    ,
-                    onToggleSelection: (): void => this.toggleSelection(slot.value!)
-                  })
-                    .reuseId('songs_library')
-                }
-                .width('100%')
+          LazyForEach(this.store.trackDataSource, (track: TrackListItem, index: number) => {
+            ListItem() {
+              Column() {
+                Divider()
+                  .color($r('app.color.text_tertiary'))
+                  .opacity(index > 0 ? 0.3 : 0)
+                  .margin({ left: 80, right: PageLayoutSpec.HORIZONTAL_INSET })
+                SongListItem({
+                  item: track,
+                  libraryStore: this.store,
+                  layout: SongListItemLayout.LIBRARY,
+                  artworkPath: track.smallArtworkPath.length > 0 ?
+                    this.store.resolveArtworkPath(track.smallArtworkPath) : '',
+                  actionTrack: track,
+                  actionAnchorPrefix: 'songs',
+                  menuPlacement: Placement.BottomLeft,
+                  horizontalInset: 16,
+                  verticalInset: 8,
+                  artworkSize: 52,
+                  artworkCornerRadius: 10,
+                  selectionMode: this.selection.active,
+                  selected: this.selection.isSelected(track.id),
+                  onActivate: (): void => this.onPlayTrack(track),
+                  onOpenActions: this.onOpenTrackActions,
+                  onNavigateAction: this.onNavigateTrackAction,
+                  onRequestAddToPlaylist: this.onRequestAddToPlaylist,
+                  onToggleSelection: (): void => this.toggleSelection(track)
+                })
+                  .height(68)
+                  .reuseId(this.selection.active ? 'songs_library_selection' : 'songs_library_actions')
               }
-            } else {
-              ListItem() {
-                Column() {
-                  if (slot.index > 0) {
-                    Divider()
-                      .color($r('app.color.text_tertiary'))
-                      .opacity(0.3)
-                      .margin({ left: 80, right: PageLayoutSpec.HORIZONTAL_INSET })
-                  }
-                  Row({ space: 12 }) {
-                    Row()
-                      .width(52)
-                      .height(52)
-                      .borderRadius(10)
-                      .backgroundColor($r('app.color.text_tertiary'))
-                      .opacity(0.12)
-                    Column({ space: 8 }) {
-                      Row()
-                        .width('58%')
-                        .height(12)
-                        .borderRadius(6)
-                        .backgroundColor($r('app.color.text_tertiary'))
-                        .opacity(0.14)
-                      Row()
-                        .width('38%')
-                        .height(10)
-                        .borderRadius(5)
-                        .backgroundColor($r('app.color.text_tertiary'))
-                        .opacity(0.1)
-                    }
-                    .alignItems(HorizontalAlign.Start)
-                    .layoutWeight(1)
-                    Row()
-                      .width(38)
-                      .height(38)
-                  }
-                  .width('100%')
-                  .padding({ left: 16, right: 16, top: 8, bottom: 8 })
-                }
-                .width('100%')
-              }
+              .width('100%')
             }
-          }, (slot: LibrarySlot<TrackListItem>) =>
-            `${slot.generation}:${slot.index}:${slot.revision}`)
+            .height(69)
+          }, (track: TrackListItem) => `${track.id}`)
         }
         .width('100%')
         .height('100%')
@@ -177,7 +127,7 @@ export struct SongsPage {
         .contentEndOffset(PageLayoutSpec.contentEnd(this.bottomInset))
         .scrollBar(this.store.trackIndexPresentation === LibraryIndexPresentation.ALPHABET ?
           BarState.Off : BarState.Auto)
-        .onScrollIndex((firstIndex: number, lastIndex: number, _centerIndex: number) => {
+        .onScrollIndex((firstIndex: number, _lastIndex: number, _centerIndex: number) => {
           if (firstIndex < 0) {
             return;
           }
@@ -185,7 +135,6 @@ export struct SongsPage {
           if (sectionIndex >= 0 && sectionIndex !== this.selectedSectionIndex) {
             this.selectedSectionIndex = sectionIndex;
           }
-          this.store.ensureTrackRange(firstIndex, lastIndex);
         })
         .attributeModifier(this.scrollBehavior)
 
@@ -197,7 +146,6 @@ export struct SongsPage {
             onSelect: (itemIndex: number, sectionIndex: number) => {
               this.selectedSectionIndex = sectionIndex;
               this.scroller.scrollToIndex(itemIndex, false, ScrollAlign.START);
-              this.store.ensureTrackRange(itemIndex, itemIndex);
             }
           })
           .margin({ right: 2, bottom: PageLayoutSpec.contentEnd(this.bottomInset) / 2 })

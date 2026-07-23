@@ -261,34 +261,6 @@ export struct AlbumGridItem {
 }
 
 @Component
-export struct AlbumGridItemPlaceholder {
-  build() {
-    Column({ space: 7 }) {
-      Row()
-        .width('100%')
-        .aspectRatio(1)
-        .borderRadius(18)
-        .backgroundColor($r('app.color.text_tertiary'))
-        .opacity(0.12)
-      Row()
-        .width('68%')
-        .height(12)
-        .borderRadius(6)
-        .backgroundColor($r('app.color.text_tertiary'))
-        .opacity(0.14)
-      Row()
-        .width('46%')
-        .height(10)
-        .borderRadius(5)
-        .backgroundColor($r('app.color.text_tertiary'))
-        .opacity(0.1)
-    }
-    .width('100%')
-    .alignItems(HorizontalAlign.Start)
-  }
-}
-
-@Component
 export struct AlbumGridSection {
   @ObjectLink store: LibraryStore;
   @Prop albums: Array<AlbumListItem> = [];

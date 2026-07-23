@@ -25,7 +25,10 @@ import {
   QueueIndexListener
 } from '../../playback/model/PlaybackModels';
 import { TimedLyricLine } from '../../playback/lyrics/LyricsParser';
-import { SongListItem, SongListItemLayout } from '../library/SongListItem';
+import {
+  SongListItem,
+  SongListItemLayout
+} from '../library/SongListItem';
 import { LayoutLength } from '../layout/LayoutLength';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import { SymbolGlyphModifier } from '@kit.ArkUI';

@@ -6,7 +6,11 @@ export class SystemBarStyleController {
   private appearanceContentColor: string = '#FF202020';
   private playerContentColor: string = '';
   private playerOverrideActive: boolean = false;
+  private fullscreenOverlayContentColor: string = '';
+  private fullscreenOverlayActive: boolean = false;
+  private fullscreenOverlayStatusBarVisible: boolean = true;
   private appliedContentColor: string = '';
+  private appliedStatusBarVisible: boolean | undefined = undefined;
   private requestEpoch: number = 0;
   private failedRequestEpoch: number = -1;
   private applying: boolean = false;
@@ -17,6 +21,7 @@ export class SystemBarStyleController {
     }
     this.mainWindow = mainWindow;
     this.appliedContentColor = '';
+    this.appliedStatusBarVisible = undefined;
     this.failedRequestEpoch = -1;
     this.requestApply();
   }
@@ -27,6 +32,7 @@ export class SystemBarStyleController {
     }
     this.mainWindow = undefined;
     this.appliedContentColor = '';
+    this.appliedStatusBarVisible = undefined;
     this.failedRequestEpoch = -1;
   }
 
@@ -47,17 +53,39 @@ export class SystemBarStyleController {
     this.requestApply();
   }
 
+  setFullscreenOverlayStyle(active: boolean, contentColor: string, statusBarVisible: boolean): void {
+    if (this.fullscreenOverlayActive === active &&
+      this.fullscreenOverlayContentColor === contentColor &&
+      this.fullscreenOverlayStatusBarVisible === statusBarVisible) {
+      return;
+    }
+    this.fullscreenOverlayActive = active;
+    this.fullscreenOverlayContentColor = contentColor;
+    this.fullscreenOverlayStatusBarVisible = statusBarVisible;
+    this.requestApply();
+  }
+
   private desiredContentColor(): string {
+    if (this.fullscreenOverlayActive && this.fullscreenOverlayContentColor.length > 0) {
+      return this.fullscreenOverlayContentColor;
+    }
     if (this.playerOverrideActive && this.playerContentColor.length > 0) {
       return this.playerContentColor;
     }
     return this.appearanceContentColor;
   }
 
+  private desiredStatusBarVisible(): boolean {
+    return !this.fullscreenOverlayActive || this.fullscreenOverlayStatusBarVisible;
+  }
+
   private requestApply(): void {
     this.requestEpoch += 1;
     const desiredColor = this.desiredContentColor();
-    if (this.mainWindow === undefined || this.applying || this.appliedContentColor === desiredColor) {
+    const desiredStatusBarVisible = this.desiredStatusBarVisible();
+    if (this.mainWindow === undefined || this.applying ||
+      (this.appliedContentColor === desiredColor &&
+        this.appliedStatusBarVisible === desiredStatusBarVisible)) {
       return;
     }
     this.applyLatest();
@@ -67,12 +95,17 @@ export class SystemBarStyleController {
     this.applying = true;
     while (this.mainWindow !== undefined) {
       const desiredColor = this.desiredContentColor();
-      if (this.appliedContentColor === desiredColor) {
+      const desiredStatusBarVisible = this.desiredStatusBarVisible();
+      if (this.appliedContentColor === desiredColor &&
+        this.appliedStatusBarVisible === desiredStatusBarVisible) {
         break;
       }
       const targetWindow = this.mainWindow;
       const targetEpoch = this.requestEpoch;
       try {
+        await targetWindow.setWindowSystemBarEnable(
+          desiredStatusBarVisible ? ['status', 'navigation'] : ['navigation']
+        );
         await targetWindow.setWindowSystemBarProperties({
           statusBarColor: '#00000000',
           navigationBarColor: '#00000000',
@@ -83,6 +116,7 @@ export class SystemBarStyleController {
         });
         if (this.mainWindow === targetWindow) {
           this.appliedContentColor = desiredColor;
+          this.appliedStatusBarVisible = desiredStatusBarVisible;
           this.failedRequestEpoch = -1;
         }
       } catch (error) {
@@ -96,7 +130,8 @@ export class SystemBarStyleController {
     }
     this.applying = false;
     if (this.mainWindow !== undefined &&
-      this.appliedContentColor !== this.desiredContentColor() &&
+      (this.appliedContentColor !== this.desiredContentColor() ||
+        this.appliedStatusBarVisible !== this.desiredStatusBarVisible()) &&
       this.failedRequestEpoch !== this.requestEpoch) {
       this.applyLatest();
     }

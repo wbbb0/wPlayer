@@ -132,11 +132,13 @@ export class EmbeddedArtworkService {
   }
 
   async save(detail: TrackDetail, artwork: EmbeddedArtwork): Promise<void> {
+    let sourceFile: fs.File | undefined;
+    let destinationFile: fs.File | undefined;
     try {
       const exported = await this.exportOriginal(detail, artwork);
       const helper = photoAccessHelper.getPhotoAccessHelper(this.context);
       const destinations = await helper.showAssetsCreationDialog(
-        [exported.uri],
+        [exported.path],
         [{
           title: `${EmbeddedArtworkService.safeFileName(detail.title)}-封面-${artwork.ordinal + 1}`,
           fileNameExtension: exported.extension,
@@ -145,10 +147,19 @@ export class EmbeddedArtworkService {
         }]
       );
       if (destinations.length > 0) {
-        await fs.copyFile(exported.path, destinations[0]);
+        sourceFile = await fs.open(exported.path, fs.OpenMode.READ_ONLY);
+        destinationFile = await fs.open(destinations[0], fs.OpenMode.WRITE_ONLY);
+        await fs.copyFile(sourceFile.fd, destinationFile.fd);
       }
     } catch (error) {
       throw new Error(`无法保存封面：${EmbeddedArtworkService.messageOf(error)}`);
+    } finally {
+      if (sourceFile !== undefined) {
+        await EmbeddedArtworkService.closeFile(sourceFile, 'source save file');
+      }
+      if (destinationFile !== undefined) {
+        await EmbeddedArtworkService.closeFile(destinationFile, 'destination save file');
+      }
     }
   }
 
@@ -207,6 +218,14 @@ export class EmbeddedArtworkService {
 
   private static messageOf(error: Object): string {
     return error instanceof Error ? error.message : `${error}`;
+  }
+
+  private static async closeFile(file: fs.File, label: string): Promise<void> {
+    try {
+      await fs.close(file);
+    } catch (error) {
+      console.warn(`Unable to close embedded artwork ${label}: ${EmbeddedArtworkService.messageOf(error)}`);
+    }
   }
 
   private static extensionOf(mimeType: string, buffer: ArrayBuffer): string {

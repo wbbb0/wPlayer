@@ -60,11 +60,16 @@ import {
   PlaylistSummary,
   PlaylistTrackSortField,
   SortDirection,
+  TrackDetail,
   TrackListItem,
   TrackSortField
 } from
   '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
+import {
+  TrackArtworkViewerState,
+  TrackDetailState
+} from '../../library/store/LibraryDetailState';
 import { PlaylistStore } from '../../playlist/store/PlaylistStore';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
@@ -72,7 +77,7 @@ import { AlbumsPage } from '../../pages/library/AlbumsPage';
 import { AlbumDetailPage } from '../../pages/library/AlbumDetailPage';
 import { ArtistDetailPage } from '../../pages/library/ArtistDetailPage';
 import { TrackDetailPage } from '../../pages/library/TrackDetailPage';
-import { TrackArtworkViewerPage } from '../../pages/library/TrackArtworkViewerPage';
+import { TrackArtworkViewer } from '../../pages/library/TrackArtworkViewer';
 import { LibraryManagementPage } from '../../pages/library/LibraryManagementPage';
 import { MorePage } from '../../pages/library/MorePage';
 import { PlaylistsPage } from '../../pages/library/PlaylistsPage';
@@ -89,8 +94,6 @@ import {
   AlbumDetailRouteParams,
   ArtistDetailRouteParams,
   LibraryDetailRoute,
-  TrackArtworkViewerRouteParams,
-  TrackDetailRouteParams,
   albumTarget,
   artistTarget
 } from './LibraryNavigation';
@@ -143,6 +146,19 @@ class PlaylistDetailRouteParams {
     this.instanceId = ++playlistRouteInstanceId;
     this.playlistId = playlistId;
     this.initialTitle = initialTitle;
+  }
+}
+
+class TrackDetailSheetState {
+  readonly trackId: number;
+  readonly title: string;
+  readonly state: TrackDetailState;
+  readonly scroller: Scroller = new Scroller();
+
+  constructor(trackId: number, title: string) {
+    this.trackId = trackId;
+    this.title = title;
+    this.state = new TrackDetailState(trackId);
   }
 }
 
@@ -216,7 +232,9 @@ export struct ResponsiveNavigationShell {
   @State private playlistsSelection: MultiSelectController = new MultiSelectController();
   @State private detailSelectionRevision: number = 0;
   @State private trackDetailSheetVisible: boolean = false;
-  private trackDetailSheetParams: TrackDetailRouteParams | undefined = undefined;
+  @State private artworkViewerVisible: boolean = false;
+  @State private artworkViewerState: TrackArtworkViewerState | undefined = undefined;
+  private trackDetailSheetState: TrackDetailSheetState | undefined = undefined;
   private readonly onDetailSelectionChange: () => void = (): void => {
     this.detailSelectionRevision += 1;
   };
@@ -764,7 +782,7 @@ export struct ResponsiveNavigationShell {
   }
 
   private openTrackDetails(item: TrackListItem): void {
-    this.trackDetailSheetParams = new TrackDetailRouteParams(item.id, item.title);
+    this.trackDetailSheetState = new TrackDetailSheetState(item.id, item.title);
     this.trackDetailSheetVisible = true;
   }
 
@@ -1218,47 +1236,6 @@ export struct ResponsiveNavigationShell {
         )
       ))
       .bindToScrollable([(_param as ArtistDetailRouteParams).scroller])
-    } else if (name === LibraryDetailRoute.TRACK) {
-      HdsNavDestination() {
-        TrackDetailPage({
-          store: this.libraryStore,
-          state: (_param as TrackDetailRouteParams).state,
-          topInset: this.topInset,
-          bottomInset: this.bottomInset,
-          rootWidth: this.rootWidth,
-          themeBackground: this.themePageBackground,
-          scroller: (_param as TrackDetailRouteParams).scroller,
-          onOpenArtwork: (detail, index: number): void => {
-            this.routePathStack(this.selectedRouteId).pushPath({
-              name: LibraryDetailRoute.ARTWORK_VIEWER,
-              param: new TrackArtworkViewerRouteParams(detail, index)
-            });
-          }
-        })
-      }
-      .width('100%')
-      .height('100%')
-      .backgroundColor(this.themePageBackground)
-      .titleMode(HdsNavDestinationTitleMode.MINI)
-      .titleBar(AppNavigationStyle.secondaryTitleBar(
-        '歌曲信息',
-        this.appearancePalette
-      ))
-      .bindToScrollable([(_param as TrackDetailRouteParams).scroller])
-    } else if (name === LibraryDetailRoute.ARTWORK_VIEWER) {
-      HdsNavDestination() {
-        TrackArtworkViewerPage({
-          state: (_param as TrackArtworkViewerRouteParams).state,
-          topInset: this.topInset,
-          bottomInset: this.bottomInset,
-          rootWidth: this.rootWidth
-        })
-      }
-      .width('100%')
-      .height('100%')
-      .backgroundColor('#FF000000')
-      .titleMode(HdsNavDestinationTitleMode.MINI)
-      .titleBar(AppNavigationStyle.secondaryBackOnlyTitleBar(this.appearancePalette))
     } else if (name === NavigationRoute.NAVIGATION_CUSTOMIZATION) {
       HdsNavDestination() {
         NavigationCustomizationPage({
@@ -1439,26 +1416,63 @@ export struct ResponsiveNavigationShell {
     this.trackDetailSheetVisible = false;
   }
 
+  private openArtworkViewer(detail: TrackDetail, index: number): void {
+    this.artworkViewerState = new TrackArtworkViewerState(detail, index);
+    this.artworkViewerVisible = true;
+  }
+
+  private closeArtworkViewer(): void {
+    this.artworkViewerVisible = false;
+  }
+
+  private finishClosingArtworkViewer(): void {
+    this.artworkViewerVisible = false;
+    this.artworkViewerState = undefined;
+  }
+
+  @Builder
+  private TrackArtworkViewerCover() {
+    Stack() {
+      if (this.artworkViewerState !== undefined) {
+        TrackArtworkViewer({
+          state: this.artworkViewerState,
+          topInset: this.topInset,
+          bottomInset: this.bottomInset,
+          onClose: (): void => this.closeArtworkViewer()
+        })
+      }
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor('#FF000000')
+  }
+
   @Builder
   private TrackDetailSheet() {
-    if (this.trackDetailSheetParams !== undefined) {
+    if (this.trackDetailSheetState !== undefined) {
       TrackDetailPage({
         store: this.libraryStore,
-        state: this.trackDetailSheetParams.state,
+        state: this.trackDetailSheetState.state,
         topInset: 0,
         bottomInset: 0,
         rootWidth: this.trackDetailSheetWidth(),
         themeBackground: this.themePageBackground,
         reserveFloatingControls: false,
-        scroller: this.trackDetailSheetParams.scroller,
+        scroller: this.trackDetailSheetState.scroller,
         onOpenArtwork: (detail, index: number): void => {
-          this.closeTrackDetailSheet();
-          this.routePathStack(this.selectedRouteId).pushPath({
-            name: LibraryDetailRoute.ARTWORK_VIEWER,
-            param: new TrackArtworkViewerRouteParams(detail, index)
-          });
+          this.openArtworkViewer(detail, index);
         }
       })
+      .bindContentCover(
+        $$this.artworkViewerVisible,
+        this.TrackArtworkViewerCover(),
+        {
+          modalTransition: ModalTransition.ALPHA,
+          backgroundColor: '#FF000000',
+          enableSafeArea: false,
+          onDisappear: (): void => this.finishClosingArtworkViewer()
+        }
+      )
     }
   }
 
@@ -1479,7 +1493,8 @@ export struct ResponsiveNavigationShell {
         backgroundColor: this.themePageBackground,
         onDisappear: (): void => {
           if (!this.trackDetailSheetVisible) {
-            this.trackDetailSheetParams = undefined;
+            this.closeArtworkViewer();
+            this.trackDetailSheetState = undefined;
           }
         }
       })

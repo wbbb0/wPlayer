@@ -39,7 +39,7 @@ export class DynamicColor {
     if (emphasis === ForegroundEmphasis.MEDIUM) {
       alpha = 'B8';
     } else if (emphasis === ForegroundEmphasis.DISABLED) {
-      alpha = '61';
+      alpha = '20';
     }
     return `#${alpha}${DynamicColor.hex(rgb[0])}${DynamicColor.hex(rgb[1])}${DynamicColor.hex(rgb[2])}`;
   }

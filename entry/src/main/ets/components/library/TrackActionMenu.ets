@@ -62,7 +62,7 @@ export function TrackActionMenu(params: TrackActionMenuParams) {
     }, (action: LibraryLinkAction) =>
       `${action.target.identity.kind}:${action.target.identity.id}`)
     if (params.queueItems.length === 1 && params.onOpenDetails !== undefined) {
-      MenuItem({ content: '歌曲信息' })
+      MenuItem({ content: '文件信息' })
         .onClick(() => params.onOpenDetails?.(params.queueItems[0]))
     }
     if (params.onRemove !== undefined && params.removeLabel.length > 0) {

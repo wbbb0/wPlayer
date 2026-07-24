@@ -179,6 +179,8 @@ export struct FullPlayerContent {
   onResolveQueueArtwork: (relativePath: string) => string = (_relativePath: string): string => '';
   onOpenTrackActions: (trackId: number, anchorId: string) => void =
     (_trackId: number, _anchorId: string): void => {};
+  onOpenTrackDetails: (track: TrackListItem) => void =
+    (_track: TrackListItem): void => {};
   onNavigateLibrary: (target: LibraryNavigationTarget) => void =
     (_target: LibraryNavigationTarget): void => {};
   onRequestAddToPlaylist: (trackIds: Array<number>) => void =
@@ -299,6 +301,13 @@ export struct FullPlayerContent {
         .onClick(() => {
           if (this.playerStore.currentTrack !== undefined) {
             this.onRequestAddToPlaylist([this.playerStore.currentTrack.id]);
+          }
+        })
+      MenuItem({ content: '文件信息' })
+        .enabled(this.playerStore.currentTrack !== undefined)
+        .onClick(() => {
+          if (this.playerStore.currentTrack !== undefined) {
+            this.onOpenTrackDetails(this.queueActionTrack(this.playerStore.currentTrack));
           }
         })
       MenuItem({
@@ -640,6 +649,8 @@ export struct FullPlayerContent {
                     onNavigateAction: this.onNavigateLibrary,
                     onRequestAddToPlaylist: (items: Array<TrackListItem>): void =>
                       this.onRequestAddToPlaylist(items.map((item: TrackListItem): number => item.id)),
+                    onOpenDetails: (track: TrackListItem): void =>
+                      this.onOpenTrackDetails(track),
                     selectionMode: this.queueSelectionActive,
                     selected: this.queueEntrySelected(entry.queueEntryId),
                     onActivate: (track: TrackListItem): void => {

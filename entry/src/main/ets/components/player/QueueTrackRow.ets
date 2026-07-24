@@ -51,6 +51,7 @@ export struct QueueTrackRow {
     (_target: LibraryNavigationTarget): void => {};
   onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
     (_items: Array<TrackListItem>): void => {};
+  onOpenDetails: (track: TrackListItem) => void = (_track: TrackListItem): void => {};
   @State contextMenuShown: boolean = false;
   @State linkActions: Array<LibraryLinkAction> = [];
   private measuredIdentityWidth: number = 0;
@@ -69,6 +70,7 @@ export struct QueueTrackRow {
       params.onNavigateAction as (target: LibraryNavigationTarget) => void;
     this.onRequestAddToPlaylist =
       params.onRequestAddToPlaylist as (items: Array<TrackListItem>) => void;
+    this.onOpenDetails = params.onOpenDetails as (track: TrackListItem) => void;
   }
 
   aboutToRecycle(): void {
@@ -228,7 +230,10 @@ export struct QueueTrackRow {
       [this.track],
       this.linkActions,
       this.onNavigateAction,
-      this.onRequestAddToPlaylist
+      this.onRequestAddToPlaylist,
+      '',
+      undefined,
+      this.onOpenDetails
     ))
   }
 

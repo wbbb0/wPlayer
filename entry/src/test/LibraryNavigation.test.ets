@@ -7,6 +7,34 @@ import {
   LibraryLinkRole,
   libraryLinkActions
 } from '../main/ets/components/navigation/LibraryNavigation';
+import { TrackDetailSheetBridge } from '../main/ets/components/navigation/TrackDetailSheetBridge';
+import {
+  AvailabilityState,
+  TrackListItem
+} from '../main/ets/library/model/LibraryModels';
+
+function track(id: number): TrackListItem {
+  return {
+    id: id,
+    title: `Track ${id}`,
+    artistDisplay: '',
+    albumDisplay: '',
+    durationMs: 0,
+    trackNumber: 0,
+    discNumber: 0,
+    smallArtworkHash: '',
+    smallArtworkPath: '',
+    artworkHash: '',
+    artworkPath: '',
+    artworkWidth: 0,
+    artworkHeight: 0,
+    palettePrimary: '',
+    paletteSecondary: '',
+    paletteAccent: '',
+    sectionKey: '',
+    availability: AvailabilityState.AVAILABLE
+  };
+}
 
 function targets(): TrackNavigationTargets {
   return {
@@ -57,6 +85,30 @@ export default function libraryNavigationTest() {
       expect(actions.length).assertEqual(3);
       expect(actions[0].target.identity.kind).assertEqual(LibraryEntityKind.ARTIST);
       expect(actions[2].target.identity.id).assertEqual(12);
+    });
+
+    it('forwards file information requests only to the attached shell', 0, () => {
+      const bridge = new TrackDetailSheetBridge();
+      let openedTrackId = 0;
+      const firstHandler = (item: TrackListItem): void => {
+        openedTrackId = item.id;
+      };
+      const secondHandler = (item: TrackListItem): void => {
+        openedTrackId = item.id * 10;
+      };
+
+      bridge.attach(firstHandler);
+      bridge.open(track(2));
+      expect(openedTrackId).assertEqual(2);
+
+      bridge.attach(secondHandler);
+      bridge.detach(firstHandler);
+      bridge.open(track(3));
+      expect(openedTrackId).assertEqual(30);
+
+      bridge.detach(secondHandler);
+      bridge.open(track(4));
+      expect(openedTrackId).assertEqual(30);
     });
   });
 }

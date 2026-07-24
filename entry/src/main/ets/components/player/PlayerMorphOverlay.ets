@@ -9,7 +9,10 @@ import { PlayerPlaybackButton } from './PlayerControls';
 import { PlayerMorphArtwork } from './PlayerMorphArtwork';
 import { PlayerMorphController } from './PlayerMorphController';
 import { LibraryStore } from '../../library/store/LibraryStore';
-import { LibraryNavigationTarget } from '../../library/model/LibraryModels';
+import {
+  LibraryNavigationTarget,
+  TrackListItem
+} from '../../library/model/LibraryModels';
 import {
   FULL_PLAYER_HORIZONTAL_GESTURE_HOST_ID,
   FULL_PLAYER_VERTICAL_GESTURE_HOST_ID,
@@ -34,6 +37,8 @@ export struct PlayerMorphOverlay {
     (_trackIds: Array<number>): void => {};
   onOpenTrackActions: (trackId: number, anchorId: string) => void =
     (_trackId: number, _anchorId: string): void => {};
+  onOpenTrackDetails: (track: TrackListItem) => void =
+    (_track: TrackListItem): void => {};
   onNavigateLibrary: (target: LibraryNavigationTarget) => void =
     (_target: LibraryNavigationTarget): void => {};
 
@@ -83,6 +88,8 @@ export struct PlayerMorphOverlay {
               playbackRuntime.queueArtworkUri(relativePath),
             onOpenTrackActions: (trackId: number, anchorId: string): void =>
               this.onOpenTrackActions(trackId, anchorId),
+            onOpenTrackDetails: (track: TrackListItem): void =>
+              this.onOpenTrackDetails(track),
             onNavigateLibrary: this.onNavigateLibrary
           })
         }

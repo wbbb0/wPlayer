@@ -1,4 +1,5 @@
 import { common } from '@kit.AbilityKit';
+import { pasteboard } from '@kit.BasicServicesKit';
 import { PageLayoutSpec } from '../../components/layout/PageLayoutSpec';
 import {
   PageScrollBehavior,
@@ -6,13 +7,16 @@ import {
 } from '../../components/layout/PageScrollBehavior';
 import {
   ArtworkPictureType,
-  AvailabilityState,
-  CreditRole,
   EmbeddedArtwork,
-  TrackCreditDetail,
-  TrackDetail,
-  TrackRawTag
+  TrackDetail
 } from '../../library/model/LibraryModels';
+import {
+  DetailAction,
+  DetailRenderer,
+  DetailRowModel,
+  DetailSectionModel,
+  TrackDetailPresenter
+} from '../../library/presentation/TrackDetailPresentation';
 import {
   TrackArtworkPreviewState,
   TrackDetailState
@@ -47,35 +51,6 @@ export struct TrackDetailPage {
     this.state.releasePreviews();
   }
 
-  private durationLabel(durationMs: number): string {
-    const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    if (hours > 0) {
-      return `${hours}:${minutes < 10 ? '0' : ''}${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-    }
-    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-  }
-
-  private fileSizeLabel(bytes: number): string {
-    if (bytes <= 0) {
-      return '未知';
-    }
-    const units: Array<string> = ['B', 'KB', 'MB', 'GB'];
-    let value = bytes;
-    let unit = 0;
-    while (value >= 1024 && unit < units.length - 1) {
-      value /= 1024;
-      unit += 1;
-    }
-    return `${value >= 10 || unit === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
-  }
-
-  private dateTimeLabel(timestamp: number): string {
-    return timestamp > 0 ? new Date(timestamp).toLocaleString() : '未知';
-  }
-
   private pictureTypeLabel(type: ArtworkPictureType): string {
     const labels: Array<string> = [
       '其他', '文件图标', '其他文件图标', '正面封面', '背面封面', '内页',
@@ -86,46 +61,22 @@ export struct TrackDetailPage {
     return labels[type] ?? `类型 ${type}`;
   }
 
-  private creditRoleLabel(role: CreditRole): string {
-    const labels: Array<string> = ['艺人', '专辑艺人', '作曲', '作词', '指挥', '演奏/表演'];
-    return labels[role] ?? `角色 ${role}`;
+  private async copyValue(value: string): Promise<void> {
+    try {
+      const data = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, value);
+      await pasteboard.getSystemPasteboard().setData(data);
+      this.message('已复制原始值');
+    } catch (_) {
+      this.message('复制失败');
+    }
   }
 
-  private valueOrUnknown(value: string): string {
-    return value.trim().length > 0 ? value : '未知';
-  }
-
-  private numberPair(value: number, total: number, raw: string): string {
-    if (raw.trim().length > 0) {
-      return raw;
+  private message(value: string): void {
+    try {
+      this.getUIContext().getPromptAction().showToast({ message: value });
+    } catch (error) {
+      console.warn(`Unable to show detail action result: ${String(error)}`);
     }
-    if (value <= 0) {
-      return '未知';
-    }
-    return total > 0 ? `${value}/${total}` : `${value}`;
-  }
-
-  private channelLabel(count: number): string {
-    if (count === 1) {
-      return '1（单声道）';
-    }
-    if (count === 2) {
-      return '2（立体声）';
-    }
-    return count > 0 ? `${count}` : '未知';
-  }
-
-  private availabilityLabel(value: AvailabilityState): string {
-    if (value === AvailabilityState.AVAILABLE) {
-      return '可用';
-    }
-    if (value === AvailabilityState.AUTHORIZATION_REVOKED) {
-      return '文件授权已撤销';
-    }
-    if (value === AvailabilityState.CORRUPTED) {
-      return '文件损坏';
-    }
-    return '文件不可用';
   }
 
   private contentEndInset(): number {
@@ -143,13 +94,13 @@ export struct TrackDetailPage {
   }
 
   @Builder
-  private InformationRow(label: string, value: string) {
+  private DefaultRow(row: DetailRowModel) {
     Row({ space: 18 }) {
-      Text(label)
+      Text(row.label)
         .fontSize(13)
         .fontColor($r('app.color.text_secondary'))
         .width(112)
-      Text(value)
+      Text(row.displayValue)
         .fontSize(14)
         .fontColor($r('app.color.text_primary'))
         .layoutWeight(1)
@@ -161,27 +112,96 @@ export struct TrackDetailPage {
   }
 
   @Builder
-  private Card() {
+  private MonospaceRow(row: DetailRowModel) {
+    Row({ space: 18 }) {
+      Text(row.label)
+        .fontSize(13)
+        .fontColor($r('app.color.text_secondary'))
+        .width(112)
+      Text(row.displayValue)
+        .fontSize(13)
+        .fontFamily('monospace')
+        .fontColor($r('app.color.text_primary'))
+        .layoutWeight(1)
+        .textAlign(TextAlign.End)
+        .copyOption(CopyOptions.LocalDevice)
+    }
+    .width('100%')
+    .padding({ top: 10, bottom: 10 })
+  }
+
+  @Builder
+  private UriRow(row: DetailRowModel) {
+    Row({ space: 10 }) {
+      Text(row.label)
+        .fontSize(13)
+        .fontColor($r('app.color.text_secondary'))
+        .width(112)
+      Text(row.displayValue)
+        .fontSize(13)
+        .fontFamily('monospace')
+        .fontColor($r('app.color.text_primary'))
+        .layoutWeight(1)
+        .textAlign(TextAlign.End)
+      if (row.actions.indexOf(DetailAction.COPY_EXACT) >= 0) {
+        Button() {
+          SymbolGlyph($r('sys.symbol.rectangle_on_rectangle'))
+            .fontSize(18)
+            .fontColor([$r('app.color.text_primary')])
+        }
+        .width(36)
+        .height(36)
+        .type(ButtonType.Circle)
+        .buttonStyle(ButtonStyleMode.NORMAL)
+        .backgroundColor(Color.Transparent)
+        .accessibilityText('复制原始 URI')
+        .onClick((): void => {
+          this.copyValue(row.copyValue);
+        })
+      }
+    }
+    .width('100%')
+    .padding({ top: 6, bottom: 6 })
+  }
+
+  @Builder
+  private LyricsRow(row: DetailRowModel) {
+    Row({ space: 18 }) {
+      Text(row.label)
+        .fontSize(13)
+        .fontColor($r('app.color.text_secondary'))
+        .width(112)
+      Text(row.displayValue)
+        .fontSize(14)
+        .fontColor($r('app.color.text_primary'))
+        .layoutWeight(1)
+        .textAlign(TextAlign.End)
+    }
+    .width('100%')
+    .padding({ top: 10, bottom: 10 })
+    .accessibilityText(`${row.label}，${row.displayValue}`)
+  }
+
+  @Builder
+  private DetailRow(row: DetailRowModel) {
+    if (row.renderer === DetailRenderer.URI) {
+      this.UriRow(row)
+    } else if (row.renderer === DetailRenderer.LYRICS) {
+      this.LyricsRow(row)
+    } else if (row.renderer === DetailRenderer.MONOSPACE) {
+      this.MonospaceRow(row)
+    } else {
+      this.DefaultRow(row)
+    }
+  }
+
+  @Builder
+  private DetailSection(section: DetailSectionModel) {
+    this.SectionTitle(section.title)
     Column() {
-      ForEach(this.state.detail === undefined ? [] : [this.state.detail], (detail: TrackDetail) => {
-        this.InformationRow('标题', this.valueOrUnknown(detail.title))
-        this.InformationRow('排序标题', this.valueOrUnknown(detail.sortTitle))
-        this.InformationRow('艺人', this.valueOrUnknown(detail.artistDisplay))
-        this.InformationRow('专辑', this.valueOrUnknown(detail.albumDisplay))
-        this.InformationRow('专辑艺人', this.valueOrUnknown(detail.albumArtistDisplay))
-        this.InformationRow('作曲', this.valueOrUnknown(detail.composerDisplay))
-        this.InformationRow(
-          '曲目',
-          this.numberPair(detail.trackNumber, detail.totalTrackCount, detail.trackNumberRaw)
-        )
-        this.InformationRow(
-          '碟片',
-          this.numberPair(detail.discNumber, detail.totalDiscCount, detail.discNumberRaw)
-        )
-        this.InformationRow('发行日期', this.valueOrUnknown(detail.releaseDateRaw))
-        this.InformationRow('原始发行日期', this.valueOrUnknown(detail.originalReleaseDateRaw))
-        this.InformationRow('流派', detail.genres.length > 0 ? detail.genres.join('、') : '未知')
-      })
+      ForEach(section.rows, (row: DetailRowModel) => {
+        this.DetailRow(row)
+      }, (row: DetailRowModel) => row.id)
     }
     .width('100%')
     .padding({ left: 16, right: 16 })
@@ -284,80 +304,22 @@ export struct TrackDetailPage {
     }
   }
 
-  @Builder
-  private Credits(detail: TrackDetail) {
-    this.SectionTitle('人员与角色')
-    Column() {
-      if (detail.credits.length === 0) {
-        this.InformationRow('人员', '没有可用信息')
-      } else {
-        ForEach(detail.credits, (credit: TrackCreditDetail) => {
-          this.InformationRow(this.creditRoleLabel(credit.role), credit.name)
-        }, (credit: TrackCreditDetail) => `${credit.role}:${credit.ordinal}:${credit.name}`)
-      }
-    }
-    .width('100%')
-    .padding({ left: 16, right: 16 })
-    .borderRadius(20)
-    .backgroundColor($r('app.color.glass_surface'))
-  }
-
-  @Builder
-  private FileAndAudio(detail: TrackDetail) {
-    this.SectionTitle('文件与音频')
-    Column() {
-      this.InformationRow('文件名', detail.displayName)
-      this.InformationRow('文件大小', this.fileSizeLabel(detail.fileSize))
-      this.InformationRow('修改时间', this.dateTimeLabel(detail.modifiedAt))
-      this.InformationRow('容器格式', detail.format.toUpperCase())
-      this.InformationRow('MIME', this.valueOrUnknown(detail.mimeType))
-      this.InformationRow('时长', this.durationLabel(detail.durationMs))
-      this.InformationRow('采样率', detail.sampleRate > 0 ? `${detail.sampleRate} Hz` : '未知')
-      this.InformationRow('声道', this.channelLabel(detail.channelCount))
-      this.InformationRow('位深', detail.bitsPerSample > 0 ? `${detail.bitsPerSample} bit` : '未知')
-      this.InformationRow('码率', detail.bitRate > 0 ? `${Math.round(detail.bitRate / 1000)} kbps` : '未知')
-      this.InformationRow('文件状态', this.availabilityLabel(detail.availability))
-      this.InformationRow('持久授权', detail.authorizationPersisted ? '已保留' : '未保留')
-      this.InformationRow('URI', detail.uri.length > 0 ? detail.uri : '演示数据')
-    }
-    .width('100%')
-    .padding({ left: 16, right: 16 })
-    .borderRadius(20)
-    .backgroundColor($r('app.color.glass_surface'))
-  }
-
-  @Builder
-  private RawTags(detail: TrackDetail) {
-    this.SectionTitle(`原始标签（${detail.rawTags.length}）`)
-    Column() {
-      if (detail.rawTags.length === 0) {
-        this.InformationRow('标签', '没有可用的原始标签')
-      } else {
-        ForEach(detail.rawTags, (tag: TrackRawTag) => {
-          this.InformationRow(tag.key, tag.value)
-        }, (tag: TrackRawTag) => `${tag.key}:${tag.ordinal}`)
-      }
-    }
-    .width('100%')
-    .padding({ left: 16, right: 16 })
-    .borderRadius(20)
-    .backgroundColor($r('app.color.glass_surface'))
-  }
-
   build() {
     Scroll(this.scroller) {
       Column({ space: 12 }) {
         if (this.state.detail !== undefined) {
           this.Artworks(this.state.detail)
-          this.SectionTitle('歌曲信息')
-          this.Card()
-          this.Credits(this.state.detail)
-          this.FileAndAudio(this.state.detail)
-          this.RawTags(this.state.detail)
+          ForEach(
+            TrackDetailPresenter.present(this.state.detail).sections,
+            (section: DetailSectionModel) => {
+              this.DetailSection(section)
+            },
+            (section: DetailSectionModel) => section.id
+          )
         } else if (this.state.loading) {
           LoadingProgress().width(40).height(40).margin({ top: 72 })
         } else {
-          Text(this.state.error.length > 0 ? this.state.error : '正在载入歌曲信息…')
+          Text(this.state.error.length > 0 ? this.state.error : '正在载入文件信息…')
             .fontSize(15)
             .fontColor($r('app.color.text_secondary'))
             .textAlign(TextAlign.Center)

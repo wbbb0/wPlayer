@@ -113,6 +113,7 @@ import {
   MultiSelectActionMenuParams,
   MultiSelectController
 } from '../library/MultiSelectController';
+import { TrackDetailSheetBridge } from './TrackDetailSheetBridge';
 
 const TRACK_SORT_LABELS: Array<string> = ['名称', '专辑', '艺术家', '发行日期', '添加时间'];
 const ALBUM_SORT_LABELS: Array<string> = ['名称', '艺术家', '发行日期', '添加时间'];
@@ -196,6 +197,7 @@ export struct ResponsiveNavigationShell {
   morePathStack: NavPathStack = new NavPathStack();
   moreScroller: Scroller = new Scroller();
   customizationScroller: Scroller = new Scroller();
+  trackDetailSheetBridge: TrackDetailSheetBridge = new TrackDetailSheetBridge();
   aboutScroller: Scroller = new Scroller();
   privacyPolicyScroller: Scroller = new Scroller();
   dataAndPermissionsScroller: Scroller = new Scroller();
@@ -235,9 +237,19 @@ export struct ResponsiveNavigationShell {
   @State private artworkViewerVisible: boolean = false;
   @State private artworkViewerState: TrackArtworkViewerState | undefined = undefined;
   private trackDetailSheetState: TrackDetailSheetState | undefined = undefined;
+  private readonly bridgedOpenTrackDetails: (track: TrackListItem) => void =
+    (track: TrackListItem): void => this.openTrackDetails(track);
   private readonly onDetailSelectionChange: () => void = (): void => {
     this.detailSelectionRevision += 1;
   };
+
+  aboutToAppear(): void {
+    this.trackDetailSheetBridge.attach(this.bridgedOpenTrackDetails);
+  }
+
+  aboutToDisappear(): void {
+    this.trackDetailSheetBridge.detach(this.bridgedOpenTrackDetails);
+  }
 
   private rootSelection(routeId: string): MultiSelectController | undefined {
     if (routeId === NavigationRoute.SONGS) {
@@ -1487,7 +1499,7 @@ export struct ResponsiveNavigationShell {
         height: SheetSize.LARGE,
         width: this.trackDetailSheetWidth(),
         preferType: this.trackDetailSheetType(),
-        title: { title: '歌曲信息' },
+        title: { title: '文件信息' },
         dragBar: !this.usesWideLayout(),
         showClose: true,
         backgroundColor: this.themePageBackground,

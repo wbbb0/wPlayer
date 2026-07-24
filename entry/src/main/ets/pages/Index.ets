@@ -31,6 +31,7 @@ import {
   IndexNavigationController
 } from '../components/navigation/IndexNavigationController';
 import { ResponsiveNavigationShell } from '../components/navigation/ResponsiveNavigationShell';
+import { TrackDetailSheetBridge } from '../components/navigation/TrackDetailSheetBridge';
 import { TrackActionMenuPresenter } from '../components/library/TrackActionMenu';
 import {
   AppAppearanceListener,
@@ -47,6 +48,7 @@ struct Index {
   private readonly compactTabsController: HdsTabsController = new HdsTabsController();
   private readonly condensedCompactTabsController: HdsTabsController = new HdsTabsController();
   private readonly expandedTabsController: HdsTabsController = new HdsTabsController();
+  private readonly trackDetailSheetBridge: TrackDetailSheetBridge = new TrackDetailSheetBridge();
   private compactMiniPlayerContent?: ComponentContent<MiniPlayerHostParams>;
   private condensedCompactMiniPlayerContent?: ComponentContent<MiniPlayerHostParams>;
   private wideMiniPlayerContent?: ComponentContent<MiniPlayerHostParams>;
@@ -348,6 +350,7 @@ struct Index {
       morePathStack: this.navigationController.morePathStack,
       moreScroller: this.navigationController.moreScroller,
       customizationScroller: this.navigationController.customizationScroller,
+      trackDetailSheetBridge: this.trackDetailSheetBridge,
       onCompactTabChange: (index: number): void =>
         this.navigationController.handleCompactTabChange(index),
       onCompactTabClick: (index: number): void =>
@@ -412,6 +415,10 @@ struct Index {
         this.playlistController.requestTrackIdsAddToPlaylist(trackIds),
       onOpenTrackActions: (trackId: number, anchorId: string): void =>
         this.openFullPlayerTrackActions(trackId, anchorId),
+      onOpenTrackDetails: (track: TrackListItem): void => {
+        this.playerMorphController.hideFullPlayer();
+        this.trackDetailSheetBridge.open(track);
+      },
       onNavigateLibrary: (target: LibraryNavigationTarget): void => this.navigateLibrary(target)
     })
   }

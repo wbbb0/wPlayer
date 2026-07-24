@@ -19,7 +19,11 @@ import {
   LibraryTrackRowVariant
 } from '../../components/library/LibraryTrackRow';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
-import { DynamicColor, DynamicContainerRole } from '../../appearance/DynamicColor';
+import {
+  DynamicColor,
+  DynamicContainerRole,
+  ForegroundEmphasis
+} from '../../appearance/DynamicColor';
 import { AlbumAction, AlbumGridSection } from '../../components/library/AlbumGridItem';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
 
@@ -162,6 +166,18 @@ export struct AlbumDetailPage {
     return color.length === 9 && color.startsWith('#') ? `#${alpha}${color.substring(3)}` : color;
   }
 
+  private primaryContentColor(): string {
+    return DynamicColor.foreground(this.themeBackground, DynamicContainerRole.PRIMARY);
+  }
+
+  private secondaryContentColor(): string {
+    return DynamicColor.withEmphasis(this.primaryContentColor(), ForegroundEmphasis.MEDIUM);
+  }
+
+  private tertiaryContentColor(): string {
+    return DynamicColor.withEmphasis(this.primaryContentColor(), ForegroundEmphasis.DISABLED);
+  }
+
   @Builder
   private AlbumArtistMenu(artists: Array<ArtistReference>) {
     Menu() {
@@ -179,7 +195,7 @@ export struct AlbumDetailPage {
       Text(detail.album.albumArtistDisplay.length > 0 ?
         detail.album.albumArtistDisplay : detail.albumArtists[0].name)
         .fontSize(14)
-        .fontColor($r('app.color.text_secondary'))
+        .fontColor(this.secondaryContentColor())
         .textAlign(centered ? TextAlign.Center : TextAlign.Start)
         .maxLines(2)
         .width('100%')
@@ -188,7 +204,7 @@ export struct AlbumDetailPage {
     } else if (detail.albumArtists.length > 1) {
       Text(detail.album.albumArtistDisplay)
         .fontSize(14)
-        .fontColor($r('app.color.text_secondary'))
+        .fontColor(this.secondaryContentColor())
         .textAlign(centered ? TextAlign.Center : TextAlign.Start)
         .maxLines(2)
         .width('100%')
@@ -197,7 +213,7 @@ export struct AlbumDetailPage {
     } else {
       Text('未知专辑艺术家')
         .fontSize(14)
-        .fontColor($r('app.color.text_secondary'))
+        .fontColor(this.secondaryContentColor())
         .textAlign(centered ? TextAlign.Center : TextAlign.Start)
         .maxLines(2)
         .width('100%')
@@ -210,14 +226,14 @@ export struct AlbumDetailPage {
       Text(detail.album.title)
         .fontSize(centered ? 23 : 27)
         .fontWeight(FontWeight.Bold)
-        .fontColor($r('app.color.text_primary'))
+        .fontColor(this.primaryContentColor())
         .textAlign(centered ? TextAlign.Center : TextAlign.Start)
         .maxLines(3)
         .width('100%')
       this.AlbumArtistText(detail, centered)
       Text(this.albumInformation(detail))
         .fontSize(12)
-        .fontColor($r('app.color.text_tertiary'))
+        .fontColor(this.tertiaryContentColor())
         .textAlign(centered ? TextAlign.Center : TextAlign.Start)
         .width('100%')
     }
@@ -256,17 +272,17 @@ export struct AlbumDetailPage {
   }
 
   @Builder
-  private HeaderActionIcon(symbol: Resource, accent: string) {
+  private HeaderActionIcon(symbol: Resource) {
     SymbolGlyph(symbol)
       .fontSize(20)
-      .fontColor([DynamicColor.foreground(accent, DynamicContainerRole.ACCENT)])
+      .fontColor([this.primaryContentColor()])
   }
 
   @Builder
   private PlaybackActions(detail: AlbumDetail) {
     Row({ space: 12 }) {
       Button() {
-        this.HeaderActionIcon($r('sys.symbol.shuffle'), detail.album.paletteAccent)
+        this.HeaderActionIcon($r('sys.symbol.shuffle'))
       }
       .width(44).height(44).borderRadius(22)
       .backgroundColor(this.withAlpha(detail.album.paletteAccent, '38'))
@@ -300,7 +316,7 @@ export struct AlbumDetailPage {
       .onClick(() => this.playFirst(detail))
 
       Button() {
-        this.HeaderActionIcon($r('sys.symbol.plus'), detail.album.paletteAccent)
+        this.HeaderActionIcon($r('sys.symbol.plus'))
       }
       .width(44).height(44).borderRadius(22)
       .backgroundColor(this.withAlpha(detail.album.paletteAccent, '38'))
@@ -359,7 +375,7 @@ export struct AlbumDetailPage {
       Text(this.relatedAlbumsTitle(detail))
         .fontSize(20)
         .fontWeight(FontWeight.Bold)
-        .fontColor($r('app.color.text_primary'))
+        .fontColor(this.primaryContentColor())
         .width('100%')
         .padding({
           left: PageLayoutSpec.HORIZONTAL_INSET,
@@ -371,6 +387,8 @@ export struct AlbumDetailPage {
         albums: detail.relatedAlbums,
         containerWidth: this.rootWidth,
         actionsEnabled: true,
+        primaryColor: this.primaryContentColor(),
+        secondaryColor: this.secondaryContentColor(),
         onOpenAlbum: this.onOpenAlbum,
         onAlbumAction: this.onAlbumAction,
         onNavigate: this.onNavigateTrackAction
@@ -392,14 +410,14 @@ export struct AlbumDetailPage {
                   Text(this.discLabel(track.discNumber))
                     .fontSize(12)
                     .fontWeight(FontWeight.Medium)
-                    .fontColor($r('app.color.text_secondary'))
-                  Divider().layoutWeight(1).color($r('app.color.text_tertiary')).opacity(0.3)
+                    .fontColor(this.secondaryContentColor())
+                  Divider().layoutWeight(1).color(this.tertiaryContentColor())
                 }
                 .width('100%')
                 .padding({ left: PageLayoutSpec.HORIZONTAL_INSET, right: PageLayoutSpec.HORIZONTAL_INSET,
                   top: 12, bottom: 5 })
               } else if (index > 0) {
-                Divider().color($r('app.color.text_tertiary')).opacity(0.3)
+                Divider().color(this.tertiaryContentColor())
                   .margin({ left: PageLayoutSpec.HORIZONTAL_INSET + 42,
                     right: PageLayoutSpec.HORIZONTAL_INSET })
               }
@@ -420,6 +438,9 @@ export struct AlbumDetailPage {
                 rowCornerRadius: 14,
                 selectionMode: this.selection.active,
                 selected: this.selection.isSelected(track.id),
+                primaryColor: this.primaryContentColor(),
+                secondaryColor: this.secondaryContentColor(),
+                tertiaryColor: this.tertiaryContentColor(),
                 onActivate: (item: TrackListItem): void => {
                   const detail = this.detail();
                   if (detail !== undefined) {
@@ -442,12 +463,18 @@ export struct AlbumDetailPage {
           }
         }
       } else if (this.state.loading) {
-        ListItem() { LoadingProgress().width(40).height(40).margin({ top: 72 }) }
+        ListItem() {
+          LoadingProgress()
+            .width(40)
+            .height(40)
+            .color(this.primaryContentColor())
+            .margin({ top: 72 })
+        }
       } else {
         ListItem() {
           Text(this.state.error.length > 0 ? this.state.error : '正在载入专辑…')
             .fontSize(15)
-            .fontColor($r('app.color.text_secondary'))
+            .fontColor(this.secondaryContentColor())
             .width('100%')
             .textAlign(TextAlign.Center)
             .margin({ top: 72 })

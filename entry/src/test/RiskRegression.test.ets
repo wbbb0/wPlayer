@@ -43,6 +43,9 @@ export default function riskRegressionTest() {
       expect(DynamicColor.foreground('invalid', DynamicContainerRole.PRIMARY)).assertEqual('#FFFFFFFF');
       expect(DynamicColor.withEmphasis('#FF000000', ForegroundEmphasis.MEDIUM))
         .assertEqual('#B8000000');
+      expect(DynamicColor.withOpacity('#FF336699', 0.60)).assertEqual('#99336699');
+      expect(DynamicColor.withOpacity('#FF336699', 2)).assertEqual('#FF336699');
+      expect(DynamicColor.withOpacity('invalid', 0.60)).assertEqual('invalid');
     });
 
     it('blends the morph replacement surface with its capsule color', 0, () => {

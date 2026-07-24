@@ -44,6 +44,15 @@ export class DynamicColor {
     return `#${alpha}${DynamicColor.hex(rgb[0])}${DynamicColor.hex(rgb[1])}${DynamicColor.hex(rgb[2])}`;
   }
 
+  static withOpacity(color: string, opacity: number): string {
+    const rgb = DynamicColor.parseRgb(color);
+    if (rgb.length !== 3) {
+      return color;
+    }
+    const alpha = DynamicColor.hex(Math.round(Math.max(0, Math.min(1, opacity)) * 255));
+    return `#${alpha}${DynamicColor.hex(rgb[0])}${DynamicColor.hex(rgb[1])}${DynamicColor.hex(rgb[2])}`;
+  }
+
   static blendOpaque(start: string, end: string, progress: number): string {
     const startRgb = DynamicColor.parseRgb(start);
     const endRgb = DynamicColor.parseRgb(end);

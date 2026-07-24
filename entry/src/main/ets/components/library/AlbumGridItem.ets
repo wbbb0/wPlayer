@@ -82,6 +82,8 @@ export struct AlbumGridItem {
   @Prop actionsEnabled: boolean = false;
   @Prop selectionMode: boolean = false;
   @Prop selected: boolean = false;
+  @Prop primaryColor: ResourceColor = $r('app.color.text_primary');
+  @Prop secondaryColor: ResourceColor = $r('app.color.text_secondary');
   onActivate: (album: AlbumListItem) => void = (_album: AlbumListItem): void => {};
   onToggleSelection: (album: AlbumListItem) => void = (_album: AlbumListItem): void => {};
   onAction: (album: AlbumListItem, action: AlbumAction) => void =
@@ -125,7 +127,7 @@ export struct AlbumGridItem {
       Text(this.album.title)
         .fontSize(15)
         .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.text_primary'))
+        .fontColor(this.primaryColor)
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .width('100%')
@@ -137,7 +139,7 @@ export struct AlbumGridItem {
           (this.album.unavailableTrackCount > 0 ?
             `${this.album.unavailableTrackCount} 首不可用` : `${this.album.trackCount} 首`)))
         .fontSize(12)
-        .fontColor($r('app.color.text_secondary'))
+        .fontColor(this.secondaryColor)
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .width('100%')
@@ -187,7 +189,7 @@ export struct AlbumGridItem {
       this.AlbumVisualContent()
       SymbolGlyph(this.selected ? $r('sys.symbol.checkmark_circle_fill') : $r('sys.symbol.circle'))
         .fontSize(26)
-        .fontColor([this.selected ? $r('app.color.theme_accent') : $r('app.color.text_secondary')])
+        .fontColor([this.selected ? $r('app.color.theme_accent') : this.secondaryColor])
         .backgroundColor($r('app.color.glass_surface_strong'))
         .borderRadius(15)
         .margin({ top: 8, left: 8 })
@@ -255,6 +257,8 @@ export struct AlbumGridSection {
   @State measuredContainerWidth: number = 0;
   @Prop horizontalInset: number = PageLayoutSpec.HORIZONTAL_INSET;
   @Prop actionsEnabled: boolean = false;
+  @Prop primaryColor: ResourceColor = $r('app.color.text_primary');
+  @Prop secondaryColor: ResourceColor = $r('app.color.text_secondary');
   onOpenAlbum: (album: AlbumListItem) => void = (_album: AlbumListItem): void => {};
   onAlbumAction: (album: AlbumListItem, action: AlbumAction) => void =
     (_album: AlbumListItem, _action: AlbumAction): void => {};
@@ -292,6 +296,8 @@ export struct AlbumGridSection {
             store: this.store,
             album: album,
             actionsEnabled: this.actionsEnabled,
+            primaryColor: this.primaryColor,
+            secondaryColor: this.secondaryColor,
             onActivate: this.onOpenAlbum,
             onAction: this.onAlbumAction,
             onNavigate: this.onNavigate

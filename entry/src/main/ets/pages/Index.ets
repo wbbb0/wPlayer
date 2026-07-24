@@ -272,6 +272,14 @@ struct Index {
     );
   }
 
+  private playbackChromeBackground(): string {
+    if (!this.settingsStore.followPlaybackTheme ||
+      this.animatedThemePrimary.length === 0 || !this.playerStore.hasCurrentTrack()) {
+      return '';
+    }
+    return this.animatedPageBackground();
+  }
+
   private playerThemeBackground(): string {
     return this.animatedThemePrimary.length > 0 ?
       this.animatedThemePrimary : this.appearancePalette.windowBackground;
@@ -334,6 +342,7 @@ struct Index {
       selectedRouteId: this.navigationController.selectedRouteId,
       appearancePalette: this.appearancePalette,
       themePageBackground: this.animatedPageBackground(),
+      playbackChromeBackground: this.playbackChromeBackground(),
       onShowFullPlayer: (): void => this.playerMorphController.showFullPlayer(),
       onMiniPlayerGestureStart: (): void => this.playerMorphController.beginMiniPlayerGesture(),
       onMiniPlayerGestureUpdate: (event: GestureEvent): void =>

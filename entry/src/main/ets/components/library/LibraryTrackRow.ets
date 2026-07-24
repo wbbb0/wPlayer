@@ -58,6 +58,9 @@ export struct LibraryTrackRow {
   @Prop removeActionLabel: string = '';
   @Prop selectionMode: boolean = false;
   @Prop selected: boolean = false;
+  @Prop primaryColor: ResourceColor = $r('app.color.text_primary');
+  @Prop secondaryColor: ResourceColor = $r('app.color.text_secondary');
+  @Prop tertiaryColor: ResourceColor = $r('app.color.text_tertiary');
   onActivate: (track: TrackListItem) => void = (_track: TrackListItem): void => {};
   onToggleSelection: (track: TrackListItem) => void = (_track: TrackListItem): void => {};
   onOpenActions: (track: TrackListItem, anchorId: string) => void =
@@ -169,7 +172,7 @@ export struct LibraryTrackRow {
     if (this.variant === LibraryTrackRowVariant.ALBUM) {
       Text(this.trackNumber > 0 ? `${this.trackNumber}` : '-')
         .fontSize(13)
-        .fontColor($r('app.color.text_secondary'))
+        .fontColor(this.secondaryColor)
         .width(30)
         .textAlign(TextAlign.Center)
     } else {
@@ -192,13 +195,13 @@ export struct LibraryTrackRow {
         Text(this.track.title)
           .fontSize(this.titleSize())
           .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_primary'))
+          .fontColor(this.primaryColor)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
         if (this.showArtist) {
           Text(this.artistLabel())
             .fontSize(this.secondarySize())
-            .fontColor($r('app.color.text_secondary'))
+            .fontColor(this.secondaryColor)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
         }
@@ -220,14 +223,14 @@ export struct LibraryTrackRow {
         Text(this.track.title)
           .fontSize(this.titleSize())
           .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_primary'))
+          .fontColor(this.primaryColor)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .width('100%')
         if (this.showArtist) {
           Text(this.artistLabel())
             .fontSize(this.secondarySize())
-            .fontColor($r('app.color.text_secondary'))
+            .fontColor(this.secondaryColor)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .width('100%')
@@ -259,7 +262,7 @@ export struct LibraryTrackRow {
     Stack() {
       SymbolGlyph(this.selected ? $r('sys.symbol.checkmark_circle_fill') : $r('sys.symbol.circle'))
         .fontSize(22)
-        .fontColor([this.selected ? $r('app.color.theme_accent') : $r('app.color.text_tertiary')])
+        .fontColor([this.selected ? $r('app.color.theme_accent') : this.tertiaryColor])
     }
     .width(this.selectionMode ? LibraryTrackRowStyle.SELECTION_WIDTH : 0)
     .opacity(this.selectionMode ? 1 : 0)
@@ -274,17 +277,17 @@ export struct LibraryTrackRow {
     if (LibraryItemAvailability.unavailable(this.track.availability)) {
       SymbolGlyph($r('sys.symbol.exclamationmark_triangle_fill'))
         .fontSize(17)
-        .fontColor([$r('app.color.text_tertiary')])
+        .fontColor([this.tertiaryColor])
     }
     Text(this.durationLabel())
       .fontSize(LibraryTrackRowStyle.DURATION_SIZE)
-      .fontColor($r('app.color.text_tertiary'))
+      .fontColor(this.tertiaryColor)
     if (!this.selectionMode) {
       Button() {
         Image($r('app.media.control_more'))
           .width(LibraryTrackRowStyle.ACTION_ICON_SIZE)
           .height(LibraryTrackRowStyle.ACTION_ICON_SIZE)
-          .fillColor($r('app.color.text_primary'))
+          .fillColor(this.primaryColor)
       }
       .width(LibraryTrackRowStyle.ACTION_SIZE)
       .height(LibraryTrackRowStyle.ACTION_SIZE)

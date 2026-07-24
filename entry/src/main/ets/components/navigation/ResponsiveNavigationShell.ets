@@ -18,7 +18,11 @@ import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { AppAppearancePalette } from '../../appearance/AppAppearance';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
-import { DynamicColor } from '../../appearance/DynamicColor';
+import {
+  DynamicColor,
+  DynamicContainerRole,
+  ForegroundEmphasis
+} from '../../appearance/DynamicColor';
 import { AppShellLayoutSpec } from '../layout/AppShellLayoutSpec';
 import { AppNavigationStyle } from './AppNavigationStyle';
 import { AppPrimaryTitleParams } from './AppPrimaryTitleContent';
@@ -164,6 +168,8 @@ class TrackDetailSheetState {
 
 @Component
 export struct ResponsiveNavigationShell {
+  private static readonly GRADIENT_MASK_OPACITY: number = 0.40;
+
   @ObjectLink libraryStore: LibraryStore;
   @ObjectLink playlistStore: PlaylistStore;
   @ObjectLink playerStore: PlayerStore;
@@ -180,6 +186,7 @@ export struct ResponsiveNavigationShell {
   @Prop selectedRouteId: string = NavigationRoute.PLAYLISTS;
   @Prop appearancePalette: AppAppearancePalette = AppAppearancePalette.fallback();
   @Prop themePageBackground: string = '#FF000000';
+  @Prop playbackChromeBackground: string = '';
   onShowFullPlayer: () => void = (): void => {};
   onMiniPlayerGestureStart: () => void = (): void => {};
   onMiniPlayerGestureUpdate: (event: GestureEvent) => void = (_event: GestureEvent): void => {};
@@ -396,7 +403,7 @@ export struct ResponsiveNavigationShell {
       },
       barBottomMargin: AppShellLayoutSpec.FLOATING_BAR_BOTTOM_MARGIN,
       gradientMask: {
-        maskColor: $r('app.color.float_bar_gradient_mask'),
+        maskColor: this.floatingGradientMaskColor(),
         maskHeight: AppShellLayoutSpec.FLOATING_BAR_GRADIENT_MASK_HEIGHT
       },
       systemMaterialEffect: {
@@ -443,7 +450,7 @@ export struct ResponsiveNavigationShell {
       barSideMargin: AppShellLayoutSpec.WIDE_SIDE_MARGIN,
       barBottomMargin: AppShellLayoutSpec.FLOATING_BAR_BOTTOM_MARGIN,
       gradientMask: {
-        maskColor: $r('app.color.float_bar_gradient_mask'),
+        maskColor: this.floatingGradientMaskColor(),
         maskHeight: AppShellLayoutSpec.FLOATING_BAR_GRADIENT_MASK_HEIGHT
       },
       systemMaterialEffect: {
@@ -729,12 +736,50 @@ export struct ResponsiveNavigationShell {
   }
 
   private albumDetailBackground(params: AlbumDetailRouteParams): string {
-    const darkMode = this.appearancePalette.windowBackground.toUpperCase() === '#FF000000';
-    return DynamicColor.blendOpaque(
-      this.appearancePalette.windowBackground,
-      params.palettePrimary,
-      darkMode ? 0.50 : 0.36
+    return params.palettePrimary;
+  }
+
+  private albumDetailContentColor(params: AlbumDetailRouteParams): string {
+    return DynamicColor.foreground(params.palettePrimary, DynamicContainerRole.PRIMARY);
+  }
+
+  private albumDetailControlBackgroundColor(params: AlbumDetailRouteParams): ResourceColor | undefined {
+    const lightAppearance = this.appearancePalette.windowBackground.toUpperCase() !== '#FF000000';
+    const darkContent = this.albumDetailContentColor(params).toUpperCase() === '#FF000000';
+    if (lightAppearance && darkContent) {
+      return undefined;
+    }
+    const inverseColor = this.albumDetailContentColor(params).toUpperCase() === '#FFFFFFFF' ?
+      '#FF000000' : '#FFFFFFFF';
+    return DynamicColor.withEmphasis(inverseColor, ForegroundEmphasis.DISABLED);
+  }
+
+  private activateAlbumChrome(params: AlbumDetailRouteParams): void {
+    this.miniPlayerBinding.applyAlbumChrome(
+      params.instanceId,
+      this.albumDetailBackground(params)
     );
+  }
+
+  private deactivateAlbumChrome(params: AlbumDetailRouteParams): void {
+    this.miniPlayerBinding.clearAlbumChrome(params.instanceId);
+  }
+
+  private floatingGradientMaskColor(): ResourceColor {
+    if (this.miniPlayerBinding.hasAlbumChrome()) {
+      return this.gradientMaskColor(this.miniPlayerBinding.albumChromeBackgroundColor);
+    }
+    return this.playbackChromeBackground.length > 0 ?
+      this.gradientMaskColor(this.playbackChromeBackground) : $r('app.color.float_bar_gradient_mask');
+  }
+
+  private playbackChromeBackgroundColor(): ResourceColor | undefined {
+    return this.playbackChromeBackground.length > 0 ?
+      this.gradientMaskColor(this.playbackChromeBackground) : undefined;
+  }
+
+  private gradientMaskColor(color: string): string {
+    return DynamicColor.withOpacity(color, ResponsiveNavigationShell.GRADIENT_MASK_OPACITY);
   }
 
   private albumDetailTitleMenu(params: AlbumDetailRouteParams): HdsNavigationMenuContentOptions {
@@ -1166,7 +1211,8 @@ export struct ResponsiveNavigationShell {
       .titleBar(AppNavigationStyle.secondaryTitleBar(
         this.playlistSummary((_param as PlaylistDetailRouteParams).playlistId)?.name ??
           (_param as PlaylistDetailRouteParams).initialTitle,
-        this.playlistDetailTitleMenu(_param as PlaylistDetailRouteParams)
+        this.playlistDetailTitleMenu(_param as PlaylistDetailRouteParams),
+        this.playbackChromeBackgroundColor()
       ))
       .bindToScrollable([(_param as PlaylistDetailRouteParams).scroller])
     } else if (name === LibraryDetailRoute.ALBUM) {
@@ -1202,8 +1248,26 @@ export struct ResponsiveNavigationShell {
       .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryBackOnlyTitleBar(
-        this.albumDetailTitleMenu(_param as AlbumDetailRouteParams)
+        this.albumDetailTitleMenu(_param as AlbumDetailRouteParams),
+        {
+          backgroundColor: this.gradientMaskColor(
+            this.albumDetailBackground(_param as AlbumDetailRouteParams)
+          ),
+          contentColor: this.albumDetailContentColor(_param as AlbumDetailRouteParams),
+          controlBackgroundColor:
+            this.albumDetailControlBackgroundColor(_param as AlbumDetailRouteParams)
+        }
       ))
+      .systemBarStyle(
+        {
+          statusBarContentColor: this.albumDetailContentColor(_param as AlbumDetailRouteParams)
+        },
+        {
+          statusBarContentColor: this.albumDetailContentColor(_param as AlbumDetailRouteParams)
+        }
+      )
+      .onShown((): void => this.activateAlbumChrome(_param as AlbumDetailRouteParams))
+      .onHidden((): void => this.deactivateAlbumChrome(_param as AlbumDetailRouteParams))
       .bindToScrollable([(_param as AlbumDetailRouteParams).scroller])
     } else if (name === LibraryDetailRoute.ARTIST) {
       HdsNavDestination() {
@@ -1239,7 +1303,8 @@ export struct ResponsiveNavigationShell {
         this.selectionTitleMenu(
           (_param as ArtistDetailRouteParams).selection,
           `artist_detail_selection_${(_param as ArtistDetailRouteParams).instanceId}`
-        )
+        ),
+        this.playbackChromeBackgroundColor()
       ))
       .bindToScrollable([(_param as ArtistDetailRouteParams).scroller])
     } else if (name === NavigationRoute.NAVIGATION_CUSTOMIZATION) {
@@ -1257,7 +1322,11 @@ export struct ResponsiveNavigationShell {
       .backgroundColor(this.themePageBackground)
       .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
-      .titleBar(AppNavigationStyle.secondaryTitleBar('自定义页面'))
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        '自定义页面',
+        undefined,
+        this.playbackChromeBackgroundColor()
+      ))
       .bindToScrollable([this.customizationScroller])
     } else if (name === NavigationRoute.ABOUT) {
       HdsNavDestination() {
@@ -1272,7 +1341,11 @@ export struct ResponsiveNavigationShell {
       .backgroundColor(this.themePageBackground)
       .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
-      .titleBar(AppNavigationStyle.secondaryTitleBar('关于 w播放器'))
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        '关于 w播放器',
+        undefined,
+        this.playbackChromeBackgroundColor()
+      ))
       .bindToScrollable([this.aboutScroller])
     } else if (name === NavigationRoute.PRIVACY_POLICY) {
       HdsNavDestination() {
@@ -1287,7 +1360,11 @@ export struct ResponsiveNavigationShell {
       .backgroundColor(this.themePageBackground)
       .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
-      .titleBar(AppNavigationStyle.secondaryTitleBar('隐私政策'))
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        '隐私政策',
+        undefined,
+        this.playbackChromeBackgroundColor()
+      ))
       .bindToScrollable([this.privacyPolicyScroller])
     } else if (name === NavigationRoute.DATA_AND_PERMISSIONS) {
       HdsNavDestination() {
@@ -1302,7 +1379,11 @@ export struct ResponsiveNavigationShell {
       .backgroundColor(this.themePageBackground)
       .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
-      .titleBar(AppNavigationStyle.secondaryTitleBar('数据与权限'))
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        '数据与权限',
+        undefined,
+        this.playbackChromeBackgroundColor()
+      ))
       .bindToScrollable([this.dataAndPermissionsScroller])
     } else if (name === NavigationRoute.OPEN_SOURCE_LICENSES) {
       HdsNavDestination() {
@@ -1317,7 +1398,11 @@ export struct ResponsiveNavigationShell {
       .backgroundColor(this.themePageBackground)
       .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
-      .titleBar(AppNavigationStyle.secondaryTitleBar('开源软件许可'))
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        '开源软件许可',
+        undefined,
+        this.playbackChromeBackgroundColor()
+      ))
       .bindToScrollable([this.openSourceLicensesScroller])
     } else {
       HdsNavDestination() {
@@ -1329,7 +1414,9 @@ export struct ResponsiveNavigationShell {
       .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryTitleBar(
-        navigationItem(name)?.label ?? ''
+        navigationItem(name)?.label ?? '',
+        undefined,
+        this.playbackChromeBackgroundColor()
       ))
       .bindToScrollable([this.routeScroller(name)])
     }
@@ -1350,7 +1437,8 @@ export struct ResponsiveNavigationShell {
     .titleBar(AppNavigationStyle.primaryTitleBar(
       item.label,
       this.rootTitleMenu(item.routeId),
-      this.rootTitleContents[navigationItemIndex(item.routeId)]
+      this.rootTitleContents[navigationItemIndex(item.routeId)],
+      this.playbackChromeBackgroundColor()
     ))
     .bindToScrollable([this.routeScroller(item.routeId)])
     .navDestination(this.DestinationBuilder)
@@ -1377,7 +1465,8 @@ export struct ResponsiveNavigationShell {
     .titleBar(AppNavigationStyle.primaryTitleBar(
       '更多',
       undefined,
-      this.moreTitleContent
+      this.moreTitleContent,
+      this.playbackChromeBackgroundColor()
     ))
     .bindToScrollable([this.moreScroller])
     .navDestination(this.DestinationBuilder)
@@ -1707,10 +1796,11 @@ export struct ResponsiveNavigationShell {
   private NativeCompactTabBar(symbol: Resource, label: string): BottomTabBarStyle {
     return new BottomTabBarStyle({
       normal: new SymbolGlyphModifier(symbol)
-    }, label).labelStyle({
-      maxLines: 1,
-      font: { size: 10 }
-    });
+    }, label)
+      .labelStyle({
+        maxLines: 1,
+        font: { size: 10 }
+      });
   }
 
   @Builder

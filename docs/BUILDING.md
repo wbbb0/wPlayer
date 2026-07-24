@@ -1,6 +1,6 @@
-# 构建 w音乐
+# 构建 w播放器
 
-本文说明如何在新的 Windows 开发环境中构建 w音乐。项目主要模块为 `entry`，最低兼容 HarmonyOS SDK 为 6.1.0/API 23，目标及编译 SDK 为 6.1.1/API 24。
+本文说明如何在新的 Windows 开发环境中构建 w播放器。项目主要模块为 `entry`，最低兼容 HarmonyOS SDK 为 6.1.0/API 23，目标及编译 SDK 为 6.1.1/API 24。
 
 ## 环境要求
 

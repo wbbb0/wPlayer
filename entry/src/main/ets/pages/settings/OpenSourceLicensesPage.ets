@@ -2,7 +2,7 @@ import { ComplianceDocumentPage, ComplianceSection } from './ComplianceDocumentP
 
 const LICENSE_SECTIONS: Array<ComplianceSection> = [
   new ComplianceSection('项目许可', [
-    '项目：w音乐（wPlayer）',
+    '项目：w播放器（wPlayer）',
     'Copyright © 2026 韩旭龙',
     '本项目依据 GNU General Public License version 3（仅此版本，GPL-3.0-only）授权。该许可证允许使用、研究、修改和再分发本项目，包括商业使用；对外分发修改版或衍生作品时须遵守 GPL 的相应条款。'
   ]),

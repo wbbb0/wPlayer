@@ -3,7 +3,7 @@ import { ComplianceDocumentPage, ComplianceSection } from './ComplianceDocumentP
 const PRIVACY_SECTIONS: Array<ComplianceSection> = [
   new ComplianceSection('适用范围', [
     '生效日期：2026 年 7 月 20 日',
-    '本政策适用于纯离线版本的 w音乐（英文名称 wPlayer）。开发者及运营者为韩旭龙，联系邮箱为 wbbb0@outlook.com。'
+    '本政策适用于纯离线版本的 w播放器（英文名称 wPlayer）。开发者及运营者为韩旭龙，联系邮箱为 wbbb0@outlook.com。'
   ]),
   new ComplianceSection('设备本地处理的数据', [
     '当用户通过系统文件选择器添加音乐时，应用会在设备本地处理所选文件的访问标识、文件名、音乐标签、时长和内嵌封面。',
@@ -24,7 +24,7 @@ const PRIVACY_SECTIONS: Array<ComplianceSection> = [
     '本版本关闭应用数据的系统备份。卸载应用后，本地数据由系统删除。'
   ]),
   new ComplianceSection('未成年人', [
-    'w音乐面向普通用户，不以未成年人为专门服务对象。未成年人应在监护人指导下使用本应用并选择本地文件。'
+    'w播放器面向普通用户，不以未成年人为专门服务对象。未成年人应在监护人指导下使用本应用并选择本地文件。'
   ]),
   new ComplianceSection('变更与联系', [
     '如果未来版本增加联网或其他会实质改变信息处理范围的功能，我们会在功能启用前更新本政策并提供必要提示。',

@@ -1278,7 +1278,7 @@ export struct ResponsiveNavigationShell {
       .backgroundColor(this.themePageBackground)
       .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
-      .titleBar(AppNavigationStyle.secondaryTitleBar('关于 w音乐', this.appearancePalette))
+      .titleBar(AppNavigationStyle.secondaryTitleBar('关于 w播放器', this.appearancePalette))
       .bindToScrollable([this.aboutScroller])
     } else if (name === NavigationRoute.PRIVACY_POLICY) {
       HdsNavDestination() {

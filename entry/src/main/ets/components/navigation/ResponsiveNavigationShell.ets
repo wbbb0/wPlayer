@@ -1,5 +1,4 @@
 import {
-  HdsBarLayoutMode,
   HdsBarStyle,
   HdsNavDestination,
   HdsNavDestinationTitleMode,
@@ -414,7 +413,6 @@ export struct ResponsiveNavigationShell {
         },
         miniBarStyle: this.miniPlayerBinding.expanded ?
           HdsBarStyle.EXPAND : HdsBarStyle.COLLAPSE,
-        barLayoutMode: HdsBarLayoutMode.HORIZONTAL,
         onBarStyleChange: (style: HdsBarStyle) => {
           this.miniPlayerBinding.expanded = style === HdsBarStyle.EXPAND;
         },
@@ -457,7 +455,6 @@ export struct ResponsiveNavigationShell {
         miniBarBuilder: this.wideMiniPlayerContent ?? this.miniPlayerBuilder,
         miniBarWidth: { smallWidth: miniPlayerWidth, mediumWidth: miniPlayerWidth, largeWidth: miniPlayerWidth },
         miniBarStyle: HdsBarStyle.EXPAND,
-        barLayoutMode: HdsBarLayoutMode.HORIZONTAL,
         onBarStyleChange: (style: HdsBarStyle) => {
           this.miniPlayerBinding.expanded = style === HdsBarStyle.EXPAND;
         },

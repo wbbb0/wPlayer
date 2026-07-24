@@ -123,6 +123,8 @@ const PLAYLIST_SORT_MENU_ID: string = 'playlist_sort_menu';
 const PLAYLIST_CREATE_MENU_ID: string = 'playlist_create_menu';
 const PLAYLIST_DETAIL_ROUTE: string = 'playlist_detail';
 const MORE_TAB_INDEX: number = PRIMARY_NAVIGATION_COUNT;
+const TRACK_DETAIL_SHEET_MAX_WIDTH: number = 840;
+const TRACK_DETAIL_SHEET_MIN_MARGIN: number = 96;
 let playlistRouteInstanceId: number = 0;
 
 enum PlaylistImportSheetKind {
@@ -213,6 +215,8 @@ export struct ResponsiveNavigationShell {
   @State private albumsSelection: MultiSelectController = new MultiSelectController();
   @State private playlistsSelection: MultiSelectController = new MultiSelectController();
   @State private detailSelectionRevision: number = 0;
+  @State private trackDetailSheetVisible: boolean = false;
+  private trackDetailSheetParams: TrackDetailRouteParams | undefined = undefined;
   private readonly onDetailSelectionChange: () => void = (): void => {
     this.detailSelectionRevision += 1;
   };
@@ -760,10 +764,8 @@ export struct ResponsiveNavigationShell {
   }
 
   private openTrackDetails(item: TrackListItem): void {
-    this.routePathStack(this.selectedRouteId).pushPath({
-      name: LibraryDetailRoute.TRACK,
-      param: new TrackDetailRouteParams(item.id, item.title)
-    });
+    this.trackDetailSheetParams = new TrackDetailRouteParams(item.id, item.title);
+    this.trackDetailSheetVisible = true;
   }
 
   private performAlbumAction(albumId: number, action: AlbumAction): void {
@@ -1419,6 +1421,81 @@ export struct ResponsiveNavigationShell {
       SheetSize.LARGE : SheetSize.FIT_CONTENT;
   }
 
+  private trackDetailSheetWidth(): number {
+    if (!this.usesWideLayout()) {
+      return Math.max(0, this.rootWidth);
+    }
+    return Math.min(
+      TRACK_DETAIL_SHEET_MAX_WIDTH,
+      Math.max(AppShellLayoutSpec.SIDE_NAVIGATION_BREAKPOINT, this.rootWidth - TRACK_DETAIL_SHEET_MIN_MARGIN)
+    );
+  }
+
+  private trackDetailSheetType(): SheetType {
+    return this.usesWideLayout() ? SheetType.SIDE : SheetType.BOTTOM;
+  }
+
+  private closeTrackDetailSheet(): void {
+    this.trackDetailSheetVisible = false;
+  }
+
+  @Builder
+  private TrackDetailSheet() {
+    if (this.trackDetailSheetParams !== undefined) {
+      TrackDetailPage({
+        store: this.libraryStore,
+        state: this.trackDetailSheetParams.state,
+        topInset: 0,
+        bottomInset: 0,
+        rootWidth: this.trackDetailSheetWidth(),
+        themeBackground: this.themePageBackground,
+        reserveFloatingControls: false,
+        scroller: this.trackDetailSheetParams.scroller,
+        onOpenArtwork: (detail, index: number): void => {
+          this.closeTrackDetailSheet();
+          this.routePathStack(this.selectedRouteId).pushPath({
+            name: LibraryDetailRoute.ARTWORK_VIEWER,
+            param: new TrackArtworkViewerRouteParams(detail, index)
+          });
+        }
+      })
+    }
+  }
+
+  @Builder
+  private SheetHosts() {
+    Stack()
+      .width(1)
+      .height(1)
+      .opacity(0)
+      .hitTestBehavior(HitTestMode.None)
+      .bindSheet($$this.trackDetailSheetVisible, this.TrackDetailSheet(), {
+        height: SheetSize.LARGE,
+        width: this.trackDetailSheetWidth(),
+        preferType: this.trackDetailSheetType(),
+        title: { title: '歌曲信息' },
+        dragBar: !this.usesWideLayout(),
+        showClose: true,
+        backgroundColor: this.themePageBackground,
+        onDisappear: (): void => {
+          if (!this.trackDetailSheetVisible) {
+            this.trackDetailSheetParams = undefined;
+          }
+        }
+      })
+
+    Stack()
+      .width(1)
+      .height(1)
+      .opacity(0)
+      .hitTestBehavior(HitTestMode.None)
+      .bindSheet($$this.playlistImportSheetVisible, this.PlaylistImportSheet(), {
+        height: this.playlistImportSheetHeight(),
+        dragBar: true,
+        showClose: !this.playlistTransferBusy
+      })
+  }
+
   private playlistImportStageText(): string {
     const prefix = this.playlistImportSourceName.length > 0 ? `${this.playlistImportSourceName}：` : '';
     if (this.playlistImportStage === M3uImportStage.READING) {
@@ -1817,13 +1894,10 @@ export struct ResponsiveNavigationShell {
         .width('100%')
         .height('100%')
       }
+
+      this.SheetHosts()
     }
     .width('100%')
     .height('100%')
-    .bindSheet($$this.playlistImportSheetVisible, this.PlaylistImportSheet(), {
-      height: this.playlistImportSheetHeight(),
-      dragBar: true,
-      showClose: !this.playlistTransferBusy
-    })
     }
 }

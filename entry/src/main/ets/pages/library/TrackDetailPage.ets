@@ -4,7 +4,6 @@ import {
   PageScrollBehavior,
   PageScrollContentBehavior
 } from '../../components/layout/PageScrollBehavior';
-import { ArtworkFitMode, ArtworkView } from '../../components/artwork/ArtworkView';
 import {
   ArtworkPictureType,
   AvailabilityState,
@@ -29,6 +28,7 @@ export struct TrackDetailPage {
   @Prop bottomInset: number = 0;
   @Prop rootWidth: number = 0;
   @Prop themeBackground: string = '#FF000000';
+  @Prop reserveFloatingControls: boolean = true;
   scroller: Scroller = new Scroller();
   onOpenArtwork: (detail: TrackDetail, index: number) => void =
     (_detail: TrackDetail, _index: number): void => {};
@@ -126,6 +126,10 @@ export struct TrackDetailPage {
       return '文件损坏';
     }
     return '文件不可用';
+  }
+
+  private contentEndInset(): number {
+    return this.reserveFloatingControls ? PageLayoutSpec.contentEnd(this.bottomInset) : 16;
   }
 
   @Builder
@@ -271,10 +275,6 @@ export struct TrackDetailPage {
       .listDirection(Axis.Horizontal)
       .edgeEffect(EdgeEffect.Spring)
       .scrollBar(BarState.Off)
-      Text('长按并拖动图片可发送到其他应用或中转站；点击可全屏查看。')
-        .fontSize(11)
-        .fontColor($r('app.color.text_tertiary'))
-        .width('100%')
     } else {
       Text('这首歌曲没有可导出的内嵌封面。')
         .fontSize(14)
@@ -344,40 +344,10 @@ export struct TrackDetailPage {
     .backgroundColor($r('app.color.glass_surface'))
   }
 
-  @Builder
-  private Header(detail: TrackDetail) {
-    Column({ space: 12 }) {
-      ArtworkView({
-        sourcePath: detail.artworkPath.length > 0 ?
-          this.store.resolveArtworkPath(detail.artworkPath) : '',
-        sourceWidth: detail.artworkWidth,
-        sourceHeight: detail.artworkHeight,
-        slotWidth: Math.min(190, Math.max(140, this.rootWidth - 140)),
-        fitMode: ArtworkFitMode.CONTAIN,
-        cornerRadius: 18,
-        shadowEnabled: detail.artworkPath.length > 0
-      })
-      Text(detail.title)
-        .fontSize(24)
-        .fontWeight(FontWeight.Bold)
-        .fontColor($r('app.color.text_primary'))
-        .textAlign(TextAlign.Center)
-        .maxLines(3)
-      Text(detail.artistDisplay.length > 0 ? detail.artistDisplay : '未知艺人')
-        .fontSize(14)
-        .fontColor($r('app.color.text_secondary'))
-        .textAlign(TextAlign.Center)
-    }
-    .width('100%')
-    .alignItems(HorizontalAlign.Center)
-    .padding({ top: 6, bottom: 12 })
-  }
-
   build() {
     Scroll(this.scroller) {
       Column({ space: 12 }) {
         if (this.state.detail !== undefined) {
-          this.Header(this.state.detail)
           this.Artworks(this.state.detail)
           this.SectionTitle('歌曲信息')
           this.Card()
@@ -405,7 +375,7 @@ export struct TrackDetailPage {
     .width('100%')
     .height('100%')
     .contentStartOffset(PageLayoutSpec.secondaryContentStart(this.topInset))
-    .contentEndOffset(PageLayoutSpec.contentEnd(this.bottomInset))
+    .contentEndOffset(this.contentEndInset())
     .attributeModifier(this.scrollBehavior)
     .backgroundColor(this.themeBackground)
   }

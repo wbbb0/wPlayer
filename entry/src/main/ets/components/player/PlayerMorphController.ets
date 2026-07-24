@@ -94,6 +94,13 @@ export class PlayerMorphController {
     this.condensedCompactTabsController = condensedCompactTabsController;
   }
 
+  syncSystemBarContentColor(): void {
+    systemBarStyleController.setPlayerContentColor(
+      this.isMorphActive(),
+      this.playerStore.themeOnPrimary()
+    );
+  }
+
   private applyCompactMiniBarStyle(style: HdsBarStyle): void {
     this.compactTabsController.applyMiniBarStyle(style);
     this.condensedCompactTabsController.applyMiniBarStyle(style);
@@ -275,13 +282,6 @@ export class PlayerMorphController {
       this.freezeArtworkTargetForCurrentPage();
       this.freezePlaybackButtonTarget();
     }
-  }
-
-  syncSystemBarContentColor(): void {
-    systemBarStyleController.setPlayerContentColor(
-      this.isMorphActive(),
-      this.playerStore.themeOnPrimary()
-    );
   }
 
   private freezeArtworkTargetForCurrentPage(): void {

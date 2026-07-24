@@ -1,5 +1,4 @@
 import { ComponentContent } from '@kit.ArkUI';
-import { AppAppearancePalette } from '../../appearance/AppAppearance';
 import {
   LibraryEntityKind,
   LibraryNavigationTarget
@@ -47,13 +46,13 @@ export class IndexNavigationController {
   private settingsRepository?: SettingsRepository;
   private settingsStore?: AppSettingsStore;
 
-  initializeTitleContents(uiContext: UIContext, palette: AppAppearancePalette): void {
+  initializeTitleContents(uiContext: UIContext): void {
     for (let index = 0; index < ALL_ROOT_NAVIGATION_ITEMS.length; index += 1) {
       if (this.rootTitleContents[index] === undefined) {
         this.rootTitleContents[index] = new ComponentContent(
           uiContext,
           wrapBuilder(AppPrimaryTitleContent),
-          new AppPrimaryTitleParams(ALL_ROOT_NAVIGATION_ITEMS[index].label, palette.titlePrimary)
+          new AppPrimaryTitleParams(ALL_ROOT_NAVIGATION_ITEMS[index].label)
         );
       }
     }
@@ -61,18 +60,9 @@ export class IndexNavigationController {
       this.moreTitleContent = new ComponentContent(
         uiContext,
         wrapBuilder(AppPrimaryTitleContent),
-        new AppPrimaryTitleParams('更多', palette.titlePrimary)
+        new AppPrimaryTitleParams('更多')
       );
     }
-  }
-
-  updateTitleColors(palette: AppAppearancePalette): void {
-    for (let index = 0; index < this.rootTitleContents.length; index += 1) {
-      this.rootTitleContents[index]?.update(
-        new AppPrimaryTitleParams(ALL_ROOT_NAVIGATION_ITEMS[index].label, palette.titlePrimary)
-      );
-    }
-    this.moreTitleContent?.update(new AppPrimaryTitleParams('更多', palette.titlePrimary));
   }
 
   dispose(): void {

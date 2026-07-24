@@ -3,17 +3,10 @@ import { common, ConfigurationConstant } from '@kit.AbilityKit';
 export type AppAppearanceListener = (epoch: number) => void;
 
 export class AppAppearancePalette {
-  readonly titlePrimary: string;
-  readonly titleSecondary: string;
-  readonly navigationActionForeground: string;
   readonly systemBarContent: string;
   readonly windowBackground: string;
 
-  constructor(titlePrimary: string, titleSecondary: string, navigationActionForeground: string,
-    systemBarContent: string, windowBackground: string) {
-    this.titlePrimary = titlePrimary;
-    this.titleSecondary = titleSecondary;
-    this.navigationActionForeground = navigationActionForeground;
+  constructor(systemBarContent: string, windowBackground: string) {
     this.systemBarContent = systemBarContent;
     this.windowBackground = windowBackground;
   }
@@ -21,10 +14,6 @@ export class AppAppearancePalette {
   static resolve(context: common.UIAbilityContext): AppAppearancePalette {
     const darkMode = context.config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
     return new AppAppearancePalette(
-      AppAppearancePalette.resolveColor(context, 'navigation_title_primary', darkMode ? '#FFF5F5F5' : '#FF202020'),
-      AppAppearancePalette.resolveColor(context, 'navigation_title_secondary', darkMode ? '#FFA8A8A8' : '#FF707070'),
-      AppAppearancePalette.resolveColor(context, 'navigation_action_foreground',
-        darkMode ? '#FFF5F5F5' : '#FF202020'),
       AppAppearancePalette.resolveColor(context, 'system_bar_content', darkMode ? '#FFF5F5F5' : '#FF202020'),
       AppAppearancePalette.resolveColor(
         context,
@@ -35,7 +24,7 @@ export class AppAppearancePalette {
   }
 
   static fallback(): AppAppearancePalette {
-    return new AppAppearancePalette('#FF202020', '#FF707070', '#FF202020', '#FF202020', '#FFFFFFFF');
+    return new AppAppearancePalette('#FF202020', '#FFFFFFFF');
   }
 
   private static resolveColor(context: common.UIAbilityContext, name: string, fallback: string): string {

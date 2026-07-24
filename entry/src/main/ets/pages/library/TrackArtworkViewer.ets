@@ -44,7 +44,7 @@ export struct TrackArtworkViewer {
   private service?: EmbeddedArtworkService;
 
   aboutToAppear(): void {
-    systemBarStyleController.setFullscreenOverlayStyle(true, '#FFFFFFFF', true);
+    systemBarStyleController.setFullscreenOverlayStyle(true, true);
     this.service = new EmbeddedArtworkService(
       this.getUIContext().getHostContext() as common.UIAbilityContext
     );
@@ -54,7 +54,7 @@ export struct TrackArtworkViewer {
   }
 
   aboutToDisappear(): void {
-    systemBarStyleController.setFullscreenOverlayStyle(false, '', true);
+    systemBarStyleController.setFullscreenOverlayStyle(false, true);
     this.state.release();
   }
 
@@ -63,7 +63,7 @@ export struct TrackArtworkViewer {
       return;
     }
     this.chromeVisible = visible;
-    systemBarStyleController.setFullscreenOverlayStyle(true, '#FFFFFFFF', visible);
+    systemBarStyleController.setFullscreenOverlayStyle(true, visible);
   }
 
   private toggleChrome(): void {

@@ -1,29 +1,24 @@
 import {
   HdsNavigationMenuContentOptions,
-  HdsNavigationTitleBarStyle,
   HdsNavigationTitleBarOptions,
-  HdsTitleBarContentStyle,
   ScrollEffectType,
   TitleBarContentOptions,
   hdsMaterial
 } from '@kit.UIDesignKit';
 import { ComponentContent } from '@kit.ArkUI';
-import { AppAppearancePalette } from '../../appearance/AppAppearance';
 import { AppPrimaryTitleParams } from './AppPrimaryTitleContent';
 
 export class AppNavigationStyle {
-  static primaryTitleBar(title: string, palette: AppAppearancePalette, menu?: HdsNavigationMenuContentOptions,
+  static primaryTitleBar(title: string, menu?: HdsNavigationMenuContentOptions,
     titleContent?: ComponentContent<AppPrimaryTitleParams>): HdsNavigationTitleBarOptions {
-    return AppNavigationStyle.createTitleBar(title, palette, true, true, menu, titleContent);
+    return AppNavigationStyle.createTitleBar(title, true, true, menu, titleContent);
   }
 
-  static secondaryTitleBar(title: string, palette: AppAppearancePalette,
-    menu?: HdsNavigationMenuContentOptions): HdsNavigationTitleBarOptions {
-    return AppNavigationStyle.createTitleBar(title, palette, true, true, menu);
+  static secondaryTitleBar(title: string, menu?: HdsNavigationMenuContentOptions): HdsNavigationTitleBarOptions {
+    return AppNavigationStyle.createTitleBar(title, true, true, menu);
   }
 
-  static secondaryBackOnlyTitleBar(palette: AppAppearancePalette,
-    menu?: HdsNavigationMenuContentOptions): HdsNavigationTitleBarOptions {
+  static secondaryBackOnlyTitleBar(menu?: HdsNavigationMenuContentOptions): HdsNavigationTitleBarOptions {
     return {
       avoidLayoutSafeArea: true,
       enableComponentSafeArea: true,
@@ -31,10 +26,8 @@ export class AppNavigationStyle {
       style: {
         scrollEffectOpts: {
           enableScrollEffect: true,
-          scrollEffectType: ScrollEffectType.IMMERSIVE_GRADIENT_BLUR
+          scrollEffectType: ScrollEffectType.GRADIENT_BLUR
         },
-        originalStyle: AppNavigationStyle.foregroundStyle(palette),
-        scrollEffectStyle: AppNavigationStyle.foregroundStyle(palette),
         systemMaterialEffect: {
           materialType: hdsMaterial.MaterialType.ADAPTIVE,
           materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
@@ -43,8 +36,7 @@ export class AppNavigationStyle {
     };
   }
 
-  private static createTitleBar(title: string, palette: AppAppearancePalette,
-    avoidLayoutSafeArea: boolean, enableComponentSafeArea: boolean,
+  private static createTitleBar(title: string, avoidLayoutSafeArea: boolean, enableComponentSafeArea: boolean,
     menu?: HdsNavigationMenuContentOptions,
     titleContent?: ComponentContent<AppPrimaryTitleParams>): HdsNavigationTitleBarOptions {
     const content: TitleBarContentOptions = { menu: menu };
@@ -60,10 +52,8 @@ export class AppNavigationStyle {
       style: {
         scrollEffectOpts: {
           enableScrollEffect: true,
-          scrollEffectType: ScrollEffectType.IMMERSIVE_GRADIENT_BLUR
+          scrollEffectType: ScrollEffectType.GRADIENT_BLUR
         },
-        originalStyle: AppNavigationStyle.foregroundStyle(palette),
-        scrollEffectStyle: AppNavigationStyle.foregroundStyle(palette),
         systemMaterialEffect: {
           materialType: hdsMaterial.MaterialType.ADAPTIVE,
           materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
@@ -72,25 +62,4 @@ export class AppNavigationStyle {
     };
   }
 
-  private static foregroundStyle(palette: AppAppearancePalette): HdsNavigationTitleBarStyle {
-    const contentStyle: HdsTitleBarContentStyle = {
-      titleStyle: {
-        mainTitleColor: palette.titlePrimary,
-        subTitleColor: palette.titleSecondary
-      },
-      menuStyle: {
-        iconColor: palette.navigationActionForeground,
-        textColor: palette.navigationActionForeground
-      },
-      backIconStyle: {
-        iconColor: palette.navigationActionForeground,
-        textColor: palette.navigationActionForeground
-      },
-      subIconStyle: {
-        iconColor: palette.navigationActionForeground,
-        textColor: palette.navigationActionForeground
-      }
-    };
-    return { contentStyle: contentStyle };
-  }
 }

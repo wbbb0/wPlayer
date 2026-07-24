@@ -114,7 +114,7 @@ struct Index {
     });
     appAppearanceController.addListener(this.appearanceListener);
     this.refreshAppearance();
-    this.navigationController.initializeTitleContents(this.getUIContext(), this.appearancePalette);
+    this.navigationController.initializeTitleContents(this.getUIContext());
     const context = this.getUIContext().getHostContext();
     if (context !== undefined) {
       const abilityContext = context as common.UIAbilityContext;
@@ -198,7 +198,10 @@ struct Index {
     this.playerStore.themeBaseBackground = palette.windowBackground;
     systemBarStyleController.setAppearanceContentColor(palette.systemBarContent);
     this.syncSystemBarContentColor();
-    this.navigationController.updateTitleColors(palette);
+  }
+
+  private syncSystemBarContentColor(): void {
+    this.playerMorphController.syncSystemBarContentColor();
   }
 
   private applyAvoidArea(type: window.AvoidAreaType, area: window.AvoidArea): void {
@@ -236,10 +239,6 @@ struct Index {
       undefined,
       (target: LibraryNavigationTarget): void => this.navigateLibrary(target)
     );
-  }
-
-  private syncSystemBarContentColor(): void {
-    this.playerMorphController.syncSystemBarContentColor();
   }
 
   private showPlaylistSuccessDialog(message: string): void {

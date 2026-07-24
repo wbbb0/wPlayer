@@ -1166,7 +1166,6 @@ export struct ResponsiveNavigationShell {
       .titleBar(AppNavigationStyle.secondaryTitleBar(
         this.playlistSummary((_param as PlaylistDetailRouteParams).playlistId)?.name ??
           (_param as PlaylistDetailRouteParams).initialTitle,
-        this.appearancePalette,
         this.playlistDetailTitleMenu(_param as PlaylistDetailRouteParams)
       ))
       .bindToScrollable([(_param as PlaylistDetailRouteParams).scroller])
@@ -1203,7 +1202,6 @@ export struct ResponsiveNavigationShell {
       .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryBackOnlyTitleBar(
-        this.appearancePalette,
         this.albumDetailTitleMenu(_param as AlbumDetailRouteParams)
       ))
       .bindToScrollable([(_param as AlbumDetailRouteParams).scroller])
@@ -1238,7 +1236,6 @@ export struct ResponsiveNavigationShell {
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryTitleBar(
         (_param as ArtistDetailRouteParams).name,
-        this.appearancePalette,
         this.selectionTitleMenu(
           (_param as ArtistDetailRouteParams).selection,
           `artist_detail_selection_${(_param as ArtistDetailRouteParams).instanceId}`
@@ -1260,7 +1257,7 @@ export struct ResponsiveNavigationShell {
       .backgroundColor(this.themePageBackground)
       .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
-      .titleBar(AppNavigationStyle.secondaryTitleBar('自定义页面', this.appearancePalette))
+      .titleBar(AppNavigationStyle.secondaryTitleBar('自定义页面'))
       .bindToScrollable([this.customizationScroller])
     } else if (name === NavigationRoute.ABOUT) {
       HdsNavDestination() {
@@ -1275,7 +1272,7 @@ export struct ResponsiveNavigationShell {
       .backgroundColor(this.themePageBackground)
       .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
-      .titleBar(AppNavigationStyle.secondaryTitleBar('关于 w播放器', this.appearancePalette))
+      .titleBar(AppNavigationStyle.secondaryTitleBar('关于 w播放器'))
       .bindToScrollable([this.aboutScroller])
     } else if (name === NavigationRoute.PRIVACY_POLICY) {
       HdsNavDestination() {
@@ -1290,7 +1287,7 @@ export struct ResponsiveNavigationShell {
       .backgroundColor(this.themePageBackground)
       .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
-      .titleBar(AppNavigationStyle.secondaryTitleBar('隐私政策', this.appearancePalette))
+      .titleBar(AppNavigationStyle.secondaryTitleBar('隐私政策'))
       .bindToScrollable([this.privacyPolicyScroller])
     } else if (name === NavigationRoute.DATA_AND_PERMISSIONS) {
       HdsNavDestination() {
@@ -1305,7 +1302,7 @@ export struct ResponsiveNavigationShell {
       .backgroundColor(this.themePageBackground)
       .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
-      .titleBar(AppNavigationStyle.secondaryTitleBar('数据与权限', this.appearancePalette))
+      .titleBar(AppNavigationStyle.secondaryTitleBar('数据与权限'))
       .bindToScrollable([this.dataAndPermissionsScroller])
     } else if (name === NavigationRoute.OPEN_SOURCE_LICENSES) {
       HdsNavDestination() {
@@ -1320,7 +1317,7 @@ export struct ResponsiveNavigationShell {
       .backgroundColor(this.themePageBackground)
       .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
-      .titleBar(AppNavigationStyle.secondaryTitleBar('开源软件许可', this.appearancePalette))
+      .titleBar(AppNavigationStyle.secondaryTitleBar('开源软件许可'))
       .bindToScrollable([this.openSourceLicensesScroller])
     } else {
       HdsNavDestination() {
@@ -1332,8 +1329,7 @@ export struct ResponsiveNavigationShell {
       .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryTitleBar(
-        navigationItem(name)?.label ?? '',
-        this.appearancePalette
+        navigationItem(name)?.label ?? ''
       ))
       .bindToScrollable([this.routeScroller(name)])
     }
@@ -1353,7 +1349,6 @@ export struct ResponsiveNavigationShell {
     .hideBackButton(true)
     .titleBar(AppNavigationStyle.primaryTitleBar(
       item.label,
-      this.appearancePalette,
       this.rootTitleMenu(item.routeId),
       this.rootTitleContents[navigationItemIndex(item.routeId)]
     ))
@@ -1381,7 +1376,6 @@ export struct ResponsiveNavigationShell {
     .hideBackButton(true)
     .titleBar(AppNavigationStyle.primaryTitleBar(
       '更多',
-      this.appearancePalette,
       undefined,
       this.moreTitleContent
     ))

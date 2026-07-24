@@ -6,10 +6,10 @@ export class SystemBarStyleController {
   private appearanceContentColor: string = '#FF202020';
   private playerContentColor: string = '';
   private playerOverrideActive: boolean = false;
-  private fullscreenOverlayContentColor: string = '';
   private fullscreenOverlayActive: boolean = false;
   private fullscreenOverlayStatusBarVisible: boolean = true;
-  private appliedContentColor: string = '';
+  private appliedPlayerOverrideActive: boolean = false;
+  private appliedPlayerContentColor: string = '';
   private appliedStatusBarVisible: boolean | undefined = undefined;
   private requestEpoch: number = 0;
   private failedRequestEpoch: number = -1;
@@ -20,7 +20,8 @@ export class SystemBarStyleController {
       return;
     }
     this.mainWindow = mainWindow;
-    this.appliedContentColor = '';
+    this.appliedPlayerOverrideActive = false;
+    this.appliedPlayerContentColor = '';
     this.appliedStatusBarVisible = undefined;
     this.failedRequestEpoch = -1;
     this.requestApply();
@@ -31,17 +32,14 @@ export class SystemBarStyleController {
       return;
     }
     this.mainWindow = undefined;
-    this.appliedContentColor = '';
+    this.appliedPlayerOverrideActive = false;
+    this.appliedPlayerContentColor = '';
     this.appliedStatusBarVisible = undefined;
     this.failedRequestEpoch = -1;
   }
 
   setAppearanceContentColor(contentColor: string): void {
-    if (this.appearanceContentColor === contentColor) {
-      return;
-    }
     this.appearanceContentColor = contentColor;
-    this.requestApply();
   }
 
   setPlayerContentColor(active: boolean, contentColor: string): void {
@@ -53,26 +51,14 @@ export class SystemBarStyleController {
     this.requestApply();
   }
 
-  setFullscreenOverlayStyle(active: boolean, contentColor: string, statusBarVisible: boolean): void {
+  setFullscreenOverlayStyle(active: boolean, statusBarVisible: boolean): void {
     if (this.fullscreenOverlayActive === active &&
-      this.fullscreenOverlayContentColor === contentColor &&
       this.fullscreenOverlayStatusBarVisible === statusBarVisible) {
       return;
     }
     this.fullscreenOverlayActive = active;
-    this.fullscreenOverlayContentColor = contentColor;
     this.fullscreenOverlayStatusBarVisible = statusBarVisible;
     this.requestApply();
-  }
-
-  private desiredContentColor(): string {
-    if (this.fullscreenOverlayActive && this.fullscreenOverlayContentColor.length > 0) {
-      return this.fullscreenOverlayContentColor;
-    }
-    if (this.playerOverrideActive && this.playerContentColor.length > 0) {
-      return this.playerContentColor;
-    }
-    return this.appearanceContentColor;
   }
 
   private desiredStatusBarVisible(): boolean {
@@ -81,11 +67,11 @@ export class SystemBarStyleController {
 
   private requestApply(): void {
     this.requestEpoch += 1;
-    const desiredColor = this.desiredContentColor();
     const desiredStatusBarVisible = this.desiredStatusBarVisible();
     if (this.mainWindow === undefined || this.applying ||
-      (this.appliedContentColor === desiredColor &&
-        this.appliedStatusBarVisible === desiredStatusBarVisible)) {
+      (this.appliedStatusBarVisible === desiredStatusBarVisible &&
+        this.appliedPlayerOverrideActive === this.playerOverrideActive &&
+        (!this.playerOverrideActive || this.appliedPlayerContentColor === this.playerContentColor))) {
       return;
     }
     this.applyLatest();
@@ -94,10 +80,12 @@ export class SystemBarStyleController {
   private async applyLatest(): Promise<void> {
     this.applying = true;
     while (this.mainWindow !== undefined) {
-      const desiredColor = this.desiredContentColor();
       const desiredStatusBarVisible = this.desiredStatusBarVisible();
-      if (this.appliedContentColor === desiredColor &&
-        this.appliedStatusBarVisible === desiredStatusBarVisible) {
+      const desiredPlayerOverrideActive = this.playerOverrideActive;
+      const desiredPlayerContentColor = this.playerContentColor;
+      if (this.appliedStatusBarVisible === desiredStatusBarVisible &&
+        this.appliedPlayerOverrideActive === desiredPlayerOverrideActive &&
+        (!desiredPlayerOverrideActive || this.appliedPlayerContentColor === desiredPlayerContentColor)) {
         break;
       }
       const targetWindow = this.mainWindow;
@@ -106,16 +94,33 @@ export class SystemBarStyleController {
         await targetWindow.setWindowSystemBarEnable(
           desiredStatusBarVisible ? ['status', 'navigation'] : ['navigation']
         );
-        await targetWindow.setWindowSystemBarProperties({
-          statusBarColor: '#00000000',
-          navigationBarColor: '#00000000',
-          statusBarContentColor: desiredColor,
-          navigationBarContentColor: desiredColor,
-          enableStatusBarAnimation: true,
-          enableNavigationBarAnimation: true
-        });
+        if (desiredPlayerOverrideActive) {
+          await targetWindow.setWindowSystemBarProperties({
+            statusBarColor: '#00000000',
+            navigationBarColor: '#00000000',
+            statusBarContentColor: desiredPlayerContentColor,
+            enableStatusBarAnimation: true,
+            enableNavigationBarAnimation: true
+          });
+        } else if (this.appliedPlayerOverrideActive) {
+          await targetWindow.setWindowSystemBarProperties({
+            statusBarColor: '#00000000',
+            navigationBarColor: '#00000000',
+            statusBarContentColor: this.appearanceContentColor,
+            enableStatusBarAnimation: true,
+            enableNavigationBarAnimation: true
+          });
+        } else {
+          await targetWindow.setWindowSystemBarProperties({
+            statusBarColor: '#00000000',
+            navigationBarColor: '#00000000',
+            enableStatusBarAnimation: true,
+            enableNavigationBarAnimation: true
+          });
+        }
         if (this.mainWindow === targetWindow) {
-          this.appliedContentColor = desiredColor;
+          this.appliedPlayerOverrideActive = desiredPlayerOverrideActive;
+          this.appliedPlayerContentColor = desiredPlayerOverrideActive ? desiredPlayerContentColor : '';
           this.appliedStatusBarVisible = desiredStatusBarVisible;
           this.failedRequestEpoch = -1;
         }
@@ -130,8 +135,9 @@ export class SystemBarStyleController {
     }
     this.applying = false;
     if (this.mainWindow !== undefined &&
-      (this.appliedContentColor !== this.desiredContentColor() ||
-        this.appliedStatusBarVisible !== this.desiredStatusBarVisible()) &&
+      (this.appliedStatusBarVisible !== this.desiredStatusBarVisible() ||
+        this.appliedPlayerOverrideActive !== this.playerOverrideActive ||
+        (this.playerOverrideActive && this.appliedPlayerContentColor !== this.playerContentColor)) &&
       this.failedRequestEpoch !== this.requestEpoch) {
       this.applyLatest();
     }

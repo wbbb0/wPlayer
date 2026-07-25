@@ -14,6 +14,7 @@ import {
   ArtistDetailRouteParams,
   LibraryDetailRoute
 } from './LibraryNavigation';
+import { NavigationChromeController } from './NavigationChromeController';
 import {
   ALL_ROOT_NAVIGATION_ITEMS,
   DEFAULT_NAVIGATION_ORDER,
@@ -45,6 +46,12 @@ export class IndexNavigationController {
   private expandedTabIndexBeforeSelection: number = 0;
   private settingsRepository?: SettingsRepository;
   private settingsStore?: AppSettingsStore;
+  private chromeController?: NavigationChromeController;
+
+  bindChromeController(controller: NavigationChromeController): void {
+    this.chromeController = controller;
+    controller.setActiveRoute(this.selectedRouteId);
+  }
 
   initializeTitleContents(uiContext: UIContext): void {
     for (let index = 0; index < ALL_ROOT_NAVIGATION_ITEMS.length; index += 1) {
@@ -72,6 +79,7 @@ export class IndexNavigationController {
     }
     this.moreTitleContent?.dispose();
     this.moreTitleContent = undefined;
+    this.chromeController = undefined;
   }
 
   bindSettings(repository: SettingsRepository, store: AppSettingsStore): void {
@@ -90,6 +98,7 @@ export class IndexNavigationController {
     } else {
       this.selectedRouteId = this.navigationOrder[0] ?? NavigationRoute.PLAYLISTS;
     }
+    this.chromeController?.setActiveRoute(this.selectedRouteId);
   }
 
   private normalizeTabIndex(index: number): number {
@@ -127,6 +136,7 @@ export class IndexNavigationController {
       return;
     }
     this.selectedRouteId = routeId;
+    this.chromeController?.setActiveRoute(routeId);
     if (this.settingsStore?.rememberLastTab) {
       this.settingsRepository?.setLastNavigationRoute(routeId);
       this.settingsRepository?.setLastTabIndex(this.compactTabIndex());
@@ -150,8 +160,10 @@ export class IndexNavigationController {
       return;
     }
     if (index < PRIMARY_NAVIGATION_COUNT) {
+      this.chromeController?.clearRoute(this.selectedRouteId);
       this.rootPathStacks[navigationItemIndex(this.selectedRouteId)].clear(true);
     } else {
+      this.chromeController?.clearRoute(this.selectedRouteId);
       this.morePathStack.clear(true);
     }
   }
@@ -180,6 +192,7 @@ export class IndexNavigationController {
     if (index !== this.expandedTabIndexBeforeSelection || index !== this.expandedTabIndex()) {
       return;
     }
+    this.chromeController?.clearRoute(this.selectedRouteId);
     this.rootPathStacks[navigationItemIndex(this.selectedRouteId)].clear(true);
   }
 
@@ -203,7 +216,8 @@ export class IndexNavigationController {
         param: new AlbumDetailRouteParams(
           target.identity.id,
           target.title,
-          target.palettePrimary
+          target.palettePrimary,
+          this.selectedRouteId
         )
       });
     }

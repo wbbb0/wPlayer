@@ -30,6 +30,9 @@ import { PlayerMorphOverlay } from '../components/player/PlayerMorphOverlay';
 import {
   IndexNavigationController
 } from '../components/navigation/IndexNavigationController';
+import {
+  NavigationChromeController
+} from '../components/navigation/NavigationChromeController';
 import { ResponsiveNavigationShell } from '../components/navigation/ResponsiveNavigationShell';
 import { TrackDetailSheetBridge } from '../components/navigation/TrackDetailSheetBridge';
 import { TrackActionMenuPresenter } from '../components/library/TrackActionMenu';
@@ -40,14 +43,11 @@ import {
 } from '../appearance/AppAppearance';
 import { PaletteMotionSpec } from '../appearance/PaletteMotionSpec';
 import { DynamicColor, DynamicContainerRole } from '../appearance/DynamicColor';
-import { systemBarStyleController } from '../appearance/SystemBarStyleController';
 import { LibraryMaintenanceSheet } from '../components/library/LibraryMaintenanceSheet';
 import {
   LibraryMaintenanceStatus
 } from '../library/data/MusicRepositoryTypes';
 import { NavigationRoute } from '../components/navigation/MoreNavigation';
-
-const INDEX_SYSTEM_BAR_OWNER = 'hds_navigation_root';
 
 @Entry
 @Component
@@ -63,6 +63,7 @@ struct Index {
   @State navigationAvoidHeight: number = 0;
   @State appearancePalette: AppAppearancePalette = AppAppearancePalette.fallback();
   @State navigationController: IndexNavigationController = new IndexNavigationController();
+  @State navigationChromeController: NavigationChromeController = new NavigationChromeController();
   @State playerMorphController: PlayerMorphController =
     new PlayerMorphController(
       playbackRuntime.playerStore,
@@ -92,7 +93,8 @@ struct Index {
   private settingsRepository?: SettingsRepository;
 
   aboutToAppear(): void {
-    systemBarStyleController.submitContentColor(INDEX_SYSTEM_BAR_OWNER, undefined);
+    this.navigationController.bindChromeController(this.navigationChromeController);
+    this.navigationChromeController.attach();
     this.playerMorphController.attach(this.getUIContext());
     const miniPlayerParams = new MiniPlayerHostParams(
       this.playerStore,
@@ -179,7 +181,7 @@ struct Index {
     this.libraryStore.dispose();
     this.playlistStore.dispose();
     playbackRuntime.setPaletteChangeListener(undefined);
-    systemBarStyleController.removeContentColor(INDEX_SYSTEM_BAR_OWNER);
+    this.navigationChromeController.dispose();
     appAppearanceController.removeListener(this.appearanceListener);
     this.avoidAreaController.stop();
     this.navigationController.dispose();
@@ -385,6 +387,7 @@ struct Index {
       playerStore: this.playerStore,
       settingsStore: this.settingsStore,
       miniPlayerBinding: this.playerMorphController.miniPlayerBinding,
+      navigationChromeController: this.navigationChromeController,
       compactMiniPlayerContent: this.compactMiniPlayerContent,
       condensedCompactMiniPlayerContent: this.condensedCompactMiniPlayerContent,
       wideMiniPlayerContent: this.wideMiniPlayerContent,

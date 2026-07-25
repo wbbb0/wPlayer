@@ -24,19 +24,27 @@ export class AlbumDetailRouteParams {
   readonly instanceId: number;
   readonly albumId: number;
   readonly title: string;
+  readonly ownerRouteId: string;
   palettePrimary: string;
   readonly state: AlbumDetailState;
   readonly selection: MultiSelectController = new MultiSelectController();
   readonly scroller: Scroller = new Scroller();
+  private paletteChangeListener?: (primary: string) => void;
 
-  constructor(albumId: number, title: string, palettePrimary: string) {
+  constructor(albumId: number, title: string, palettePrimary: string, ownerRouteId: string) {
     this.instanceId = ++routeInstanceId;
     this.albumId = albumId;
     this.title = title;
+    this.ownerRouteId = ownerRouteId;
     this.palettePrimary = palettePrimary;
     this.state = new AlbumDetailState(albumId, (primary: string): void => {
       this.palettePrimary = primary;
+      this.paletteChangeListener?.(primary);
     });
+  }
+
+  setPaletteChangeListener(listener?: (primary: string) => void): void {
+    this.paletteChangeListener = listener;
   }
 
   identity(): LibraryEntityIdentity {

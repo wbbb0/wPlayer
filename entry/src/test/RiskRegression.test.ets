@@ -27,6 +27,9 @@ import { LyricsParser, TimedLyricLine } from '../main/ets/playback/lyrics/Lyrics
 import { LayoutLength } from '../main/ets/components/layout/LayoutLength';
 import { AppShellLayoutSpec } from '../main/ets/components/layout/AppShellLayoutSpec';
 import { PlayerStore } from '../main/ets/playback/model/PlaybackModels';
+import {
+  NavigationChromeController
+} from '../main/ets/components/navigation/NavigationChromeController';
 
 class FakeResource {
   released: number = 0;
@@ -73,6 +76,37 @@ export default function riskRegressionTest() {
       expect(DynamicColor.blendOpaque(PlayerMotionSpec.COLLAPSED_SURFACE_DARK, '#FF7C4DFF', 0))
         .assertEqual('#FF2B2B2B');
       expect(DynamicColor.blendOpaque('#FFFFFFFF', '#FF7C4DFF', 1)).assertEqual('#FF7C4DFF');
+    });
+
+    it('scopes album chrome to the selected root route', 0, () => {
+      const chrome = new NavigationChromeController();
+      chrome.setActiveRoute('albums');
+      chrome.registerAlbum('albums', 1, '#FFAA0000', '#FFFFFFFF');
+      expect(chrome.hasActiveAlbum()).assertTrue();
+      expect(chrome.activeAlbumInstanceId).assertEqual(1);
+      expect(chrome.activeAlbumBackgroundColor).assertEqual('#FFAA0000');
+      chrome.updateAlbum('albums', 1, '#FFCC0000', '#FF000000');
+      expect(chrome.activeAlbumBackgroundColor).assertEqual('#FFCC0000');
+      expect(chrome.activeAlbumContentColor).assertEqual('#FF000000');
+
+      chrome.setActiveRoute('songs');
+      expect(chrome.hasActiveAlbum()).assertFalse();
+      chrome.registerAlbum('songs', 2, '#FF0000AA', '#FFFFFFFF');
+      expect(chrome.activeAlbumInstanceId).assertEqual(2);
+
+      chrome.setActiveRoute('albums');
+      expect(chrome.activeAlbumInstanceId).assertEqual(1);
+      chrome.registerAlbum('albums', 1, '#FFBB0000', '#FFFFFFFF');
+      chrome.unregisterAlbum('albums', 1);
+      expect(chrome.activeAlbumInstanceId).assertEqual(1);
+      expect(chrome.activeAlbumBackgroundColor).assertEqual('#FFBB0000');
+      chrome.registerAlbum('albums', 3, '#FF00AA00', '#FF000000');
+      chrome.unregisterAlbum('albums', 1);
+      expect(chrome.activeAlbumInstanceId).assertEqual(3);
+      expect(chrome.activeAlbumBackgroundColor).assertEqual('#FF00AA00');
+
+      chrome.clearRoute('albums');
+      expect(chrome.hasActiveAlbum()).assertFalse();
     });
 
     it('contains landscape and portrait artwork without changing the slot', 0, () => {

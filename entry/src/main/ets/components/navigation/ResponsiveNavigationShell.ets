@@ -17,7 +17,6 @@ import { ComponentContent, promptAction, SymbolGlyphModifier } from '@kit.ArkUI'
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { AppAppearancePalette } from '../../appearance/AppAppearance';
-import { systemBarStyleController } from '../../appearance/SystemBarStyleController';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import {
   DynamicColor,
@@ -118,6 +117,7 @@ import {
   MultiSelectController
 } from '../library/MultiSelectController';
 import { TrackDetailSheetBridge } from './TrackDetailSheetBridge';
+import { NavigationChromeController } from './NavigationChromeController';
 
 const TRACK_SORT_LABELS: Array<string> = ['名称', '专辑', '艺术家', '发行日期', '添加时间'];
 const ALBUM_SORT_LABELS: Array<string> = ['名称', '艺术家', '发行日期', '添加时间'];
@@ -176,6 +176,7 @@ export struct ResponsiveNavigationShell {
   @ObjectLink playerStore: PlayerStore;
   @ObjectLink settingsStore: AppSettingsStore;
   @ObjectLink miniPlayerBinding: MiniPlayerBinding;
+  @ObjectLink navigationChromeController: NavigationChromeController;
   compactMiniPlayerContent?: ComponentContent<MiniPlayerHostParams>;
   condensedCompactMiniPlayerContent?: ComponentContent<MiniPlayerHostParams>;
   wideMiniPlayerContent?: ComponentContent<MiniPlayerHostParams>;
@@ -759,24 +760,31 @@ export struct ResponsiveNavigationShell {
   }
 
   private activateAlbumChrome(params: AlbumDetailRouteParams): void {
-    systemBarStyleController.submitContentColor(
-      `album_detail:${params.instanceId}`,
-      this.albumDetailContentColor(params)
-    );
-    this.miniPlayerBinding.applyAlbumChrome(
+    params.setPaletteChangeListener((primary: string): void => {
+      this.navigationChromeController.updateAlbum(
+        params.ownerRouteId,
+        params.instanceId,
+        primary,
+        DynamicColor.foreground(primary, DynamicContainerRole.PRIMARY)
+      );
+    });
+    this.navigationChromeController.registerAlbum(
+      params.ownerRouteId,
       params.instanceId,
-      this.albumDetailBackground(params)
+      this.albumDetailBackground(params),
+      this.albumDetailContentColor(params)
     );
   }
 
   private deactivateAlbumChrome(params: AlbumDetailRouteParams): void {
-    systemBarStyleController.removeContentColor(`album_detail:${params.instanceId}`);
-    this.miniPlayerBinding.clearAlbumChrome(params.instanceId);
+    params.setPaletteChangeListener(undefined);
+    this.navigationChromeController.unregisterAlbum(params.ownerRouteId, params.instanceId);
   }
 
   private floatingGradientMaskColor(): ResourceColor {
-    if (this.miniPlayerBinding.hasAlbumChrome()) {
-      return this.gradientMaskColor(this.miniPlayerBinding.albumChromeBackgroundColor);
+    if (this.navigationChromeController.activeAlbumInstanceId >= 0 &&
+      this.navigationChromeController.activeAlbumBackgroundColor.length > 0) {
+      return this.gradientMaskColor(this.navigationChromeController.activeAlbumBackgroundColor);
     }
     return this.playbackChromeBackground.length > 0 ?
       this.gradientMaskColor(this.playbackChromeBackground) : $r('app.color.float_bar_gradient_mask');

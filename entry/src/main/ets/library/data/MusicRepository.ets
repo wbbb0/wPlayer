@@ -38,7 +38,9 @@ import {
   TrackImportInput
 } from './MusicRepositoryTypes';
 import { ArtworkPaletteUpdate, PaletteRefreshAsset } from './MusicRepositoryTypes';
+import { LibraryMaintenanceStatus } from './MusicRepositoryTypes';
 import { ARTWORK_PALETTE_VERSION } from '../artwork/ArtworkPaletteExtractor';
+import { ArtworkCache } from '../artwork/ArtworkCache';
 import { PlaylistRepository } from '../../playlist/data/PlaylistRepository';
 import { DemoLibraryMode } from '../../demo/DemoLibraryMode';
 import { DemoMusicLibrary } from '../../demo/DemoMusicLibrary';
@@ -72,6 +74,8 @@ export class MusicRepository {
   private readonly importer: MusicLibraryImporter = new MusicLibraryImporter(this.database);
   private readonly playlists: PlaylistRepository = new PlaylistRepository(this.database);
   private readonly invalidations: RepositoryInvalidationHub = new RepositoryInvalidationHub();
+  private paletteCache?: ArtworkCache;
+  private readonly paletteRepairs: Map<number, Promise<boolean>> = new Map<number, Promise<boolean>>();
 
   addInvalidationListener(listener: RepositoryInvalidationListener): void {
     this.invalidations.addListener(listener);
@@ -114,11 +118,16 @@ export class MusicRepository {
   }
 
   initialize(context: common.Context): Promise<boolean> {
+    if (this.paletteCache === undefined) {
+      this.paletteCache = new ArtworkCache(context);
+    }
     return this.database.initialize(context);
   }
 
-  close(): Promise<void> {
-    return this.database.close();
+  async close(): Promise<void> {
+    this.paletteRepairs.clear();
+    this.paletteCache = undefined;
+    await this.database.close();
   }
 
   async clearLibrary(): Promise<void> {
@@ -632,6 +641,57 @@ export class MusicRepository {
     return this.queries.getPaletteRefreshAssets();
   }
 
+  getOutdatedPaletteAssets(): Promise<Array<PaletteRefreshAsset>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve([]);
+    }
+    return this.queries.getOutdatedPaletteAssets();
+  }
+
+  getLibraryMaintenanceStatus(): Promise<LibraryMaintenanceStatus> {
+    if (DemoLibraryMode.isEnabled()) {
+      const status: LibraryMaintenanceStatus = { items: [], total: 0 };
+      return Promise.resolve(status);
+    }
+    return this.queries.getLibraryMaintenanceStatus();
+  }
+
+  async repairTrackPaletteIfOutdated(trackId: number): Promise<boolean> {
+    if (DemoLibraryMode.isEnabled() || this.paletteCache === undefined) {
+      return false;
+    }
+    const asset = await this.queries.getTrackPaletteAsset(trackId);
+    if (asset === undefined || asset.paletteVersion >= ARTWORK_PALETTE_VERSION) {
+      return false;
+    }
+    const active = this.paletteRepairs.get(asset.id);
+    if (active !== undefined) {
+      return active;
+    }
+    const repair = this.repairPaletteAsset(asset);
+    this.paletteRepairs.set(asset.id, repair);
+    try {
+      return await repair;
+    } finally {
+      if (this.paletteRepairs.get(asset.id) === repair) {
+        this.paletteRepairs.delete(asset.id);
+      }
+    }
+  }
+
+  private async repairPaletteAsset(asset: PaletteRefreshAsset): Promise<boolean> {
+    if (this.paletteCache === undefined) {
+      return false;
+    }
+    const palette = await this.paletteCache.extractPalette(asset.artworkPath);
+    await this.updateArtworkPalettes([{
+      id: asset.id,
+      palette: palette,
+      expectedVersion: asset.paletteVersion
+    }]);
+    return true;
+  }
+
   async updateArtworkPalettes(updates: Array<ArtworkPaletteUpdate>): Promise<void> {
     if (updates.length === 0) {
       return;
@@ -641,9 +701,9 @@ export class MusicRepository {
         const update = updates[index];
         await transaction.execute(
           `UPDATE artwork_asset SET palette_primary = ?, palette_secondary = ?,
-            palette_accent = ?, palette_version = ? WHERE id = ?`,
+            palette_accent = ?, palette_version = ? WHERE id = ? AND palette_version = ?`,
           [update.palette.primary, update.palette.secondary, update.palette.accent,
-            ARTWORK_PALETTE_VERSION, update.id]
+            ARTWORK_PALETTE_VERSION, update.id, update.expectedVersion]
         );
       }
     });

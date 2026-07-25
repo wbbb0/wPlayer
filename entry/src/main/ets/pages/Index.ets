@@ -41,6 +41,11 @@ import {
 import { PaletteMotionSpec } from '../appearance/PaletteMotionSpec';
 import { DynamicColor, DynamicContainerRole } from '../appearance/DynamicColor';
 import { systemBarStyleController } from '../appearance/SystemBarStyleController';
+import { LibraryMaintenanceSheet } from '../components/library/LibraryMaintenanceSheet';
+import {
+  LibraryMaintenanceStatus
+} from '../library/data/MusicRepositoryTypes';
+import { NavigationRoute } from '../components/navigation/MoreNavigation';
 
 const INDEX_SYSTEM_BAR_OWNER = 'hds_navigation_root';
 
@@ -72,6 +77,8 @@ struct Index {
   @State geometryPlayerStore: PlayerStore = new PlayerStore();
   @State settingsStore: AppSettingsStore = appSettings;
   @State playlistSheetVisible: boolean = false;
+  @State maintenanceSheetVisible: boolean = false;
+  @State maintenanceStatus: LibraryMaintenanceStatus = { items: [], total: 0 };
   @State animatedThemePrimary: string = '';
   @State animatedThemeOnPrimary: string = '';
   private readonly appearanceListener: AppAppearanceListener = (_epoch: number): void => {
@@ -150,6 +157,11 @@ struct Index {
         this.playlistStore.initialize(),
         playbackRuntime.initialize(context)
       ]);
+      const maintenanceStatus = await this.libraryStore.checkLibraryMaintenance();
+      if (maintenanceStatus.total > 0) {
+        this.maintenanceStatus = maintenanceStatus;
+        this.maintenanceSheetVisible = true;
+      }
     } catch (error) {
       console.warn(`Unable to initialize application data: ${error instanceof Error ? error.message : error}`);
     }
@@ -258,6 +270,21 @@ struct Index {
     });
   }
 
+  private startLibraryMaintenance(): void {
+    this.maintenanceSheetVisible = false;
+    const routeId = NavigationRoute.LIBRARY_MANAGEMENT;
+    if (!this.usesWideLayout() &&
+      this.navigationController.moreItems().some((item): boolean => item.routeId === routeId)) {
+      this.navigationController.morePathStack.clear(false);
+      this.navigationController.openMoreDestination(routeId);
+    } else {
+      this.navigationController.selectRoute(routeId);
+    }
+    this.libraryStore.checkMusicFiles().catch((error: Object): void => {
+      console.warn(`Unable to start library check: ${error instanceof Error ? error.message : error}`);
+    });
+  }
+
   private pageThemeTintOpacity(): number {
     return this.appearancePalette.windowBackground.toUpperCase() === '#FF000000' ? 0.24 : 0.16;
   }
@@ -323,6 +350,31 @@ struct Index {
       },
       onClose: (): void => this.playlistController.close()
     })
+  }
+
+  @Builder
+  private MaintenanceSheet() {
+    LibraryMaintenanceSheet({
+      status: this.maintenanceStatus,
+      onStart: (): void => this.startLibraryMaintenance(),
+      onLater: (): void => {
+        this.maintenanceSheetVisible = false;
+      }
+    })
+  }
+
+  @Builder
+  private SheetHosts() {
+    Stack()
+      .width(1)
+      .height(1)
+      .opacity(0)
+      .hitTestBehavior(HitTestMode.None)
+      .bindSheet($$this.maintenanceSheetVisible, this.MaintenanceSheet(), {
+        height: SheetSize.FIT_CONTENT,
+        dragBar: true,
+        showClose: true
+      })
   }
 
   @Builder
@@ -478,6 +530,8 @@ struct Index {
       this.FullPlayerGeometryProbe()
 
       this.NavigationShell()
+
+      this.SheetHosts()
 
       if (this.isMorphActive()) {
         this.FullPlayerOverlay()

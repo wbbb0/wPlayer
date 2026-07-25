@@ -1,5 +1,9 @@
 import { common } from '@kit.AbilityKit';
 import { ArtworkCache, ArtworkCacheResult } from '../artwork/ArtworkCache';
+import {
+  ArtworkPalette,
+  ARTWORK_PALETTE_VERSION
+} from '../artwork/ArtworkPaletteExtractor';
 import { ArtworkRepairPolicy } from '../artwork/ArtworkRepairPolicy';
 import {
   ArtworkWorkCancellation,
@@ -1305,7 +1309,25 @@ export class MediaImporter {
         existing.largeWidth,
         existing.largeHeight
       )) {
-      ImportPerformanceTrace.mark('artwork_cache_lookup', lookupStartedAt, traceFileId, 'hit=1');
+      let palette: ArtworkPalette = {
+        primary: existing.palettePrimary,
+        secondary: existing.paletteSecondary,
+        accent: existing.paletteAccent
+      };
+      if (existing.paletteVersion < ARTWORK_PALETTE_VERSION) {
+        palette = await this.artworkCache.extractPalette(existing.smallPath);
+        await this.repository.updateArtworkPalettes([{
+          id: existing.assetId,
+          palette: palette,
+          expectedVersion: existing.paletteVersion
+        }]);
+      }
+      ImportPerformanceTrace.mark(
+        'artwork_cache_lookup',
+        lookupStartedAt,
+        traceFileId,
+        existing.paletteVersion >= ARTWORK_PALETTE_VERSION ? 'hit=1' : 'hit=1 palette_refreshed=1'
+      );
       return {
         sourceHash: sourceHash,
         small: {
@@ -1324,11 +1346,7 @@ export class MediaImporter {
           height: existing.largeHeight,
           byteSize: existing.largeByteSize
         },
-        palette: {
-          primary: existing.palettePrimary,
-          secondary: existing.paletteSecondary,
-          accent: existing.paletteAccent
-        }
+        palette: palette
       };
     }
     ImportPerformanceTrace.mark('artwork_cache_lookup', lookupStartedAt, traceFileId,

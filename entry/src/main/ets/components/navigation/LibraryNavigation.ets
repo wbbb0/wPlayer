@@ -19,11 +19,12 @@ export class LibraryDetailRoute {
   static readonly ARTIST: string = 'libraryArtistDetail';
 }
 
+@Observed
 export class AlbumDetailRouteParams {
   readonly instanceId: number;
   readonly albumId: number;
   readonly title: string;
-  readonly palettePrimary: string;
+  palettePrimary: string;
   readonly state: AlbumDetailState;
   readonly selection: MultiSelectController = new MultiSelectController();
   readonly scroller: Scroller = new Scroller();
@@ -33,7 +34,9 @@ export class AlbumDetailRouteParams {
     this.albumId = albumId;
     this.title = title;
     this.palettePrimary = palettePrimary;
-    this.state = new AlbumDetailState(albumId);
+    this.state = new AlbumDetailState(albumId, (primary: string): void => {
+      this.palettePrimary = primary;
+    });
   }
 
   identity(): LibraryEntityIdentity {

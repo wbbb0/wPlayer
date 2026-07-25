@@ -737,11 +737,14 @@ export struct ResponsiveNavigationShell {
   }
 
   private albumDetailBackground(params: AlbumDetailRouteParams): string {
-    return params.palettePrimary;
+    return params.state.detail?.album.palettePrimary ?? params.palettePrimary;
   }
 
   private albumDetailContentColor(params: AlbumDetailRouteParams): string {
-    return DynamicColor.foreground(params.palettePrimary, DynamicContainerRole.PRIMARY);
+    return DynamicColor.foreground(
+      this.albumDetailBackground(params),
+      DynamicContainerRole.PRIMARY
+    );
   }
 
   private albumDetailControlBackgroundColor(params: AlbumDetailRouteParams): ResourceColor | undefined {

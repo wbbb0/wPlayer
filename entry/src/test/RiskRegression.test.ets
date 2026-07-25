@@ -39,13 +39,34 @@ export default function riskRegressionTest() {
       expect(DynamicColor.foreground('#FFFFE000', DynamicContainerRole.PRIMARY)).assertEqual('#FF000000');
       expect(DynamicColor.foreground('#FF111111', DynamicContainerRole.SECONDARY)).assertEqual('#FFFFFFFF');
       expect(DynamicColor.foreground('#111111', DynamicContainerRole.SECONDARY)).assertEqual('#FFFFFFFF');
-      expect(DynamicColor.foreground('#FFFFFF00', DynamicContainerRole.ACCENT)).assertEqual('#FFFFFFFF');
+      expect(DynamicColor.foreground('#FFFFFF00', DynamicContainerRole.ACCENT)).assertEqual('#FF000000');
       expect(DynamicColor.foreground('invalid', DynamicContainerRole.PRIMARY)).assertEqual('#FFFFFFFF');
       expect(DynamicColor.withEmphasis('#FF000000', ForegroundEmphasis.MEDIUM))
         .assertEqual('#B8000000');
       expect(DynamicColor.withOpacity('#FF336699', 0.60)).assertEqual('#99336699');
       expect(DynamicColor.withOpacity('#FF336699', 2)).assertEqual('#FF336699');
       expect(DynamicColor.withOpacity('invalid', 0.60)).assertEqual('invalid');
+    });
+
+    it('keeps supporting text and non-text details visible on dynamic backgrounds', 0, () => {
+      const backgrounds = [
+        '#FF000000',
+        '#FFFFFFFF',
+        '#FF444582',
+        '#FFFFE000',
+        '#FF4EB775',
+        '#FFCA4745'
+      ];
+      backgrounds.forEach((background: string) => {
+        const supporting = DynamicColor.supportingForeground(background);
+        const nonText = DynamicColor.nonTextForeground(background);
+        expect(DynamicColor.contrastRatio(supporting, background) >= 4.5).assertTrue();
+        expect(DynamicColor.contrastRatio(nonText, background) >= 3).assertTrue();
+        expect(supporting.startsWith('#FF')).assertTrue();
+        expect(nonText.startsWith('#FF')).assertTrue();
+      });
+      expect(DynamicColor.supportingForeground('invalid')).assertEqual('#FFFFFFFF');
+      expect(DynamicColor.contrastRatio('invalid', '#FF000000')).assertEqual(1);
     });
 
     it('blends the morph replacement surface with its capsule color', 0, () => {

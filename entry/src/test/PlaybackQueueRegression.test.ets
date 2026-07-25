@@ -155,5 +155,34 @@ export default function playbackQueueRegressionTest() {
       expect(snapshot.currentIndex).assertEqual(0);
       expect(snapshot.entries[0].track.id).assertEqual(2048);
     });
+
+    it('updates every queued track that shares the refreshed artwork', 0, () => {
+      const queue = new PlaybackQueue();
+      const first = queueTrack(1, 'first');
+      const second = queueTrack(2, 'second');
+      const other = queueTrack(3, 'other');
+      first.largeArtworkHash = 'shared-artwork';
+      second.largeArtworkHash = 'shared-artwork';
+      other.largeArtworkHash = 'other-artwork';
+      first.palettePrimary = '#FF111111';
+      second.palettePrimary = '#FF111111';
+      other.palettePrimary = '#FF222222';
+      queue.build([first, second, other], 1, false);
+
+      const updated = queue.updateArtworkPalette(
+        first,
+        '#FF334455',
+        '#FF667788',
+        '#FF99AABB'
+      );
+      const snapshot = queue.snapshot();
+
+      expect(updated).assertEqual(2);
+      expect(snapshot.entries[0].track.palettePrimary).assertEqual('#FF334455');
+      expect(snapshot.entries[1].track.palettePrimary).assertEqual('#FF334455');
+      expect(snapshot.entries[1].track.paletteSecondary).assertEqual('#FF667788');
+      expect(snapshot.entries[1].track.paletteAccent).assertEqual('#FF99AABB');
+      expect(snapshot.entries[2].track.palettePrimary).assertEqual('#FF222222');
+    });
   });
 }

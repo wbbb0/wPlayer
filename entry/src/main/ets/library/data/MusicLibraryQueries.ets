@@ -34,6 +34,12 @@ import {
   DuplicateCandidate
 } from './MusicRepositoryTypes';
 import { PaletteRefreshAsset } from './MusicRepositoryTypes';
+import {
+  LibraryMaintenanceItem,
+  LibraryMaintenanceKind,
+  LibraryMaintenanceStatus
+} from './MusicRepositoryTypes';
+import { ARTWORK_PALETTE_VERSION } from '../artwork/ArtworkPaletteExtractor';
 import { LibrarySortDescriptor, LibrarySortPlan } from './LibrarySortPlan';
 import { RelationalStoreSafety } from './RelationalStoreSafety';
 
@@ -1092,7 +1098,7 @@ export class MusicLibraryQueries {
       resultSet = await this.database.getStore().querySql(
         `SELECT a.small_hash, a.small_path, a.small_format, a.small_width, a.small_height, a.small_byte_size,
           a.large_hash, a.large_path, a.large_format, a.large_width, a.large_height, a.large_byte_size,
-          a.palette_primary, a.palette_secondary, a.palette_accent, s.width, s.height
+          a.palette_primary, a.palette_secondary, a.palette_accent, a.palette_version, s.width, s.height, a.id
          FROM artwork_source s JOIN artwork_asset a ON a.id = s.asset_id
          WHERE s.source_hash = ? LIMIT 1`,
         [sourceHash]
@@ -1101,6 +1107,7 @@ export class MusicLibraryQueries {
         return undefined;
       }
       return {
+        assetId: resultSet.getLong(18),
         smallHash: resultSet.getString(0),
         smallPath: resultSet.getString(1),
         smallFormat: resultSet.getString(2),
@@ -1116,8 +1123,9 @@ export class MusicLibraryQueries {
         palettePrimary: resultSet.getString(12),
         paletteSecondary: resultSet.getString(13),
         paletteAccent: resultSet.getString(14),
-        sourceWidth: resultSet.getLong(15),
-        sourceHeight: resultSet.getLong(16)
+        paletteVersion: resultSet.getLong(15),
+        sourceWidth: resultSet.getLong(16),
+        sourceHeight: resultSet.getLong(17)
       };
     } catch (error) {
       throw RelationalStoreSafety.operationError(`Unable to find artwork source ${sourceHash}`, error);
@@ -1191,12 +1199,13 @@ export class MusicLibraryQueries {
     const assets: Array<PaletteRefreshAsset> = [];
     try {
       resultSet = await this.database.getStore().querySql(
-        'SELECT id, small_path FROM artwork_asset WHERE ref_count > 0 ORDER BY id'
+        'SELECT id, small_path, palette_version FROM artwork_asset WHERE ref_count > 0 ORDER BY id'
       );
       while (resultSet.goToNextRow()) {
         const asset: PaletteRefreshAsset = {
           id: resultSet.getLong(0),
-          artworkPath: resultSet.getString(1)
+          artworkPath: resultSet.getString(1),
+          paletteVersion: resultSet.getLong(2)
         };
         assets.push(asset);
       }
@@ -1205,6 +1214,79 @@ export class MusicLibraryQueries {
       throw RelationalStoreSafety.operationError('Unable to read artwork palette refresh assets', error);
     } finally {
       RelationalStoreSafety.closeResultSet(resultSet, 'artwork palette refresh lookup');
+    }
+  }
+
+  async getOutdatedPaletteAssets(): Promise<Array<PaletteRefreshAsset>> {
+    let resultSet: relationalStore.ResultSet | undefined;
+    const assets: Array<PaletteRefreshAsset> = [];
+    try {
+      resultSet = await this.database.getStore().querySql(
+        `SELECT id, small_path, palette_version FROM artwork_asset
+         WHERE ref_count > 0 AND palette_version < ? ORDER BY id`,
+        [ARTWORK_PALETTE_VERSION]
+      );
+      while (resultSet.goToNextRow()) {
+        assets.push({
+          id: resultSet.getLong(0),
+          artworkPath: resultSet.getString(1),
+          paletteVersion: resultSet.getLong(2)
+        });
+      }
+      return assets;
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to read outdated artwork colors', error);
+    } finally {
+      RelationalStoreSafety.closeResultSet(resultSet, 'outdated artwork color lookup');
+    }
+  }
+
+  async getTrackPaletteAsset(trackId: number): Promise<PaletteRefreshAsset | undefined> {
+    let resultSet: relationalStore.ResultSet | undefined;
+    try {
+      resultSet = await this.database.getStore().querySql(
+        `SELECT a.id, a.small_path, a.palette_version
+         FROM track t JOIN artwork_asset a ON a.id = t.primary_artwork_id
+         WHERE t.id = ? AND a.ref_count > 0 LIMIT 1`,
+        [trackId]
+      );
+      if (!resultSet.goToNextRow()) {
+        return undefined;
+      }
+      return {
+        id: resultSet.getLong(0),
+        artworkPath: resultSet.getString(1),
+        paletteVersion: resultSet.getLong(2)
+      };
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to read artwork color for track ${trackId}`, error);
+    } finally {
+      RelationalStoreSafety.closeResultSet(resultSet, 'track artwork color lookup');
+    }
+  }
+
+  async getLibraryMaintenanceStatus(): Promise<LibraryMaintenanceStatus> {
+    let resultSet: relationalStore.ResultSet | undefined;
+    const items: Array<LibraryMaintenanceItem> = [];
+    let total = 0;
+    try {
+      resultSet = await this.database.getStore().querySql(
+        `SELECT COUNT(*) FROM artwork_asset
+         WHERE ref_count > 0 AND palette_version < ?`,
+        [ARTWORK_PALETTE_VERSION]
+      );
+      if (resultSet.goToNextRow()) {
+        const count = resultSet.getLong(0);
+        if (count > 0) {
+          items.push({ kind: LibraryMaintenanceKind.ARTWORK_COLORS, count: count });
+          total += count;
+        }
+      }
+      return { items: items, total: total };
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to inspect library maintenance status', error);
+    } finally {
+      RelationalStoreSafety.closeResultSet(resultSet, 'library maintenance status');
     }
   }
 

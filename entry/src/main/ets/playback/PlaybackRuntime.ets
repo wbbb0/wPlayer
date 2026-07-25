@@ -598,13 +598,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     if (refreshed === undefined || this.playerStore.currentTrack?.id !== current.id) {
       return;
     }
-    current.palettePrimary = refreshed.palettePrimary;
-    current.paletteSecondary = refreshed.paletteSecondary;
-    current.paletteAccent = refreshed.paletteAccent;
-    this.playerStore.palettePrimary = refreshed.palettePrimary;
-    this.playerStore.paletteSecondary = refreshed.paletteSecondary;
-    this.playerStore.paletteAccent = refreshed.paletteAccent;
-    this.notifyPaletteChange();
+    this.applyCurrentTrackPalette(refreshed);
   }
 
   async setDemoLibraryEnabled(enabled: boolean): Promise<void> {
@@ -878,6 +872,8 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
         throw new Error('音乐记录不存在，可能已从音乐库移除');
       }
       this.currentPlaybackTrack = track;
+      this.applyCurrentTrackPalette(track);
+      this.refreshPaletteOnDemand(trackId, epoch);
       this.playerStore.progress.durationMs = track.durationMs;
       this.session?.updateMetadata(track, this.sessionArtworkUri(track));
       if (!await ensureReadPermission(track.uri)) {
@@ -923,6 +919,48 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       }
       console.warn(`Unable to start playback for track ${trackId}: ${message}`);
       this.onStateChanged(PlayerState.ERROR, message);
+    }
+  }
+
+  private refreshPaletteOnDemand(trackId: number, epoch: number): void {
+    this.repository.repairTrackPaletteIfOutdated(trackId).then((updated: boolean): void => {
+      if (!updated || epoch !== this.artworkEpoch ||
+        this.playerStore.currentTrack?.id !== trackId) {
+        return;
+      }
+      this.refreshCurrentTrackPalette().catch((error: Object): void => {
+        console.warn(`Unable to apply refreshed artwork colors: ${PlaybackRuntime.messageOf(error)}`);
+      });
+    }).catch((error: Object): void => {
+      console.warn(`Unable to refresh artwork colors for track ${trackId}: ${PlaybackRuntime.messageOf(error)}`);
+    });
+  }
+
+  private applyCurrentTrackPalette(refreshed: QueueTrack): void {
+    const current = this.playerStore.currentTrack;
+    if (current === undefined || current.id !== refreshed.id) {
+      return;
+    }
+    const currentChanged = current.palettePrimary !== refreshed.palettePrimary ||
+      current.paletteSecondary !== refreshed.paletteSecondary ||
+      current.paletteAccent !== refreshed.paletteAccent;
+    const queueUpdated = this.queue.updateArtworkPalette(
+      refreshed,
+      refreshed.palettePrimary,
+      refreshed.paletteSecondary,
+      refreshed.paletteAccent
+    );
+    current.palettePrimary = refreshed.palettePrimary;
+    current.paletteSecondary = refreshed.paletteSecondary;
+    current.paletteAccent = refreshed.paletteAccent;
+    this.playerStore.palettePrimary = refreshed.palettePrimary;
+    this.playerStore.paletteSecondary = refreshed.paletteSecondary;
+    this.playerStore.paletteAccent = refreshed.paletteAccent;
+    if (queueUpdated > 0 && this.playerStore.queuePhase === QueueBuildPhase.READY) {
+      this.syncQueueSnapshot(false);
+    }
+    if (currentChanged || queueUpdated > 0) {
+      this.notifyPaletteChange();
     }
   }
 

@@ -21,8 +21,7 @@ import {
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import {
   DynamicColor,
-  DynamicContainerRole,
-  ForegroundEmphasis
+  DynamicContainerRole
 } from '../../appearance/DynamicColor';
 import { AlbumAction, AlbumGridSection } from '../../components/library/AlbumGridItem';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
@@ -57,8 +56,14 @@ export struct AlbumDetailPage {
     (_items: Array<TrackListItem>): void => {};
   onOpenTrackDetails: (track: TrackListItem) => void =
     (_track: TrackListItem): void => {};
+  private readonly artworkChangeListener = (): void => {
+    this.state.refresh(this.store).catch((error: Object): void => {
+      console.warn(`Unable to refresh album artwork colors: ${error}`);
+    });
+  };
 
   aboutToAppear(): void {
+    this.store.addArtworkChangeListener(this.artworkChangeListener);
     this.state.load(this.store);
     this.selection.deleteEnabled = false;
     this.selection.onPlay = (): void => this.playSelection();
@@ -67,6 +72,10 @@ export struct AlbumDetailPage {
     this.selection.onInsertNext = (): void => playbackRuntime.insertNext(this.currentSelection());
     this.selection.onAppendToQueue = (): void =>
       playbackRuntime.appendToQueue(this.currentSelection());
+  }
+
+  aboutToDisappear(): void {
+    this.store.removeArtworkChangeListener(this.artworkChangeListener);
   }
 
   private detail(): AlbumDetail | undefined {
@@ -167,15 +176,19 @@ export struct AlbumDetailPage {
   }
 
   private primaryContentColor(): string {
-    return DynamicColor.foreground(this.themeBackground, DynamicContainerRole.PRIMARY);
+    return DynamicColor.foreground(this.currentThemeBackground(), DynamicContainerRole.PRIMARY);
+  }
+
+  private currentThemeBackground(): string {
+    return this.state.detail?.album.palettePrimary ?? this.themeBackground;
   }
 
   private secondaryContentColor(): string {
-    return DynamicColor.withEmphasis(this.primaryContentColor(), ForegroundEmphasis.MEDIUM);
+    return DynamicColor.supportingForeground(this.currentThemeBackground());
   }
 
   private tertiaryContentColor(): string {
-    return DynamicColor.withEmphasis(this.primaryContentColor(), ForegroundEmphasis.DISABLED);
+    return DynamicColor.nonTextForeground(this.currentThemeBackground());
   }
 
   @Builder
@@ -233,7 +246,7 @@ export struct AlbumDetailPage {
       this.AlbumArtistText(detail, centered)
       Text(this.albumInformation(detail))
         .fontSize(12)
-        .fontColor(this.tertiaryContentColor())
+        .fontColor(this.secondaryContentColor())
         .textAlign(centered ? TextAlign.Center : TextAlign.Start)
         .width('100%')
     }
@@ -440,7 +453,7 @@ export struct AlbumDetailPage {
                 selected: this.selection.isSelected(track.id),
                 primaryColor: this.primaryContentColor(),
                 secondaryColor: this.secondaryContentColor(),
-                tertiaryColor: this.tertiaryContentColor(),
+                tertiaryColor: this.secondaryContentColor(),
                 onActivate: (item: TrackListItem): void => {
                   const detail = this.detail();
                   if (detail !== undefined) {
@@ -486,7 +499,7 @@ export struct AlbumDetailPage {
     .contentStartOffset(PageLayoutSpec.primaryContentStart(this.topInset))
     .contentEndOffset(PageLayoutSpec.contentEnd(this.bottomInset))
     .attributeModifier(this.scrollBehavior)
-    .backgroundColor(this.themeBackground)
+    .backgroundColor(this.currentThemeBackground())
     .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
     }
     .width('100%')

@@ -178,6 +178,24 @@ export class PlaybackQueue {
     };
   }
 
+  updateArtworkPalette(reference: QueueTrack, primary: string, secondary: string,
+    accent: string): number {
+    let updated = 0;
+    this.items.forEach((entry: QueueEntry) => {
+      if (!PlaybackQueue.sameArtwork(entry.track, reference) ||
+        (entry.track.palettePrimary === primary &&
+          entry.track.paletteSecondary === secondary &&
+          entry.track.paletteAccent === accent)) {
+        return;
+      }
+      entry.track.palettePrimary = primary;
+      entry.track.paletteSecondary = secondary;
+      entry.track.paletteAccent = accent;
+      updated += 1;
+    });
+    return updated;
+  }
+
   clear(): void {
     this.items = [];
     this.order = [];
@@ -224,6 +242,20 @@ export class PlaybackQueue {
     };
     this.nextEntryId += 1;
     return entry;
+  }
+
+  private static sameArtwork(left: QueueTrack, right: QueueTrack): boolean {
+    if (left.largeArtworkHash.length > 0 && right.largeArtworkHash.length > 0) {
+      return left.largeArtworkHash === right.largeArtworkHash;
+    }
+    if (left.smallArtworkHash.length > 0 && right.smallArtworkHash.length > 0) {
+      return left.smallArtworkHash === right.smallArtworkHash;
+    }
+    if (left.largeArtworkPath.length > 0 && right.largeArtworkPath.length > 0) {
+      return left.largeArtworkPath === right.largeArtworkPath;
+    }
+    return left.smallArtworkPath.length > 0 &&
+      left.smallArtworkPath === right.smallArtworkPath;
   }
 
   private buildOrder(currentIndex: number, shuffleEnabled: boolean): Array<number> {

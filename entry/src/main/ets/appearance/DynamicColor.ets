@@ -12,22 +12,68 @@ export enum ForegroundEmphasis {
 
 const OPAQUE_BLACK = '#FF000000';
 const OPAQUE_WHITE = '#FFFFFFFF';
+const READABLE_TEXT_CONTRAST = 4.5;
+const VISIBLE_NON_TEXT_CONTRAST = 3;
+const CONTRAST_SEARCH_ITERATIONS = 14;
 
 export class DynamicColor {
-  static foreground(background: string, role: DynamicContainerRole): string {
-    if (role === DynamicContainerRole.ACCENT) {
-      return OPAQUE_WHITE;
-    }
+  static foreground(background: string, _role: DynamicContainerRole): string {
     const rgb = DynamicColor.parseRgb(background);
     if (rgb.length !== 3) {
       return OPAQUE_WHITE;
     }
-    const luminance = 0.2126 * DynamicColor.linear(rgb[0] / 255) +
-      0.7152 * DynamicColor.linear(rgb[1] / 255) +
-      0.0722 * DynamicColor.linear(rgb[2] / 255);
+    const luminance = DynamicColor.luminance(rgb);
     const whiteContrast = 1.05 / (luminance + 0.05);
     const blackContrast = (luminance + 0.05) / 0.05;
     return blackContrast >= whiteContrast ? OPAQUE_BLACK : OPAQUE_WHITE;
+  }
+
+  static supportingForeground(background: string): string {
+    return DynamicColor.foregroundForContrast(background, READABLE_TEXT_CONTRAST);
+  }
+
+  static nonTextForeground(background: string): string {
+    return DynamicColor.foregroundForContrast(background, VISIBLE_NON_TEXT_CONTRAST);
+  }
+
+  static foregroundForContrast(background: string, minimumContrast: number): string {
+    const backgroundRgb = DynamicColor.parseRgb(background);
+    if (backgroundRgb.length !== 3) {
+      return OPAQUE_WHITE;
+    }
+    const foreground = DynamicColor.foreground(background, DynamicContainerRole.PRIMARY);
+    const foregroundRgb = DynamicColor.parseRgb(foreground);
+    const target = Math.max(1, Math.min(21, minimumContrast));
+    if (DynamicColor.rgbContrast(foregroundRgb, backgroundRgb) <= target) {
+      return foreground;
+    }
+    let low = 0;
+    let high = 1;
+    for (let iteration = 0; iteration < CONTRAST_SEARCH_ITERATIONS; iteration += 1) {
+      const amount = (low + high) / 2;
+      const candidate = DynamicColor.mixRgb(backgroundRgb, foregroundRgb, amount);
+      if (DynamicColor.rgbContrast(candidate, backgroundRgb) >= target) {
+        high = amount;
+      } else {
+        low = amount;
+      }
+    }
+    let amount = high;
+    let candidate = DynamicColor.mixRgb(backgroundRgb, foregroundRgb, amount);
+    while (amount < 1 && DynamicColor.rgbContrast(candidate, backgroundRgb) < target) {
+      amount = Math.min(1, amount + 1 / 255);
+      candidate = DynamicColor.mixRgb(backgroundRgb, foregroundRgb, amount);
+    }
+    return DynamicColor.opaqueColor(candidate);
+  }
+
+  static contrastRatio(foreground: string, background: string): number {
+    const foregroundRgb = DynamicColor.parseRgb(foreground);
+    const backgroundRgb = DynamicColor.parseRgb(background);
+    if (foregroundRgb.length !== 3 || backgroundRgb.length !== 3) {
+      return 1;
+    }
+    return DynamicColor.rgbContrast(foregroundRgb, backgroundRgb);
   }
 
   static withEmphasis(foreground: string, emphasis: ForegroundEmphasis): string {
@@ -82,6 +128,31 @@ export class DynamicColor {
 
   private static linear(value: number): number {
     return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+  }
+
+  private static luminance(rgb: Array<number>): number {
+    return 0.2126 * DynamicColor.linear(rgb[0] / 255) +
+      0.7152 * DynamicColor.linear(rgb[1] / 255) +
+      0.0722 * DynamicColor.linear(rgb[2] / 255);
+  }
+
+  private static rgbContrast(left: Array<number>, right: Array<number>): number {
+    const leftLuminance = DynamicColor.luminance(left);
+    const rightLuminance = DynamicColor.luminance(right);
+    return (Math.max(leftLuminance, rightLuminance) + 0.05) /
+      (Math.min(leftLuminance, rightLuminance) + 0.05);
+  }
+
+  private static mixRgb(start: Array<number>, end: Array<number>, progress: number): Array<number> {
+    return [
+      DynamicColor.mix(start[0], end[0], progress),
+      DynamicColor.mix(start[1], end[1], progress),
+      DynamicColor.mix(start[2], end[2], progress)
+    ];
+  }
+
+  private static opaqueColor(rgb: Array<number>): string {
+    return `#FF${DynamicColor.hex(rgb[0])}${DynamicColor.hex(rgb[1])}${DynamicColor.hex(rgb[2])}`;
   }
 
   private static mix(start: number, end: number, progress: number): number {

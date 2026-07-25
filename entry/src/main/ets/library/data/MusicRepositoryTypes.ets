@@ -4,11 +4,27 @@ import { ArtworkPalette } from '../artwork/ArtworkPaletteExtractor';
 export interface PaletteRefreshAsset {
   id: number;
   artworkPath: string;
+  paletteVersion: number;
 }
 
 export interface ArtworkPaletteUpdate {
   id: number;
   palette: ArtworkPalette;
+  expectedVersion: number;
+}
+
+export enum LibraryMaintenanceKind {
+  ARTWORK_COLORS = 0
+}
+
+export interface LibraryMaintenanceItem {
+  kind: LibraryMaintenanceKind;
+  count: number;
+}
+
+export interface LibraryMaintenanceStatus {
+  items: Array<LibraryMaintenanceItem>;
+  total: number;
 }
 
 export interface ArtworkImportInput {
@@ -57,6 +73,7 @@ export interface DuplicateCandidate {
 }
 
 export interface ArtworkAssetLookup {
+  assetId: number;
   smallHash: string;
   smallPath: string;
   smallFormat: string;
@@ -72,6 +89,7 @@ export interface ArtworkAssetLookup {
   palettePrimary: string;
   paletteSecondary: string;
   paletteAccent: string;
+  paletteVersion: number;
   sourceWidth: number;
   sourceHeight: number;
 }

@@ -20,13 +20,23 @@ export class AlbumDetailState {
     new LibraryListDataSource<TrackListItem>();
   private loadEpoch: number = 0;
   private loaded: boolean = false;
+  private readonly onPaletteChanged: (primary: string) => void;
 
-  constructor(albumId: number) {
+  constructor(albumId: number, onPaletteChanged: (primary: string) => void = (_primary: string): void => {}) {
     this.albumId = albumId;
+    this.onPaletteChanged = onPaletteChanged;
   }
 
   async load(store: LibraryStore): Promise<void> {
-    if (this.loaded || this.loading) {
+    await this.loadInternal(store, false);
+  }
+
+  async refresh(store: LibraryStore): Promise<void> {
+    await this.loadInternal(store, true);
+  }
+
+  private async loadInternal(store: LibraryStore, force: boolean): Promise<void> {
+    if ((!force && this.loaded) || (!force && this.loading)) {
       return;
     }
     const epoch = ++this.loadEpoch;
@@ -40,6 +50,9 @@ export class AlbumDetailState {
       this.trackDataSource.replace(detail?.tracks ?? []);
       this.detail = detail;
       this.loaded = detail !== undefined;
+      if (detail !== undefined) {
+        this.onPaletteChanged(detail.album.palettePrimary);
+      }
       if (detail === undefined) {
         this.error = '专辑不存在或已从音乐库移除';
       }

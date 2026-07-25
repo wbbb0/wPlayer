@@ -10,6 +10,9 @@ import { promptAction } from '@kit.ArkUI';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { PlaylistListRow } from '../../components/library/PlaylistListRow';
+import {
+  MenuSectionDivider
+} from '../../components/library/MenuActionGroups';
 
 const DELETE_ANIMATION_DURATION: number = 180;
 
@@ -181,8 +184,10 @@ export struct PlaylistsPage {
       MenuItem({ content: '播放' })
         .onClick(() => this.onOpenPlaylist(playlist))
       if (playlist.kind === PlaylistKind.USER) {
+        MenuSectionDivider()
         MenuItem({ content: '改名' })
           .onClick(() => this.onRequestRename(playlist))
+        MenuSectionDivider()
         MenuItem({ content: '删除播放列表' })
           .onClick(() => this.confirmDelete(playlist))
       }

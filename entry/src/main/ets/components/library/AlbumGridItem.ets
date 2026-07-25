@@ -12,6 +12,9 @@ import { LibraryItemAvailability } from './LibraryItemAvailability';
 import { AvailabilityState } from '../../library/model/LibraryModels';
 import { LibraryContextInteraction } from './LibraryContextInteraction';
 import { ContextPreviewGeometry } from './ContextPreviewGeometry';
+import {
+  MenuSectionDivider
+} from './MenuActionGroups';
 
 export enum AlbumAction {
   INSERT_NEXT = 0,
@@ -59,12 +62,16 @@ struct AlbumContextMenu {
         .onClick(() => this.onAction(this.album, AlbumAction.INSERT_NEXT))
       MenuItem({ content: '追加到队列' })
         .onClick(() => this.onAction(this.album, AlbumAction.APPEND_QUEUE))
+      MenuSectionDivider()
       MenuItem({ content: '添加到播放列表' })
         .onClick(() => this.onAction(this.album, AlbumAction.ADD_TO_PLAYLIST))
-      ForEach(this.artists, (artist: ArtistReference) => {
-        MenuItem({ content: `前往艺术家：${artist.name}` })
-          .onClick(() => this.onNavigate(artistTarget(artist)))
-      }, (artist: ArtistReference) => `${artist.id}`)
+      if (this.artists.length > 0) {
+        MenuSectionDivider()
+        ForEach(this.artists, (artist: ArtistReference) => {
+          MenuItem({ content: `前往艺术家：${artist.name}` })
+            .onClick(() => this.onNavigate(artistTarget(artist)))
+        }, (artist: ArtistReference) => `${artist.id}`)
+      }
     }
     .width(260)
   }

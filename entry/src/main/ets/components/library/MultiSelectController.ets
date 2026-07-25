@@ -1,3 +1,7 @@
+import {
+  MenuSectionDivider
+} from './MenuActionGroups';
+
 export class MultiSelectActionMenuParams {
   readonly controller: MultiSelectController;
 
@@ -68,16 +72,18 @@ export function MultiSelectActionMenu(params: MultiSelectActionMenuParams) {
     MenuItem({ content: '播放' })
       .enabled(params.controller.canRunAction())
       .onClick(params.controller.onPlay)
-    MenuItem({ content: '添加到播放列表' })
-      .enabled(params.controller.canRunAction())
-      .onClick(params.controller.onAddToPlaylist)
     MenuItem({ content: '插播', labelInfo: '下一首开始' })
       .enabled(params.controller.canRunAction())
       .onClick(params.controller.onInsertNext)
     MenuItem({ content: '追加到播放队列' })
       .enabled(params.controller.canRunAction())
       .onClick(params.controller.onAppendToQueue)
+    MenuSectionDivider()
+    MenuItem({ content: '添加到播放列表' })
+      .enabled(params.controller.canRunAction())
+      .onClick(params.controller.onAddToPlaylist)
     if (params.controller.deleteEnabled) {
+      MenuSectionDivider()
       MenuItem({ content: '移除所选项目' })
         .enabled(params.controller.canRunAction())
         .onClick(params.controller.onDelete)

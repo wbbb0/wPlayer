@@ -1,4 +1,5 @@
 import { SymbolGlyphModifier } from '@kit.ArkUI';
+import { MenuSectionDivider } from './MenuActionGroups';
 
 export class LibrarySortMenuParams {
   readonly labels: Array<string>;
@@ -31,6 +32,7 @@ export function LibrarySortMenu(params: LibrarySortMenuParams) {
         })
     }, (label: string) => label)
 
+    MenuSectionDivider()
     MenuItem({
       content: params.descending ? '倒序' : '正序',
       labelInfo: '切换'

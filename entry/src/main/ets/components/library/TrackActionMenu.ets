@@ -12,6 +12,9 @@ import {
   libraryLinkActions,
   libraryLinkRoleLabel
 } from '../navigation/LibraryNavigation';
+import {
+  MenuSectionDivider
+} from './MenuActionGroups';
 
 export class TrackActionMenuParams {
   readonly queueItems: Array<TrackListItem>;
@@ -50,27 +53,40 @@ export function TrackActionMenu(params: TrackActionMenuParams) {
         .onClick(() => playbackRuntime.insertNext(params.queueItems))
       MenuItem({ content: '追加到队列' })
         .onClick(() => playbackRuntime.appendToQueue(params.queueItems))
+      MenuSectionDivider()
       MenuItem({ content: '添加到播放列表' })
         .onClick(() => params.onRequestAddToPlaylist(params.queueItems))
     }
-    ForEach(params.linkActions, (action: LibraryLinkAction) => {
-      MenuItem({
-        content: action.label,
-        labelInfo: libraryLinkRoleLabel(action.role)
-      })
-        .onClick(() => params.onNavigate(action.target))
-    }, (action: LibraryLinkAction) =>
-      `${action.target.identity.kind}:${action.target.identity.id}`)
+    if (params.linkActions.length > 0) {
+      if (params.queueItems.length > 0) {
+        MenuSectionDivider()
+      }
+      ForEach(params.linkActions, (action: LibraryLinkAction) => {
+        MenuItem({
+          content: action.label,
+          labelInfo: libraryLinkRoleLabel(action.role)
+        })
+          .onClick(() => params.onNavigate(action.target))
+      }, (action: LibraryLinkAction) =>
+        `${action.target.identity.kind}:${action.target.identity.id}`)
+    }
     if (params.queueItems.length === 1 && params.onOpenDetails !== undefined) {
+      if (params.queueItems.length > 0 || params.linkActions.length > 0) {
+        MenuSectionDivider()
+      }
       MenuItem({ content: '文件信息' })
         .onClick(() => params.onOpenDetails?.(params.queueItems[0]))
     }
     if (params.onRemove !== undefined && params.removeLabel.length > 0) {
+      if (params.queueItems.length > 0 || params.linkActions.length > 0 ||
+        (params.queueItems.length === 1 && params.onOpenDetails !== undefined)) {
+        MenuSectionDivider()
+      }
       MenuItem({ content: params.removeLabel })
         .onClick(() => params.onRemove?.())
     }
     if (params.queueItems.length === 0 && params.linkActions.length === 0 &&
-      params.onRemove === undefined) {
+      (params.onRemove === undefined || params.removeLabel.length === 0)) {
       MenuItem({ content: '没有可前往的内容' })
         .enabled(false)
     }

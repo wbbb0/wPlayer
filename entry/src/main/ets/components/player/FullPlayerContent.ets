@@ -26,9 +26,14 @@ import {
 } from '../../playback/model/PlaybackModels';
 import { TimedLyricLine } from '../../playback/lyrics/LyricsParser';
 import { QueueTrackRow } from './QueueTrackRow';
+import {
+  CurrentTrackActionMenu,
+  CurrentTrackActionMenuParams,
+  PlayerQueueSelectionMenu,
+  PlayerQueueSelectionMenuParams
+} from './PlayerActionMenus';
 import { LayoutLength } from '../layout/LayoutLength';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
-import { SymbolGlyphModifier } from '@kit.ArkUI';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { PlayerTrackMarquee } from './PlayerTrackMarquee';
 import { PageLayoutSpec } from '../layout/PageLayoutSpec';
@@ -256,70 +261,50 @@ export struct FullPlayerContent {
 
   @Builder
   private QueueSelectionMenu() {
-    Menu() {
-      MenuItem({ content: '播放' })
-        .onClick(() => {
-          playbackRuntime.playQueueSelection(
-            this.selectedQueueEntries.map((entry: QueueEntry) => entry.track)
-          );
-          this.cancelQueueSelection();
-        })
-      MenuItem({ content: '添加到播放列表' })
-        .onClick(() => this.onRequestAddToPlaylist(
-          this.selectedQueueEntries.map((entry: QueueEntry): number => entry.track.id)
-        ))
-      MenuItem({ content: '插播', labelInfo: '下一首开始' })
-        .onClick(() => playbackRuntime.insertQueueTracks(
+    PlayerQueueSelectionMenu(new PlayerQueueSelectionMenuParams(
+      () => {
+        playbackRuntime.playQueueSelection(
           this.selectedQueueEntries.map((entry: QueueEntry) => entry.track)
-        ))
-      MenuItem({ content: '追加到播放队列' })
-        .onClick(() => playbackRuntime.appendQueueTracks(
-          this.selectedQueueEntries.map((entry: QueueEntry) => entry.track)
-        ))
-      MenuItem({ content: '从播放队列移除' })
-        .onClick(() => {
-          playbackRuntime.removeQueueEntries(
-            this.selectedQueueEntries.map((entry: QueueEntry): number => entry.queueEntryId)
-          );
-          this.cancelQueueSelection();
-        })
-    }
-    .width(240)
+        );
+        this.cancelQueueSelection();
+      },
+      () => playbackRuntime.insertQueueTracks(
+        this.selectedQueueEntries.map((entry: QueueEntry) => entry.track)
+      ),
+      () => playbackRuntime.appendQueueTracks(
+        this.selectedQueueEntries.map((entry: QueueEntry) => entry.track)
+      ),
+      () => this.onRequestAddToPlaylist(
+        this.selectedQueueEntries.map((entry: QueueEntry): number => entry.track.id)
+      ),
+      () => {
+        playbackRuntime.removeQueueEntries(
+          this.selectedQueueEntries.map((entry: QueueEntry): number => entry.queueEntryId)
+        );
+        this.cancelQueueSelection();
+      }
+    ))
   }
 
   @Builder
   private CurrentTrackMenu() {
-    Menu() {
-      MenuItem({ content: '插播', labelInfo: '下一首开始' })
-        .enabled(this.playerStore.currentTrack !== undefined)
-        .onClick(() => playbackRuntime.insertCurrentNext())
-      MenuItem({ content: '追加到队列' })
-        .enabled(this.playerStore.currentTrack !== undefined)
-        .onClick(() => playbackRuntime.appendCurrentToQueue())
-      MenuItem({ content: '添加到播放列表' })
-        .enabled(this.playerStore.currentTrack !== undefined)
-        .onClick(() => {
-          if (this.playerStore.currentTrack !== undefined) {
-            this.onRequestAddToPlaylist([this.playerStore.currentTrack.id]);
-          }
-        })
-      MenuItem({ content: '文件信息' })
-        .enabled(this.playerStore.currentTrack !== undefined)
-        .onClick(() => {
-          if (this.playerStore.currentTrack !== undefined) {
-            this.onOpenTrackDetails(this.queueActionTrack(this.playerStore.currentTrack));
-          }
-        })
-      MenuItem({
-        content: '收集完整听过的音乐',
-        symbolEndIcon: this.playerStore.completedCollectionEnabled ?
-          new SymbolGlyphModifier($r('sys.symbol.checkmark')) : undefined
-      })
-        .onClick(() => {
-          this.onCompletedCollectionChange(!this.playerStore.completedCollectionEnabled);
-        })
-    }
-    .width(260)
+    CurrentTrackActionMenu(new CurrentTrackActionMenuParams(
+      this.playerStore.currentTrack !== undefined,
+      this.playerStore.completedCollectionEnabled,
+      () => playbackRuntime.insertCurrentNext(),
+      () => playbackRuntime.appendCurrentToQueue(),
+      () => {
+        if (this.playerStore.currentTrack !== undefined) {
+          this.onRequestAddToPlaylist([this.playerStore.currentTrack.id]);
+        }
+      },
+      () => {
+        if (this.playerStore.currentTrack !== undefined) {
+          this.onOpenTrackDetails(this.queueActionTrack(this.playerStore.currentTrack));
+        }
+      },
+      this.onCompletedCollectionChange
+    ))
   }
 
   private pageWidth(): number {

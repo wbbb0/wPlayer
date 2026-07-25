@@ -1,5 +1,8 @@
 import { TrackListItem } from '../../library/model/LibraryModels';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
+import {
+  MenuSectionDivider
+} from './MenuActionGroups';
 
 export class QueueActionMenuParams {
   readonly items: Array<TrackListItem>;
@@ -22,6 +25,7 @@ export function QueueActionMenu(params: QueueActionMenuParams) {
       .onClick(() => playbackRuntime.insertNext(params.items))
     MenuItem({ content: '追加到队列' })
       .onClick(() => playbackRuntime.appendToQueue(params.items))
+    MenuSectionDivider()
     MenuItem({ content: '添加到播放列表' })
       .onClick(() => params.onRequestAddToPlaylist(params.items))
   }

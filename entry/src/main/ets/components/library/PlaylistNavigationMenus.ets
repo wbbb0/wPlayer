@@ -1,3 +1,7 @@
+import {
+  MenuSectionDivider
+} from './MenuActionGroups';
+
 export class PlaylistCreateMenuParams {
   readonly onCreate: () => void;
   readonly onImport: () => void;
@@ -41,15 +45,17 @@ export class PlaylistTransferMenuParams {
 @Builder
 export function PlaylistTransferMenu(params: PlaylistTransferMenuParams) {
   Menu() {
-    MenuItem({ content: '导出为 M3U8' })
-      .onClick(params.onExport)
-    MenuItem({ content: '导入 M3U' })
-      .onClick(params.onImport)
     if (params.onRename !== undefined) {
       MenuItem({ content: '播放列表改名' })
         .onClick(() => params.onRename?.())
+      MenuSectionDivider()
     }
+    MenuItem({ content: '导入 M3U' })
+      .onClick(params.onImport)
+    MenuItem({ content: '导出为 M3U8' })
+      .onClick(params.onExport)
     if (params.onDelete !== undefined) {
+      MenuSectionDivider()
       MenuItem({ content: '删除播放列表' })
         .onClick(() => params.onDelete?.())
     }

@@ -2,6 +2,9 @@ import { common } from '@kit.AbilityKit';
 import { curves } from '@kit.ArkUI';
 import { systemBarStyleController } from '../../appearance/SystemBarStyleController';
 import { LayoutLength } from '../../components/layout/LayoutLength';
+import {
+  MenuSectionDivider
+} from '../../components/library/MenuActionGroups';
 import { EmbeddedArtworkService } from '../../library/artwork/EmbeddedArtworkService';
 import {
   ArtworkPictureType,
@@ -305,15 +308,16 @@ export struct TrackArtworkViewer {
         .onClick((): void => {
           this.save();
         })
-      MenuItem({ content: '分享图片' })
-        .enabled(!this.actionBusy && this.current() !== undefined)
-        .onClick((): void => {
-          this.share();
-        })
       MenuItem({ content: '复制图片' })
         .enabled(!this.actionBusy && this.current() !== undefined)
         .onClick((): void => {
           this.copy();
+        })
+      MenuSectionDivider()
+      MenuItem({ content: '分享图片' })
+        .enabled(!this.actionBusy && this.current() !== undefined)
+        .onClick((): void => {
+          this.share();
         })
     }
     .width(200)

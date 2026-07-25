@@ -81,32 +81,27 @@ export default function riskRegressionTest() {
     it('scopes album chrome to the selected root route', 0, () => {
       const chrome = new NavigationChromeController();
       chrome.setActiveRoute('albums');
-      chrome.registerAlbum('albums', 1, '#FFAA0000', '#FFFFFFFF');
-      expect(chrome.hasActiveAlbum()).assertTrue();
-      expect(chrome.activeAlbumInstanceId).assertEqual(1);
-      expect(chrome.activeAlbumBackgroundColor).assertEqual('#FFAA0000');
-      chrome.updateAlbum('albums', 1, '#FFCC0000', '#FF000000');
-      expect(chrome.activeAlbumBackgroundColor).assertEqual('#FFCC0000');
-      expect(chrome.activeAlbumContentColor).assertEqual('#FF000000');
+      chrome.registerAlbum('albums', 1, '#FFFFFFFF');
+      expect(chrome.activeContentColor()).assertEqual('#FFFFFFFF');
+      chrome.updateAlbum('albums', 1, '#FF000000');
+      expect(chrome.activeContentColor()).assertEqual('#FF000000');
 
       chrome.setActiveRoute('songs');
-      expect(chrome.hasActiveAlbum()).assertFalse();
-      chrome.registerAlbum('songs', 2, '#FF0000AA', '#FFFFFFFF');
-      expect(chrome.activeAlbumInstanceId).assertEqual(2);
+      expect(chrome.activeContentColor()).assertUndefined();
+      chrome.registerAlbum('songs', 2, '#FFFFFFFF');
+      expect(chrome.activeContentColor()).assertEqual('#FFFFFFFF');
 
       chrome.setActiveRoute('albums');
-      expect(chrome.activeAlbumInstanceId).assertEqual(1);
-      chrome.registerAlbum('albums', 1, '#FFBB0000', '#FFFFFFFF');
+      expect(chrome.activeContentColor()).assertEqual('#FF000000');
+      chrome.registerAlbum('albums', 1, '#FFFFFFFF');
       chrome.unregisterAlbum('albums', 1);
-      expect(chrome.activeAlbumInstanceId).assertEqual(1);
-      expect(chrome.activeAlbumBackgroundColor).assertEqual('#FFBB0000');
-      chrome.registerAlbum('albums', 3, '#FF00AA00', '#FF000000');
+      expect(chrome.activeContentColor()).assertEqual('#FFFFFFFF');
+      chrome.registerAlbum('albums', 3, '#FF000000');
       chrome.unregisterAlbum('albums', 1);
-      expect(chrome.activeAlbumInstanceId).assertEqual(3);
-      expect(chrome.activeAlbumBackgroundColor).assertEqual('#FF00AA00');
+      expect(chrome.activeContentColor()).assertEqual('#FF000000');
 
       chrome.clearRoute('albums');
-      expect(chrome.hasActiveAlbum()).assertFalse();
+      expect(chrome.activeContentColor()).assertUndefined();
     });
 
     it('contains landscape and portrait artwork without changing the slot', 0, () => {

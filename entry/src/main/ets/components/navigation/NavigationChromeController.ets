@@ -5,20 +5,17 @@ export const NAVIGATION_SYSTEM_BAR_OWNER: string = 'hds_navigation_root';
 class NavigationAlbumChromeEntry {
   readonly routeId: string;
   readonly instanceId: number;
-  readonly backgroundColor: string;
   readonly contentColor: string;
   readonly visibilityCount: number;
 
   constructor(
     routeId: string,
     instanceId: number,
-    backgroundColor: string,
     contentColor: string,
     visibilityCount: number = 1
   ) {
     this.routeId = routeId;
     this.instanceId = instanceId;
-    this.backgroundColor = backgroundColor;
     this.contentColor = contentColor;
     this.visibilityCount = visibilityCount;
   }
@@ -26,10 +23,7 @@ class NavigationAlbumChromeEntry {
 
 @Observed
 export class NavigationChromeController {
-  activeRouteId: string = '';
-  activeAlbumInstanceId: number = -1;
-  activeAlbumBackgroundColor: string = '';
-  activeAlbumContentColor: string = '';
+  private activeRouteId: string = '';
   private albumEntries: Array<NavigationAlbumChromeEntry> = [];
   private attached: boolean = false;
 
@@ -46,9 +40,6 @@ export class NavigationChromeController {
     systemBarStyleController.removeContentColor(NAVIGATION_SYSTEM_BAR_OWNER);
     this.albumEntries = [];
     this.activeRouteId = '';
-    this.activeAlbumInstanceId = -1;
-    this.activeAlbumBackgroundColor = '';
-    this.activeAlbumContentColor = '';
   }
 
   setActiveRoute(routeId: string): void {
@@ -62,7 +53,6 @@ export class NavigationChromeController {
   registerAlbum(
     routeId: string,
     instanceId: number,
-    backgroundColor: string,
     contentColor: string
   ): void {
     const index = this.albumEntryIndex(routeId);
@@ -70,7 +60,6 @@ export class NavigationChromeController {
       this.albumEntries[index] = new NavigationAlbumChromeEntry(
         routeId,
         instanceId,
-        backgroundColor,
         contentColor,
         this.albumEntries[index].visibilityCount + 1
       );
@@ -78,7 +67,6 @@ export class NavigationChromeController {
       const entry = new NavigationAlbumChromeEntry(
         routeId,
         instanceId,
-        backgroundColor,
         contentColor
       );
       if (index >= 0) {
@@ -95,7 +83,6 @@ export class NavigationChromeController {
   updateAlbum(
     routeId: string,
     instanceId: number,
-    backgroundColor: string,
     contentColor: string
   ): void {
     const index = this.albumEntryIndex(routeId);
@@ -105,7 +92,6 @@ export class NavigationChromeController {
     this.albumEntries[index] = new NavigationAlbumChromeEntry(
       routeId,
       instanceId,
-      backgroundColor,
       contentColor,
       this.albumEntries[index].visibilityCount
     );
@@ -124,7 +110,6 @@ export class NavigationChromeController {
       this.albumEntries[index] = new NavigationAlbumChromeEntry(
         entry.routeId,
         entry.instanceId,
-        entry.backgroundColor,
         entry.contentColor,
         entry.visibilityCount - 1
       );
@@ -147,8 +132,8 @@ export class NavigationChromeController {
     }
   }
 
-  hasActiveAlbum(): boolean {
-    return this.activeAlbumInstanceId >= 0 && this.activeAlbumBackgroundColor.length > 0;
+  activeContentColor(): string | undefined {
+    return this.activeAlbumEntry()?.contentColor;
   }
 
   private albumEntryIndex(routeId: string): number {
@@ -166,14 +151,10 @@ export class NavigationChromeController {
   }
 
   private syncActiveEntry(): void {
-    const entry = this.activeAlbumEntry();
-    this.activeAlbumInstanceId = entry?.instanceId ?? -1;
-    this.activeAlbumBackgroundColor = entry?.backgroundColor ?? '';
-    this.activeAlbumContentColor = entry?.contentColor ?? '';
     if (this.attached) {
       systemBarStyleController.submitContentColor(
         NAVIGATION_SYSTEM_BAR_OWNER,
-        entry?.contentColor
+        this.activeContentColor()
       );
     }
   }

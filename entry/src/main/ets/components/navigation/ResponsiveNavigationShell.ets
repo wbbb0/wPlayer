@@ -24,6 +24,7 @@ import {
   ForegroundEmphasis
 } from '../../appearance/DynamicColor';
 import { AppShellLayoutSpec } from '../layout/AppShellLayoutSpec';
+import { PageBottomGradient } from '../layout/PageBottomGradient';
 import { AppNavigationStyle } from './AppNavigationStyle';
 import { AppPrimaryTitleParams } from './AppPrimaryTitleContent';
 import {
@@ -405,7 +406,7 @@ export struct ResponsiveNavigationShell {
       },
       barBottomMargin: AppShellLayoutSpec.FLOATING_BAR_BOTTOM_MARGIN,
       gradientMask: {
-        maskColor: this.floatingGradientMaskColor(),
+        maskColor: '#00000000',
         maskHeight: AppShellLayoutSpec.FLOATING_BAR_GRADIENT_MASK_HEIGHT
       },
       systemMaterialEffect: {
@@ -452,7 +453,7 @@ export struct ResponsiveNavigationShell {
       barSideMargin: AppShellLayoutSpec.WIDE_SIDE_MARGIN,
       barBottomMargin: AppShellLayoutSpec.FLOATING_BAR_BOTTOM_MARGIN,
       gradientMask: {
-        maskColor: this.floatingGradientMaskColor(),
+        maskColor: '#00000000',
         maskHeight: AppShellLayoutSpec.FLOATING_BAR_GRADIENT_MASK_HEIGHT
       },
       systemMaterialEffect: {
@@ -764,14 +765,12 @@ export struct ResponsiveNavigationShell {
       this.navigationChromeController.updateAlbum(
         params.ownerRouteId,
         params.instanceId,
-        primary,
         DynamicColor.foreground(primary, DynamicContainerRole.PRIMARY)
       );
     });
     this.navigationChromeController.registerAlbum(
       params.ownerRouteId,
       params.instanceId,
-      this.albumDetailBackground(params),
       this.albumDetailContentColor(params)
     );
   }
@@ -779,15 +778,6 @@ export struct ResponsiveNavigationShell {
   private deactivateAlbumChrome(params: AlbumDetailRouteParams): void {
     params.setPaletteChangeListener(undefined);
     this.navigationChromeController.unregisterAlbum(params.ownerRouteId, params.instanceId);
-  }
-
-  private floatingGradientMaskColor(): ResourceColor {
-    if (this.navigationChromeController.activeAlbumInstanceId >= 0 &&
-      this.navigationChromeController.activeAlbumBackgroundColor.length > 0) {
-      return this.gradientMaskColor(this.navigationChromeController.activeAlbumBackgroundColor);
-    }
-    return this.playbackChromeBackground.length > 0 ?
-      this.gradientMaskColor(this.playbackChromeBackground) : $r('app.color.float_bar_gradient_mask');
   }
 
   private playbackChromeBackgroundColor(): ResourceColor | undefined {
@@ -1204,21 +1194,26 @@ export struct ResponsiveNavigationShell {
   private DestinationBuilder(name: string, _param: Object) {
     if (name === PLAYLIST_DETAIL_ROUTE) {
       HdsNavDestination() {
-        PlaylistDetailPage({
-          store: this.playlistStore,
-          libraryStore: this.libraryStore,
-          selection: (_param as PlaylistDetailRouteParams).selection,
-          playlistId: (_param as PlaylistDetailRouteParams).playlistId,
-          rootWidth: this.rootWidth,
-          topInset: this.topInset,
-          bottomInset: this.bottomInset,
-          scroller: (_param as PlaylistDetailRouteParams).scroller,
-          onResolveArtwork: (relativePath: string): string =>
-            this.libraryStore.resolveArtworkPath(relativePath),
-          onRequestAddToPlaylist: this.onRequestAddToPlaylist,
-          onNavigateLibrary: this.onNavigateLibrary,
-          onOpenTrackDetails: (item: TrackListItem): void => this.openTrackDetails(item)
-        })
+        Stack({ alignContent: Alignment.Bottom }) {
+          PlaylistDetailPage({
+            store: this.playlistStore,
+            libraryStore: this.libraryStore,
+            selection: (_param as PlaylistDetailRouteParams).selection,
+            playlistId: (_param as PlaylistDetailRouteParams).playlistId,
+            rootWidth: this.rootWidth,
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            scroller: (_param as PlaylistDetailRouteParams).scroller,
+            onResolveArtwork: (relativePath: string): string =>
+              this.libraryStore.resolveArtworkPath(relativePath),
+            onRequestAddToPlaylist: this.onRequestAddToPlaylist,
+            onNavigateLibrary: this.onNavigateLibrary,
+            onOpenTrackDetails: (item: TrackListItem): void => this.openTrackDetails(item)
+          })
+          PageBottomGradient({ maskColor: this.themePageBackground })
+        }
+        .width('100%')
+        .height('100%')
       }
       .width('100%')
       .height('100%')
@@ -1234,30 +1229,37 @@ export struct ResponsiveNavigationShell {
       .bindToScrollable([(_param as PlaylistDetailRouteParams).scroller])
     } else if (name === LibraryDetailRoute.ALBUM) {
       HdsNavDestination() {
-        AlbumDetailPage({
-          store: this.libraryStore,
-          state: (_param as AlbumDetailRouteParams).state,
-          selection: (_param as AlbumDetailRouteParams).selection,
-          topInset: this.topInset,
-          bottomInset: this.bottomInset,
-          rootWidth: this.rootWidth,
-          currentIdentity: (_param as AlbumDetailRouteParams).identity(),
-          themeBackground: this.albumDetailBackground(_param as AlbumDetailRouteParams),
-          scroller: (_param as AlbumDetailRouteParams).scroller,
-          actionAnchorPrefix: (_param as AlbumDetailRouteParams).anchorPrefix(),
-          onOpenArtist: (artist): void => this.onNavigateLibrary(artistTarget(artist)),
-          onOpenAlbum: (album): void => this.onNavigateLibrary(albumTarget({
-            id: album.id,
-            title: album.title,
-            palettePrimary: album.palettePrimary
-          })),
-          onAlbumAction: (album, action): void => this.performAlbumAction(album.id, action),
-          onOpenTrackActions: (item: TrackListItem, anchorId: string): void =>
-            this.openTrackActions(item, anchorId, (_param as AlbumDetailRouteParams).identity()),
-          onOpenTrackDetails: (item: TrackListItem): void => this.openTrackDetails(item),
-          onNavigateTrackAction: this.onNavigateLibrary,
-          onRequestAddToPlaylist: this.onRequestAddToPlaylist
-        })
+        Stack({ alignContent: Alignment.Bottom }) {
+          AlbumDetailPage({
+            store: this.libraryStore,
+            state: (_param as AlbumDetailRouteParams).state,
+            selection: (_param as AlbumDetailRouteParams).selection,
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            rootWidth: this.rootWidth,
+            currentIdentity: (_param as AlbumDetailRouteParams).identity(),
+            themeBackground: this.albumDetailBackground(_param as AlbumDetailRouteParams),
+            scroller: (_param as AlbumDetailRouteParams).scroller,
+            actionAnchorPrefix: (_param as AlbumDetailRouteParams).anchorPrefix(),
+            onOpenArtist: (artist): void => this.onNavigateLibrary(artistTarget(artist)),
+            onOpenAlbum: (album): void => this.onNavigateLibrary(albumTarget({
+              id: album.id,
+              title: album.title,
+              palettePrimary: album.palettePrimary
+            })),
+            onAlbumAction: (album, action): void => this.performAlbumAction(album.id, action),
+            onOpenTrackActions: (item: TrackListItem, anchorId: string): void =>
+              this.openTrackActions(item, anchorId, (_param as AlbumDetailRouteParams).identity()),
+            onOpenTrackDetails: (item: TrackListItem): void => this.openTrackDetails(item),
+            onNavigateTrackAction: this.onNavigateLibrary,
+            onRequestAddToPlaylist: this.onRequestAddToPlaylist
+          })
+          PageBottomGradient({
+            maskColor: this.albumDetailBackground(_param as AlbumDetailRouteParams)
+          })
+        }
+        .width('100%')
+        .height('100%')
       }
       .width('100%')
       .height('100%')
@@ -1280,27 +1282,32 @@ export struct ResponsiveNavigationShell {
       .bindToScrollable([(_param as AlbumDetailRouteParams).scroller])
     } else if (name === LibraryDetailRoute.ARTIST) {
       HdsNavDestination() {
-        ArtistDetailPage({
-          store: this.libraryStore,
-          state: (_param as ArtistDetailRouteParams).state,
-          selection: (_param as ArtistDetailRouteParams).selection,
-          topInset: this.topInset,
-          bottomInset: this.bottomInset,
-          rootWidth: this.rootWidth,
-          currentIdentity: (_param as ArtistDetailRouteParams).identity(),
-          scroller: (_param as ArtistDetailRouteParams).scroller,
-          actionAnchorPrefix: (_param as ArtistDetailRouteParams).anchorPrefix(),
-          onOpenAlbum: (album): void => this.onNavigateLibrary(albumTarget({
-            id: album.id,
-            title: album.title,
-            palettePrimary: album.palettePrimary
-          })),
-          onOpenTrackActions: (item: TrackListItem, anchorId: string): void =>
-            this.openTrackActions(item, anchorId, (_param as ArtistDetailRouteParams).identity()),
-          onOpenTrackDetails: (item: TrackListItem): void => this.openTrackDetails(item),
-          onNavigateTrackAction: this.onNavigateLibrary,
-          onRequestAddToPlaylist: this.onRequestAddToPlaylist
-        })
+        Stack({ alignContent: Alignment.Bottom }) {
+          ArtistDetailPage({
+            store: this.libraryStore,
+            state: (_param as ArtistDetailRouteParams).state,
+            selection: (_param as ArtistDetailRouteParams).selection,
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            rootWidth: this.rootWidth,
+            currentIdentity: (_param as ArtistDetailRouteParams).identity(),
+            scroller: (_param as ArtistDetailRouteParams).scroller,
+            actionAnchorPrefix: (_param as ArtistDetailRouteParams).anchorPrefix(),
+            onOpenAlbum: (album): void => this.onNavigateLibrary(albumTarget({
+              id: album.id,
+              title: album.title,
+              palettePrimary: album.palettePrimary
+            })),
+            onOpenTrackActions: (item: TrackListItem, anchorId: string): void =>
+              this.openTrackActions(item, anchorId, (_param as ArtistDetailRouteParams).identity()),
+            onOpenTrackDetails: (item: TrackListItem): void => this.openTrackDetails(item),
+            onNavigateTrackAction: this.onNavigateLibrary,
+            onRequestAddToPlaylist: this.onRequestAddToPlaylist
+          })
+          PageBottomGradient({ maskColor: this.themePageBackground })
+        }
+        .width('100%')
+        .height('100%')
       }
       .width('100%')
       .height('100%')
@@ -1318,13 +1325,18 @@ export struct ResponsiveNavigationShell {
       .bindToScrollable([(_param as ArtistDetailRouteParams).scroller])
     } else if (name === NavigationRoute.NAVIGATION_CUSTOMIZATION) {
       HdsNavDestination() {
-        NavigationCustomizationPage({
-          topInset: this.topInset,
-          bottomInset: this.bottomInset,
-          items: this.orderedItems(),
-          scroller: this.customizationScroller,
-          onMove: this.onNavigationItemMove
-        })
+        Stack({ alignContent: Alignment.Bottom }) {
+          NavigationCustomizationPage({
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            items: this.orderedItems(),
+            scroller: this.customizationScroller,
+            onMove: this.onNavigationItemMove
+          })
+          PageBottomGradient({ maskColor: this.themePageBackground })
+        }
+        .width('100%')
+        .height('100%')
       }
       .width('100%')
       .height('100%')
@@ -1339,11 +1351,16 @@ export struct ResponsiveNavigationShell {
       .bindToScrollable([this.customizationScroller])
     } else if (name === NavigationRoute.ABOUT) {
       HdsNavDestination() {
-        AboutPage({
-          topInset: this.topInset,
-          bottomInset: this.bottomInset,
-          scroller: this.aboutScroller
-        })
+        Stack({ alignContent: Alignment.Bottom }) {
+          AboutPage({
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            scroller: this.aboutScroller
+          })
+          PageBottomGradient({ maskColor: this.themePageBackground })
+        }
+        .width('100%')
+        .height('100%')
       }
       .width('100%')
       .height('100%')
@@ -1358,11 +1375,16 @@ export struct ResponsiveNavigationShell {
       .bindToScrollable([this.aboutScroller])
     } else if (name === NavigationRoute.PRIVACY_POLICY) {
       HdsNavDestination() {
-        PrivacyPolicyPage({
-          topInset: this.topInset,
-          bottomInset: this.bottomInset,
-          scroller: this.privacyPolicyScroller
-        })
+        Stack({ alignContent: Alignment.Bottom }) {
+          PrivacyPolicyPage({
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            scroller: this.privacyPolicyScroller
+          })
+          PageBottomGradient({ maskColor: this.themePageBackground })
+        }
+        .width('100%')
+        .height('100%')
       }
       .width('100%')
       .height('100%')
@@ -1377,11 +1399,16 @@ export struct ResponsiveNavigationShell {
       .bindToScrollable([this.privacyPolicyScroller])
     } else if (name === NavigationRoute.DATA_AND_PERMISSIONS) {
       HdsNavDestination() {
-        DataAndPermissionsPage({
-          topInset: this.topInset,
-          bottomInset: this.bottomInset,
-          scroller: this.dataAndPermissionsScroller
-        })
+        Stack({ alignContent: Alignment.Bottom }) {
+          DataAndPermissionsPage({
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            scroller: this.dataAndPermissionsScroller
+          })
+          PageBottomGradient({ maskColor: this.themePageBackground })
+        }
+        .width('100%')
+        .height('100%')
       }
       .width('100%')
       .height('100%')
@@ -1396,11 +1423,16 @@ export struct ResponsiveNavigationShell {
       .bindToScrollable([this.dataAndPermissionsScroller])
     } else if (name === NavigationRoute.OPEN_SOURCE_LICENSES) {
       HdsNavDestination() {
-        OpenSourceLicensesPage({
-          topInset: this.topInset,
-          bottomInset: this.bottomInset,
-          scroller: this.openSourceLicensesScroller
-        })
+        Stack({ alignContent: Alignment.Bottom }) {
+          OpenSourceLicensesPage({
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            scroller: this.openSourceLicensesScroller
+          })
+          PageBottomGradient({ maskColor: this.themePageBackground })
+        }
+        .width('100%')
+        .height('100%')
       }
       .width('100%')
       .height('100%')
@@ -1415,7 +1447,12 @@ export struct ResponsiveNavigationShell {
       .bindToScrollable([this.openSourceLicensesScroller])
     } else {
       HdsNavDestination() {
-        this.PageContent(name)
+        Stack({ alignContent: Alignment.Bottom }) {
+          this.PageContent(name)
+          PageBottomGradient({ maskColor: this.themePageBackground })
+        }
+        .width('100%')
+        .height('100%')
       }
       .width('100%')
       .height('100%')
@@ -1434,7 +1471,12 @@ export struct ResponsiveNavigationShell {
   @Builder
   private RootNavigation(item: NavigationPageItem) {
     HdsNavigation(this.rootPathStacks[navigationItemIndex(item.routeId)]) {
-      this.PageContent(item.routeId)
+      Stack({ alignContent: Alignment.Bottom }) {
+        this.PageContent(item.routeId)
+        PageBottomGradient({ maskColor: this.themePageBackground })
+      }
+      .width('100%')
+      .height('100%')
     }
     .width('100%')
     .height('100%')
@@ -1456,13 +1498,18 @@ export struct ResponsiveNavigationShell {
   @Builder
   private MoreNavigation() {
     HdsNavigation(this.morePathStack) {
-      MorePage({
-        topInset: this.topInset,
-        bottomInset: this.bottomInset,
-        scroller: this.moreScroller,
-        items: this.moreItems(),
-        openDestination: this.onOpenMoreDestination
-      })
+      Stack({ alignContent: Alignment.Bottom }) {
+        MorePage({
+          topInset: this.topInset,
+          bottomInset: this.bottomInset,
+          scroller: this.moreScroller,
+          items: this.moreItems(),
+          openDestination: this.onOpenMoreDestination
+        })
+        PageBottomGradient({ maskColor: this.themePageBackground })
+      }
+      .width('100%')
+      .height('100%')
     }
     .width('100%')
     .height('100%')

@@ -10,6 +10,7 @@ import {
   PlayerFrame,
   PlayerLayoutSpec,
   PlayerMorphPhase,
+  PlayerMorphVisualSpec,
   PlayerMotionSpec,
   PlayerPoint
 } from './PlayerMotion';
@@ -126,16 +127,13 @@ export struct PlayerMorphArtwork {
   }
 
   private artworkOpacity(): number {
-    if (this.renderedPaneCount > 1) {
-      return 1;
-    }
-    if (this.morphPhase === PlayerMorphPhase.OPEN) {
-      return this.clamp(1 - Math.abs(this.fullPlayerPagePosition - FullPlayerPage.COVER), 0, 1);
-    }
-    if (this.fullPlayerPage === FullPlayerPage.COVER) {
-      return 1;
-    }
-    return FullPlayerPagerSpec.sidePageArtworkOpacity(this.expandProgress);
+    return PlayerMorphVisualSpec.coverElementOpacity(
+      this.morphPhase,
+      this.fullPlayerPage,
+      this.fullPlayerPagePosition,
+      this.renderedPaneCount,
+      this.expandProgress
+    );
   }
 
   build() {

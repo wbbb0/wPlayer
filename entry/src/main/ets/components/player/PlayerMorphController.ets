@@ -16,6 +16,7 @@ import {
   PlayerGestureAxis,
   PlayerLayoutSpec,
   PlayerMorphPhase,
+  PlayerMorphVisualSpec,
   PlayerMotionSpec,
   PlayerPoint
 } from './PlayerMotion';
@@ -292,15 +293,28 @@ export class PlayerMorphController {
   }
 
   private freezeArtworkTargetForCurrentPage(): void {
-    const usesSidePageProxy = this.fullPlayerPaneCount() === 1 &&
-      Math.abs(this.fullPlayerPagePosition - FullPlayerPage.COVER) > 0.5;
-    const target = usesSidePageProxy ? this.centeredArtworkTarget : this.currentPagerArtworkTarget();
-    this.frozenArtworkTarget = { x: target.x, y: target.y };
+    const paneCount = this.fullPlayerPaneCount();
+    this.frozenArtworkTarget = {
+      x: FullPlayerPagerSpec.frozenMorphPageTargetX(
+        this.centeredArtworkTarget.x,
+        FullPlayerPage.COVER,
+        this.fullPlayerPagePosition,
+        paneCount,
+        FullPlayerPagerSpec.pageSpan(this.frozenRootFrame.width, paneCount)
+      ),
+      y: this.centeredArtworkTarget.y
+    };
   }
 
   private freezePlaybackButtonTarget(): void {
     this.frozenPlaybackButtonTarget = {
-      x: this.playbackButtonTarget.x,
+      x: FullPlayerPagerSpec.frozenMorphPageTargetX(
+        this.playbackButtonTarget.x,
+        FullPlayerPage.COVER,
+        this.fullPlayerPagePosition,
+        this.fullPlayerPaneCount(),
+        this.fullPlayerPageSpan()
+      ),
       y: this.playbackButtonTarget.y,
       width: this.playbackButtonTarget.width,
       height: this.playbackButtonTarget.height
@@ -391,6 +405,11 @@ export class PlayerMorphController {
     };
   }
 
+  private miniPlaybackButtonVisible(): boolean {
+    return this.frozenMiniPlayerFrame.width > PlayerLayoutSpec.DEFAULT_MINI_PLAYER_SIZE +
+      PlayerLayoutSpec.MINI_PLAYBACK_BUTTON_SIZE;
+  }
+
   morphPlaybackButtonFrame(): PlayerFrame {
     const miniButton = this.miniPlaybackButtonFrame();
     const fullButton = this.frozenPlaybackButtonTarget;
@@ -404,14 +423,29 @@ export class PlayerMorphController {
 
   shouldRenderPlaybackButtonProxy(): boolean {
     return this.playerMorphPhase !== PlayerMorphPhase.OPEN &&
-      this.frozenMiniPlayerFrame.width > PlayerLayoutSpec.DEFAULT_MINI_PLAYER_SIZE +
-        PlayerLayoutSpec.MINI_PLAYBACK_BUTTON_SIZE;
+      this.miniPlaybackButtonVisible();
+  }
+
+  shouldShowFullPlaybackButton(): boolean {
+    return this.playerMorphPhase === PlayerMorphPhase.OPEN ||
+      !this.miniPlaybackButtonVisible();
+  }
+
+  morphPlaybackButtonOpacity(): number {
+    return PlayerMorphVisualSpec.coverElementOpacity(
+      this.playerMorphPhase,
+      this.fullPlayerPage,
+      this.fullPlayerPagePosition,
+      this.renderedFullPlayerPaneCount(),
+      this.playerExpandProgress
+    );
   }
 
   private currentPagerArtworkTarget(): PlayerPoint {
     return {
-      x: FullPlayerPagerSpec.pagerArtworkTargetX(
+      x: FullPlayerPagerSpec.pagerPageTargetX(
         this.centeredArtworkTarget.x,
+        FullPlayerPage.COVER,
         this.fullPlayerPagePosition,
         this.fullPlayerPageSpan()
       ),

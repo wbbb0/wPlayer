@@ -134,7 +134,40 @@ export class FullPlayerPagerSpec {
   }
 
   static pagerArtworkTargetX(centeredX: number, pagePosition: number, pageSpan: number): number {
-    return centeredX + (FullPlayerPage.COVER - pagePosition) * pageSpan;
+    return FullPlayerPagerSpec.pagerPageTargetX(
+      centeredX,
+      FullPlayerPage.COVER,
+      pagePosition,
+      pageSpan
+    );
+  }
+
+  static pageViewportVisibility(targetPage: FullPlayerPage, pagePosition: number,
+    paneCount: number): number {
+    const viewportStart = FullPlayerPagerSpec.clampPosition(pagePosition, paneCount);
+    const viewportEnd = viewportStart + Math.max(1, paneCount);
+    const visibleSpan = Math.min(targetPage + 1, viewportEnd) -
+      Math.max(targetPage, viewportStart);
+    return Math.max(0, Math.min(1, visibleSpan));
+  }
+
+  static pagerPageTargetX(canonicalX: number, targetPage: FullPlayerPage,
+    pagePosition: number, pageSpan: number): number {
+    return canonicalX + (targetPage - pagePosition) * pageSpan;
+  }
+
+  static frozenMorphPageTargetX(canonicalX: number, targetPage: FullPlayerPage,
+    pagePosition: number, paneCount: number, pageSpan: number): number {
+    if (paneCount === 1 &&
+      FullPlayerPagerSpec.pageViewportVisibility(targetPage, pagePosition, paneCount) < 0.5) {
+      return canonicalX;
+    }
+    return FullPlayerPagerSpec.pagerPageTargetX(
+      canonicalX,
+      targetPage,
+      pagePosition,
+      pageSpan
+    );
   }
 
   static sidePageArtworkOpacity(expandProgress: number): number {
@@ -205,6 +238,26 @@ export class PlayerMotionSpec {
       PlayerMotionSpec.PLAYBACK_BUTTON_POSITION_SETTLE_PROGRESS
     ));
     return Math.max(0, Math.min(1, (expandProgress - settle) / (1 - settle)));
+  }
+}
+
+export class PlayerMorphVisualSpec {
+  static coverElementOpacity(morphPhase: PlayerMorphPhase, selectedPage: FullPlayerPage,
+    pagePosition: number, paneCount: number, expandProgress: number): number {
+    if (paneCount > 1) {
+      return 1;
+    }
+    if (morphPhase === PlayerMorphPhase.OPEN) {
+      return FullPlayerPagerSpec.pageViewportVisibility(
+        FullPlayerPage.COVER,
+        pagePosition,
+        paneCount
+      );
+    }
+    if (selectedPage === FullPlayerPage.COVER) {
+      return 1;
+    }
+    return FullPlayerPagerSpec.sidePageArtworkOpacity(expandProgress);
   }
 }
 

@@ -20,7 +20,10 @@ import {
   calculateFullFingerprint
 } from '../../../main/ets/library/metadata/MediaFileTasks';
 import {
+  FullPlayerPage,
   FullPlayerPagerSpec,
+  PlayerMorphPhase,
+  PlayerMorphVisualSpec,
   PlayerMotionSpec
 } from '../../../main/ets/components/player/PlayerMotion';
 import { AppShellLayoutSpec } from '../../../main/ets/components/layout/AppShellLayoutSpec';
@@ -41,6 +44,16 @@ export default function riskRegressionTest() {
       expect(FullPlayerPagerSpec.sidePageArtworkOpacity(0)).assertEqual(1);
       expect(FullPlayerPagerSpec.sidePageArtworkOpacity(0.6)).assertEqual(0);
       expect(FullPlayerPagerSpec.sidePageArtworkOpacity(1)).assertEqual(0);
+    });
+
+    it('sharesCoverMorphVisibilityAcrossArtworkAndPlaybackButton', 0, () => {
+      expect(PlayerMorphVisualSpec.coverElementOpacity(
+        PlayerMorphPhase.OPENING, FullPlayerPage.LYRICS,
+        FullPlayerPage.LYRICS, 1, 0.6
+      )).assertEqual(0);
+      expect(FullPlayerPagerSpec.frozenMorphPageTargetX(
+        80, FullPlayerPage.COVER, FullPlayerPage.QUEUE, 2, 360
+      )).assertEqual(440);
     });
 
     it('keepsExpandedCompactMiniPlayerClearOfCollapsedNavigation', 0, () => {

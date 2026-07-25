@@ -18,6 +18,8 @@ import { ImportPreparationPolicy, PreparedItemState } from
 import {
   FullPlayerPage,
   FullPlayerPagerSpec,
+  PlayerMorphPhase,
+  PlayerMorphVisualSpec,
   PlayerMotionSpec
 } from '../main/ets/components/player/PlayerMotion';
 import { DynamicColor, DynamicContainerRole, ForegroundEmphasis } from
@@ -156,6 +158,29 @@ export default function riskRegressionTest() {
       expect(FullPlayerPagerSpec.coverVisibility(1, 2, 1)).assertEqual(1);
     });
 
+    it('shares cover morph visibility without changing artwork behavior', 0, () => {
+      expect(PlayerMorphVisualSpec.coverElementOpacity(
+        PlayerMorphPhase.OPENING, FullPlayerPage.COVER,
+        FullPlayerPage.COVER, 1, 0.5
+      )).assertEqual(1);
+      expect(PlayerMorphVisualSpec.coverElementOpacity(
+        PlayerMorphPhase.OPENING, FullPlayerPage.LYRICS,
+        FullPlayerPage.LYRICS, 1, 0.6
+      )).assertEqual(0);
+      expect(PlayerMorphVisualSpec.coverElementOpacity(
+        PlayerMorphPhase.OPEN, FullPlayerPage.LYRICS,
+        FullPlayerPage.COVER, 1, 1
+      )).assertEqual(1);
+      expect(PlayerMorphVisualSpec.coverElementOpacity(
+        PlayerMorphPhase.OPEN, FullPlayerPage.LYRICS,
+        FullPlayerPage.LYRICS, 1, 1
+      )).assertEqual(0);
+      expect(PlayerMorphVisualSpec.coverElementOpacity(
+        PlayerMorphPhase.OPENING, FullPlayerPage.QUEUE,
+        FullPlayerPage.QUEUE, 2, 0.5
+      )).assertEqual(1);
+    });
+
     it('removes the render-only pager offset from measured artwork geometry', 0, () => {
       const layoutX = 440;
       const pageSpan = 360;
@@ -166,6 +191,12 @@ export default function riskRegressionTest() {
       expect(FullPlayerPagerSpec.pagerArtworkTargetX(80, FullPlayerPage.QUEUE, pageSpan)).assertEqual(440);
       expect(FullPlayerPagerSpec.pagerArtworkTargetX(80, FullPlayerPage.COVER, pageSpan)).assertEqual(80);
       expect(FullPlayerPagerSpec.pagerArtworkTargetX(80, FullPlayerPage.LYRICS, pageSpan)).assertEqual(-280);
+      expect(FullPlayerPagerSpec.frozenMorphPageTargetX(
+        80, FullPlayerPage.COVER, FullPlayerPage.QUEUE, 1, pageSpan
+      )).assertEqual(80);
+      expect(FullPlayerPagerSpec.frozenMorphPageTargetX(
+        80, FullPlayerPage.COVER, FullPlayerPage.QUEUE, 2, pageSpan
+      )).assertEqual(440);
     });
 
     it('does not release an artwork while a transition lease is active', 0, () => {

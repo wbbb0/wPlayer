@@ -64,7 +64,7 @@ export struct PlayerMorphOverlay {
             topInset: this.topInset,
             bottomInset: this.bottomInset,
             showArtwork: false,
-            showPlaybackButton: this.controller.playerMorphPhase === PlayerMorphPhase.OPEN,
+            showPlaybackButton: this.controller.shouldShowFullPlaybackButton(),
             heroArtworkInterpolation: this.settingsStore.highQualityHeroArtwork ?
               ImageInterpolation.High : ImageInterpolation.Medium,
             rootFrame: this.controller.fullPlayerFrame(),
@@ -168,21 +168,16 @@ export struct PlayerMorphOverlay {
     })
   }
 
-  private disablesMorphPlaybackButtonAnimation(): boolean {
-    return this.controller.playerMorphPhase === PlayerMorphPhase.CLOSE_DRAGGING ||
-      this.controller.playerMorphPhase === PlayerMorphPhase.CLOSING ||
-      this.controller.playerMorphPhase === PlayerMorphPhase.BACKGROUND_HANDOFF;
-  }
-
   @Builder
   private MorphPlaybackButton() {
     if (this.controller.shouldRenderPlaybackButtonProxy()) {
       PlayerPlaybackButton({
         playerStore: this.playerStore,
         buttonSize: this.controller.morphPlaybackButtonFrame().width,
-        rootAnimationEnabled: !this.disablesMorphPlaybackButtonAnimation(),
-        iconAnimationEnabled: !this.disablesMorphPlaybackButtonAnimation()
+        rootAnimationEnabled: false,
+        iconAnimationEnabled: false
       })
+        .opacity(this.controller.morphPlaybackButtonOpacity())
         .position({ x: 0, y: 0 })
         .translate({
           x: this.controller.morphPlaybackButtonFrame().x,

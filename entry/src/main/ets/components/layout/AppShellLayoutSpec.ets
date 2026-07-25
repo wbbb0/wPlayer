@@ -29,12 +29,12 @@ export class AppShellLayoutSpec {
   static readonly TAB_SELECTION_COLOR_DURATION: number = 100;
   static readonly HIDDEN_TAB_BAR_WIDTH: number = 56;
 
-  static readonly COMPACT_TAB_SMALL_WIDTH: number = 272;
+  static readonly COMPACT_TAB_SMALL_WIDTH: number = 256;
   static readonly COMPACT_TAB_MEDIUM_WIDTH: number = 292;
   static readonly COMPACT_TAB_LARGE_WIDTH: number = 320;
-  static readonly MINI_PLAYER_SMALL_WIDTH: number = 260;
-  static readonly MINI_PLAYER_MEDIUM_WIDTH: number = 288;
-  static readonly MINI_PLAYER_LARGE_WIDTH: number = 328;
+  static readonly MINI_PLAYER_SMALL_WIDTH: number = 256;
+  static readonly MINI_PLAYER_MEDIUM_WIDTH: number = 292;
+  static readonly MINI_PLAYER_LARGE_WIDTH: number = 320;
   static readonly MINI_PLAYER_HEIGHT: number = 56;
 
   static usesCondensedCompactNavigation(hostWidth: number): boolean {

@@ -10,6 +10,8 @@ import {
 } from '../../library/model/LibraryModels';
 import { TrackArtworkViewerState } from '../../library/store/LibraryDetailState';
 
+const ARTWORK_VIEWER_SYSTEM_BAR_OWNER = 'track_artwork_viewer';
+
 class ArtworkViewerMotionSpec {
   // TODO: Tune scale and offset resistance after broader phone and foldable gesture testing.
   static readonly MIN_SCALE: number = 1;
@@ -44,6 +46,7 @@ export struct TrackArtworkViewer {
   private service?: EmbeddedArtworkService;
 
   aboutToAppear(): void {
+    systemBarStyleController.submitContentColor(ARTWORK_VIEWER_SYSTEM_BAR_OWNER, '#FFFFFFFF');
     systemBarStyleController.setFullscreenOverlayStyle(true, true);
     this.service = new EmbeddedArtworkService(
       this.getUIContext().getHostContext() as common.UIAbilityContext
@@ -54,6 +57,7 @@ export struct TrackArtworkViewer {
   }
 
   aboutToDisappear(): void {
+    systemBarStyleController.removeContentColor(ARTWORK_VIEWER_SYSTEM_BAR_OWNER);
     systemBarStyleController.setFullscreenOverlayStyle(false, true);
     this.state.release();
   }

@@ -17,6 +17,7 @@ import { ComponentContent, promptAction, SymbolGlyphModifier } from '@kit.ArkUI'
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { AppAppearancePalette } from '../../appearance/AppAppearance';
+import { systemBarStyleController } from '../../appearance/SystemBarStyleController';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import {
   DynamicColor,
@@ -755,6 +756,10 @@ export struct ResponsiveNavigationShell {
   }
 
   private activateAlbumChrome(params: AlbumDetailRouteParams): void {
+    systemBarStyleController.submitContentColor(
+      `album_detail:${params.instanceId}`,
+      this.albumDetailContentColor(params)
+    );
     this.miniPlayerBinding.applyAlbumChrome(
       params.instanceId,
       this.albumDetailBackground(params)
@@ -762,6 +767,7 @@ export struct ResponsiveNavigationShell {
   }
 
   private deactivateAlbumChrome(params: AlbumDetailRouteParams): void {
+    systemBarStyleController.removeContentColor(`album_detail:${params.instanceId}`);
     this.miniPlayerBinding.clearAlbumChrome(params.instanceId);
   }
 
@@ -1258,14 +1264,6 @@ export struct ResponsiveNavigationShell {
             this.albumDetailControlBackgroundColor(_param as AlbumDetailRouteParams)
         }
       ))
-      .systemBarStyle(
-        {
-          statusBarContentColor: this.albumDetailContentColor(_param as AlbumDetailRouteParams)
-        },
-        {
-          statusBarContentColor: this.albumDetailContentColor(_param as AlbumDetailRouteParams)
-        }
-      )
       .onShown((): void => this.activateAlbumChrome(_param as AlbumDetailRouteParams))
       .onHidden((): void => this.deactivateAlbumChrome(_param as AlbumDetailRouteParams))
       .bindToScrollable([(_param as AlbumDetailRouteParams).scroller])

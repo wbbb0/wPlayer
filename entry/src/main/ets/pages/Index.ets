@@ -42,6 +42,8 @@ import { PaletteMotionSpec } from '../appearance/PaletteMotionSpec';
 import { DynamicColor, DynamicContainerRole } from '../appearance/DynamicColor';
 import { systemBarStyleController } from '../appearance/SystemBarStyleController';
 
+const INDEX_SYSTEM_BAR_OWNER = 'hds_navigation_root';
+
 @Entry
 @Component
 struct Index {
@@ -83,6 +85,7 @@ struct Index {
   private settingsRepository?: SettingsRepository;
 
   aboutToAppear(): void {
+    systemBarStyleController.submitContentColor(INDEX_SYSTEM_BAR_OWNER, undefined);
     this.playerMorphController.attach(this.getUIContext());
     const miniPlayerParams = new MiniPlayerHostParams(
       this.playerStore,
@@ -164,7 +167,7 @@ struct Index {
     this.libraryStore.dispose();
     this.playlistStore.dispose();
     playbackRuntime.setPaletteChangeListener(undefined);
-    systemBarStyleController.setPlayerContentColor(false, '');
+    systemBarStyleController.removeContentColor(INDEX_SYSTEM_BAR_OWNER);
     appAppearanceController.removeListener(this.appearanceListener);
     this.avoidAreaController.stop();
     this.navigationController.dispose();
@@ -196,7 +199,6 @@ struct Index {
     const palette = AppAppearancePalette.resolve(context as common.UIAbilityContext);
     this.appearancePalette = palette;
     this.playerStore.themeBaseBackground = palette.windowBackground;
-    systemBarStyleController.setAppearanceContentColor(palette.systemBarContent);
     this.syncSystemBarContentColor();
   }
 

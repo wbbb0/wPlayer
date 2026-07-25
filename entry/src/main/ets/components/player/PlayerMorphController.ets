@@ -21,6 +21,8 @@ import {
 } from './PlayerMotion';
 import { MiniPlayerBinding } from './MiniPlayerBinding';
 
+const PLAYER_SYSTEM_BAR_OWNER = 'full_player';
+
 export interface ResponsiveLayoutChange {
   previousWideLayout: boolean;
   nextWideLayout: boolean;
@@ -95,10 +97,14 @@ export class PlayerMorphController {
   }
 
   syncSystemBarContentColor(): void {
-    systemBarStyleController.setPlayerContentColor(
-      this.isMorphActive(),
-      this.playerStore.themeOnPrimary()
-    );
+    if (this.isMorphActive()) {
+      systemBarStyleController.submitContentColor(
+        PLAYER_SYSTEM_BAR_OWNER,
+        this.playerStore.themeOnPrimary()
+      );
+    } else {
+      systemBarStyleController.removeContentColor(PLAYER_SYSTEM_BAR_OWNER);
+    }
   }
 
   private applyCompactMiniBarStyle(style: HdsBarStyle): void {
@@ -144,6 +150,7 @@ export class PlayerMorphController {
   }
 
   dispose(): void {
+    systemBarStyleController.removeContentColor(PLAYER_SYSTEM_BAR_OWNER);
     this.attached = false;
     this.lifecycleEpoch += 1;
     this.morphTransitionEpoch += 1;

@@ -76,7 +76,7 @@ export default class EntryAbility extends UIAbility {
     try {
       const palette = AppAppearancePalette.resolve(this.context);
       this.mainWindow.setWindowBackgroundColor(palette.windowBackground);
-      systemBarStyleController.setAppearanceContentColor(palette.systemBarContent);
+      systemBarStyleController.setAutoContentColor(palette.systemBarContent);
     } catch (error) {
       hilog.error(DOMAIN, TAG, 'Failed to apply window appearance. Cause: %{public}s', JSON.stringify(error));
     }

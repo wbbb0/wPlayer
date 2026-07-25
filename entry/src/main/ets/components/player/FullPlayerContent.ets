@@ -1,4 +1,5 @@
 import {
+  FullPlayerLayoutMode,
   FullPlayerPage,
   FullPlayerPagerSpec,
   FULL_PLAYER_HORIZONTAL_GESTURE_HOST_ID,
@@ -313,11 +314,73 @@ export struct FullPlayerContent {
 
   private artworkSlotSize(): number {
     return PlayerLayoutSpec.fullArtworkSize(
-      this.pageWidth(),
+      this.rootFrame.width,
       this.rootFrame.height,
       this.topInset,
-      this.bottomInset
+      this.bottomInset,
+      this.paneCount
     );
+  }
+
+  private isUltraCompact(): boolean {
+    return PlayerLayoutSpec.fullPlayerLayoutMode(
+      this.rootFrame.width,
+      this.rootFrame.height,
+      this.paneCount,
+      this.topInset,
+      this.bottomInset
+    ) === FullPlayerLayoutMode.ULTRA_COMPACT;
+  }
+
+  private recordArtworkTarget(newValue: Area): void {
+    if (!this.measuresArtworkTarget) {
+      return;
+    }
+    const pageWidth = this.pageWidth();
+    const layoutTarget: PlayerPoint = {
+      x: LayoutLength.toNumber(
+        newValue.globalPosition.x,
+        this.previousCenteredArtworkTarget.x + this.rootFrame.x
+      ) - this.rootFrame.x,
+      y: LayoutLength.toNumber(
+        newValue.globalPosition.y,
+        this.previousArtworkTarget.y + this.rootFrame.y
+      ) - this.rootFrame.y
+    };
+    const ultraCompact = this.isUltraCompact();
+    const centeredTarget: PlayerPoint = {
+      x: ultraCompact ?
+        FullPlayerPagerSpec.centeredArtworkTargetX(layoutTarget.x, pageWidth) :
+        layoutTarget.x,
+      y: layoutTarget.y
+    };
+    this.onCenteredArtworkTarget(centeredTarget);
+    this.onArtworkTarget({
+      x: ultraCompact ?
+        FullPlayerPagerSpec.artworkTargetX(layoutTarget.x, this.pagePosition, pageWidth) :
+        FullPlayerPagerSpec.pagerArtworkTargetX(
+          centeredTarget.x,
+          this.pagePosition,
+          pageWidth
+        ),
+      y: centeredTarget.y
+    });
+  }
+
+  private recordPlaybackButtonTarget(newValue: Area, fallbackSize: number): void {
+    if (!this.measuresArtworkTarget) {
+      return;
+    }
+    const layoutX = LayoutLength.toNumber(newValue.globalPosition.x, this.rootFrame.x) -
+      this.rootFrame.x;
+    this.onPlaybackButtonTarget({
+      x: this.isUltraCompact() ?
+        FullPlayerPagerSpec.artworkTargetX(layoutX, this.pagePosition, this.pageWidth()) :
+        layoutX,
+      y: LayoutLength.toNumber(newValue.globalPosition.y, this.rootFrame.y) - this.rootFrame.y,
+      width: LayoutLength.toNumber(newValue.width, fallbackSize),
+      height: LayoutLength.toNumber(newValue.height, fallbackSize)
+    });
   }
 
   private currentArtistLabel(): string {
@@ -403,6 +466,9 @@ export struct FullPlayerContent {
   }
 
   private headerTextInset(page: FullPlayerPage): number {
+    if (this.isUltraCompact()) {
+      return PlayerLayoutSpec.FULL_PLAYER_PAGE_HORIZONTAL_INSET;
+    }
     if (this.paneCount === 1 || page === FullPlayerPage.QUEUE) {
       return PlayerLayoutSpec.FULL_PLAYER_PAGE_HORIZONTAL_INSET +
         PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE + PlayerLayoutSpec.FULL_PLAYER_HEADER_TEXT_GAP;
@@ -692,52 +758,30 @@ export struct FullPlayerContent {
   }
 
   @Builder
+  private PlayerArtwork() {
+    Stack() {
+      if (this.showArtwork) {
+        PlayerHeroArtwork({
+          playerStore: this.playerStore,
+          slotSize: this.artworkSlotSize(),
+          cornerRadius: PlayerLayoutSpec.FULL_ARTWORK_RADIUS,
+          interpolation: this.heroArtworkInterpolation
+        })
+      }
+    }
+    .width(this.artworkSlotSize())
+    .height(this.artworkSlotSize())
+    .borderRadius(this.artworkSlotSize() / 2)
+    .accessibilityText('歌曲封面，长按打开更多操作')
+    .onAreaChange((_oldValue: Area, newValue: Area) => this.recordArtworkTarget(newValue))
+  }
+
+  @Builder
   private CoverPage() {
     Column() {
       Blank().layoutWeight(1)
 
-      Stack() {
-        if (this.showArtwork) {
-          PlayerHeroArtwork({
-            playerStore: this.playerStore,
-            slotSize: this.artworkSlotSize(),
-            cornerRadius: PlayerLayoutSpec.FULL_ARTWORK_RADIUS,
-            interpolation: this.heroArtworkInterpolation
-          })
-        }
-      }
-      .width(this.artworkSlotSize())
-      .height(this.artworkSlotSize())
-      .borderRadius(this.artworkSlotSize() / 2)
-      .onAreaChange((_oldValue: Area, newValue: Area) => {
-        if (!this.measuresArtworkTarget) {
-          return;
-        }
-        const pageWidth = this.pageWidth();
-        const layoutTarget: PlayerPoint = {
-          x: LayoutLength.toNumber(
-            newValue.globalPosition.x,
-            this.previousCenteredArtworkTarget.x + this.rootFrame.x
-          ) - this.rootFrame.x,
-          y: LayoutLength.toNumber(
-            newValue.globalPosition.y,
-            this.previousArtworkTarget.y + this.rootFrame.y
-          ) - this.rootFrame.y
-        };
-        const centeredTarget: PlayerPoint = {
-          x: layoutTarget.x,
-          y: layoutTarget.y
-        };
-        this.onCenteredArtworkTarget(centeredTarget);
-        this.onArtworkTarget({
-          x: FullPlayerPagerSpec.pagerArtworkTargetX(
-            centeredTarget.x,
-            this.pagePosition,
-            pageWidth
-          ),
-          y: centeredTarget.y
-        });
-      })
+      this.PlayerArtwork()
 
       Blank().layoutWeight(1)
 
@@ -832,27 +876,10 @@ export struct FullPlayerContent {
             .opacity(this.showPlaybackButton ? 1 : 0)
             .enabled(this.showPlaybackButton)
             .onAreaChange((_oldValue: Area, newValue: Area) => {
-              if (!this.measuresArtworkTarget) {
-                return;
-              }
-              this.onPlaybackButtonTarget({
-                x: LayoutLength.toNumber(
-                  newValue.globalPosition.x,
-                  this.rootFrame.x
-                ) - this.rootFrame.x,
-                y: LayoutLength.toNumber(
-                  newValue.globalPosition.y,
-                  this.rootFrame.y
-                ) - this.rootFrame.y,
-                width: LayoutLength.toNumber(
-                  newValue.width,
-                  PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE
-                ),
-                height: LayoutLength.toNumber(
-                  newValue.height,
-                  PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE
-                )
-              });
+              this.recordPlaybackButtonTarget(
+                newValue,
+                PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE
+              );
             })
           PlayerTransportButton({ playerStore: this.playerStore,
             action: PlayerTransportAction.NEXT, buttonSize: 52,
@@ -958,17 +985,188 @@ export struct FullPlayerContent {
   }
 
   @Builder
+  private UltraCompactMetadata() {
+    Column({ space: 4 }) {
+      if (this.measuresArtworkTarget) {
+        Text(this.currentTitleLabel())
+          .fontSize(PlayerLayoutSpec.FULL_PLAYER_TITLE_SIZE)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(this.contentColor())
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+      } else {
+        PlayerTrackMarquee({
+          playerStore: this.playerStore,
+          active: this.marqueeActive,
+          titleColor: this.contentColor(),
+          titleSize: PlayerLayoutSpec.FULL_PLAYER_TITLE_SIZE,
+          titleWeight: FontWeight.Bold,
+          animateColor: true
+        })
+      }
+      Text(this.currentArtistLabel())
+        .fontSize(PlayerLayoutSpec.FULL_PLAYER_ARTIST_SIZE)
+        .fontColor(this.playerStore.themeOnPrimaryMedium())
+        .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .id('ultra_compact_player_artist_action')
+        .accessibilityText('查看艺术家、专辑艺术家或专辑')
+        .onClick(() => {
+          if (!this.measuresArtworkTarget && this.playerStore.currentTrack !== undefined) {
+            this.onOpenTrackActions(
+              this.playerStore.currentTrack.id,
+              'ultra_compact_player_artist_action'
+            );
+          }
+        })
+    }
+    .alignItems(HorizontalAlign.Start)
+    .justifyContent(FlexAlign.End)
+    .width('100%')
+    .height(PlayerLayoutSpec.ULTRA_COMPACT_TEXT_HEIGHT)
+  }
+
+  @Builder
+  private UltraCompactControls() {
+    Column({ space: PlayerLayoutSpec.ULTRA_COMPACT_CONTROL_GAP }) {
+      PlayerTransportButton({
+        playerStore: this.playerStore,
+        action: PlayerTransportAction.PREVIOUS,
+        buttonSize: PlayerLayoutSpec.ULTRA_COMPACT_TRANSPORT_BUTTON_SIZE,
+        contentColor: this.contentColor()
+      })
+      PlayerPlaybackButton({
+        playerStore: this.playerStore,
+        buttonSize: PlayerLayoutSpec.ULTRA_COMPACT_PLAYBACK_BUTTON_SIZE
+      })
+        .opacity(this.showPlaybackButton ? 1 : 0)
+        .enabled(this.showPlaybackButton)
+        .onAreaChange((_oldValue: Area, newValue: Area) => {
+          this.recordPlaybackButtonTarget(
+            newValue,
+            PlayerLayoutSpec.ULTRA_COMPACT_PLAYBACK_BUTTON_SIZE
+          );
+        })
+      PlayerTransportButton({
+        playerStore: this.playerStore,
+        action: PlayerTransportAction.NEXT,
+        buttonSize: PlayerLayoutSpec.ULTRA_COMPACT_TRANSPORT_BUTTON_SIZE,
+        contentColor: this.contentColor()
+      })
+    }
+    .alignItems(HorizontalAlign.Center)
+    .justifyContent(FlexAlign.Center)
+    .width(PlayerLayoutSpec.ULTRA_COMPACT_CONTROL_RAIL_WIDTH)
+  }
+
+  @Builder
+  private UltraCompactCoverPage() {
+    Row({ space: PlayerLayoutSpec.ULTRA_COMPACT_COLUMN_GAP }) {
+      Column() {
+        this.PlayerArtwork()
+        Blank().layoutWeight(1)
+        this.UltraCompactMetadata()
+      }
+      .layoutWeight(1)
+      .height('100%')
+      .alignItems(HorizontalAlign.Start)
+
+      this.UltraCompactControls()
+    }
+    .width(this.pageWidth())
+    .height('100%')
+    .alignItems(VerticalAlign.Center)
+    .padding({
+      left: PlayerLayoutSpec.ULTRA_COMPACT_HORIZONTAL_INSET,
+      right: PlayerLayoutSpec.ULTRA_COMPACT_HORIZONTAL_INSET,
+      top: this.topInset + PlayerLayoutSpec.ULTRA_COMPACT_VERTICAL_INSET,
+      bottom: this.bottomInset + PlayerLayoutSpec.ULTRA_COMPACT_VERTICAL_INSET
+    })
+  }
+
+  @Builder
+  private UltraCompactQueueHeader() {
+    Row({ space: 8 }) {
+      Text('当前播放队列')
+        .fontSize(20)
+        .fontWeight(FontWeight.Bold)
+        .fontColor(this.playerStore.themeOnPrimary())
+        .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .layoutWeight(1)
+      Text(`${this.playerStore.queueSize} 首`)
+        .fontSize(13)
+        .fontColor(this.playerStore.themeOnPrimaryMedium())
+        .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+    }
+    .width(this.pageWidth())
+    .height(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE)
+    .padding({
+      left: PlayerLayoutSpec.FULL_PLAYER_PAGE_HORIZONTAL_INSET,
+      right: PlayerLayoutSpec.FULL_PLAYER_PAGE_HORIZONTAL_INSET
+    })
+  }
+
+  @Builder
+  private UltraCompactQueuePage() {
+    Column() {
+      this.UltraCompactQueueHeader()
+      Stack() {
+        this.QueuePage()
+      }
+      .layoutWeight(1)
+      .width('100%')
+    }
+    .width(this.pageWidth())
+    .height('100%')
+    .padding({
+      top: this.topInset + PlayerLayoutSpec.ULTRA_COMPACT_VERTICAL_INSET
+    })
+  }
+
+  @Builder
+  private UltraCompactLyricsPage() {
+    Column() {
+      this.LyricsHeader()
+      Stack() {
+        this.LyricsPage()
+      }
+      .layoutWeight(1)
+      .width('100%')
+    }
+    .width(this.pageWidth())
+    .height('100%')
+    .padding({
+      top: this.topInset + PlayerLayoutSpec.ULTRA_COMPACT_VERTICAL_INSET
+    })
+  }
+
+  @Builder
   private PlayerPages() {
     Stack({ alignContent: Alignment.TopStart }) {
       Row({ space: 0 }) {
         if (this.shouldRenderPage(FullPlayerPage.QUEUE)) {
-          this.QueuePage()
+          if (this.isUltraCompact()) {
+            this.UltraCompactQueuePage()
+          } else {
+            this.QueuePage()
+          }
         } else {
           Stack().width(this.pageWidth()).height('100%')
         }
-        this.CoverPage()
+        if (this.isUltraCompact()) {
+          this.UltraCompactCoverPage()
+        } else {
+          this.CoverPage()
+        }
         if (this.shouldRenderPage(FullPlayerPage.LYRICS)) {
-          this.LyricsPage()
+          if (this.isUltraCompact()) {
+            this.UltraCompactLyricsPage()
+          } else {
+            this.LyricsPage()
+          }
         } else {
           Stack().width(this.pageWidth()).height('100%')
         }
@@ -983,7 +1181,9 @@ export struct FullPlayerContent {
   }
 
   build() {
-    if (this.measuresArtworkTarget) {
+    if (this.isUltraCompact()) {
+      this.PlayerPages()
+    } else if (this.measuresArtworkTarget) {
       Column() {
         Stack().height(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE)
         Stack({ alignContent: Alignment.TopStart }) {

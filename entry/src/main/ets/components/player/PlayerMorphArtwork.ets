@@ -4,9 +4,10 @@ import { AppSettingsStore } from '../../settings/AppSettingsStore';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { ArtworkLayout } from '../artwork/ArtworkLayout';
 import { ArtworkFitMode, ArtworkView } from '../artwork/ArtworkView';
+import { ContextPreviewGeometry } from '../library/ContextPreviewGeometry';
+import { LibraryContextInteraction } from '../library/LibraryContextInteraction';
 import {
   FullPlayerPage,
-  FullPlayerPagerSpec,
   PlayerFrame,
   PlayerLayoutSpec,
   PlayerMorphPhase,
@@ -19,6 +20,9 @@ import {
 export struct PlayerMorphArtwork {
   @ObjectLink playerStore: PlayerStore;
   @ObjectLink settingsStore: AppSettingsStore;
+  @State contextMenuShown: boolean = false;
+  private contextPreviewWidth: number = 0;
+  private contextPreviewHeight: number = 0;
   @Prop expandProgress: number = 0;
   @Prop morphPhase: PlayerMorphPhase = PlayerMorphPhase.IDLE;
   @Prop fullPlayerPage: FullPlayerPage = FullPlayerPage.COVER;
@@ -41,6 +45,10 @@ export struct PlayerMorphArtwork {
   @Prop sourceHeight: number = 0;
   sourceProvider: () => image.PixelMap | ResourceStr =
     (): ResourceStr => $r('app.media.default_album_cover');
+  @Builder
+  private EmptyMenu() {
+  }
+  @BuilderParam contextMenu: () => void = this.EmptyMenu;
 
   private clamp(value: number, minimum: number, maximum: number): number {
     return Math.max(minimum, Math.min(maximum, value));
@@ -57,11 +65,11 @@ export struct PlayerMorphArtwork {
 
   private fullArtworkSlotSize(): number {
     return PlayerLayoutSpec.fullArtworkSize(
-      FullPlayerPagerSpec.pageSpan(this.fullPlayerFrame.width,
-        FullPlayerPagerSpec.paneCount(this.fullPlayerFrame.width, this.fullPlayerFrame.height)),
+      this.fullPlayerFrame.width,
       this.fullPlayerFrame.height,
       this.topInset,
-      this.bottomInset
+      this.bottomInset,
+      this.renderedPaneCount
     );
   }
 
@@ -112,6 +120,11 @@ export struct PlayerMorphArtwork {
     return 1 - (1 - fullPlayerScale) * this.clamp(this.expandProgress, 0, 1);
   }
 
+  private contextPreviewRestScale(): number {
+    return this.playerStore.keepsActivePlaybackVisual() ?
+      1 : PlayerMotionSpec.PAUSED_ARTWORK_SCALE;
+  }
+
   private artworkX(): number {
     return this.morphValue(
       this.frozenMiniPlayerFrame.x + PlayerLayoutSpec.MINI_ARTWORK_INSET,
@@ -134,6 +147,40 @@ export struct PlayerMorphArtwork {
       this.renderedPaneCount,
       this.expandProgress
     );
+  }
+
+  private showContextMenu(event: GestureEvent): void {
+    const frame = ContextPreviewGeometry.fromGesture(event);
+    if (frame.width <= 0 || frame.height <= 0) {
+      console.warn('Unable to measure player artwork context preview');
+      return;
+    }
+    this.contextPreviewWidth = frame.width;
+    this.contextPreviewHeight = frame.height;
+    LibraryContextInteraction.triggerHaptic('Player artwork');
+    this.contextMenuShown = true;
+  }
+
+  @Builder
+  private ContextMenuPreview() {
+    Stack() {
+      ArtworkView({
+        sourceProvider: (): image.PixelMap | ResourceStr => this.source(),
+        sourceRevision: this.playerStore.heroArtworkRevision,
+        sourceWidth: this.sourceWidth,
+        sourceHeight: this.sourceHeight,
+        slotWidth: this.contextPreviewWidth,
+        slotAspectRatio: this.contextPreviewHeight > 0 ?
+          this.contextPreviewWidth / this.contextPreviewHeight : 1,
+        fitMode: ArtworkFitMode.COVER,
+        resolvedCornerRadius: this.sourceRadius(),
+        shadowEnabled: false,
+        interpolation: this.settingsStore.highQualityHeroArtwork ?
+          ImageInterpolation.High : ImageInterpolation.Medium
+      })
+    }
+    .width(this.contextPreviewWidth)
+    .height(this.contextPreviewHeight)
   }
 
   build() {
@@ -175,8 +222,35 @@ export struct PlayerMorphArtwork {
     }
     .width(this.artworkWidth())
     .height(this.artworkHeight())
-    .opacity(this.artworkOpacity())
+    .opacity(this.contextMenuShown ? 0 : this.artworkOpacity())
     .position({ x: 0, y: 0 })
     .translate({ x: this.artworkX(), y: this.artworkY() })
+    .accessibilityText('歌曲封面，长按打开更多操作')
+    .bindContextMenu(
+      this.contextMenuShown,
+      this.contextMenu(),
+      {
+        placement: Placement.BottomRight,
+        preview: this.ContextMenuPreview,
+        previewBorderRadius: 0,
+        layoutRegionMargin: ContextPreviewGeometry.layoutRegionMargin(),
+        previewAnimationOptions: {
+          scale: [
+            this.contextPreviewRestScale(),
+            PlayerMotionSpec.ARTWORK_CONTEXT_PREVIEW_END_SCALE
+          ]
+        },
+        previewScaleMode: PreviewScaleMode.CONSTANT,
+        onDisappear: (): void => {
+          this.contextMenuShown = false;
+        }
+      }
+    )
+    .gesture(
+      LongPressGesture({
+        repeat: false,
+        duration: LibraryContextInteraction.LONG_PRESS_DURATION
+      }).onAction((event: GestureEvent): void => this.showContextMenu(event))
+    )
   }
 }

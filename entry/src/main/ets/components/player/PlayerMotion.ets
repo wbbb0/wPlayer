@@ -39,6 +39,11 @@ export enum FullPlayerPage {
   LYRICS = 2
 }
 
+export enum FullPlayerLayoutMode {
+  REGULAR,
+  ULTRA_COMPACT
+}
+
 export class MiniPlayerClickSuppressor {
   private suppressClickUntil: number = 0;
   private static readonly SUPPRESS_CLICK_AFTER_PAN_MS: number = 180;
@@ -209,6 +214,7 @@ export class PlayerMotionSpec {
   static readonly PAUSED_ARTWORK_SHADOW_RADIUS: number = 38;
   static readonly PAUSED_ARTWORK_SHADOW_OFFSET_Y: number = 20;
   static readonly PAUSED_ARTWORK_SCALE: number = 0.90;
+  static readonly ARTWORK_CONTEXT_PREVIEW_END_SCALE: number = 1.10;
   static readonly ARTWORK_STATE_SPRING_RESPONSE: number = 0.36;
   static readonly ARTWORK_STATE_SPRING_DAMPING: number = 0.72;
   static readonly LYRIC_FOCUS_DURATION: number = 100;
@@ -299,14 +305,69 @@ export class PlayerLayoutSpec {
   static readonly FULL_PLAYER_TITLE_SIZE: number = 23;
   static readonly FULL_PLAYER_ARTIST_SIZE: number = 14;
   static readonly FULL_PLAYER_PROGRESS_TRACK_THICKNESS: number = 3;
+  static readonly ULTRA_COMPACT_MIN_REGULAR_ARTWORK_SIZE: number = 120;
+  static readonly ULTRA_COMPACT_HORIZONTAL_INSET: number = 14;
+  static readonly ULTRA_COMPACT_VERTICAL_INSET: number = 14;
+  static readonly ULTRA_COMPACT_CONTROL_RAIL_WIDTH: number = 56;
+  static readonly ULTRA_COMPACT_COLUMN_GAP: number = 12;
+  static readonly ULTRA_COMPACT_TEXT_HEIGHT: number = 48;
+  static readonly ULTRA_COMPACT_TEXT_GAP: number = 10;
+  static readonly ULTRA_COMPACT_TRANSPORT_BUTTON_SIZE: number = 44;
+  static readonly ULTRA_COMPACT_PLAYBACK_BUTTON_SIZE: number = 52;
+  static readonly ULTRA_COMPACT_CONTROL_GAP: number = 12;
   static readonly MORPH_SURFACE_RADIUS: number = 28;
 
-  static fullArtworkSize(rootWidth: number, rootHeight: number,
+  static fullPlayerLayoutMode(rootWidth: number, rootHeight: number,
+    paneCount: number, topInset: number = 0, bottomInset: number = 0): FullPlayerLayoutMode {
+    if (rootWidth <= 0 || rootHeight <= 0 || paneCount !== 1) {
+      return FullPlayerLayoutMode.REGULAR;
+    }
+    const pageWidth = FullPlayerPagerSpec.pageSpan(rootWidth, paneCount);
+    const regularArtworkSize = Math.min(
+      pageWidth - PlayerLayoutSpec.FULL_PLAYER_HORIZONTAL_INSET * 2,
+      rootHeight - topInset - bottomInset -
+        PlayerLayoutSpec.FULL_PLAYER_NON_ARTWORK_HEIGHT
+    );
+    return regularArtworkSize < PlayerLayoutSpec.ULTRA_COMPACT_MIN_REGULAR_ARTWORK_SIZE ?
+      FullPlayerLayoutMode.ULTRA_COMPACT : FullPlayerLayoutMode.REGULAR;
+  }
+
+  static ultraCompactArtworkSize(rootWidth: number, rootHeight: number,
     topInset: number, bottomInset: number): number {
+    const contentWidth = rootWidth - PlayerLayoutSpec.ULTRA_COMPACT_HORIZONTAL_INSET * 2;
+    const artworkWidth = contentWidth -
+      PlayerLayoutSpec.ULTRA_COMPACT_CONTROL_RAIL_WIDTH -
+      PlayerLayoutSpec.ULTRA_COMPACT_COLUMN_GAP;
+    const contentHeight = rootHeight - topInset - bottomInset -
+      PlayerLayoutSpec.ULTRA_COMPACT_VERTICAL_INSET * 2;
+    const artworkHeight = contentHeight -
+      PlayerLayoutSpec.ULTRA_COMPACT_TEXT_HEIGHT -
+      PlayerLayoutSpec.ULTRA_COMPACT_TEXT_GAP;
+    return Math.max(1, Math.min(artworkWidth, artworkHeight));
+  }
+
+  static fullArtworkSize(rootWidth: number, rootHeight: number,
+    topInset: number, bottomInset: number, paneCount: number = 1): number {
     if (rootWidth <= 0 || rootHeight <= 0) {
       return PlayerLayoutSpec.FULL_ARTWORK_SIZE;
     }
-    const widthLimit = rootWidth - PlayerLayoutSpec.FULL_PLAYER_HORIZONTAL_INSET * 2;
+    if (PlayerLayoutSpec.fullPlayerLayoutMode(
+      rootWidth,
+      rootHeight,
+      paneCount,
+      topInset,
+      bottomInset
+    ) ===
+      FullPlayerLayoutMode.ULTRA_COMPACT) {
+      return PlayerLayoutSpec.ultraCompactArtworkSize(
+        rootWidth,
+        rootHeight,
+        topInset,
+        bottomInset
+      );
+    }
+    const pageWidth = FullPlayerPagerSpec.pageSpan(rootWidth, paneCount);
+    const widthLimit = pageWidth - PlayerLayoutSpec.FULL_PLAYER_HORIZONTAL_INSET * 2;
     const heightLimit = rootHeight - topInset - bottomInset -
       PlayerLayoutSpec.FULL_PLAYER_NON_ARTWORK_HEIGHT;
     return Math.max(1, Math.min(widthLimit, heightLimit));

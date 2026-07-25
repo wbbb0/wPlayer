@@ -16,8 +16,10 @@ import { ArtworkRepairPolicy } from '../main/ets/library/artwork/ArtworkRepairPo
 import { ImportPreparationPolicy, PreparedItemState } from
   '../main/ets/library/importer/ImportPreparationPolicy';
 import {
+  FullPlayerLayoutMode,
   FullPlayerPage,
   FullPlayerPagerSpec,
+  PlayerLayoutSpec,
   PlayerMorphPhase,
   PlayerMorphVisualSpec,
   PlayerMotionSpec
@@ -131,6 +133,18 @@ export default function riskRegressionTest() {
       expect(FullPlayerPagerSpec.positionForPage(FullPlayerPage.LYRICS, 2)).assertEqual(1);
       expect(Math.round(FullPlayerPagerSpec.swipeCompletionDistance(360))).assertEqual(43);
       expect(FullPlayerPagerSpec.swipeCompletionDistance(800)).assertEqual(56);
+    });
+
+    it('uses a dedicated ultra-compact full-player geometry only when one pane cannot fit', 0, () => {
+      expect(PlayerLayoutSpec.fullPlayerLayoutMode(326, 326, 1))
+        .assertEqual(FullPlayerLayoutMode.ULTRA_COMPACT);
+      expect(PlayerLayoutSpec.fullArtworkSize(326, 326, 0, 0, 1)).assertEqual(230);
+      expect(PlayerLayoutSpec.fullPlayerLayoutMode(360, 720, 1))
+        .assertEqual(FullPlayerLayoutMode.REGULAR);
+      expect(PlayerLayoutSpec.fullPlayerLayoutMode(360, 460, 1, 80, 0))
+        .assertEqual(FullPlayerLayoutMode.ULTRA_COMPACT);
+      expect(PlayerLayoutSpec.fullPlayerLayoutMode(720, 360, 2))
+        .assertEqual(FullPlayerLayoutMode.REGULAR);
     });
 
     it('keeps the expanded compact mini player clear of collapsed navigation', 0, () => {

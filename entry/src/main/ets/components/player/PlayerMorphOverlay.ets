@@ -1,7 +1,7 @@
 import { DynamicColor } from '../../appearance/DynamicColor';
 import { image } from '@kit.ImageKit';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
-import { PlayerStore } from '../../playback/model/PlaybackModels';
+import { PlayerStore, QueueTrack } from '../../playback/model/PlaybackModels';
 import { AppSettingsStore } from '../../settings/AppSettingsStore';
 import { FullPlayerContent } from './FullPlayerContent';
 import { MiniPlayerContent } from './MiniPlayerSurface';
@@ -10,9 +10,14 @@ import { PlayerMorphArtwork } from './PlayerMorphArtwork';
 import { PlayerMorphController } from './PlayerMorphController';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import {
+  AvailabilityState,
   LibraryNavigationTarget,
   TrackListItem
 } from '../../library/model/LibraryModels';
+import {
+  CurrentTrackActionMenu,
+  CurrentTrackActionMenuParams
+} from './PlayerActionMenus';
 import {
   FULL_PLAYER_HORIZONTAL_GESTURE_HOST_ID,
   FULL_PLAYER_VERTICAL_GESTURE_HOST_ID,
@@ -41,6 +46,50 @@ export struct PlayerMorphOverlay {
     (_track: TrackListItem): void => {};
   onNavigateLibrary: (target: LibraryNavigationTarget) => void =
     (_target: LibraryNavigationTarget): void => {};
+
+  private currentTrackItem(track: QueueTrack): TrackListItem {
+    return {
+      id: track.id,
+      title: track.title,
+      artistDisplay: track.artistDisplay,
+      albumDisplay: track.albumDisplay,
+      durationMs: track.durationMs,
+      trackNumber: 0,
+      discNumber: 0,
+      smallArtworkHash: track.smallArtworkHash,
+      smallArtworkPath: track.smallArtworkPath,
+      artworkHash: track.largeArtworkHash,
+      artworkPath: track.largeArtworkPath,
+      artworkWidth: track.artworkWidth,
+      artworkHeight: track.artworkHeight,
+      palettePrimary: track.palettePrimary,
+      paletteSecondary: track.paletteSecondary,
+      paletteAccent: track.paletteAccent,
+      sectionKey: '',
+      availability: AvailabilityState.AVAILABLE
+    };
+  }
+
+  @Builder
+  private CurrentTrackMenu() {
+    CurrentTrackActionMenu(new CurrentTrackActionMenuParams(
+      this.playerStore.currentTrack !== undefined,
+      this.playerStore.completedCollectionEnabled,
+      () => playbackRuntime.insertCurrentNext(),
+      () => playbackRuntime.appendCurrentToQueue(),
+      () => {
+        if (this.playerStore.currentTrack !== undefined) {
+          this.onRequestAddToPlaylist([this.playerStore.currentTrack.id]);
+        }
+      },
+      () => {
+        if (this.playerStore.currentTrack !== undefined) {
+          this.onOpenTrackDetails(this.currentTrackItem(this.playerStore.currentTrack));
+        }
+      },
+      (enabled: boolean): void => playbackRuntime.setCompletedCollectionEnabled(enabled)
+    ))
+  }
 
   @Builder
   private MorphPlayer() {
@@ -164,7 +213,8 @@ export struct PlayerMorphOverlay {
       fullPlayerArtworkTarget: this.controller.fullPlayerArtworkTarget(),
       sourceWidth: this.controller.morphArtworkSourceWidth(),
       sourceHeight: this.controller.morphArtworkSourceHeight(),
-      sourceProvider: (): image.PixelMap | ResourceStr => this.controller.morphArtworkSource()
+      sourceProvider: (): image.PixelMap | ResourceStr => this.controller.morphArtworkSource(),
+      contextMenu: this.CurrentTrackMenu
     })
   }
 
@@ -197,7 +247,7 @@ export struct PlayerMorphOverlay {
         }
         .width('100%')
         .height('100%')
-        .hitTestBehavior(HitTestMode.None)
+        .hitTestBehavior(HitTestMode.Transparent)
       }
       .width('100%')
       .height('100%')

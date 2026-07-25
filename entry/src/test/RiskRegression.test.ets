@@ -177,6 +177,12 @@ export default function riskRegressionTest() {
         .assertLarger(ImportConcurrencyPolicy.FILE_PERMISSION_BATCH_SIZE);
       expect(ImportConcurrencyPolicy.FILE_CHECK_CLASSIFY_CHUNK_SIZE)
         .assertLess(512);
+      expect(ImportConcurrencyPolicy.FILE_CHECK_PIPELINE_CONCURRENCY)
+        .assertLarger(0);
+      expect(ImportConcurrencyPolicy.FILE_CHECK_PIPELINE_CONCURRENCY)
+        .assertLess(ImportConcurrencyPolicy.FILE_PERMISSION_BATCH_SIZE);
+      expect(ImportConcurrencyPolicy.FILE_CHECK_ARTWORK_QUEUE_CAPACITY)
+        .assertLarger(ImportConcurrencyPolicy.ARTWORK_PROCESS_CONCURRENCY);
     });
 
     it('keeps explicit import detail categories and safely classifies legacy results', 0, () => {

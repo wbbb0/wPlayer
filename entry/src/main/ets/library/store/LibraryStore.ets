@@ -596,6 +596,23 @@ export class LibraryStore {
   }
 
   cancelFileCheck(): void {
+    if (this.checkingFiles) {
+      this.fileCheckProgress = {
+        total: this.fileCheckProgress.total,
+        processed: this.fileCheckProgress.processed,
+        updated: this.fileCheckProgress.updated,
+        unavailable: this.fileCheckProgress.unavailable,
+        recovered: this.fileCheckProgress.recovered,
+        artworkRebuilt: this.fileCheckProgress.artworkRebuilt,
+        artworkTotal: this.fileCheckProgress.artworkTotal,
+        artworkProcessed: this.fileCheckProgress.artworkProcessed,
+        artworkSkipped: this.fileCheckProgress.artworkSkipped,
+        artworkFailed: this.fileCheckProgress.artworkFailed,
+        metadataCompleted: this.fileCheckProgress.metadataCompleted,
+        cancelled: true,
+        currentName: '正在停止音乐文件检查'
+      };
+    }
     this.importer?.cancel();
   }
 

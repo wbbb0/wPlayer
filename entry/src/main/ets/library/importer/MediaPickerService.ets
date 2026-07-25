@@ -13,6 +13,7 @@ export interface PersistPermissionResult {
 export interface ReadPermissionResult {
   successfulUris: Array<string>;
   failedUris: Array<string>;
+  cancelled: boolean;
 }
 
 export interface ReadPermissionProgress {
@@ -22,6 +23,19 @@ export interface ReadPermissionProgress {
 }
 
 export type ReadPermissionProgressCallback = (progress: ReadPermissionProgress) => void;
+
+export interface ReadPermissionBatchResult {
+  successfulUris: Array<string>;
+  failedUris: Array<string>;
+}
+
+export type ReadPermissionBatchCallback =
+  (result: ReadPermissionBatchResult) => Promise<void>;
+
+export interface ReadPermissionControl {
+  shouldContinue?: () => boolean;
+  onBatch?: ReadPermissionBatchCallback;
+}
 
 /**
  * Opens the system document picker for the audio formats supported by the
@@ -86,30 +100,55 @@ export async function ensureReadPermission(uri: string): Promise<boolean> {
 
 /** Checks and activates persisted permissions in batches for library maintenance. */
 export async function ensureReadPermissions(uris: Array<string>,
-  onProgress?: ReadPermissionProgressCallback): Promise<ReadPermissionResult> {
+  onProgress?: ReadPermissionProgressCallback,
+  control?: ReadPermissionControl): Promise<ReadPermissionResult> {
   const successfulUris: Array<string> = [];
   const failedUris: Array<string> = [];
   const uniqueUris = uniqueNonEmptyUris(uris, failedUris);
-  let processed = 0;
+  let cancelled = false;
   for (let offset = 0; offset < uniqueUris.length;
     offset += ImportConcurrencyPolicy.FILE_PERMISSION_BATCH_SIZE) {
+    if (!shouldContinue(control)) {
+      cancelled = true;
+      break;
+    }
     const batch = uniqueUris.slice(
       offset,
       Math.min(offset + ImportConcurrencyPolicy.FILE_PERMISSION_BATCH_SIZE, uniqueUris.length)
     );
+    const batchSuccessful: Array<string> = [];
+    const batchFailed: Array<string> = [];
     const startedAt = Date.now();
-    await checkAndActivateBatch(batch, successfulUris, failedUris);
-    processed += batch.length;
+    await checkAndActivateBatch(
+      batch,
+      batchSuccessful,
+      batchFailed,
+      control?.shouldContinue
+    );
+    successfulUris.push(...batchSuccessful);
+    failedUris.push(...batchFailed);
+    if (batchSuccessful.length > 0 || batchFailed.length > 0) {
+      await control?.onBatch?.({
+        successfulUris: batchSuccessful,
+        failedUris: batchFailed
+      });
+    }
+    const processed = successfulUris.length + failedUris.length;
     onProgress?.({
       processed: processed,
       total: uniqueUris.length,
       batchDurationMs: Date.now() - startedAt
     });
+    if (!shouldContinue(control)) {
+      cancelled = true;
+      break;
+    }
     await yieldToUi();
   }
   return {
     successfulUris: successfulUris,
-    failedUris: failedUris
+    failedUris: failedUris,
+    cancelled: cancelled
   };
 }
 
@@ -160,26 +199,43 @@ async function persistIndividually(uris: Array<string>, successfulUris: Array<st
 }
 
 async function checkAndActivateBatch(uris: Array<string>, successfulUris: Array<string>,
-  failedUris: Array<string>): Promise<void> {
-  if (uris.length === 0) {
+  failedUris: Array<string>, shouldContinue?: () => boolean): Promise<void> {
+  if (uris.length === 0 || !canContinue(shouldContinue)) {
     return;
   }
   let persisted: Array<boolean>;
   try {
     persisted = await fileShare.checkPersistentPermission(createReadPolicies(uris));
   } catch (_) {
+    if (!canContinue(shouldContinue)) {
+      return;
+    }
     if (uris.length === 1) {
       if (await ensureReadPermission(uris[0])) {
-        successfulUris.push(uris[0]);
+        if (canContinue(shouldContinue)) {
+          successfulUris.push(uris[0]);
+        }
       } else {
-        failedUris.push(uris[0]);
+        if (canContinue(shouldContinue)) {
+          failedUris.push(uris[0]);
+        }
       }
       return;
     }
     const middle = Math.floor(uris.length / 2);
-    await checkAndActivateBatch(uris.slice(0, middle), successfulUris, failedUris);
+    await checkAndActivateBatch(
+      uris.slice(0, middle), successfulUris, failedUris, shouldContinue
+    );
+    if (!canContinue(shouldContinue)) {
+      return;
+    }
     await yieldToUi();
-    await checkAndActivateBatch(uris.slice(middle), successfulUris, failedUris);
+    await checkAndActivateBatch(
+      uris.slice(middle), successfulUris, failedUris, shouldContinue
+    );
+    return;
+  }
+  if (!canContinue(shouldContinue)) {
     return;
   }
   const activatableUris: Array<string> = [];
@@ -190,28 +246,53 @@ async function checkAndActivateBatch(uris: Array<string>, successfulUris: Array<
       failedUris.push(uris[index]);
     }
   }
+  if (!canContinue(shouldContinue)) {
+    return;
+  }
   await yieldToUi();
-  await activateBatchWithSplit(activatableUris, successfulUris, failedUris);
+  await activateBatchWithSplit(
+    activatableUris, successfulUris, failedUris, shouldContinue
+  );
 }
 
 async function activateBatchWithSplit(uris: Array<string>, successfulUris: Array<string>,
-  failedUris: Array<string>): Promise<void> {
-  if (uris.length === 0) {
+  failedUris: Array<string>, shouldContinue?: () => boolean): Promise<void> {
+  if (uris.length === 0 || !canContinue(shouldContinue)) {
     return;
   }
   try {
     await fileShare.activatePermission(createReadPolicies(uris));
-    successfulUris.push(...uris);
+    if (canContinue(shouldContinue)) {
+      successfulUris.push(...uris);
+    }
   } catch (_) {
+    if (!canContinue(shouldContinue)) {
+      return;
+    }
     if (uris.length === 1) {
       failedUris.push(uris[0]);
       return;
     }
     const middle = Math.floor(uris.length / 2);
-    await activateBatchWithSplit(uris.slice(0, middle), successfulUris, failedUris);
+    await activateBatchWithSplit(
+      uris.slice(0, middle), successfulUris, failedUris, shouldContinue
+    );
+    if (!canContinue(shouldContinue)) {
+      return;
+    }
     await yieldToUi();
-    await activateBatchWithSplit(uris.slice(middle), successfulUris, failedUris);
+    await activateBatchWithSplit(
+      uris.slice(middle), successfulUris, failedUris, shouldContinue
+    );
   }
+}
+
+function shouldContinue(control?: ReadPermissionControl): boolean {
+  return control?.shouldContinue === undefined || control.shouldContinue();
+}
+
+function canContinue(shouldContinue?: () => boolean): boolean {
+  return shouldContinue === undefined || shouldContinue();
 }
 
 function uniqueNonEmptyUris(uris: Array<string>, failedUris: Array<string>): Array<string> {

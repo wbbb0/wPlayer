@@ -1,6 +1,17 @@
 Set-StrictMode -Version 2
 $ErrorActionPreference = 'Stop'
 
+# MCP hosts intentionally inherit a reduced environment. Restore only the
+# standard Windows module path required by CimCmdlets and NetTCPIP discovery.
+if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT -and
+  -not [Environment]::GetEnvironmentVariable('PSModulePath', 'Process')) {
+  $windowsDirectory = [Environment]::GetEnvironmentVariable('SystemRoot', 'Process')
+  if ($windowsDirectory) {
+    $systemModulePath = Join-Path $windowsDirectory 'System32\WindowsPowerShell\v1.0\Modules'
+    [Environment]::SetEnvironmentVariable('PSModulePath', $systemModulePath, 'Process')
+  }
+}
+
 function ConvertTo-CommandDisplay {
   param(
     [Parameter(Mandatory = $true)]
@@ -416,6 +427,89 @@ function Invoke-HarmonyHdc {
     -AllowFailure:$AllowFailure -DryRun:$DryRun
 }
 
+function Get-HarmonyDisplay {
+  [CmdletBinding()]
+  param(
+    [string]$Target = '',
+
+    [string]$HdcPath = 'hdc'
+  )
+
+  $resolvedTarget = Resolve-HarmonyTarget -Target $Target -HdcPath $HdcPath
+  $command = Invoke-HarmonyHdc -Target $resolvedTarget -HdcPath $HdcPath `
+    -CommandArguments @('shell', 'hidumper', '-s', 'WindowManagerService', '-a', '-a')
+  $rectangles = @()
+  foreach ($line in $command.output) {
+    foreach ($match in [regex]::Matches(
+      $line,
+      '\[\s*(-?\d+)\s+(-?\d+)\s+(\d+)\s+(\d+)\s*\]'
+    )) {
+      $width = [int]$match.Groups[3].Value
+      $height = [int]$match.Groups[4].Value
+      if ($width -gt 0 -and $height -gt 0) {
+        $rectangles += [pscustomobject]@{
+          x = [int]$match.Groups[1].Value
+          y = [int]$match.Groups[2].Value
+          width = $width
+          height = $height
+          area = [long]$width * [long]$height
+        }
+      }
+    }
+  }
+
+  if ($rectangles.Count -eq 0) {
+    throw 'WindowManagerService did not report a usable display rectangle.'
+  }
+  $display = @($rectangles | Sort-Object `
+    @{ Expression = { if ($_.x -eq 0 -and $_.y -eq 0) { 1 } else { 0 } }; Descending = $true }, `
+    @{ Expression = 'area'; Descending = $true })[0]
+  return [pscustomobject]@{
+    action = 'display'
+    target = $resolvedTarget
+    width = $display.width
+    height = $display.height
+    orientation = if ($display.width -gt $display.height) { 'landscape' } else { 'portrait' }
+    source = 'WindowManagerService'
+    command = [pscustomobject]@{
+      command = $command.command
+      exitCode = $command.exitCode
+      durationMs = $command.durationMs
+      dryRun = $command.dryRun
+    }
+  }
+}
+
+function ConvertFrom-HarmonyNormalizedPoint {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(0.0, 1.0)]
+    [double]$XRatio,
+
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(0.0, 1.0)]
+    [double]$YRatio,
+
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(1, 100000)]
+    [int]$DisplayWidth,
+
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(1, 100000)]
+    [int]$DisplayHeight
+  )
+
+  return [pscustomobject]@{
+    x = [int][Math]::Round($XRatio * ($DisplayWidth - 1))
+    y = [int][Math]::Round($YRatio * ($DisplayHeight - 1))
+    xRatio = $XRatio
+    yRatio = $YRatio
+    displayWidth = $DisplayWidth
+    displayHeight = $DisplayHeight
+  }
+}
+
 function Send-HarmonyTap {
   [CmdletBinding()]
   param(
@@ -792,6 +886,68 @@ function Invoke-HarmonyGestureCapture {
   }
 }
 
+function Get-HarmonyScenarioPoint {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$Step,
+
+    [Parameter(Mandatory = $true)]
+    [string]$XName,
+
+    [Parameter(Mandatory = $true)]
+    [string]$YName,
+
+    [Parameter(Mandatory = $true)]
+    [string]$XRatioName,
+
+    [Parameter(Mandatory = $true)]
+    [string]$YRatioName,
+
+    [Parameter(Mandatory = $true)]
+    [ref]$Display,
+
+    [string]$Target,
+
+    [string]$HdcPath,
+
+    [switch]$DryRun
+  )
+
+  $xProperty = $Step.PSObject.Properties[$XName]
+  $yProperty = $Step.PSObject.Properties[$YName]
+  $xRatioProperty = $Step.PSObject.Properties[$XRatioName]
+  $yRatioProperty = $Step.PSObject.Properties[$YRatioName]
+  $hasPixels = $null -ne $xProperty -or $null -ne $yProperty
+  $hasRatios = $null -ne $xRatioProperty -or $null -ne $yRatioProperty
+  if ($hasPixels) {
+    if ($null -eq $xProperty -or $null -eq $yProperty -or $hasRatios) {
+      throw "Scenario step must specify either ${XName}/${YName} or ${XRatioName}/${YRatioName}."
+    }
+    return [pscustomobject]@{
+      x = [int]$xProperty.Value
+      y = [int]$yProperty.Value
+      normalized = $false
+    }
+  }
+  if ($null -eq $xRatioProperty -or $null -eq $yRatioProperty) {
+    throw "Scenario step must specify either ${XName}/${YName} or ${XRatioName}/${YRatioName}."
+  }
+  if ($null -eq $Display.Value) {
+    if ($DryRun) {
+      throw 'Normalized scenario coordinates in dry-run mode require displayWidth and displayHeight.'
+    }
+    $Display.Value = Get-HarmonyDisplay -Target $Target -HdcPath $HdcPath
+  }
+  $point = ConvertFrom-HarmonyNormalizedPoint -XRatio ([double]$xRatioProperty.Value) `
+    -YRatio ([double]$yRatioProperty.Value) -DisplayWidth $Display.Value.width `
+    -DisplayHeight $Display.Value.height
+  return [pscustomobject]@{
+    x = $point.x
+    y = $point.y
+    normalized = $true
+  }
+}
+
 function Invoke-HarmonyScenario {
   [CmdletBinding()]
   param(
@@ -836,6 +992,19 @@ function Invoke-HarmonyScenario {
     }
   }
   $absoluteOutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
+  $scenarioDisplay = $null
+  $configuredDisplayWidth = Get-OptionalProperty -Object $scenario -Name 'displayWidth'
+  $configuredDisplayHeight = Get-OptionalProperty -Object $scenario -Name 'displayHeight'
+  if ($null -ne $configuredDisplayWidth -or $null -ne $configuredDisplayHeight) {
+    if ($null -eq $configuredDisplayWidth -or $null -eq $configuredDisplayHeight) {
+      throw 'Scenario displayWidth and displayHeight must be specified together.'
+    }
+    $scenarioDisplay = [pscustomobject]@{
+      width = [int]$configuredDisplayWidth
+      height = [int]$configuredDisplayHeight
+      source = 'scenario'
+    }
+  }
 
   $supportedActions = @('tap', 'swipe', 'wait', 'screenshot', 'gestureCapture')
   foreach ($step in $steps) {
@@ -868,18 +1037,24 @@ function Invoke-HarmonyScenario {
 
     switch ($action) {
       'tap' {
+        $point = Get-HarmonyScenarioPoint -Step $step -XName 'x' -YName 'y' `
+          -XRatioName 'xRatio' -YRatioName 'yRatio' -Display ([ref]$scenarioDisplay) `
+          -Target $resolvedTarget -HdcPath $HdcPath -DryRun:$DryRun
         $event = Send-HarmonyTap `
-          -X ([int](Get-OptionalProperty $step 'x' -1)) `
-          -Y ([int](Get-OptionalProperty $step 'y' -1)) `
+          -X $point.x -Y $point.y `
           -PressMs ([int](Get-OptionalProperty $step 'pressMs' 100)) `
           -Target $resolvedTarget -HdcPath $HdcPath -DryRun:$DryRun
       }
       'swipe' {
+        $startPoint = Get-HarmonyScenarioPoint -Step $step -XName 'startX' -YName 'startY' `
+          -XRatioName 'startXRatio' -YRatioName 'startYRatio' -Display ([ref]$scenarioDisplay) `
+          -Target $resolvedTarget -HdcPath $HdcPath -DryRun:$DryRun
+        $endPoint = Get-HarmonyScenarioPoint -Step $step -XName 'endX' -YName 'endY' `
+          -XRatioName 'endXRatio' -YRatioName 'endYRatio' -Display ([ref]$scenarioDisplay) `
+          -Target $resolvedTarget -HdcPath $HdcPath -DryRun:$DryRun
         $event = Send-HarmonySwipe `
-          -StartX ([int](Get-OptionalProperty $step 'startX' 0)) `
-          -StartY ([int](Get-OptionalProperty $step 'startY' 0)) `
-          -EndX ([int](Get-OptionalProperty $step 'endX' 0)) `
-          -EndY ([int](Get-OptionalProperty $step 'endY' 0)) `
+          -StartX $startPoint.x -StartY $startPoint.y `
+          -EndX $endPoint.x -EndY $endPoint.y `
           -DurationMs ([int](Get-OptionalProperty $step 'durationMs' 300)) `
           -KeepMs ([int](Get-OptionalProperty $step 'keepMs' 0)) `
           -Target $resolvedTarget -HdcPath $HdcPath -DryRun:$DryRun
@@ -909,13 +1084,17 @@ function Invoke-HarmonyScenario {
         }
       }
       'gestureCapture' {
+        $startPoint = Get-HarmonyScenarioPoint -Step $step -XName 'startX' -YName 'startY' `
+          -XRatioName 'startXRatio' -YRatioName 'startYRatio' -Display ([ref]$scenarioDisplay) `
+          -Target $resolvedTarget -HdcPath $HdcPath -DryRun:$DryRun
+        $endPoint = Get-HarmonyScenarioPoint -Step $step -XName 'endX' -YName 'endY' `
+          -XRatioName 'endXRatio' -YRatioName 'endYRatio' -Display ([ref]$scenarioDisplay) `
+          -Target $resolvedTarget -HdcPath $HdcPath -DryRun:$DryRun
         $captureAtMs = @((Get-OptionalProperty $step 'captureAtMs' @()) | ForEach-Object { [int]$_ })
         $prefix = [string](Get-OptionalProperty $step 'prefix' ('gesture-{0:D2}' -f $index))
         $event = Invoke-HarmonyGestureCapture `
-          -StartX ([int](Get-OptionalProperty $step 'startX' 0)) `
-          -StartY ([int](Get-OptionalProperty $step 'startY' 0)) `
-          -EndX ([int](Get-OptionalProperty $step 'endX' 0)) `
-          -EndY ([int](Get-OptionalProperty $step 'endY' 0)) `
+          -StartX $startPoint.x -StartY $startPoint.y `
+          -EndX $endPoint.x -EndY $endPoint.y `
           -DurationMs ([int](Get-OptionalProperty $step 'durationMs' 300)) `
           -KeepMs ([int](Get-OptionalProperty $step 'keepMs' 0)) `
           -CaptureAtMs $captureAtMs -OutputDirectory $absoluteOutputDirectory `
@@ -1375,6 +1554,8 @@ Export-ModuleMember -Function @(
   'Get-HarmonyDevice',
   'Get-DevEcoEmulator',
   'Resolve-DevEcoEmulatorTarget',
+  'Get-HarmonyDisplay',
+  'ConvertFrom-HarmonyNormalizedPoint',
   'Get-HarmonyAgentHealth',
   'Get-HarmonyPackage',
   'Resolve-HarmonyTarget',

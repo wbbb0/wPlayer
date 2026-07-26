@@ -12,6 +12,14 @@
       "type": "string",
       "default": "artifacts"
     },
+    "displayWidth": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "displayHeight": {
+      "type": "integer",
+      "minimum": 1
+    },
     "steps": {
       "type": "array",
       "minItems": 1,
@@ -73,6 +81,16 @@
               "type": "integer",
               "minimum": 0
             },
+            "xRatio": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "yRatio": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
             "pressMs": {
               "type": "integer",
               "minimum": 1,
@@ -81,9 +99,15 @@
             }
           },
           "required": [
-            "action",
-            "x",
-            "y"
+            "action"
+          ],
+          "oneOf": [
+            {
+              "required": ["x", "y"]
+            },
+            {
+              "required": ["xRatio", "yRatio"]
+            }
           ]
         }
       ]
@@ -111,6 +135,26 @@
         "endY": {
           "type": "integer"
         },
+        "startXRatio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "startYRatio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "endXRatio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "endYRatio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
         "durationMs": {
           "type": "integer",
           "minimum": 1,
@@ -125,11 +169,15 @@
         }
       },
       "required": [
-        "action",
-        "startX",
-        "startY",
-        "endX",
-        "endY"
+        "action"
+      ],
+      "oneOf": [
+        {
+          "required": ["startX", "startY", "endX", "endY"]
+        },
+        {
+          "required": ["startXRatio", "startYRatio", "endXRatio", "endYRatio"]
+        }
       ]
     },
     "wait": {
@@ -195,6 +243,26 @@
         "endY": {
           "type": "integer"
         },
+        "startXRatio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "startYRatio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "endXRatio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "endYRatio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
         "durationMs": {
           "type": "integer",
           "minimum": 1,
@@ -221,11 +289,15 @@
       },
       "required": [
         "action",
-        "startX",
-        "startY",
-        "endX",
-        "endY",
         "captureAtMs"
+      ],
+      "oneOf": [
+        {
+          "required": ["startX", "startY", "endX", "endY"]
+        },
+        {
+          "required": ["startXRatio", "startYRatio", "endXRatio", "endYRatio"]
+        }
       ]
     }
   }

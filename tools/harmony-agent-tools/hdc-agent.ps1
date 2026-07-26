@@ -4,12 +4,19 @@ param(
   [ValidateSet(
     'targets',
     'emulators',
+    'display',
     'doctor',
     'tap',
     'swipe',
     'screenshot',
     'gesture-capture',
     'scenario',
+    'image-info',
+    'crop-image',
+    'compare-images',
+    'assert-image',
+    'test-local',
+    'test-device',
     'build',
     'packages',
     'install',
@@ -27,11 +34,19 @@ param(
 
   [int]$X,
   [int]$Y,
+  [Nullable[double]]$XRatio,
+  [Nullable[double]]$YRatio,
   [int]$PressMs = 100,
   [int]$StartX,
   [int]$StartY,
   [int]$EndX,
   [int]$EndY,
+  [Nullable[double]]$StartXRatio,
+  [Nullable[double]]$StartYRatio,
+  [Nullable[double]]$EndXRatio,
+  [Nullable[double]]$EndYRatio,
+  [Nullable[int]]$DisplayWidth,
+  [Nullable[int]]$DisplayHeight,
   [int]$DurationMs = 300,
   [int]$KeepMs = 0,
 
@@ -42,15 +57,40 @@ param(
   [string[]]$CaptureAtMs = @(),
   [string]$ScenarioPath = '',
 
+  [string]$ImagePath = '',
+  [string]$BaselinePath = '',
+  [string]$ActualPath = '',
+  [string]$DifferencePath = '',
+  [int]$CropX,
+  [int]$CropY,
+  [int]$CropWidth,
+  [int]$CropHeight,
+  [ValidateRange(0, 255)]
+  [int]$PixelTolerance = 0,
+  [ValidateRange(0.0, 1.0)]
+  [double]$MaxDifferenceRatio = 0.0,
+  [ValidateRange(0.0, 1.0)]
+  [double]$MaxMeanError = 0.0,
+
   [string]$ProjectRoot = '',
   [string]$Product = 'default',
+  [string]$HvigorPath = '',
+  [string]$SdkHome = '',
   [ValidateSet('debug', 'release')]
   [string]$BuildMode = 'debug',
   [string[]]$Modules = @(),
   [string]$PackagePath = '',
+  [string]$MainPackagePath = '',
+  [string]$TestPackagePath = '',
   [string]$Bundle = '',
   [string]$Ability = '',
   [string]$Module = '',
+  [string]$TestModule = 'entry_test',
+  [string]$Runner = 'OpenHarmonyTestRunner',
+  [ValidateRange(1000, 3600000)]
+  [int]$TestTimeoutMs = 60000,
+  [ValidateRange(1, 3600)]
+  [int]$WaitSeconds = 120,
   [ValidateRange(1, 5000)]
   [int]$Tail = 200,
   [string]$Level = '',
@@ -75,6 +115,8 @@ Set-StrictMode -Version 2
 $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot 'HdcAgentTools.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'ImageAgentTools.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'TestAgentTools.psm1') -Force -DisableNameChecking
 
 function Require-Value {
   param(
@@ -109,10 +151,69 @@ function ConvertTo-TimePoints {
   return [int[]]$timePoints
 }
 
+$displayForCoordinates = $null
+function Resolve-InputPoint {
+  param(
+    [string]$XName,
+    [string]$YName,
+    [string]$XRatioName,
+    [string]$YRatioName
+  )
+
+  $hasX = $PSBoundParametersFromCli.ContainsKey($XName)
+  $hasY = $PSBoundParametersFromCli.ContainsKey($YName)
+  $hasXRatio = $PSBoundParametersFromCli.ContainsKey($XRatioName)
+  $hasYRatio = $PSBoundParametersFromCli.ContainsKey($YRatioName)
+  if ($hasX -or $hasY) {
+    if (-not ($hasX -and $hasY) -or $hasXRatio -or $hasYRatio) {
+      throw "Specify either -${XName}/-${YName} or -${XRatioName}/-${YRatioName}."
+    }
+    return [pscustomobject]@{
+      x = [int]$PSBoundParametersFromCli[$XName]
+      y = [int]$PSBoundParametersFromCli[$YName]
+      normalized = $false
+    }
+  }
+  if (-not ($hasXRatio -and $hasYRatio)) {
+    throw "Specify either -${XName}/-${YName} or -${XRatioName}/-${YRatioName}."
+  }
+
+  if ($null -eq $displayForCoordinates) {
+    if ($null -ne $DisplayWidth -or $null -ne $DisplayHeight) {
+      if ($null -eq $DisplayWidth -or $null -eq $DisplayHeight) {
+        throw '-DisplayWidth and -DisplayHeight must be specified together.'
+      }
+      $displayForCoordinates = [pscustomobject]@{
+        width = [int]$DisplayWidth
+        height = [int]$DisplayHeight
+        source = 'explicit'
+      }
+    } elseif ($DryRun) {
+      throw 'Normalized coordinates in dry-run mode require -DisplayWidth and -DisplayHeight.'
+    } else {
+      $displayForCoordinates = Get-HarmonyDisplay -Target $Target -HdcPath $HdcPath
+    }
+  }
+
+  $point = ConvertFrom-HarmonyNormalizedPoint `
+    -XRatio ([double]$PSBoundParametersFromCli[$XRatioName]) `
+    -YRatio ([double]$PSBoundParametersFromCli[$YRatioName]) `
+    -DisplayWidth $displayForCoordinates.width -DisplayHeight $displayForCoordinates.height
+  return [pscustomobject]@{
+    x = $point.x
+    y = $point.y
+    xRatio = $point.xRatio
+    yRatio = $point.yRatio
+    normalized = $true
+    display = $displayForCoordinates
+  }
+}
+
 try {
+  $PSBoundParametersFromCli = $PSBoundParameters
   $deviceCommands = @(
-    'tap', 'swipe', 'screenshot', 'gesture-capture', 'scenario',
-    'install', 'start', 'stop', 'logs', 'deploy'
+    'display', 'tap', 'swipe', 'screenshot', 'gesture-capture', 'scenario',
+    'install', 'start', 'stop', 'logs', 'deploy', 'test-device'
   )
   if ($Command -in $deviceCommands -and $EmulatorName.Length -gt 0) {
     if ($Target.Length -gt 0) {
@@ -132,18 +233,53 @@ try {
     'emulators' {
       $result = @(Get-DevEcoEmulator -HdcPath $HdcPath)
     }
+    'display' {
+      if ($DryRun) {
+        throw "The 'display' command does not support -DryRun."
+      }
+      $result = Get-HarmonyDisplay -Target $Target -HdcPath $HdcPath
+    }
     'doctor' {
       $result = Get-HarmonyAgentHealth -ProjectRoot $ProjectRoot -HdcPath $HdcPath `
         -DevEcoCliPath $DevEcoCliPath
     }
     'tap' {
-      $result = Send-HarmonyTap -X $X -Y $Y -PressMs $PressMs `
+      $point = Resolve-InputPoint -XName 'X' -YName 'Y' `
+        -XRatioName 'XRatio' -YRatioName 'YRatio'
+      $result = Send-HarmonyTap -X $point.x -Y $point.y -PressMs $PressMs `
         -Target $Target -HdcPath $HdcPath -DryRun:$DryRun
+      if ($point.normalized) {
+        $result | Add-Member -NotePropertyName normalized -NotePropertyValue ([pscustomobject]@{
+          xRatio = $point.xRatio
+          yRatio = $point.yRatio
+          displayWidth = $point.display.width
+          displayHeight = $point.display.height
+          displaySource = $point.display.source
+        })
+      }
     }
     'swipe' {
-      $result = Send-HarmonySwipe -StartX $StartX -StartY $StartY `
-        -EndX $EndX -EndY $EndY -DurationMs $DurationMs -KeepMs $KeepMs `
+      $startPoint = Resolve-InputPoint -XName 'StartX' -YName 'StartY' `
+        -XRatioName 'StartXRatio' -YRatioName 'StartYRatio'
+      $endPoint = Resolve-InputPoint -XName 'EndX' -YName 'EndY' `
+        -XRatioName 'EndXRatio' -YRatioName 'EndYRatio'
+      if ($startPoint.normalized -ne $endPoint.normalized) {
+        throw 'Swipe start and end must both use pixels or both use normalized coordinates.'
+      }
+      $result = Send-HarmonySwipe -StartX $startPoint.x -StartY $startPoint.y `
+        -EndX $endPoint.x -EndY $endPoint.y -DurationMs $DurationMs -KeepMs $KeepMs `
         -Target $Target -HdcPath $HdcPath -DryRun:$DryRun
+      if ($startPoint.normalized) {
+        $result | Add-Member -NotePropertyName normalized -NotePropertyValue ([pscustomobject]@{
+          startXRatio = $startPoint.xRatio
+          startYRatio = $startPoint.yRatio
+          endXRatio = $endPoint.xRatio
+          endYRatio = $endPoint.yRatio
+          displayWidth = $startPoint.display.width
+          displayHeight = $startPoint.display.height
+          displaySource = $startPoint.display.source
+        })
+      }
     }
     'screenshot' {
       Require-Value -Name 'OutputPath' -Value $OutputPath
@@ -153,8 +289,15 @@ try {
     'gesture-capture' {
       Require-Value -Name 'OutputDirectory' -Value $OutputDirectory
       $captureTimes = ConvertTo-TimePoints -Values $CaptureAtMs
-      $result = Invoke-HarmonyGestureCapture -StartX $StartX -StartY $StartY `
-        -EndX $EndX -EndY $EndY -DurationMs $DurationMs -KeepMs $KeepMs `
+      $startPoint = Resolve-InputPoint -XName 'StartX' -YName 'StartY' `
+        -XRatioName 'StartXRatio' -YRatioName 'StartYRatio'
+      $endPoint = Resolve-InputPoint -XName 'EndX' -YName 'EndY' `
+        -XRatioName 'EndXRatio' -YRatioName 'EndYRatio'
+      if ($startPoint.normalized -ne $endPoint.normalized) {
+        throw 'Gesture start and end must both use pixels or both use normalized coordinates.'
+      }
+      $result = Invoke-HarmonyGestureCapture -StartX $startPoint.x -StartY $startPoint.y `
+        -EndX $endPoint.x -EndY $endPoint.y -DurationMs $DurationMs -KeepMs $KeepMs `
         -CaptureAtMs $captureTimes -OutputDirectory $OutputDirectory -Prefix $Prefix `
         -Target $Target -HdcPath $HdcPath -DryRun:$DryRun
     }
@@ -163,6 +306,65 @@ try {
       $result = Invoke-HarmonyScenario -Path $ScenarioPath -Target $Target `
         -OutputDirectory $OutputDirectory -HdcPath $HdcPath `
         -ValidateOnly:$ValidateOnly -DryRun:$DryRun
+    }
+    'image-info' {
+      Require-Value -Name 'ImagePath' -Value $ImagePath
+      $result = Get-AgentImageInfo -ImagePath $ImagePath
+    }
+    'crop-image' {
+      Require-Value -Name 'ImagePath' -Value $ImagePath
+      Require-Value -Name 'OutputPath' -Value $OutputPath
+      foreach ($name in @('CropX', 'CropY', 'CropWidth', 'CropHeight')) {
+        if (-not $PSBoundParametersFromCli.ContainsKey($name)) {
+          throw "-${name} is required for command '${Command}'."
+        }
+      }
+      $result = Crop-AgentImage -ImagePath $ImagePath -OutputPath $OutputPath `
+        -X $CropX -Y $CropY -Width $CropWidth -Height $CropHeight
+    }
+    'compare-images' {
+      Require-Value -Name 'BaselinePath' -Value $BaselinePath
+      Require-Value -Name 'ActualPath' -Value $ActualPath
+      $result = Compare-AgentImage -BaselinePath $BaselinePath -ActualPath $ActualPath `
+        -DifferencePath $DifferencePath -PixelTolerance $PixelTolerance `
+        -MaxDifferenceRatio $MaxDifferenceRatio -MaxMeanError $MaxMeanError
+    }
+    'assert-image' {
+      Require-Value -Name 'BaselinePath' -Value $BaselinePath
+      Require-Value -Name 'ActualPath' -Value $ActualPath
+      $result = Assert-AgentImage -BaselinePath $BaselinePath -ActualPath $ActualPath `
+        -DifferencePath $DifferencePath -PixelTolerance $PixelTolerance `
+        -MaxDifferenceRatio $MaxDifferenceRatio -MaxMeanError $MaxMeanError
+    }
+    'test-local' {
+      Require-Value -Name 'ProjectRoot' -Value $ProjectRoot
+      $testModuleName = if ($Module.Length -gt 0) { $Module } else { 'entry' }
+      $result = Invoke-HarmonyLocalTest -ProjectRoot $ProjectRoot -Module $testModuleName `
+        -Product $Product -HvigorPath $HvigorPath -SdkHome $SdkHome -DryRun:$DryRun
+    }
+    'test-device' {
+      Require-Value -Name 'ProjectRoot' -Value $ProjectRoot
+      Require-Value -Name 'Bundle' -Value $Bundle
+      $testModuleName = if ($Module.Length -gt 0) { $Module } else { 'entry' }
+      $parameters = @{
+        ProjectRoot = $ProjectRoot
+        Bundle = $Bundle
+        Module = $testModuleName
+        TestModule = $TestModule
+        Runner = $Runner
+        Product = $Product
+        MainPackagePath = $MainPackagePath
+        TestPackagePath = $TestPackagePath
+        Target = $Target
+        HdcPath = $HdcPath
+        HvigorPath = $HvigorPath
+        SdkHome = $SdkHome
+        TestTimeoutMs = $TestTimeoutMs
+        WaitSeconds = $WaitSeconds
+        SkipBuild = $SkipBuild
+        DryRun = $DryRun
+      }
+      $result = Invoke-HarmonyDeviceTest @parameters
     }
     'build' {
       Require-Value -Name 'ProjectRoot' -Value $ProjectRoot

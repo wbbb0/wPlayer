@@ -1,0 +1,19 @@
+{
+  "name": "harmony-agent-tools",
+  "version": "0.1.0",
+  "description": "Harmony Agent Tools plugin",
+  "author": {
+    "name": "Local developer"
+  },
+  "keywords": ["HarmonyOS", "HDC", "device automation", "screenshots"],
+  "interface": {
+    "displayName": "Harmony Agent Tools",
+    "shortDescription": "Control HarmonyOS targets and return screenshots.",
+    "longDescription": "Agent-facing HarmonyOS device automation for normalized touch input, timed screenshots, visual comparisons, build, deploy and tests.",
+    "developerName": "Local developer",
+    "category": "Developer Tools",
+    "capabilities": ["Interactive", "Read", "Write"],
+    "defaultPrompt": "Inspect my HarmonyOS target, interact with it, and return screenshots."
+  },
+  "mcpServers": "./.mcp.json"
+}

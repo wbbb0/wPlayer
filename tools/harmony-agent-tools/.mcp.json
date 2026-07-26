@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "harmony-agent-tools": {
+      "command": "node",
+      "args": [
+        "./mcp/server.mjs"
+      ]
+    }
+  }
+}

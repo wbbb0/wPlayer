@@ -34,6 +34,13 @@ function Invoke-CliJson {
 $tap = Invoke-CliJson @('tap', '-X', '100', '-Y', '200', '-DryRun')
 Assert-True ($tap.action -eq 'tap' -and $tap.command.dryRun) 'tap dry-run failed.'
 
+$normalizedTap = Invoke-CliJson @(
+  'tap', '-XRatio', '0.5', '-YRatio', '0.5',
+  '-DisplayWidth', '1320', '-DisplayHeight', '2856', '-DryRun'
+)
+Assert-True ($normalizedTap.x -eq 660 -and $normalizedTap.y -eq 1428) `
+  'normalized tap conversion failed.'
+
 $emulatorTap = Invoke-CliJson @(
   'tap', '-EmulatorName', 'Pura 90', '-X', '100', '-Y', '200', '-DryRun'
 )
@@ -45,6 +52,14 @@ $swipe = Invoke-CliJson @(
   '-DurationMs', '350', '-DryRun'
 )
 Assert-True ($swipe.action -eq 'swipe' -and $swipe.command.dryRun) 'swipe dry-run failed.'
+
+$normalizedSwipe = Invoke-CliJson @(
+  'swipe', '-StartXRatio', '0.25', '-StartYRatio', '0.75',
+  '-EndXRatio', '0.75', '-EndYRatio', '0.25',
+  '-DisplayWidth', '1320', '-DisplayHeight', '2856', '-DryRun'
+)
+Assert-True ($normalizedSwipe.start.x -eq 330 -and $normalizedSwipe.end.x -eq 989) `
+  'normalized swipe conversion failed.'
 
 $screenshot = Invoke-CliJson @(
   'screenshot', '-OutputPath', (Join-Path $toolRoot 'artifacts\smoke.jpeg'), '-DelayMs', '25',
@@ -96,6 +111,17 @@ $deploy = Invoke-CliJson @(
 )
 Assert-True ($deploy.action -eq 'deploy' -and $deploy.dryRun) 'deploy dry-run failed.'
 
+$localTest = Invoke-CliJson @('test-local', '-ProjectRoot', $repositoryRoot, '-DryRun')
+Assert-True ($localTest.action -eq 'localTest' -and $localTest.command.dryRun) `
+  'local test dry-run failed.'
+
+$deviceTest = Invoke-CliJson @(
+  'test-device', '-ProjectRoot', $repositoryRoot, '-Bundle', 'com.example.app',
+  '-SkipBuild', '-DryRun'
+)
+Assert-True ($deviceTest.action -eq 'deviceTest' -and $deviceTest.test.dryRun) `
+  'device test dry-run failed.'
+
 $example = Join-Path $toolRoot 'examples\tap-and-capture.json'
 $validation = Invoke-CliJson @('scenario', '-ScenarioPath', $example, '-ValidateOnly')
 Assert-True ($validation.valid -and $validation.stepCount -eq 4) 'scenario validation failed.'
@@ -106,6 +132,83 @@ $scenario = Invoke-CliJson @(
 )
 Assert-True ($scenario.action -eq 'scenario' -and $scenario.events.Count -eq 4) `
   'scenario dry-run failed.'
+
+$normalizedExample = Join-Path $toolRoot 'examples\normalized-coordinates.json'
+$normalizedScenario = Invoke-CliJson @(
+  'scenario', '-ScenarioPath', $normalizedExample,
+  '-OutputDirectory', (Join-Path $toolRoot 'artifacts\normalized-smoke'), '-DryRun'
+)
+Assert-True (
+  $normalizedScenario.events[0].result.x -eq 660 -and
+  $normalizedScenario.events[1].result.end.x -eq 989
+) 'normalized scenario dry-run failed.'
+
+Add-Type -AssemblyName System.Drawing
+$imageDirectory = Join-Path $toolRoot 'artifacts\image-smoke'
+[void](New-Item -ItemType Directory -Path $imageDirectory -Force)
+$baselinePath = Join-Path $imageDirectory 'baseline.png'
+$actualPath = Join-Path $imageDirectory 'actual.png'
+$cropPath = Join-Path $imageDirectory 'crop.png'
+$differencePath = Join-Path $imageDirectory 'difference.png'
+$bitmap = New-Object System.Drawing.Bitmap(8, 8)
+try {
+  $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+  try {
+    $graphics.Clear([System.Drawing.Color]::Black)
+  } finally {
+    $graphics.Dispose()
+  }
+  $bitmap.Save($baselinePath, [System.Drawing.Imaging.ImageFormat]::Png)
+  $bitmap.Save($actualPath, [System.Drawing.Imaging.ImageFormat]::Png)
+} finally {
+  $bitmap.Dispose()
+}
+
+$imageInfo = Invoke-CliJson @('image-info', '-ImagePath', $baselinePath)
+Assert-True ($imageInfo.width -eq 8 -and $imageInfo.height -eq 8) 'image info failed.'
+
+$crop = Invoke-CliJson @(
+  'crop-image', '-ImagePath', $baselinePath, '-OutputPath', $cropPath,
+  '-CropX', '2', '-CropY', '2', '-CropWidth', '4', '-CropHeight', '4'
+)
+Assert-True ($crop.rectangle.width -eq 4 -and (Test-Path -LiteralPath $crop.path)) `
+  'image crop failed.'
+
+$comparison = Invoke-CliJson @(
+  'compare-images', '-BaselinePath', $baselinePath, '-ActualPath', $actualPath,
+  '-DifferencePath', $differencePath
+)
+Assert-True ($comparison.passed -and $comparison.metrics.differentPixels -eq 0) `
+  'identical image comparison failed.'
+
+$assertion = Invoke-CliJson @(
+  'assert-image', '-BaselinePath', $baselinePath, '-ActualPath', $actualPath
+)
+Assert-True ($assertion.passed -and $assertion.action -eq 'assertImage') `
+  'image assertion failed.'
+
+$changedBitmap = New-Object System.Drawing.Bitmap(8, 8)
+try {
+  $changedGraphics = [System.Drawing.Graphics]::FromImage($changedBitmap)
+  try {
+    $changedGraphics.Clear([System.Drawing.Color]::Black)
+  } finally {
+    $changedGraphics.Dispose()
+  }
+  $changedBitmap.SetPixel(3, 3, [System.Drawing.Color]::White)
+  $changedBitmap.Save($actualPath, [System.Drawing.Imaging.ImageFormat]::Png)
+} finally {
+  $changedBitmap.Dispose()
+}
+$changedComparison = Invoke-CliJson @(
+  'compare-images', '-BaselinePath', $baselinePath, '-ActualPath', $actualPath,
+  '-DifferencePath', $differencePath
+)
+Assert-True (
+  -not $changedComparison.passed -and
+  $changedComparison.metrics.differentPixels -eq 1 -and
+  (Test-Path -LiteralPath $changedComparison.difference)
+) 'changed pixel comparison failed.'
 
 $previousErrorActionPreference = $ErrorActionPreference
 try {
@@ -123,6 +226,6 @@ Assert-True (($invalidOutput -join [Environment]::NewLine) -match '\.jpg or \.jp
 
 [pscustomobject]@{
   result = 'PASS'
-  checks = 15
+  checks = 25
   deviceRequired = $false
 } | ConvertTo-Json

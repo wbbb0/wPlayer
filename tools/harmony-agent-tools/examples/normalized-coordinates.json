@@ -1,0 +1,20 @@
+{
+  "displayWidth": 1320,
+  "displayHeight": 2856,
+  "outputDirectory": "../artifacts/normalized-example",
+  "steps": [
+    {
+      "action": "tap",
+      "xRatio": 0.5,
+      "yRatio": 0.5
+    },
+    {
+      "action": "swipe",
+      "startXRatio": 0.25,
+      "startYRatio": 0.75,
+      "endXRatio": 0.75,
+      "endYRatio": 0.25,
+      "durationMs": 400
+    }
+  ]
+}

@@ -49,12 +49,20 @@ after an externally terminated process is not the underlying build result.
 With an already configured signed build and an authorized connected target:
 
 ```powershell
-hdc list targets -v
-hdc install -r entry/build/default/outputs/default/entry-default-signed.hap
-hdc shell aa start -a EntryAbility -b com.wabebabo.wplayer
+./tools/harmony-agent-tools/hdc-agent.cmd doctor -ProjectRoot .
+./tools/harmony-agent-tools/hdc-agent.cmd emulators
+./tools/harmony-agent-tools/hdc-agent.cmd packages -ProjectRoot .
+./tools/harmony-agent-tools/hdc-agent.cmd install -Target <target> `
+  -PackagePath entry/build/default/outputs/default/entry-default-signed.hap
+./tools/harmony-agent-tools/hdc-agent.cmd start -Target <target> `
+  -Bundle com.wabebabo.wplayer -Ability EntryAbility
+./tools/harmony-agent-tools/hdc-agent.cmd logs -Target <target> `
+  -Bundle com.wabebabo.wplayer -Level E -Tail 200
 ```
 
-Inspect application logs after launch. Do not uninstall an application to resolve signing mismatch without approval.
+The wrapper emits JSON, requires explicit selection when several targets exist and never uninstalls automatically.
+Raw `hdc` remains a fallback when an operation is not exposed. Do not uninstall an application to resolve signing
+mismatch without approval.
 
 ## Required gates by change
 
@@ -127,4 +135,3 @@ Add these incrementally:
 
 Full HarmonyOS builds require a Windows environment with the configured SDK. Use an appropriately provisioned runner
 rather than weakening SDK or signing requirements.
-

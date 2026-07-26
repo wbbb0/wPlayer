@@ -124,6 +124,8 @@ Minimum rules:
   format or device scenario works unless it was actually tested there.
 - If a required device, emulator, SDK tool or test runner is unavailable, report that limitation rather than
   implying success.
+- Prefer `tools/harmony-agent-tools/hdc-agent.cmd` for structured target discovery, touch, screenshots, build
+  artifacts, install/start/stop and bounded logs; use raw HDC only when the wrapper does not expose the operation.
 
 ## Git and signing safety
 

@@ -96,24 +96,29 @@ Remove-Item $signingBackup
 
 ## 安装与启动
 
-确认设备连接：
+Agent 优先使用仓库内的结构化封装检查环境、模拟器端口和构建产物：
 
 ```powershell
-hdc list targets -v
+./tools/harmony-agent-tools/hdc-agent.cmd doctor -ProjectRoot .
+./tools/harmony-agent-tools/hdc-agent.cmd emulators
+./tools/harmony-agent-tools/hdc-agent.cmd packages -ProjectRoot .
 ```
 
 安装签名 HAP：
 
 ```powershell
-hdc install -r entry/build/default/outputs/default/entry-default-signed.hap
+./tools/harmony-agent-tools/hdc-agent.cmd install -Target <target> `
+  -PackagePath entry/build/default/outputs/default/entry-default-signed.hap
 ```
 
 启动主 Ability：
 
 ```powershell
-hdc shell aa start -a EntryAbility -b com.wabebabo.wplayer
+./tools/harmony-agent-tools/hdc-agent.cmd start -Target <target> `
+  -Bundle com.wabebabo.wplayer -Ability EntryAbility
 ```
 
+封装输出 JSON，并在存在多个目标时要求显式指定 `-Target`。未覆盖的设备操作仍可使用原始 `hdc`。
 如果设备中已安装使用不同签名身份的同包名应用，覆盖安装会失败。卸载应用会删除其本地数据，不应为了构建验证自动卸载。
 
 ## 测试

@@ -1,0 +1,23 @@
+{
+  "$schema": "../scenario.schema.json",
+  "outputDirectory": "../artifacts/example",
+  "steps": [
+    {
+      "action": "screenshot",
+      "name": "before.jpeg"
+    },
+    {
+      "action": "tap",
+      "x": 600,
+      "y": 900
+    },
+    {
+      "action": "wait",
+      "milliseconds": 250
+    },
+    {
+      "action": "screenshot",
+      "name": "after.jpeg"
+    }
+  ]
+}

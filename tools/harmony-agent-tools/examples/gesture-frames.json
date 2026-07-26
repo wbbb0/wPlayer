@@ -1,0 +1,21 @@
+{
+  "$schema": "../scenario.schema.json",
+  "outputDirectory": "../artifacts/gesture-frames",
+  "steps": [
+    {
+      "action": "gestureCapture",
+      "startX": 600,
+      "startY": 1000,
+      "endX": 600,
+      "endY": 300,
+      "durationMs": 500,
+      "captureAtMs": [
+        0,
+        100,
+        250,
+        500
+      ],
+      "prefix": "swipe-up"
+    }
+  ]
+}

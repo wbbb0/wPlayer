@@ -203,6 +203,7 @@ export struct PlayerMorphOverlay {
       PlayerPlaybackButton({
         playerStore: this.playerStore,
         buttonSize: this.controller.morphPlaybackButtonFrame().width,
+        iconSize: this.controller.morphPlaybackButtonIconSize(),
         iconAnimationEnabled: false,
         contentColor: this.controller.morphPlaybackButtonColor()
       })

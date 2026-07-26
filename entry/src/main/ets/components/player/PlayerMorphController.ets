@@ -431,6 +431,14 @@ export class PlayerMorphController {
     );
   }
 
+  morphPlaybackButtonIconSize(): number {
+    return PlayerMorphGeometry.morphValue(
+      PlayerLayoutSpec.MINI_PLAYBACK_ICON_SIZE,
+      PlayerLayoutSpec.targetPlaybackIconSize(this.frozenPlaybackButtonTarget.width),
+      this.playerExpandProgress
+    );
+  }
+
   shouldRenderPlaybackButtonProxy(): boolean {
     return this.playerMorphPhase !== PlayerMorphPhase.OPEN &&
       this.miniPlaybackButtonVisible();

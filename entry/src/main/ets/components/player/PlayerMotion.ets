@@ -71,6 +71,8 @@ export const FULL_PLAYER_HORIZONTAL_GESTURE_HOST_ID: string = 'full_player_horiz
 export class FullPlayerPagerSpec {
   static readonly PAGE_COUNT: number = 3;
   static readonly MIN_TWO_PANE_WIDTH: number = 720;
+  static readonly TWO_PANE_VERTICAL_AVOID_BUDGET: number = 48;
+  static readonly MIN_TWO_PANE_HEIGHT: number = 560;
   static readonly SWIPE_COMPLETION_FRACTION: number = 0.12;
   static readonly SWIPE_COMPLETION_MAX_DISTANCE: number = 56;
   static readonly SIDE_PAGE_HANDOFF_FRACTION: number = 0.3;
@@ -86,7 +88,9 @@ export class FullPlayerPagerSpec {
   }
 
   static paneCount(width: number, height: number): number {
-    return width >= FullPlayerPagerSpec.MIN_TWO_PANE_WIDTH && width > height ? 2 : 1;
+    return width >= FullPlayerPagerSpec.MIN_TWO_PANE_WIDTH &&
+      height >= FullPlayerPagerSpec.MIN_TWO_PANE_HEIGHT &&
+      width > height ? 2 : 1;
   }
 
   static pageSpan(viewportWidth: number, paneCount: number): number {
@@ -331,9 +335,12 @@ export class PlayerLayoutSpec {
   static readonly MINI_ARTWORK_SIZE: number = 48;
   static readonly MINI_ARTWORK_RADIUS: number = 24;
   static readonly MINI_PLAYBACK_BUTTON_SIZE: number = 48;
+  static readonly MINI_PLAYBACK_ICON_SIZE: number =
+    PlayerLayoutSpec.MINI_PLAYBACK_BUTTON_SIZE * 0.42;
   static readonly FULL_ARTWORK_SIZE: number = 286;
   static readonly FULL_ARTWORK_RADIUS: number = 10;
-  static readonly FULL_PLAYBACK_BUTTON_SIZE: number = 120;
+  static readonly FULL_PLAYBACK_BUTTON_SIZE: number = 72;
+  static readonly FULL_PLAYBACK_ICON_SIZE: number = 50;
   static readonly MINI_ARTWORK_INSET: number = 4;
   static readonly FULL_PLAYER_HORIZONTAL_INSET: number = 28;
   static readonly FULL_PLAYER_NON_ARTWORK_BASE_HEIGHT: number = 246;
@@ -365,18 +372,31 @@ export class PlayerLayoutSpec {
   static readonly FULL_PLAYER_TITLE_SIZE: number = 23;
   static readonly FULL_PLAYER_ARTIST_SIZE: number = 14;
   static readonly FULL_PLAYER_PROGRESS_TRACK_THICKNESS: number = 3;
-  static readonly ULTRA_COMPACT_MIN_REGULAR_ARTWORK_SIZE: number = 120;
+  static readonly ULTRA_COMPACT_MIN_REGULAR_ARTWORK_SIZE: number = 192;
   static readonly ULTRA_COMPACT_HORIZONTAL_INSET: number = 14;
   static readonly ULTRA_COMPACT_VERTICAL_INSET: number = 14;
   static readonly ULTRA_COMPACT_COLUMN_GAP: number = 12;
   static readonly ULTRA_COMPACT_TEXT_HEIGHT: number = 48;
   static readonly ULTRA_COMPACT_TEXT_GAP: number = 10;
   static readonly ULTRA_COMPACT_TRANSPORT_BUTTON_SIZE: number = 44;
-  static readonly ULTRA_COMPACT_PLAYBACK_BUTTON_SIZE: number = 96;
+  static readonly ULTRA_COMPACT_PLAYBACK_BUTTON_SIZE: number = 64;
+  static readonly ULTRA_COMPACT_PLAYBACK_ICON_SIZE: number = 40;
   static readonly ULTRA_COMPACT_CONTROL_RAIL_WIDTH: number =
     PlayerLayoutSpec.ULTRA_COMPACT_PLAYBACK_BUTTON_SIZE;
   static readonly ULTRA_COMPACT_CONTROL_GAP: number = 12;
   static readonly MORPH_SURFACE_RADIUS: number = 28;
+
+  static targetPlaybackIconSize(buttonSize: number): number {
+    const ultraCompactDistance = Math.abs(
+      buttonSize - PlayerLayoutSpec.ULTRA_COMPACT_PLAYBACK_BUTTON_SIZE
+    );
+    const regularDistance = Math.abs(
+      buttonSize - PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE
+    );
+    return ultraCompactDistance < regularDistance ?
+      PlayerLayoutSpec.ULTRA_COMPACT_PLAYBACK_ICON_SIZE :
+      PlayerLayoutSpec.FULL_PLAYBACK_ICON_SIZE;
+  }
 
   static fullPlayerLayoutMode(rootWidth: number, rootHeight: number,
     paneCount: number, topInset: number = 0, bottomInset: number = 0): FullPlayerLayoutMode {

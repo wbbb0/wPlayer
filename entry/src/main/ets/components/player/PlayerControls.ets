@@ -59,6 +59,7 @@ export struct PlayerImageIcon {
 export struct PlayerPlaybackButton {
   @ObjectLink playerStore: PlayerStore;
   @Prop buttonSize: number = 40;
+  @Prop iconSize: number = 0;
   @Prop iconAnimationEnabled: boolean = true;
   @Prop contentColor: string = '';
 
@@ -74,11 +75,15 @@ export struct PlayerPlaybackButton {
     );
   }
 
+  private resolvedIconSize(): number {
+    return this.iconSize > 0 ? this.iconSize : this.buttonSize * 0.42;
+  }
+
   build() {
     Stack() {
       PlayerSymbolIcon({
         symbol: this.icon(),
-        iconSize: this.buttonSize * 0.42,
+        iconSize: this.resolvedIconSize(),
         contentColor: this.iconColor(),
         animateColor: this.iconAnimationEnabled
       })

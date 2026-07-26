@@ -185,7 +185,9 @@ export default function riskRegressionTest() {
     it('requires both landscape geometry and enough width for two full-player panes', 0, () => {
       expect(FullPlayerPagerSpec.paneCount(720, 1280)).assertEqual(1);
       expect(FullPlayerPagerSpec.paneCount(719, 480)).assertEqual(1);
-      expect(FullPlayerPagerSpec.paneCount(720, 480)).assertEqual(2);
+      expect(FullPlayerPagerSpec.paneCount(720, 480)).assertEqual(1);
+      expect(FullPlayerPagerSpec.paneCount(720, 544)).assertEqual(1);
+      expect(FullPlayerPagerSpec.paneCount(720, 560)).assertEqual(2);
       expect(FullPlayerPagerSpec.paneCount(1280, 720)).assertEqual(2);
       expect(FullPlayerPagerSpec.pageSpan(1280, 2)).assertEqual(640);
       expect(FullPlayerPagerSpec.positionForPage(FullPlayerPage.QUEUE, 2)).assertEqual(0);
@@ -197,13 +199,22 @@ export default function riskRegressionTest() {
     it('uses a dedicated ultra-compact full-player geometry only when one pane cannot fit', 0, () => {
       expect(PlayerLayoutSpec.fullPlayerLayoutMode(326, 326, 1))
         .assertEqual(FullPlayerLayoutMode.ULTRA_COMPACT);
-      expect(PlayerLayoutSpec.fullArtworkSize(326, 326, 0, 0, 1)).assertEqual(190);
+      expect(PlayerLayoutSpec.fullArtworkSize(326, 326, 0, 0, 1)).assertEqual(222);
       expect(PlayerLayoutSpec.fullPlayerLayoutMode(360, 720, 1))
         .assertEqual(FullPlayerLayoutMode.REGULAR);
       expect(PlayerLayoutSpec.fullPlayerLayoutMode(360, 460, 1, 80, 0))
         .assertEqual(FullPlayerLayoutMode.ULTRA_COMPACT);
-      expect(PlayerLayoutSpec.fullPlayerLayoutMode(720, 360, 2))
-        .assertEqual(FullPlayerLayoutMode.REGULAR);
+      expect(PlayerLayoutSpec.fullPlayerLayoutMode(640, 500, 1))
+        .assertEqual(FullPlayerLayoutMode.ULTRA_COMPACT);
+      const minimumTwoPaneArtworkSize = PlayerLayoutSpec.fullArtworkSize(
+        720,
+        FullPlayerPagerSpec.MIN_TWO_PANE_HEIGHT,
+        FullPlayerPagerSpec.TWO_PANE_VERTICAL_AVOID_BUDGET / 2,
+        FullPlayerPagerSpec.TWO_PANE_VERTICAL_AVOID_BUDGET / 2,
+        FullPlayerPagerSpec.paneCount(720, FullPlayerPagerSpec.MIN_TWO_PANE_HEIGHT)
+      );
+      expect(minimumTwoPaneArtworkSize >=
+        PlayerLayoutSpec.ULTRA_COMPACT_MIN_REGULAR_ARTWORK_SIZE).assertTrue();
     });
 
     it('keeps dynamic background layers asynchronous and bounded', 0, () => {

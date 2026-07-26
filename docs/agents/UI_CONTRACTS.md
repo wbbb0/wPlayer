@@ -112,8 +112,10 @@ suppressing another.
 
 ## Full-player shared-element morph
 
-- Use the two-pane full-player pager only for landscape viewports at least 720vp wide; narrower windows retain the
-  single-pane pager.
+- Use the two-pane full-player pager only for landscape viewports at least 720vp wide and tall enough to preserve
+  visually dominant cover artwork; narrower or short windows retain the single-pane pager.
+- Full-player cover layouts keep artwork visually dominant by sizing playback-button containers independently from
+  their enlarged visible icons. Visible glyphs and metadata must remain clear of the cover.
 - Freeze source and destination geometry when a transition begins.
 - Use one overlay artwork instance.
 - Drive position, scale, corner radius and shadow from one progress value.

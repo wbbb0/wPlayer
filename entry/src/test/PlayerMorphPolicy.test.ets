@@ -104,10 +104,18 @@ export default function playerMorphPolicyTest() {
     it('uses enlarged playback targets in both full-player layouts', 0, () => {
       expect(PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE % 8).assertEqual(0);
       expect(PlayerLayoutSpec.ULTRA_COMPACT_PLAYBACK_BUTTON_SIZE % 8).assertEqual(0);
-      expect(PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE).assertEqual(120);
-      expect(PlayerLayoutSpec.ULTRA_COMPACT_PLAYBACK_BUTTON_SIZE).assertEqual(96);
+      expect(PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE).assertEqual(72);
+      expect(PlayerLayoutSpec.FULL_PLAYBACK_ICON_SIZE).assertEqual(50);
+      expect(PlayerLayoutSpec.ULTRA_COMPACT_PLAYBACK_BUTTON_SIZE).assertEqual(64);
+      expect(PlayerLayoutSpec.ULTRA_COMPACT_PLAYBACK_ICON_SIZE).assertEqual(40);
       expect(PlayerLayoutSpec.ULTRA_COMPACT_CONTROL_RAIL_WIDTH)
         .assertEqual(PlayerLayoutSpec.ULTRA_COMPACT_PLAYBACK_BUTTON_SIZE);
+      expect(PlayerLayoutSpec.ultraCompactArtworkSize(326, 326, 0, 0))
+        .assertEqual(222);
+      expect(PlayerLayoutSpec.fullArtworkSize(360, 600, 0, 0, 1))
+        .assertEqual(282);
+      expect(PlayerLayoutSpec.targetPlaybackIconSize(64)).assertEqual(40);
+      expect(PlayerLayoutSpec.targetPlaybackIconSize(72)).assertEqual(50);
     });
   });
 }

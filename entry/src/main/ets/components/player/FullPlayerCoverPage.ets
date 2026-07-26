@@ -319,6 +319,7 @@ export struct FullPlayerCoverPage {
           PlayerPlaybackButton({
             playerStore: this.playerStore,
             buttonSize: PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE,
+            iconSize: PlayerLayoutSpec.FULL_PLAYBACK_ICON_SIZE,
             contentColor: this.contentColor()
           })
             .opacity(this.showPlaybackButton ? 1 : 0)
@@ -406,6 +407,7 @@ export struct FullPlayerCoverPage {
       PlayerPlaybackButton({
         playerStore: this.playerStore,
         buttonSize: PlayerLayoutSpec.ULTRA_COMPACT_PLAYBACK_BUTTON_SIZE,
+        iconSize: PlayerLayoutSpec.ULTRA_COMPACT_PLAYBACK_ICON_SIZE,
         contentColor: this.contentColor()
       })
         .opacity(this.showPlaybackButton ? 1 : 0)

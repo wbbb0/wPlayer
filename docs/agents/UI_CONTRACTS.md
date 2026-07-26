@@ -76,6 +76,8 @@ directly; do not add wrapper margins, borders or replacement backgrounds.
 - Use Spring edge effects and retain virtual-cache items beneath overlays.
 - Keep short Scroll content top-aligned rather than vertically centered.
 - Use responsive Grid policies or a shared layout specification; do not hard-code feature-page column counts.
+- Album grids keep at least two equal-width columns; wider layouts retain the shared preferred minimum column width
+  when deriving additional columns.
 
 ## Floating navigation and mini player
 
@@ -141,4 +143,3 @@ suppressing another.
 Use the applicable automated and manual cases from `TEST_MATRIX.md`. Rapid repeated input and both responsive hosts
 are adjacent behavior for navigation or player transition changes, even when only one layout originally exposed the
 defect.
-

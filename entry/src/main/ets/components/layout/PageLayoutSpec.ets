@@ -4,6 +4,7 @@ export class PageLayoutSpec {
   static readonly SECONDARY_CONTENT_GAP: number = 8;
   static readonly FLOATING_CONTROLS_CLEARANCE: number = 112;
   static readonly ALBUM_MIN_COLUMN_WIDTH: number = 160;
+  static readonly ALBUM_MIN_COLUMN_COUNT: number = 2;
   static readonly ALBUM_COLUMN_GAP: number = 16;
   static readonly ALBUM_ROW_GAP: number = 20;
   static readonly DETAIL_PRIMARY_PLAY_MIN_WIDTH: number = 112;
@@ -23,8 +24,13 @@ export class PageLayoutSpec {
     return Math.max(0, bottomInset) + PageLayoutSpec.FLOATING_CONTROLS_CLEARANCE;
   }
 
-  static albumColumnsTemplate(): string {
-    return `repeat(auto-fit, ${PageLayoutSpec.ALBUM_MIN_COLUMN_WIDTH})`;
+  static albumColumnsTemplate(containerWidth: number, horizontalInset: number = 0): string {
+    const columnCount = PageLayoutSpec.albumColumnCount(containerWidth, horizontalInset);
+    let template = '1fr';
+    for (let index = 1; index < columnCount; index += 1) {
+      template += ' 1fr';
+    }
+    return template;
   }
 
   static albumColumnCount(containerWidth: number, horizontalInset: number = 0): number {
@@ -32,7 +38,7 @@ export class PageLayoutSpec {
       PageLayoutSpec.ALBUM_MIN_COLUMN_WIDTH,
       containerWidth - horizontalInset * 2
     );
-    return Math.max(1, Math.floor(
+    return Math.max(PageLayoutSpec.ALBUM_MIN_COLUMN_COUNT, Math.floor(
       (availableWidth + PageLayoutSpec.ALBUM_COLUMN_GAP) /
       (PageLayoutSpec.ALBUM_MIN_COLUMN_WIDTH + PageLayoutSpec.ALBUM_COLUMN_GAP)
     ));

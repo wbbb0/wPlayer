@@ -16,6 +16,7 @@ import { LibraryStore } from '../../library/store/LibraryStore';
 import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
+import { LayoutLength } from '../../components/layout/LayoutLength';
 
 @Component
 export struct AlbumsPage {
@@ -26,6 +27,7 @@ export struct AlbumsPage {
   @State selectedSectionIndex: number = 0;
   @State selectedAlbums: Array<AlbumListItem> = [];
   @State selectionBusy: boolean = false;
+  @State gridWidth: number = 0;
   scroller: Scroller = new Scroller();
   onOpenAlbum: (item: AlbumListItem) => void = (_item: AlbumListItem): void => {};
   onAlbumAction: (item: AlbumListItem, action: AlbumAction) => void =
@@ -136,7 +138,10 @@ export struct AlbumsPage {
             }
           }, (album: AlbumListItem) => `${album.id}`)
         }
-        .columnsTemplate(PageLayoutSpec.albumColumnsTemplate())
+        .columnsTemplate(PageLayoutSpec.albumColumnsTemplate(
+          this.gridWidth,
+          PageLayoutSpec.HORIZONTAL_INSET
+        ))
         .columnsGap(PageLayoutSpec.ALBUM_COLUMN_GAP)
         .rowsGap(PageLayoutSpec.ALBUM_ROW_GAP)
         .width('100%')
@@ -153,6 +158,12 @@ export struct AlbumsPage {
           const sectionIndex = LibraryPagingPolicy.selectedSectionIndex(this.store.albumSections, firstIndex);
           if (sectionIndex >= 0 && sectionIndex !== this.selectedSectionIndex) {
             this.selectedSectionIndex = sectionIndex;
+          }
+        })
+        .onAreaChange((_oldValue: Area, newValue: Area) => {
+          const nextWidth = LayoutLength.toNumber(newValue.width, this.gridWidth);
+          if (nextWidth > 0 && Math.abs(nextWidth - this.gridWidth) >= 0.5) {
+            this.gridWidth = nextWidth;
           }
         })
         .attributeModifier(this.scrollBehavior)

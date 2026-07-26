@@ -7,6 +7,10 @@ import { ArtworkFitMode, ArtworkView } from '../artwork/ArtworkView';
 import { ContextPreviewGeometry } from '../library/ContextPreviewGeometry';
 import { LibraryContextInteraction } from '../library/LibraryContextInteraction';
 import {
+  CurrentTrackActionMenu,
+  CurrentTrackActionMenuParams
+} from './PlayerActionMenus';
+import {
   FullPlayerPage,
   PlayerFrame,
   PlayerLayoutSpec,
@@ -23,6 +27,7 @@ export struct PlayerMorphArtwork {
   @State contextMenuShown: boolean = false;
   private contextPreviewWidth: number = 0;
   private contextPreviewHeight: number = 0;
+  private contextPreviewRestScale: number = 1;
   @Prop expandProgress: number = 0;
   @Prop morphPhase: PlayerMorphPhase = PlayerMorphPhase.IDLE;
   @Prop fullPlayerPage: FullPlayerPage = FullPlayerPage.COVER;
@@ -45,10 +50,12 @@ export struct PlayerMorphArtwork {
   @Prop sourceHeight: number = 0;
   sourceProvider: () => image.PixelMap | ResourceStr =
     (): ResourceStr => $r('app.media.default_album_cover');
-  @Builder
-  private EmptyMenu() {
-  }
-  @BuilderParam contextMenu: () => void = this.EmptyMenu;
+  onInsertNext: () => void = (): void => {};
+  onAppendToQueue: () => void = (): void => {};
+  onAddToPlaylist: () => void = (): void => {};
+  onOpenDetails: () => void = (): void => {};
+  onCompletedCollectionChange: (enabled: boolean) => void =
+    (_enabled: boolean): void => {};
 
   private clamp(value: number, minimum: number, maximum: number): number {
     return Math.max(minimum, Math.min(maximum, value));
@@ -120,7 +127,7 @@ export struct PlayerMorphArtwork {
     return 1 - (1 - fullPlayerScale) * this.clamp(this.expandProgress, 0, 1);
   }
 
-  private contextPreviewRestScale(): number {
+  private playbackRestScale(): number {
     return this.playerStore.keepsActivePlaybackVisual() ?
       1 : PlayerMotionSpec.PAUSED_ARTWORK_SCALE;
   }
@@ -157,8 +164,22 @@ export struct PlayerMorphArtwork {
     }
     this.contextPreviewWidth = frame.width;
     this.contextPreviewHeight = frame.height;
+    this.contextPreviewRestScale = this.playbackRestScale();
     LibraryContextInteraction.triggerHaptic('Player artwork');
     this.contextMenuShown = true;
+  }
+
+  @Builder
+  private CurrentTrackMenu() {
+    CurrentTrackActionMenu(new CurrentTrackActionMenuParams(
+      this.playerStore.currentTrack !== undefined,
+      this.playerStore.completedCollectionEnabled,
+      this.onInsertNext,
+      this.onAppendToQueue,
+      this.onAddToPlaylist,
+      this.onOpenDetails,
+      this.onCompletedCollectionChange
+    ))
   }
 
   @Builder
@@ -169,18 +190,18 @@ export struct PlayerMorphArtwork {
         sourceRevision: this.playerStore.heroArtworkRevision,
         sourceWidth: this.sourceWidth,
         sourceHeight: this.sourceHeight,
-        slotWidth: this.contextPreviewWidth,
+        slotWidth: this.contextPreviewWidth * this.contextPreviewRestScale,
         slotAspectRatio: this.contextPreviewHeight > 0 ?
           this.contextPreviewWidth / this.contextPreviewHeight : 1,
         fitMode: ArtworkFitMode.COVER,
-        resolvedCornerRadius: this.sourceRadius(),
+        resolvedCornerRadius: this.sourceRadius() * this.contextPreviewRestScale,
         shadowEnabled: false,
         interpolation: this.settingsStore.highQualityHeroArtwork ?
           ImageInterpolation.High : ImageInterpolation.Medium
       })
     }
-    .width(this.contextPreviewWidth)
-    .height(this.contextPreviewHeight)
+    .width(this.contextPreviewWidth * this.contextPreviewRestScale)
+    .height(this.contextPreviewHeight * this.contextPreviewRestScale)
   }
 
   build() {
@@ -207,7 +228,8 @@ export struct PlayerMorphArtwork {
         shadowSpringResponse: PlayerMotionSpec.ARTWORK_STATE_SPRING_RESPONSE,
         shadowSpringDamping: PlayerMotionSpec.ARTWORK_STATE_SPRING_DAMPING,
         interpolation: this.settingsStore.highQualityHeroArtwork ?
-          ImageInterpolation.High : ImageInterpolation.Medium
+          ImageInterpolation.High : ImageInterpolation.Medium,
+        resizeContentWithBounds: true
       })
         .scale({
           x: this.playbackScale(),
@@ -228,7 +250,7 @@ export struct PlayerMorphArtwork {
     .accessibilityText('歌曲封面，长按打开更多操作')
     .bindContextMenu(
       this.contextMenuShown,
-      this.contextMenu(),
+      this.CurrentTrackMenu(),
       {
         placement: Placement.BottomRight,
         preview: this.ContextMenuPreview,
@@ -236,8 +258,10 @@ export struct PlayerMorphArtwork {
         layoutRegionMargin: ContextPreviewGeometry.layoutRegionMargin(),
         previewAnimationOptions: {
           scale: [
-            this.contextPreviewRestScale(),
-            PlayerMotionSpec.ARTWORK_CONTEXT_PREVIEW_END_SCALE
+            1,
+            PlayerMotionSpec.artworkContextPreviewAnimationEndScale(
+              this.contextPreviewRestScale
+            )
           ]
         },
         previewScaleMode: PreviewScaleMode.CONSTANT,

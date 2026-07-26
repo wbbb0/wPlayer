@@ -218,6 +218,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.heroArtwork = undefined;
     this.playerStore.heroArtworkUri = '';
     this.playerStore.heroArtworkRevision += 1;
+    this.notifyPaletteChange();
     this.playerStore.transportState = this.stateReducer.reset();
     this.engine.invalidateAndStop().then((): void => {
       this.onStateChanged(PlayerState.IDLE);
@@ -415,6 +416,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.queueSize = 0;
     this.playerStore.playWhenReady = false;
     this.playerStore.transportState = this.stateReducer.reset();
+    this.notifyPaletteChange();
     this.persistResumeState(-1, 0);
     this.settings?.setPlaybackQueue([], -1);
     this.syncQueueSnapshot();
@@ -1422,6 +1424,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.state = PlayerState.IDLE;
     this.playerStore.transportState = this.stateReducer.reset();
     this.playerStore.errorMessage = '';
+    this.notifyPaletteChange();
   }
 
   private static validResumePosition(positionMs: number, durationMs: number): number {

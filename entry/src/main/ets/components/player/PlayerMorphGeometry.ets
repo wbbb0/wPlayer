@@ -18,7 +18,16 @@ export class PlayerMorphGeometry {
 
   static fullPlayerFrame(phase: PlayerMorphPhase, rootFrame: PlayerFrame,
     frozenRootFrame: PlayerFrame): PlayerFrame {
-    return phase === PlayerMorphPhase.OPEN ? rootFrame : frozenRootFrame;
+    const measuredFrame = phase === PlayerMorphPhase.OPEN ? rootFrame : frozenRootFrame;
+    // Area.globalPosition is window-relative, while the overlay is already
+    // hosted by the root component. Keep the measured size but normalize the
+    // render frame to the overlay's local coordinate space.
+    return {
+      x: 0,
+      y: 0,
+      width: measuredFrame.width,
+      height: measuredFrame.height
+    };
   }
 
   static paneCount(frame: PlayerFrame): number {

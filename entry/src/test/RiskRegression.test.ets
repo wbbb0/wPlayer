@@ -30,7 +30,10 @@ import { LyricTimeline } from '../main/ets/playback/lyrics/LyricTimeline';
 import { LyricsParser, TimedLyricLine } from '../main/ets/playback/lyrics/LyricsParser';
 import { LayoutLength } from '../main/ets/components/layout/LayoutLength';
 import { AppShellLayoutSpec } from '../main/ets/components/layout/AppShellLayoutSpec';
-import { PlayerStore } from '../main/ets/playback/model/PlaybackModels';
+import {
+  DEFAULT_PLAYER_PALETTE_PRIMARY,
+  PlayerStore
+} from '../main/ets/playback/model/PlaybackModels';
 import {
   NavigationChromeController
 } from '../main/ets/components/navigation/NavigationChromeController';
@@ -84,6 +87,39 @@ export default function riskRegressionTest() {
       });
       expect(DynamicColor.supportingForeground('invalid')).assertEqual('#FFFFFFFF');
       expect(DynamicColor.contrastRatio('invalid', '#FF000000')).assertEqual(1);
+    });
+
+    it('uses the default player palette until real artwork is available', 0, () => {
+      const store = new PlayerStore();
+      expect(store.hasCurrentArtwork()).assertFalse();
+      expect(store.themePrimary()).assertEqual(DEFAULT_PLAYER_PALETTE_PRIMARY);
+      expect(DynamicColor.contrastRatio(store.themeOnPrimary(), store.themePrimary()) >= 4.5)
+        .assertTrue();
+
+      store.currentTrack = {
+        id: 1,
+        title: 'No artwork',
+        artistDisplay: '',
+        albumDisplay: '',
+        durationMs: 0,
+        smallArtworkHash: '',
+        smallArtworkPath: '',
+        largeArtworkHash: '',
+        largeArtworkPath: '',
+        artworkWidth: 0,
+        artworkHeight: 0,
+        palettePrimary: '#FFFFFFFF',
+        paletteSecondary: '#FFFFFFFF',
+        paletteAccent: '#FFFFFFFF'
+      };
+      store.palettePrimary = '#FFFFFFFF';
+      expect(store.hasCurrentArtwork()).assertFalse();
+      expect(store.themePrimary()).assertEqual(DEFAULT_PLAYER_PALETTE_PRIMARY);
+
+      store.currentTrack.largeArtworkPath = 'artwork/cover.jpg';
+      expect(store.hasCurrentArtwork()).assertTrue();
+      expect(store.themePrimary()).assertEqual('#FFFFFFFF');
+      expect(store.themeOnPrimary()).assertEqual('#FF000000');
     });
 
     it('blends the morph replacement surface with its capsule color', 0, () => {
@@ -159,7 +195,7 @@ export default function riskRegressionTest() {
     it('uses a dedicated ultra-compact full-player geometry only when one pane cannot fit', 0, () => {
       expect(PlayerLayoutSpec.fullPlayerLayoutMode(326, 326, 1))
         .assertEqual(FullPlayerLayoutMode.ULTRA_COMPACT);
-      expect(PlayerLayoutSpec.fullArtworkSize(326, 326, 0, 0, 1)).assertEqual(230);
+      expect(PlayerLayoutSpec.fullArtworkSize(326, 326, 0, 0, 1)).assertEqual(190);
       expect(PlayerLayoutSpec.fullPlayerLayoutMode(360, 720, 1))
         .assertEqual(FullPlayerLayoutMode.REGULAR);
       expect(PlayerLayoutSpec.fullPlayerLayoutMode(360, 460, 1, 80, 0))

@@ -39,6 +39,12 @@ export enum FullPlayerPage {
   LYRICS = 2
 }
 
+export enum FullPlayerPagerPhase {
+  SETTLED,
+  DRAGGING,
+  SETTLING
+}
+
 export enum FullPlayerLayoutMode {
   REGULAR,
   ULTRA_COMPACT
@@ -71,6 +77,12 @@ export class FullPlayerPagerSpec {
   static readonly PAGE_SETTLE_SPRING_RESPONSE: number = 0.42;
   static readonly PAGE_SETTLE_SPRING_DAMPING: number = 0.88;
   static readonly SIDE_PAGE_ARTWORK_FADE_END_PROGRESS: number = 0.6;
+
+  static canBeginGesture(morphPhase: PlayerMorphPhase,
+    pagerPhase: FullPlayerPagerPhase): boolean {
+    return morphPhase === PlayerMorphPhase.OPEN &&
+      pagerPhase === FullPlayerPagerPhase.SETTLED;
+  }
 
   static paneCount(width: number, height: number): number {
     return width > height ? 2 : 1;
@@ -280,6 +292,11 @@ export class PlayerMotionSpec {
     );
   }
 
+  static artworkContextPreviewAnimationEndScale(restScale: number): number {
+    return PlayerMotionSpec.ARTWORK_CONTEXT_PREVIEW_END_SCALE /
+      Math.max(0.01, restScale);
+  }
+
   private static smoothRange(value: number, start: number, end: number): number {
     const progress = Math.max(0, Math.min(1, (value - start) / Math.max(0.01, end - start)));
     return progress * progress * (3 - 2 * progress);
@@ -312,13 +329,16 @@ export class PlayerLayoutSpec {
   static readonly DEFAULT_ARTWORK_TARGET_Y: number = 180;
   static readonly MINI_ARTWORK_SIZE: number = 48;
   static readonly MINI_ARTWORK_RADIUS: number = 24;
-  static readonly MINI_PLAYBACK_BUTTON_SIZE: number = 40;
+  static readonly MINI_PLAYBACK_BUTTON_SIZE: number = 48;
   static readonly FULL_ARTWORK_SIZE: number = 286;
   static readonly FULL_ARTWORK_RADIUS: number = 10;
-  static readonly FULL_PLAYBACK_BUTTON_SIZE: number = 64;
+  static readonly FULL_PLAYBACK_BUTTON_SIZE: number = 120;
   static readonly MINI_ARTWORK_INSET: number = 4;
   static readonly FULL_PLAYER_HORIZONTAL_INSET: number = 28;
-  static readonly FULL_PLAYER_NON_ARTWORK_HEIGHT: number = 310;
+  static readonly FULL_PLAYER_NON_ARTWORK_BASE_HEIGHT: number = 246;
+  static readonly FULL_PLAYER_NON_ARTWORK_HEIGHT: number =
+    PlayerLayoutSpec.FULL_PLAYER_NON_ARTWORK_BASE_HEIGHT +
+      PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE;
   static readonly FULL_PLAYER_TOP_INSET: number = 18;
   static readonly FULL_PLAYER_BOTTOM_INSET: number = 10;
   static readonly FULL_PLAYER_PAGE_HORIZONTAL_INSET: number = 20;
@@ -347,12 +367,13 @@ export class PlayerLayoutSpec {
   static readonly ULTRA_COMPACT_MIN_REGULAR_ARTWORK_SIZE: number = 120;
   static readonly ULTRA_COMPACT_HORIZONTAL_INSET: number = 14;
   static readonly ULTRA_COMPACT_VERTICAL_INSET: number = 14;
-  static readonly ULTRA_COMPACT_CONTROL_RAIL_WIDTH: number = 56;
   static readonly ULTRA_COMPACT_COLUMN_GAP: number = 12;
   static readonly ULTRA_COMPACT_TEXT_HEIGHT: number = 48;
   static readonly ULTRA_COMPACT_TEXT_GAP: number = 10;
   static readonly ULTRA_COMPACT_TRANSPORT_BUTTON_SIZE: number = 44;
-  static readonly ULTRA_COMPACT_PLAYBACK_BUTTON_SIZE: number = 52;
+  static readonly ULTRA_COMPACT_PLAYBACK_BUTTON_SIZE: number = 96;
+  static readonly ULTRA_COMPACT_CONTROL_RAIL_WIDTH: number =
+    PlayerLayoutSpec.ULTRA_COMPACT_PLAYBACK_BUTTON_SIZE;
   static readonly ULTRA_COMPACT_CONTROL_GAP: number = 12;
   static readonly MORPH_SURFACE_RADIUS: number = 28;
 

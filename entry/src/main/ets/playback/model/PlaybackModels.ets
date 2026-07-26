@@ -266,22 +266,38 @@ export class PlayerStore {
     return this.currentTrack !== undefined;
   }
 
+  hasCurrentArtwork(): boolean {
+    const track = this.currentTrack;
+    if (track === undefined) {
+      return false;
+    }
+    return this.miniArtwork !== undefined ||
+      this.heroArtwork !== undefined ||
+      this.miniArtworkUri.length > 0 ||
+      this.heroArtworkUri.length > 0 ||
+      track.smallArtworkPath.length > 0 ||
+      track.largeArtworkPath.length > 0;
+  }
+
+  private themeColor(color: string, fallback: string): string {
+    return this.hasCurrentArtwork() && color.length > 0 ? color : fallback;
+  }
+
   themePrimary(): string {
-    return this.hasCurrentTrack() ? this.palettePrimary : '';
+    return this.themeColor(this.palettePrimary, DEFAULT_PLAYER_PALETTE_PRIMARY);
   }
 
   themeSecondary(): string {
-    return this.hasCurrentTrack() ? this.paletteSecondary : DEFAULT_PLAYER_PALETTE_SECONDARY;
+    return this.themeColor(this.paletteSecondary, DEFAULT_PLAYER_PALETTE_SECONDARY);
   }
 
   themeAccent(): string {
-    return this.hasCurrentTrack() ? this.paletteAccent : DEFAULT_PLAYER_PALETTE_ACCENT;
+    return this.themeColor(this.paletteAccent, DEFAULT_PLAYER_PALETTE_ACCENT);
   }
 
   themeOnPrimary(): string {
-    const primary = this.themePrimary();
     return DynamicColor.foreground(
-      primary.length > 0 ? primary : this.themeBaseBackground,
+      this.themePrimary(),
       DynamicContainerRole.PRIMARY
     );
   }

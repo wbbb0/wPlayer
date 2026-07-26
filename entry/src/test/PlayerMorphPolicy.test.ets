@@ -8,7 +8,11 @@ import {
   PlayerMorphGesturePolicy
 } from '../main/ets/components/player/PlayerMorphGesturePolicy';
 import {
+  FullPlayerPagerPhase,
+  FullPlayerPagerSpec,
   MiniPlayerGestureRegion,
+  PlayerLayoutSpec,
+  PlayerMotionSpec,
   PlayerFrame,
   PlayerGestureAxis,
   PlayerMorphPhase
@@ -59,15 +63,51 @@ export default function playerMorphPolicyTest() {
     });
 
     it('uses frozen geometry until the morph reaches the open phase', 0, () => {
-      const root: PlayerFrame = { x: 0, y: 0, width: 800, height: 1200 };
-      const frozen: PlayerFrame = { x: 0, y: 0, width: 400, height: 800 };
+      const root: PlayerFrame = { x: 48, y: 72, width: 800, height: 1200 };
+      const frozen: PlayerFrame = { x: 12, y: 16, width: 400, height: 800 };
       expect(PlayerMorphGeometry.fullPlayerFrame(
         PlayerMorphPhase.OPENING, root, frozen
       ).width).assertEqual(400);
-      expect(PlayerMorphGeometry.fullPlayerFrame(
+      const openFrame = PlayerMorphGeometry.fullPlayerFrame(
         PlayerMorphPhase.OPEN, root, frozen
-      ).width).assertEqual(800);
+      );
+      expect(openFrame.width).assertEqual(800);
+      expect(openFrame.x).assertEqual(0);
+      expect(openFrame.y).assertEqual(0);
       expect(PlayerMorphGeometry.morphValue(10, 20, 1.5)).assertEqual(20);
+    });
+
+    it('keeps a paused artwork preview at its visual rest size', 0, () => {
+      expect(PlayerMotionSpec.artworkContextPreviewAnimationEndScale(
+        PlayerMotionSpec.PAUSED_ARTWORK_SCALE
+      )).assertEqual(
+        PlayerMotionSpec.ARTWORK_CONTEXT_PREVIEW_END_SCALE /
+          PlayerMotionSpec.PAUSED_ARTWORK_SCALE
+      );
+    });
+
+    it('does not restart a page drag while the previous settle is active', 0, () => {
+      expect(FullPlayerPagerSpec.canBeginGesture(
+        PlayerMorphPhase.OPEN,
+        FullPlayerPagerPhase.SETTLED
+      )).assertTrue();
+      expect(FullPlayerPagerSpec.canBeginGesture(
+        PlayerMorphPhase.OPEN,
+        FullPlayerPagerPhase.SETTLING
+      )).assertFalse();
+      expect(FullPlayerPagerSpec.canBeginGesture(
+        PlayerMorphPhase.OPENING,
+        FullPlayerPagerPhase.SETTLED
+      )).assertFalse();
+    });
+
+    it('uses enlarged playback targets in both full-player layouts', 0, () => {
+      expect(PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE % 8).assertEqual(0);
+      expect(PlayerLayoutSpec.ULTRA_COMPACT_PLAYBACK_BUTTON_SIZE % 8).assertEqual(0);
+      expect(PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE).assertEqual(120);
+      expect(PlayerLayoutSpec.ULTRA_COMPACT_PLAYBACK_BUTTON_SIZE).assertEqual(96);
+      expect(PlayerLayoutSpec.ULTRA_COMPACT_CONTROL_RAIL_WIDTH)
+        .assertEqual(PlayerLayoutSpec.ULTRA_COMPACT_PLAYBACK_BUTTON_SIZE);
     });
   });
 }

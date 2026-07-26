@@ -48,7 +48,7 @@ import {
   appAppearanceController
 } from '../appearance/AppAppearance';
 import { PaletteMotionSpec } from '../appearance/PaletteMotionSpec';
-import { DynamicColor, DynamicContainerRole } from '../appearance/DynamicColor';
+import { DynamicColor } from '../appearance/DynamicColor';
 import { LibraryMaintenanceSheet } from '../components/library/LibraryMaintenanceSheet';
 import {
   LibraryMaintenanceStatus
@@ -86,8 +86,8 @@ struct Index {
   @State playlistSheetVisible: boolean = false;
   @State maintenanceSheetVisible: boolean = false;
   @State maintenanceStatus: LibraryMaintenanceStatus = { items: [], total: 0 };
-  @State animatedThemePrimary: string = '';
-  @State animatedThemeOnPrimary: string = '';
+  @State animatedThemePrimary: string = this.playerStore.themePrimary();
+  @State animatedThemeOnPrimary: string = this.playerStore.themeOnPrimary();
   private readonly appearanceListener: AppAppearanceListener = (_epoch: number): void => {
     this.refreshAppearance();
   };
@@ -126,8 +126,8 @@ struct Index {
       wrapBuilder(MiniPlayerHost),
       miniPlayerParams
     );
-    playbackRuntime.setPaletteChangeListener((primary: string, _secondary: string, _accent: string): void => {
-      this.animateThemePrimary(primary);
+    playbackRuntime.setPaletteChangeListener((_primary: string, _secondary: string, _accent: string): void => {
+      this.animatePlayerTheme();
       this.syncSystemBarContentColor();
     });
     appAppearanceController.addListener(this.appearanceListener);
@@ -193,11 +193,9 @@ struct Index {
     this.navigationController.dispose();
   }
 
-  private animateThemePrimary(targetColor: string): void {
-    const targetContentColor = DynamicColor.foreground(
-      targetColor,
-      DynamicContainerRole.PRIMARY
-    );
+  private animatePlayerTheme(): void {
+    const targetColor = this.playerStore.themePrimary();
+    const targetContentColor = this.playerStore.themeOnPrimary();
     if (this.animatedThemePrimary === targetColor &&
       this.animatedThemeOnPrimary === targetContentColor) {
       return;
@@ -319,7 +317,12 @@ struct Index {
 
   private playerThemeBackground(): string {
     return this.animatedThemePrimary.length > 0 ?
-      this.animatedThemePrimary : this.appearancePalette.windowBackground;
+      this.animatedThemePrimary : this.playerStore.themePrimary();
+  }
+
+  private playerContentColor(): string {
+    return this.animatedThemeOnPrimary.length > 0 ?
+      this.animatedThemeOnPrimary : this.playerStore.themeOnPrimary();
   }
 
   private morphCollapsedSurfaceColor(): string {
@@ -490,7 +493,7 @@ struct Index {
       libraryStore: this.libraryStore,
       topInset: this.statusBarAvoidHeight,
       bottomInset: this.navigationAvoidHeight,
-      primaryContentColor: '#FFFFFFFF',
+      primaryContentColor: this.playerContentColor(),
       onRequestAddToPlaylist: (trackIds: Array<number>): void =>
         this.playlistController.requestTrackIdsAddToPlaylist(trackIds),
       onOpenTrackActions: (trackId: number, anchorId: string): void =>
@@ -513,7 +516,7 @@ struct Index {
       bottomInset: this.navigationAvoidHeight,
       rootFrame: this.playerMorphController.rootFrame,
       paneCount: this.fullPlayerPaneCount(),
-      primaryContentColor: '#FFFFFFFF',
+      primaryContentColor: this.playerContentColor(),
       previousArtworkTarget: this.playerMorphController.artworkTarget,
       previousCenteredArtworkTarget: this.playerMorphController.centeredArtworkTarget,
       onArtworkTarget: (target: PlayerPoint): void => {

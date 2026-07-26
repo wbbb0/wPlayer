@@ -14,10 +14,6 @@ import {
   TrackListItem
 } from '../../library/model/LibraryModels';
 import {
-  CurrentTrackActionMenu,
-  CurrentTrackActionMenuParams
-} from './PlayerActionMenus';
-import {
   FULL_PLAYER_HORIZONTAL_GESTURE_HOST_ID,
   FULL_PLAYER_VERTICAL_GESTURE_HOST_ID,
   FullPlayerPage,
@@ -67,25 +63,16 @@ export struct PlayerMorphOverlay {
     };
   }
 
-  @Builder
-  private CurrentTrackMenu() {
-    CurrentTrackActionMenu(new CurrentTrackActionMenuParams(
-      this.playerStore.currentTrack !== undefined,
-      this.playerStore.completedCollectionEnabled,
-      () => playbackRuntime.insertCurrentNext(),
-      () => playbackRuntime.appendCurrentToQueue(),
-      () => {
-        if (this.playerStore.currentTrack !== undefined) {
-          this.onRequestAddToPlaylist([this.playerStore.currentTrack.id]);
-        }
-      },
-      () => {
-        if (this.playerStore.currentTrack !== undefined) {
-          this.onOpenTrackDetails(this.currentTrackItem(this.playerStore.currentTrack));
-        }
-      },
-      (enabled: boolean): void => playbackRuntime.setCompletedCollectionEnabled(enabled)
-    ))
+  private addCurrentTrackToPlaylist(): void {
+    if (this.playerStore.currentTrack !== undefined) {
+      this.onRequestAddToPlaylist([this.playerStore.currentTrack.id]);
+    }
+  }
+
+  private openCurrentTrackDetails(): void {
+    if (this.playerStore.currentTrack !== undefined) {
+      this.onOpenTrackDetails(this.currentTrackItem(this.playerStore.currentTrack));
+    }
   }
 
   @Builder
@@ -201,7 +188,12 @@ export struct PlayerMorphOverlay {
       sourceWidth: this.controller.morphArtworkSourceWidth(),
       sourceHeight: this.controller.morphArtworkSourceHeight(),
       sourceProvider: (): image.PixelMap | ResourceStr => this.controller.morphArtworkSource(),
-      contextMenu: this.CurrentTrackMenu
+      onInsertNext: (): void => playbackRuntime.insertCurrentNext(),
+      onAppendToQueue: (): void => playbackRuntime.appendCurrentToQueue(),
+      onAddToPlaylist: (): void => this.addCurrentTrackToPlaylist(),
+      onOpenDetails: (): void => this.openCurrentTrackDetails(),
+      onCompletedCollectionChange: (enabled: boolean): void =>
+        playbackRuntime.setCompletedCollectionEnabled(enabled)
     })
   }
 

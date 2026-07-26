@@ -338,7 +338,7 @@ export struct FullPlayerCoverPage {
         }
         .align(Alignment.Center)
       }
-      .height(64)
+      .height(PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE)
       .width('100%')
       .margin({ top: 18, bottom: 12 })
     }

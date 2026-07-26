@@ -3,6 +3,7 @@ import displaySync from '@ohos.graphics.displaySync';
 import { DynamicColor, ForegroundEmphasis } from '../../appearance/DynamicColor';
 import { DynamicBackgroundV2Renderer } from '../../components/player/DynamicBackgroundV2Renderer';
 import { DynamicBackgroundV2Spec } from '../../components/player/DynamicBackgroundV2Spec';
+import { BundledArtworkCatalog } from '../../library/artwork/BundledArtworkCatalog';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
 
 @Component
@@ -123,7 +124,7 @@ export struct DynamicBackgroundV2DebugPage {
       return;
     }
     const uri = this.playerStore.heroArtworkUri;
-    if (uri.length === 0 || uri.startsWith('demo-artwork://') ||
+    if (uri.length === 0 || BundledArtworkCatalog.isPath(uri) ||
       this.decodedArtworkUri === uri || this.loadingArtworkUri === uri) {
       return;
     }
@@ -161,7 +162,7 @@ export struct DynamicBackgroundV2DebugPage {
   private hasBackgroundSource(): boolean {
     return this.backgroundSource() !== undefined ||
       (this.playerStore.heroArtworkUri.length > 0 &&
-        !this.playerStore.heroArtworkUri.startsWith('demo-artwork://'));
+        !BundledArtworkCatalog.isPath(this.playerStore.heroArtworkUri));
   }
 
   private currentTrackTitle(): string {

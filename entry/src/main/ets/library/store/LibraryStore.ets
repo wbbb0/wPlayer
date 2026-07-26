@@ -2,6 +2,7 @@ import { common } from '@kit.AbilityKit';
 import { MusicRepository } from '../data/MusicRepository';
 import { ImportRefreshPhase, MediaImporter } from '../importer/MediaImporter';
 import { ArtworkCache } from '../artwork/ArtworkCache';
+import { BundledArtworkCatalog } from '../artwork/BundledArtworkCatalog';
 import {
   AlbumListItem,
   AlbumDetail,
@@ -755,7 +756,7 @@ export class LibraryStore {
   }
 
   resolveArtworkPath(relativePath: string): string {
-    if (DemoMusicLibrary.isArtworkPath(relativePath)) {
+    if (BundledArtworkCatalog.isPath(relativePath)) {
       return relativePath;
     }
     if (relativePath.length === 0 || this.artworkCache === undefined) {

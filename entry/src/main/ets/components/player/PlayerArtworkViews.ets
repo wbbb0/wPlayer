@@ -2,6 +2,7 @@ import { image } from '@kit.ImageKit';
 import { curves } from '@kit.ArkUI';
 import { ArtworkFitMode, ArtworkView } from '../artwork/ArtworkView';
 import { ArtworkLayout } from '../artwork/ArtworkLayout';
+import { BundledArtworkCatalog } from '../../library/artwork/BundledArtworkCatalog';
 import { PlayerLayoutSpec, PlayerMotionSpec } from './PlayerMotion';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
 
@@ -56,7 +57,7 @@ export struct PlayerHeroArtwork {
     if (this.playerStore.heroArtworkUri.length > 0) {
       return this.playerStore.heroArtworkUri;
     }
-    return $r('app.media.default_album_cover');
+    return BundledArtworkCatalog.resolve(BundledArtworkCatalog.DEFAULT_FULL);
   }
 
   build() {

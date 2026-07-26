@@ -3,6 +3,7 @@ import { curves } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { image } from '@kit.ImageKit';
 import { vibrator } from '@kit.SensorServiceKit';
+import { BundledArtworkCatalog } from '../../library/artwork/BundledArtworkCatalog';
 import { systemBarStyleController } from '../../appearance/SystemBarStyleController';
 import { DynamicColor, DynamicContainerRole } from '../../appearance/DynamicColor';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
@@ -380,7 +381,7 @@ export class PlayerMorphController {
         }
       }
     }
-    return $r('app.media.default_album_cover');
+    return BundledArtworkCatalog.resolve(BundledArtworkCatalog.DEFAULT_FULL);
   }
 
   morphArtworkSourceWidth(): number {

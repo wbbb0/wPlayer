@@ -1,4 +1,5 @@
 import { image } from '@kit.ImageKit';
+import { BundledArtworkCatalog } from '../../library/artwork/BundledArtworkCatalog';
 
 @Component
 export struct DynamicBackgroundTextureLayer {
@@ -9,7 +10,8 @@ export struct DynamicBackgroundTextureLayer {
   @Prop mirrorX: boolean = false;
 
   private imageSource(): image.PixelMap | ResourceStr {
-    return this.sourceProvider(this.sourceRevision) ?? $r('app.media.default_album_cover');
+    return this.sourceProvider(this.sourceRevision) ??
+      BundledArtworkCatalog.resolve(BundledArtworkCatalog.DEFAULT_LARGE);
   }
 
   build() {

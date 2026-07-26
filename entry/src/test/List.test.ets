@@ -23,6 +23,7 @@ import artworkPaletteExtractorTest from './ArtworkPaletteExtractor.test';
 import playerMorphPolicyTest from './PlayerMorphPolicy.test';
 import playbackPictureInPicturePolicyTest from './PlaybackPictureInPicturePolicy.test';
 import floatingWindowSettingsPolicyTest from './FloatingWindowSettingsPolicy.test';
+import bundledArtworkCatalogTest from './BundledArtworkCatalog.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -50,4 +51,5 @@ export default function testsuite() {
   playerMorphPolicyTest();
   playbackPictureInPicturePolicyTest();
   floatingWindowSettingsPolicyTest();
+  bundledArtworkCatalogTest();
 }

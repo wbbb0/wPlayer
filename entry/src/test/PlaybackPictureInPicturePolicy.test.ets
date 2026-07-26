@@ -25,11 +25,5 @@ export default function playbackPictureInPicturePolicyTest() {
       expect(PlaybackPictureInPicturePolicy.transportControlsEnabled(true, 1)).assertFalse();
       expect(PlaybackPictureInPicturePolicy.transportControlsEnabled(true, 2)).assertTrue();
     });
-
-    it('does not pass demo-only artwork schemes to the system Image component', 0, () => {
-      expect(PlaybackPictureInPicturePolicy.artworkUri('demo-artwork://city')).assertEqual('');
-      expect(PlaybackPictureInPicturePolicy.artworkUri('file:///data/artwork.webp'))
-        .assertEqual('file:///data/artwork.webp');
-    });
   });
 }

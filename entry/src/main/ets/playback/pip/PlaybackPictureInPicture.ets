@@ -9,6 +9,7 @@ import {
 } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { BundledArtworkCatalog } from '../../library/artwork/BundledArtworkCatalog';
 import {
   PlaybackPictureInPicturePolicy,
   PlaybackPictureInPictureSize
@@ -55,7 +56,7 @@ class PlaybackPictureInPictureArtworkParams {
   readonly artworkUri: string;
 
   constructor(artworkUri: string) {
-    this.artworkUri = PlaybackPictureInPicturePolicy.artworkUri(artworkUri);
+    this.artworkUri = artworkUri;
   }
 }
 
@@ -63,13 +64,13 @@ class PlaybackPictureInPictureArtworkParams {
 function PlaybackPictureInPictureArtwork(params: PlaybackPictureInPictureArtworkParams) {
   Stack({ alignContent: Alignment.Center }) {
     if (params.artworkUri.length > 0) {
-      Image(params.artworkUri)
+      Image(BundledArtworkCatalog.resolve(params.artworkUri))
         .width('100%')
         .height('100%')
         .objectFit(ImageFit.Contain)
         .interpolation(ImageInterpolation.High)
     } else {
-      Image($r('app.media.default_album_cover'))
+      Image(BundledArtworkCatalog.resolve(BundledArtworkCatalog.DEFAULT_FULL))
         .width('100%')
         .height('100%')
         .objectFit(ImageFit.Contain)

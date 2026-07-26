@@ -1,5 +1,6 @@
 import { image } from '@kit.ImageKit';
 import { DynamicBackgroundV3NativeContext } from 'libwplayerbackground.so';
+import { BundledArtworkCatalog } from '../../library/artwork/BundledArtworkCatalog';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { DynamicBackgroundArtworkLoad } from './DynamicBackgroundArtworkLoad';
 import {
@@ -97,7 +98,7 @@ export class DynamicBackgroundArtworkCoordinator {
       return '';
     }
     if (playerStore.miniArtworkUri.length > 0 &&
-      !playerStore.miniArtworkUri.startsWith('demo-artwork://')) {
+      !BundledArtworkCatalog.isPath(playerStore.miniArtworkUri)) {
       return playerStore.miniArtworkUri;
     }
     return playerStore.heroArtworkUri;
@@ -115,7 +116,7 @@ export class DynamicBackgroundArtworkCoordinator {
     if (this.decodedArtworkUri === uri && this.decodedArtwork !== undefined) {
       return this.decodedArtwork;
     }
-    if (uri.length > 0 && !uri.startsWith('demo-artwork://')) {
+    if (uri.length > 0 && !BundledArtworkCatalog.isPath(uri)) {
       return undefined;
     }
     return playerStore.heroArtwork;
@@ -186,7 +187,7 @@ export class DynamicBackgroundArtworkCoordinator {
       return;
     }
     const uri = this.currentArtworkUri();
-    if (uri.length === 0 || uri.startsWith('demo-artwork://')) {
+    if (uri.length === 0 || BundledArtworkCatalog.isPath(uri)) {
       this.artworkLoad.invalidateUnless();
       if (this.decodedArtwork !== undefined) {
         this.releaseDecodedArtwork();

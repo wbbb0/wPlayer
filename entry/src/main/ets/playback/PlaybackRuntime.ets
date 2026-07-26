@@ -2,6 +2,7 @@ import { common } from '@kit.AbilityKit';
 import { UIContext } from '@kit.ArkUI';
 import { image } from '@kit.ImageKit';
 import { ArtworkCache } from '../library/artwork/ArtworkCache';
+import { BundledArtworkCatalog } from '../library/artwork/BundledArtworkCatalog';
 import { MusicRepository } from '../library/data/MusicRepository';
 import { ensureReadPermission } from '../library/importer/MediaPickerService';
 import { MetadataReader } from '../library/metadata/MetadataReader';
@@ -1340,7 +1341,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   private resolveArtworkUri(relativePath: string): string {
-    if (DemoMusicLibrary.isArtworkPath(relativePath)) {
+    if (BundledArtworkCatalog.isPath(relativePath)) {
       return relativePath;
     }
     if (relativePath.length === 0 || this.context === undefined) {
@@ -1448,7 +1449,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.paletteAccent = track.paletteAccent;
     this.playerStore.setMiniArtwork(undefined, track.smallArtworkPath);
     this.playerStore.heroArtwork = undefined;
-    this.playerStore.heroArtworkUri = track.largeArtworkPath;
+    this.playerStore.heroArtworkUri = BundledArtworkCatalog.fullPath(track.largeArtworkPath);
     this.playerStore.heroArtworkPreferPixelMap = false;
     this.playerStore.heroArtworkRevision += 1;
     this.playerStore.playWhenReady = playWhenReady;

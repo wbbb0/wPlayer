@@ -23,9 +23,8 @@ import {
   TrackNavigationTargets,
   TrackSortField
 } from '../library/model/LibraryModels';
+import { BundledArtworkCatalog } from '../library/artwork/BundledArtworkCatalog';
 import { PlaybackTrack, QueueTrack, ResumeState } from '../playback/model/PlaybackModels';
-
-export const DEMO_ARTWORK_PREFIX: string = 'demo-artwork://';
 
 const DEMO_ARTIST_LIN_YU: ArtistReference = { id: -2001, name: '林屿' };
 const DEMO_ARTIST_DAYLIGHT: ArtistReference = { id: -2002, name: '白昼信号' };
@@ -35,81 +34,81 @@ const DEMO_TRACKS: Array<TrackListItem> = [
   {
     id: -1001, title: '雨停之后', artistDisplay: '林屿', albumDisplay: '城市微光',
     durationMs: 222000, trackNumber: 1, discNumber: 1,
-    smallArtworkHash: 'demo-city', smallArtworkPath: 'demo-artwork://city',
-    artworkHash: 'demo-city', artworkPath: 'demo-artwork://city',
-    artworkWidth: 1024, artworkHeight: 1024,
+    smallArtworkHash: 'demo-city', smallArtworkPath: BundledArtworkCatalog.DEMO_CITY_SMALL,
+    artworkHash: 'demo-city', artworkPath: BundledArtworkCatalog.DEMO_CITY_LARGE,
+    artworkWidth: 2048, artworkHeight: 2048,
     palettePrimary: '#FF4E6C89', paletteSecondary: '#FF91A8BD', paletteAccent: '#FFFFC978',
     sectionKey: '#', availability: AvailabilityState.AVAILABLE
   },
   {
     id: -1002, title: '星光缓慢', artistDisplay: '林屿', albumDisplay: '城市微光',
     durationMs: 256000, trackNumber: 2, discNumber: 1,
-    smallArtworkHash: 'demo-city', smallArtworkPath: 'demo-artwork://city',
-    artworkHash: 'demo-city', artworkPath: 'demo-artwork://city',
-    artworkWidth: 1024, artworkHeight: 1024,
+    smallArtworkHash: 'demo-city', smallArtworkPath: BundledArtworkCatalog.DEMO_CITY_SMALL,
+    artworkHash: 'demo-city', artworkPath: BundledArtworkCatalog.DEMO_CITY_LARGE,
+    artworkWidth: 2048, artworkHeight: 2048,
     palettePrimary: '#FF4E6C89', paletteSecondary: '#FF91A8BD', paletteAccent: '#FFFFC978',
     sectionKey: '#', availability: AvailabilityState.AVAILABLE
   },
   {
     id: -1003, title: '风经过窗边', artistDisplay: '林屿', albumDisplay: '城市微光',
     durationMs: 176000, trackNumber: 3, discNumber: 1,
-    smallArtworkHash: 'demo-city', smallArtworkPath: 'demo-artwork://city',
-    artworkHash: 'demo-city', artworkPath: 'demo-artwork://city',
-    artworkWidth: 1024, artworkHeight: 1024,
+    smallArtworkHash: 'demo-city', smallArtworkPath: BundledArtworkCatalog.DEMO_CITY_SMALL,
+    artworkHash: 'demo-city', artworkPath: BundledArtworkCatalog.DEMO_CITY_LARGE,
+    artworkWidth: 2048, artworkHeight: 2048,
     palettePrimary: '#FF4E6C89', paletteSecondary: '#FF91A8BD', paletteAccent: '#FFFFC978',
     sectionKey: '#', availability: AvailabilityState.AVAILABLE
   },
   {
     id: -1004, title: '海岸公路', artistDisplay: '白昼信号', albumDisplay: '向海而行',
     durationMs: 248000, trackNumber: 1, discNumber: 1,
-    smallArtworkHash: 'demo-coast', smallArtworkPath: 'demo-artwork://coast',
-    artworkHash: 'demo-coast', artworkPath: 'demo-artwork://coast',
-    artworkWidth: 1024, artworkHeight: 1024,
+    smallArtworkHash: 'demo-coast', smallArtworkPath: BundledArtworkCatalog.DEMO_COAST_SMALL,
+    artworkHash: 'demo-coast', artworkPath: BundledArtworkCatalog.DEMO_COAST_LARGE,
+    artworkWidth: 2048, artworkHeight: 2048,
     palettePrimary: '#FF117A8B', paletteSecondary: '#FF61B7BB', paletteAccent: '#FFFFD166',
     sectionKey: '#', availability: AvailabilityState.AVAILABLE
   },
   {
     id: -1005, title: '蓝色清晨', artistDisplay: '白昼信号', albumDisplay: '向海而行',
     durationMs: 215000, trackNumber: 2, discNumber: 1,
-    smallArtworkHash: 'demo-coast', smallArtworkPath: 'demo-artwork://coast',
-    artworkHash: 'demo-coast', artworkPath: 'demo-artwork://coast',
-    artworkWidth: 1024, artworkHeight: 1024,
+    smallArtworkHash: 'demo-coast', smallArtworkPath: BundledArtworkCatalog.DEMO_COAST_SMALL,
+    artworkHash: 'demo-coast', artworkPath: BundledArtworkCatalog.DEMO_COAST_LARGE,
+    artworkWidth: 2048, artworkHeight: 2048,
     palettePrimary: '#FF117A8B', paletteSecondary: '#FF61B7BB', paletteAccent: '#FFFFD166',
     sectionKey: '#', availability: AvailabilityState.AVAILABLE
   },
   {
     id: -1006, title: '夏末回声', artistDisplay: '白昼信号', albumDisplay: '向海而行',
     durationMs: 198000, trackNumber: 3, discNumber: 1,
-    smallArtworkHash: 'demo-coast', smallArtworkPath: 'demo-artwork://coast',
-    artworkHash: 'demo-coast', artworkPath: 'demo-artwork://coast',
-    artworkWidth: 1024, artworkHeight: 1024,
+    smallArtworkHash: 'demo-coast', smallArtworkPath: BundledArtworkCatalog.DEMO_COAST_SMALL,
+    artworkHash: 'demo-coast', artworkPath: BundledArtworkCatalog.DEMO_COAST_LARGE,
+    artworkWidth: 2048, artworkHeight: 2048,
     palettePrimary: '#FF117A8B', paletteSecondary: '#FF61B7BB', paletteAccent: '#FFFFD166',
     sectionKey: '#', availability: AvailabilityState.AVAILABLE
   },
   {
     id: -1007, title: '凌晨列车', artistDisplay: '北站', albumDisplay: '夜航',
     durationMs: 207000, trackNumber: 1, discNumber: 1,
-    smallArtworkHash: 'demo-night', smallArtworkPath: 'demo-artwork://night',
-    artworkHash: 'demo-night', artworkPath: 'demo-artwork://night',
-    artworkWidth: 1024, artworkHeight: 1024,
+    smallArtworkHash: 'demo-night', smallArtworkPath: BundledArtworkCatalog.DEMO_NIGHT_SMALL,
+    artworkHash: 'demo-night', artworkPath: BundledArtworkCatalog.DEMO_NIGHT_LARGE,
+    artworkWidth: 2048, artworkHeight: 2048,
     palettePrimary: '#FF3A315B', paletteSecondary: '#FF746D9C', paletteAccent: '#FFFF8A65',
     sectionKey: '#', availability: AvailabilityState.AVAILABLE
   },
   {
     id: -1008, title: '无人站台', artistDisplay: '北站', albumDisplay: '夜航',
     durationMs: 231000, trackNumber: 2, discNumber: 1,
-    smallArtworkHash: 'demo-night', smallArtworkPath: 'demo-artwork://night',
-    artworkHash: 'demo-night', artworkPath: 'demo-artwork://night',
-    artworkWidth: 1024, artworkHeight: 1024,
+    smallArtworkHash: 'demo-night', smallArtworkPath: BundledArtworkCatalog.DEMO_NIGHT_SMALL,
+    artworkHash: 'demo-night', artworkPath: BundledArtworkCatalog.DEMO_NIGHT_LARGE,
+    artworkWidth: 2048, artworkHeight: 2048,
     palettePrimary: '#FF3A315B', paletteSecondary: '#FF746D9C', paletteAccent: '#FFFF8A65',
     sectionKey: '#', availability: AvailabilityState.AVAILABLE
   },
   {
     id: -1009, title: '灯火以北', artistDisplay: '北站', albumDisplay: '夜航',
     durationMs: 244000, trackNumber: 3, discNumber: 1,
-    smallArtworkHash: 'demo-night', smallArtworkPath: 'demo-artwork://night',
-    artworkHash: 'demo-night', artworkPath: 'demo-artwork://night',
-    artworkWidth: 1024, artworkHeight: 1024,
+    smallArtworkHash: 'demo-night', smallArtworkPath: BundledArtworkCatalog.DEMO_NIGHT_SMALL,
+    artworkHash: 'demo-night', artworkPath: BundledArtworkCatalog.DEMO_NIGHT_LARGE,
+    artworkWidth: 2048, artworkHeight: 2048,
     palettePrimary: '#FF3A315B', paletteSecondary: '#FF746D9C', paletteAccent: '#FFFF8A65',
     sectionKey: '#', availability: AvailabilityState.AVAILABLE
   }
@@ -119,21 +118,21 @@ const DEMO_ALBUMS: Array<AlbumListItem> = [
   {
     id: -1101, title: '城市微光', albumArtistDisplay: '林屿',
     trackCount: 3, totalDurationMs: 654000,
-    artworkPath: 'demo-artwork://city', artworkWidth: 1024, artworkHeight: 1024,
+    artworkPath: BundledArtworkCatalog.DEMO_CITY_LARGE, artworkWidth: 2048, artworkHeight: 2048,
     palettePrimary: '#FF4E6C89', paletteSecondary: '#FF91A8BD', paletteAccent: '#FFFFC978',
     sectionKey: '#', unavailableTrackCount: 0
   },
   {
     id: -1102, title: '向海而行', albumArtistDisplay: '白昼信号',
     trackCount: 3, totalDurationMs: 661000,
-    artworkPath: 'demo-artwork://coast', artworkWidth: 1024, artworkHeight: 1024,
+    artworkPath: BundledArtworkCatalog.DEMO_COAST_LARGE, artworkWidth: 2048, artworkHeight: 2048,
     palettePrimary: '#FF117A8B', paletteSecondary: '#FF61B7BB', paletteAccent: '#FFFFD166',
     sectionKey: '#', unavailableTrackCount: 0
   },
   {
     id: -1103, title: '夜航', albumArtistDisplay: '北站',
     trackCount: 3, totalDurationMs: 682000,
-    artworkPath: 'demo-artwork://night', artworkWidth: 1024, artworkHeight: 1024,
+    artworkPath: BundledArtworkCatalog.DEMO_NIGHT_LARGE, artworkWidth: 2048, artworkHeight: 2048,
     palettePrimary: '#FF3A315B', paletteSecondary: '#FF746D9C', paletteAccent: '#FFFF8A65',
     sectionKey: '#', unavailableTrackCount: 0
   }
@@ -254,10 +253,6 @@ function playlistTrackOf(track: TrackListItem, position: number): PlaylistTrackI
 }
 
 export class DemoMusicLibrary {
-  static isArtworkPath(path: string): boolean {
-    return path.startsWith(DEMO_ARTWORK_PREFIX);
-  }
-
   static tracks(field: TrackSortField, direction: SortDirection): Array<TrackListItem> {
     const tracks = DEMO_TRACKS.map((track: TrackListItem): TrackListItem => cloneTrack(track));
     tracks.sort((left: TrackListItem, right: TrackListItem): number => {

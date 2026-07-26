@@ -86,6 +86,23 @@ export default function playerMorphPolicyTest() {
       );
     });
 
+    it('maps playback artwork motion to its final visual states', 0, () => {
+      const pausedProgress = PlayerMotionSpec.artworkPlaybackVisualTarget(false);
+      const activeProgress = PlayerMotionSpec.artworkPlaybackVisualTarget(true);
+      expect(pausedProgress).assertEqual(0);
+      expect(activeProgress).assertEqual(1);
+      expect(PlayerMotionSpec.artworkPlaybackVisualValue(
+        PlayerMotionSpec.PAUSED_ARTWORK_SCALE,
+        1,
+        pausedProgress
+      )).assertEqual(PlayerMotionSpec.PAUSED_ARTWORK_SCALE);
+      expect(PlayerMotionSpec.artworkPlaybackVisualValue(
+        PlayerMotionSpec.PAUSED_ARTWORK_SHADOW_RADIUS,
+        PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS,
+        activeProgress
+      )).assertEqual(PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS);
+    });
+
     it('does not restart a page drag while the previous settle is active', 0, () => {
       expect(FullPlayerPagerSpec.canBeginGesture(
         PlayerMorphPhase.OPEN,

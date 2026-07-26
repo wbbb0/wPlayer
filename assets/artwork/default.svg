@@ -5,14 +5,16 @@
       <stop offset="0.48" stop-color="#5B5CE2"/>
       <stop offset="1" stop-color="#30319B"/>
     </linearGradient>
-    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(170 120) rotate(50) scale(330)">
+    <radialGradient id="glow" cx="0" cy="0" r="1"
+      gradientTransform="translate(170 120) rotate(50) scale(330)">
       <stop stop-color="#FFFFFF" stop-opacity="0.72"/>
       <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
     </radialGradient>
   </defs>
   <rect width="512" height="512" fill="url(#bg)"/>
   <circle cx="256" cy="256" r="205" fill="#15165A" fill-opacity="0.23"/>
-  <circle cx="256" cy="256" r="148" fill="none" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="3"/>
+  <circle cx="256" cy="256" r="148" fill="none" stroke="#FFFFFF"
+    stroke-opacity="0.18" stroke-width="3"/>
   <circle cx="256" cy="256" r="90" fill="#FFFFFF" fill-opacity="0.18"/>
   <circle cx="256" cy="256" r="26" fill="#FFFFFF" fill-opacity="0.88"/>
   <rect width="512" height="512" fill="url(#glow)"/>

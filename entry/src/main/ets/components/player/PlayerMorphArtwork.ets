@@ -1,6 +1,7 @@
 import { curves } from '@kit.ArkUI';
 import { image } from '@kit.ImageKit';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
+import { BundledArtworkCatalog } from '../../library/artwork/BundledArtworkCatalog';
 import { ArtworkLayout } from '../artwork/ArtworkLayout';
 import { ArtworkFitMode, ArtworkView } from '../artwork/ArtworkView';
 import { ContextPreviewGeometry } from '../library/ContextPreviewGeometry';
@@ -21,11 +22,14 @@ import {
 
 @Component
 export struct PlayerMorphArtwork {
-  @ObjectLink playerStore: PlayerStore;
+  @ObjectLink @Watch('onPlayerStoreChanged') playerStore: PlayerStore;
   @State contextMenuShown: boolean = false;
+  @State playbackVisualProgress: number = 1;
   private contextPreviewWidth: number = 0;
   private contextPreviewHeight: number = 0;
   private contextPreviewRestScale: number = 1;
+  private playbackVisualTarget: number = 1;
+  private mounted: boolean = false;
   @Prop expandProgress: number = 0;
   @Prop morphPhase: PlayerMorphPhase = PlayerMorphPhase.IDLE;
   @Prop fullPlayerPage: FullPlayerPage = FullPlayerPage.COVER;
@@ -47,13 +51,49 @@ export struct PlayerMorphArtwork {
   @Prop sourceWidth: number = 0;
   @Prop sourceHeight: number = 0;
   sourceProvider: () => image.PixelMap | ResourceStr =
-    (): ResourceStr => $r('app.media.default_album_cover');
+    (): ResourceStr => BundledArtworkCatalog.resolve(BundledArtworkCatalog.DEFAULT_FULL);
   onInsertNext: () => void = (): void => {};
   onAppendToQueue: () => void = (): void => {};
   onAddToPlaylist: () => void = (): void => {};
   onOpenDetails: () => void = (): void => {};
   onCompletedCollectionChange: (enabled: boolean) => void =
     (_enabled: boolean): void => {};
+
+  aboutToAppear(): void {
+    this.mounted = true;
+    this.playbackVisualTarget = this.currentPlaybackVisualTarget();
+    this.playbackVisualProgress = this.playbackVisualTarget;
+  }
+
+  aboutToDisappear(): void {
+    this.mounted = false;
+  }
+
+  private currentPlaybackVisualTarget(): number {
+    return PlayerMotionSpec.artworkPlaybackVisualTarget(
+      this.playerStore.keepsActivePlaybackVisual()
+    );
+  }
+
+  private onPlayerStoreChanged(): void {
+    const target = this.currentPlaybackVisualTarget();
+    if (target === this.playbackVisualTarget) {
+      return;
+    }
+    this.playbackVisualTarget = target;
+    if (!this.mounted || this.morphPhase !== PlayerMorphPhase.OPEN) {
+      this.playbackVisualProgress = target;
+      return;
+    }
+    this.getUIContext().animateTo({
+      curve: curves.springMotion(
+        PlayerMotionSpec.ARTWORK_STATE_SPRING_RESPONSE,
+        PlayerMotionSpec.ARTWORK_STATE_SPRING_DAMPING
+      )
+    }, () => {
+      this.playbackVisualProgress = target;
+    });
+  }
 
   private clamp(value: number, minimum: number, maximum: number): number {
     return Math.max(minimum, Math.min(maximum, value));
@@ -120,14 +160,36 @@ export struct PlayerMorphArtwork {
   }
 
   private playbackScale(): number {
-    const fullPlayerScale = this.playerStore.keepsActivePlaybackVisual() ?
-      1 : PlayerMotionSpec.PAUSED_ARTWORK_SCALE;
+    const fullPlayerScale = PlayerMotionSpec.artworkPlaybackVisualValue(
+      PlayerMotionSpec.PAUSED_ARTWORK_SCALE,
+      1,
+      this.playbackVisualProgress
+    );
     return 1 - (1 - fullPlayerScale) * this.clamp(this.expandProgress, 0, 1);
   }
 
   private playbackRestScale(): number {
-    return this.playerStore.keepsActivePlaybackVisual() ?
-      1 : PlayerMotionSpec.PAUSED_ARTWORK_SCALE;
+    return PlayerMotionSpec.artworkPlaybackVisualValue(
+      PlayerMotionSpec.PAUSED_ARTWORK_SCALE,
+      1,
+      this.playbackVisualProgress
+    );
+  }
+
+  private playbackShadowRadius(): number {
+    return PlayerMotionSpec.artworkPlaybackVisualValue(
+      PlayerMotionSpec.PAUSED_ARTWORK_SHADOW_RADIUS,
+      PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS,
+      this.playbackVisualProgress
+    ) * this.clamp(this.expandProgress, 0, 1);
+  }
+
+  private playbackShadowOffsetY(): number {
+    return PlayerMotionSpec.artworkPlaybackVisualValue(
+      PlayerMotionSpec.PAUSED_ARTWORK_SHADOW_OFFSET_Y,
+      PlayerMotionSpec.FULL_ARTWORK_SHADOW_OFFSET_Y,
+      this.playbackVisualProgress
+    ) * this.clamp(this.expandProgress, 0, 1);
   }
 
   private artworkX(): number {
@@ -213,33 +275,18 @@ export struct PlayerMorphArtwork {
         fitMode: ArtworkFitMode.COVER,
         resolvedCornerRadius: this.sourceRadius(),
         shadowEnabled: true,
-        shadowRadius: (this.playerStore.keepsActivePlaybackVisual() ?
-          PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS :
-          PlayerMotionSpec.PAUSED_ARTWORK_SHADOW_RADIUS) *
-            this.clamp(this.expandProgress, 0, 1),
-        shadowOffsetY: (this.playerStore.keepsActivePlaybackVisual() ?
-          PlayerMotionSpec.FULL_ARTWORK_SHADOW_OFFSET_Y :
-          PlayerMotionSpec.PAUSED_ARTWORK_SHADOW_OFFSET_Y) *
-            this.clamp(this.expandProgress, 0, 1),
-        animateShadowChanges: this.morphPhase === PlayerMorphPhase.OPEN,
-        shadowSpringResponse: PlayerMotionSpec.ARTWORK_STATE_SPRING_RESPONSE,
-        shadowSpringDamping: PlayerMotionSpec.ARTWORK_STATE_SPRING_DAMPING,
-        interpolation: ImageInterpolation.Medium,
-        resizeContentWithBounds: true
+        shadowRadius: this.playbackShadowRadius(),
+        shadowOffsetY: this.playbackShadowOffsetY(),
+        interpolation: ImageInterpolation.Medium
       })
         .scale({
           x: this.playbackScale(),
           y: this.playbackScale()
         })
-        .animation(this.morphPhase === PlayerMorphPhase.OPEN ? {
-          curve: curves.springMotion(
-            PlayerMotionSpec.ARTWORK_STATE_SPRING_RESPONSE,
-            PlayerMotionSpec.ARTWORK_STATE_SPRING_DAMPING
-          )
-        } : { duration: 0 })
     }
     .width(this.artworkWidth())
     .height(this.artworkHeight())
+    .renderFit(RenderFit.RESIZE_FILL)
     .opacity(this.contextMenuShown ? 0 : this.artworkOpacity())
     .position({ x: 0, y: 0 })
     .translate({ x: this.artworkX(), y: this.artworkY() })

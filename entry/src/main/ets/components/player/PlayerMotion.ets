@@ -303,6 +303,16 @@ export class PlayerMotionSpec {
       Math.max(0.01, restScale);
   }
 
+  static artworkPlaybackVisualTarget(active: boolean): number {
+    return active ? 1 : 0;
+  }
+
+  static artworkPlaybackVisualValue(pausedValue: number, activeValue: number,
+    progress: number): number {
+    const normalizedProgress = Math.max(0, Math.min(1, progress));
+    return pausedValue + (activeValue - pausedValue) * normalizedProgress;
+  }
+
   private static smoothRange(value: number, start: number, end: number): number {
     const progress = Math.max(0, Math.min(1, (value - start) / Math.max(0.01, end - start)));
     return progress * progress * (3 - 2 * progress);

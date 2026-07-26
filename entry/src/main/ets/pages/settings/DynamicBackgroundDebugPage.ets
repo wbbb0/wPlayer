@@ -5,6 +5,7 @@ import { DynamicBackgroundDebugSpec } from '../../components/player/DynamicBackg
 import { DynamicBackgroundTextureAlgorithm } from '../../components/player/DynamicBackgroundTextureAlgorithm';
 import { DynamicBackgroundTextureLayer } from '../../components/player/DynamicBackgroundTextureLayer';
 import { DynamicBackgroundTextureProcessor } from '../../components/player/DynamicBackgroundTextureProcessor';
+import { BundledArtworkCatalog } from '../../library/artwork/BundledArtworkCatalog';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
 
 @Component
@@ -201,7 +202,7 @@ export struct DynamicBackgroundDebugPage {
   private hasBackgroundSource(): boolean {
     return this.playerStore.heroArtwork !== undefined ||
       (this.playerStore.heroArtworkUri.length > 0 &&
-        !this.playerStore.heroArtworkUri.startsWith('demo-artwork://'));
+        !BundledArtworkCatalog.isPath(this.playerStore.heroArtworkUri));
   }
 
   private currentTrackTitle(): string {

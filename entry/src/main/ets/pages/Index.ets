@@ -87,7 +87,6 @@ struct Index {
   @State maintenanceSheetVisible: boolean = false;
   @State maintenanceStatus: LibraryMaintenanceStatus = { items: [], total: 0 };
   @State animatedThemePrimary: string = this.playerStore.themePrimary();
-  @State animatedThemeOnPrimary: string = this.playerStore.themeOnPrimary();
   private readonly appearanceListener: AppAppearanceListener = (_epoch: number): void => {
     this.refreshAppearance();
   };
@@ -197,9 +196,7 @@ struct Index {
 
   private animatePlayerTheme(): void {
     const targetColor = this.playerStore.themePrimary();
-    const targetContentColor = this.playerStore.themeOnPrimary();
-    if (this.animatedThemePrimary === targetColor &&
-      this.animatedThemeOnPrimary === targetContentColor) {
+    if (this.animatedThemePrimary === targetColor) {
       return;
     }
     this.getUIContext().animateTo({
@@ -207,7 +204,6 @@ struct Index {
       curve: Curve.EaseInOut
     }, () => {
       this.animatedThemePrimary = targetColor;
-      this.animatedThemeOnPrimary = targetContentColor;
     });
   }
 
@@ -320,11 +316,6 @@ struct Index {
   private playerThemeBackground(): string {
     return this.animatedThemePrimary.length > 0 ?
       this.animatedThemePrimary : this.playerStore.themePrimary();
-  }
-
-  private playerContentColor(): string {
-    return this.animatedThemeOnPrimary.length > 0 ?
-      this.animatedThemeOnPrimary : this.playerStore.themeOnPrimary();
   }
 
   private morphCollapsedSurfaceColor(): string {
@@ -497,7 +488,7 @@ struct Index {
       libraryStore: this.libraryStore,
       topInset: this.statusBarAvoidHeight,
       bottomInset: this.navigationAvoidHeight,
-      primaryContentColor: this.playerContentColor(),
+      primaryContentColor: PlayerMotionSpec.FULL_PLAYER_CONTENT_COLOR,
       onRequestAddToPlaylist: (trackIds: Array<number>): void =>
         this.playlistController.requestTrackIdsAddToPlaylist(trackIds),
       onOpenTrackActions: (trackId: number, anchorId: string): void =>
@@ -520,7 +511,7 @@ struct Index {
       bottomInset: this.navigationAvoidHeight,
       rootFrame: this.playerMorphController.rootFrame,
       paneCount: this.fullPlayerPaneCount(),
-      primaryContentColor: this.playerContentColor(),
+      primaryContentColor: PlayerMotionSpec.FULL_PLAYER_CONTENT_COLOR,
       previousArtworkTarget: this.playerMorphController.artworkTarget,
       previousCenteredArtworkTarget: this.playerMorphController.centeredArtworkTarget,
       onArtworkTarget: (target: PlayerPoint): void => {

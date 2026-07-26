@@ -201,6 +201,7 @@ export class FullPlayerPagerSpec {
 export class PlayerMotionSpec {
   static readonly COLLAPSED_SURFACE_DARK: string = '#FF2B2B2B';
   static readonly COLLAPSED_SURFACE_LIGHT: string = '#FFFFFFFF';
+  static readonly FULL_PLAYER_CONTENT_COLOR: string = '#FFFFFFFF';
   static readonly GESTURE_COMPLETION_FRACTION: number = 0.28;
   static readonly GESTURE_COMPLETION_MAX_DISTANCE: number = 120;
   static readonly OPEN_DURATION: number = 420;

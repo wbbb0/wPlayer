@@ -102,6 +102,7 @@ export default function playerMorphPolicyTest() {
     });
 
     it('uses enlarged playback targets in both full-player layouts', 0, () => {
+      expect(PlayerMotionSpec.FULL_PLAYER_CONTENT_COLOR).assertEqual('#FFFFFFFF');
       expect(PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE % 8).assertEqual(0);
       expect(PlayerLayoutSpec.ULTRA_COMPACT_PLAYBACK_BUTTON_SIZE % 8).assertEqual(0);
       expect(PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE).assertEqual(72);

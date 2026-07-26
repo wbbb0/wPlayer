@@ -112,7 +112,7 @@ export class PlayerMorphController {
     if (this.isMorphActive()) {
       systemBarStyleController.submitContentColor(
         PLAYER_SYSTEM_BAR_OWNER,
-        this.playerStore.themeOnPrimary()
+        PlayerMotionSpec.FULL_PLAYER_CONTENT_COLOR
       );
     } else {
       systemBarStyleController.removeContentColor(PLAYER_SYSTEM_BAR_OWNER);
@@ -462,7 +462,7 @@ export class PlayerMorphController {
   morphPlaybackButtonColor(): string {
     return DynamicColor.blendOpaque(
       this.frozenMiniPlayerForeground,
-      this.playerStore.themeOnPrimary(),
+      PlayerMotionSpec.FULL_PLAYER_CONTENT_COLOR,
       PlayerMotionSpec.foregroundColorProgress(this.playerExpandProgress)
     );
   }

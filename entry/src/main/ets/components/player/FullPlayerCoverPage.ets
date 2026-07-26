@@ -51,6 +51,7 @@ export struct FullPlayerCoverPage {
     y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y
   };
   onNavigatePage: (page: FullPlayerPage) => void = (_page: FullPlayerPage): void => {};
+  onClose: () => void = (): void => {};
   onSeek: (positionMs: number) => void = (_positionMs: number): void => {};
   onOpenTrackActions: (trackId: number, anchorId: string) => void =
     (_trackId: number, _anchorId: string): void => {};
@@ -176,6 +177,39 @@ export struct FullPlayerCoverPage {
     return currentPosition === FullPlayerPagerSpec.positionForPage(page, this.paneCount);
   }
 
+  private enterPictureInPicture(): void {
+    playbackRuntime.enterPictureInPicture(this.getUIContext())
+      .then((closePlayerPage: boolean): void => {
+        if (closePlayerPage) {
+          this.onClose();
+        }
+      })
+      .catch((error: Object): void => {
+        const message = error instanceof Error ? error.message : '无法启动画中画';
+        this.getUIContext().getPromptAction().showToast({ message: message });
+      });
+  }
+
+  @Builder
+  private PictureInPictureButton() {
+    Stack() {
+      PlayerImageIcon({
+        source: $r('app.media.control_picture_in_picture'),
+        iconSize: 20,
+        contentColor: this.contentColor()
+      })
+    }
+    .width(40)
+    .height(40)
+    .borderRadius(20)
+    .backgroundColor(Color.Transparent)
+    .clickEffect({ level: ClickEffectLevel.LIGHT })
+    .enabled(this.playerStore.currentTrack !== undefined)
+    .opacity(this.playerStore.currentTrack === undefined ? 0.38 : 1)
+    .accessibilityText('显示专辑封面画中画')
+    .onClick((): void => this.enterPictureInPicture())
+  }
+
   @Builder
   private PageNavigationButton(page: FullPlayerPage) {
     Stack() {
@@ -247,6 +281,8 @@ export struct FullPlayerCoverPage {
             })
               .layoutWeight(1)
           }
+
+          this.PictureInPictureButton()
 
           Stack() {
             PlayerImageIcon({
@@ -354,45 +390,54 @@ export struct FullPlayerCoverPage {
 
   @Builder
   private UltraCompactMetadata() {
-    Column({ space: 4 }) {
-      if (this.measuresArtworkTarget) {
-        Text(this.currentTitleLabel())
-          .fontSize(PlayerLayoutSpec.FULL_PLAYER_TITLE_SIZE)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(this.contentColor())
+    Row({ space: 8 }) {
+      Column({ space: 4 }) {
+        if (this.measuresArtworkTarget) {
+          Text(this.currentTitleLabel())
+            .fontSize(PlayerLayoutSpec.FULL_PLAYER_TITLE_SIZE)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(this.contentColor())
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        } else {
+          PlayerTrackMarquee({
+            playerStore: this.playerStore,
+            active: this.marqueeActive,
+            titleColor: this.contentColor(),
+            titleSize: PlayerLayoutSpec.FULL_PLAYER_TITLE_SIZE,
+            titleWeight: FontWeight.Bold,
+            animateColor: true
+          })
+        }
+        Text(this.currentArtistLabel())
+          .fontSize(PlayerLayoutSpec.FULL_PLAYER_ARTIST_SIZE)
+          .fontColor(this.secondaryContentColor())
+          .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
-      } else {
-        PlayerTrackMarquee({
-          playerStore: this.playerStore,
-          active: this.marqueeActive,
-          titleColor: this.contentColor(),
-          titleSize: PlayerLayoutSpec.FULL_PLAYER_TITLE_SIZE,
-          titleWeight: FontWeight.Bold,
-          animateColor: true
-        })
+          .id('ultra_compact_player_artist_action')
+          .accessibilityText('查看艺术家、专辑艺术家或专辑')
+          .onClick(() => {
+            if (!this.measuresArtworkTarget && this.playerStore.currentTrack !== undefined) {
+              this.onOpenTrackActions(
+                this.playerStore.currentTrack.id,
+                'ultra_compact_player_artist_action'
+              );
+            }
+          })
       }
-      Text(this.currentArtistLabel())
-        .fontSize(PlayerLayoutSpec.FULL_PLAYER_ARTIST_SIZE)
-        .fontColor(this.secondaryContentColor())
-        .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
-        .maxLines(1)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
-        .id('ultra_compact_player_artist_action')
-        .accessibilityText('查看艺术家、专辑艺术家或专辑')
-        .onClick(() => {
-          if (!this.measuresArtworkTarget && this.playerStore.currentTrack !== undefined) {
-            this.onOpenTrackActions(
-              this.playerStore.currentTrack.id,
-              'ultra_compact_player_artist_action'
-            );
-          }
-        })
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start)
+
+      if (!this.measuresArtworkTarget) {
+        this.PictureInPictureButton()
+      }
     }
-    .alignItems(HorizontalAlign.Start)
+    .alignItems(VerticalAlign.Center)
     .justifyContent(FlexAlign.End)
     .width('100%')
     .height(PlayerLayoutSpec.ULTRA_COMPACT_TEXT_HEIGHT)
+    .padding({ right: PlayerLayoutSpec.ULTRA_COMPACT_CONTROL_RAIL_WIDTH })
   }
 
   @Builder

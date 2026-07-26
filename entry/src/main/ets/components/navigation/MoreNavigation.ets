@@ -6,6 +6,7 @@ export class NavigationRoute {
   static readonly ALBUMS: string = 'albums';
   static readonly LIBRARY_MANAGEMENT: string = 'libraryManagement';
   static readonly SETTINGS: string = 'settings';
+  static readonly FLOATING_WINDOW_SETTINGS: string = 'floatingWindowSettings';
   static readonly NAVIGATION_CUSTOMIZATION: string = 'navigationCustomization';
   static readonly DEBUG: string = 'debug';
   static readonly DYNAMIC_BACKGROUND_DEBUG: string = 'dynamicBackgroundDebug';

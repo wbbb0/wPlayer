@@ -89,6 +89,7 @@ import { PlaylistsPage } from '../../pages/library/PlaylistsPage';
 import { PlaylistDetailPage } from '../../pages/library/PlaylistDetailPage';
 import { SongsPage } from '../../pages/library/SongsPage';
 import { SettingsPage } from '../../pages/settings/SettingsPage';
+import { FloatingWindowSettingsPage } from '../../pages/settings/FloatingWindowSettingsPage';
 import { DebugPage } from '../../pages/settings/DebugPage';
 import { DynamicBackgroundDebugPage } from '../../pages/settings/DynamicBackgroundDebugPage';
 import { DynamicBackgroundV2DebugPage } from '../../pages/settings/DynamicBackgroundV2DebugPage';
@@ -211,6 +212,7 @@ export struct ResponsiveNavigationShell {
   morePathStack: NavPathStack = new NavPathStack();
   moreScroller: Scroller = new Scroller();
   customizationScroller: Scroller = new Scroller();
+  floatingWindowSettingsScroller: Scroller = new Scroller();
   trackDetailSheetBridge: TrackDetailSheetBridge = new TrackDetailSheetBridge();
   aboutScroller: Scroller = new Scroller();
   privacyPolicyScroller: Scroller = new Scroller();
@@ -226,6 +228,7 @@ export struct ResponsiveNavigationShell {
   onOpenNavigationCustomization: () => void = (): void => {};
   onRememberLastTabChange: (value: boolean) => void = (_value: boolean): void => {};
   onRememberSortChange: (value: boolean) => void = (_value: boolean): void => {};
+  onPictureInPictureSettingsChange: () => void = (): void => {};
   onNavigationItemMove: (from: number, to: number) => void = (_from: number, _to: number): void => {};
   onRequestCreatePlaylist: () => void = (): void => {};
   onRequestRenamePlaylist: (playlist: PlaylistSummary) => void =
@@ -1176,6 +1179,10 @@ export struct ResponsiveNavigationShell {
         bottomInset: this.bottomInset,
         scroller: this.routeScroller(routeId),
         openNavigationCustomization: this.onOpenNavigationCustomization,
+        openFloatingWindowSettings: (): void =>
+          this.routePathStack(NavigationRoute.SETTINGS).pushPath({
+            name: NavigationRoute.FLOATING_WINDOW_SETTINGS
+          }),
         openAbout: (): void => this.routePathStack(NavigationRoute.SETTINGS).pushPath({
           name: NavigationRoute.ABOUT
         }),
@@ -1373,6 +1380,32 @@ export struct ResponsiveNavigationShell {
         this.playbackChromeBackgroundColor()
       ))
       .bindToScrollable([this.customizationScroller])
+    } else if (name === NavigationRoute.FLOATING_WINDOW_SETTINGS) {
+      HdsNavDestination() {
+        Stack({ alignContent: Alignment.Bottom }) {
+          FloatingWindowSettingsPage({
+            settingsStore: this.settingsStore,
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            scroller: this.floatingWindowSettingsScroller,
+            onSettingsChange: this.onPictureInPictureSettingsChange
+          })
+          PageBottomGradient({ maskColor: this.themePageBackground })
+        }
+        .width('100%')
+        .height('100%')
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(this.themePageBackground)
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        '浮窗',
+        undefined,
+        this.playbackChromeBackgroundColor()
+      ))
+      .bindToScrollable([this.floatingWindowSettingsScroller])
     } else if (name === NavigationRoute.DYNAMIC_BACKGROUND_DEBUG) {
       HdsNavDestination() {
         DynamicBackgroundDebugPage({

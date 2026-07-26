@@ -21,6 +21,8 @@ import libraryListDataSourceTest from './LibraryListDataSource.test';
 import trackDetailPresentationTest from './TrackDetailPresentation.test';
 import artworkPaletteExtractorTest from './ArtworkPaletteExtractor.test';
 import playerMorphPolicyTest from './PlayerMorphPolicy.test';
+import playbackPictureInPicturePolicyTest from './PlaybackPictureInPicturePolicy.test';
+import floatingWindowSettingsPolicyTest from './FloatingWindowSettingsPolicy.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -46,4 +48,6 @@ export default function testsuite() {
   trackDetailPresentationTest();
   artworkPaletteExtractorTest();
   playerMorphPolicyTest();
+  playbackPictureInPicturePolicyTest();
+  floatingWindowSettingsPolicyTest();
 }

@@ -1,4 +1,5 @@
 import { common } from '@kit.AbilityKit';
+import { UIContext } from '@kit.ArkUI';
 import { image } from '@kit.ImageKit';
 import { ArtworkCache } from '../library/artwork/ArtworkCache';
 import { MusicRepository } from '../library/data/MusicRepository';
@@ -40,6 +41,13 @@ import { PlaybackStateReducer } from './support/PlaybackStateReducer';
 import { OutputReconnectPolicy } from './support/OutputReconnectPolicy';
 import { DemoLibraryMode } from '../demo/DemoLibraryMode';
 import { DemoMusicLibrary } from '../demo/DemoMusicLibrary';
+import { FloatingWindowSettingsPolicy } from '../settings/FloatingWindowSettingsPolicy';
+import {
+  PlaybackPictureInPicture,
+  PlaybackPictureInPictureCommands,
+  PlaybackPictureInPictureSnapshot
+} from './pip/PlaybackPictureInPicture';
+import { PlaybackPictureInPicturePolicy } from './pip/PlaybackPictureInPicturePolicy';
 
 const RESUME_MINIMUM_MS = 5000;
 const COMPLETION_REMAINING_MS = 10000;
@@ -47,7 +55,8 @@ const COMPLETION_POSITION_FRACTION = 0.95;
 const QUEUE_BUILD_CHUNK_SIZE = 64;
 const OUTPUT_RECONNECT_RESUME_WINDOW_MS = 5 * 60 * 1000;
 
-class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands, LibraryPlaybackBridge {
+class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands, LibraryPlaybackBridge,
+  PlaybackPictureInPictureCommands {
   readonly repository: MusicRepository = new MusicRepository();
   readonly playerStore: PlayerStore = new PlayerStore();
 
@@ -56,6 +65,8 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   private readonly coverageTracker: PlaybackCoverageTracker = new PlaybackCoverageTracker();
   private readonly stateReducer: PlaybackStateReducer = new PlaybackStateReducer();
   private readonly outputReconnectPolicy: OutputReconnectPolicy = new OutputReconnectPolicy();
+  private readonly pictureInPicture: PlaybackPictureInPicture;
+  private pictureInPictureUIContext?: UIContext;
   private context?: common.UIAbilityContext;
   private settings?: SettingsRepository;
   private session?: PlaybackSession;
@@ -77,6 +88,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
 
   constructor() {
     this.engine.setListener(this);
+    this.pictureInPicture = new PlaybackPictureInPicture(this);
   }
 
   initialize(context: common.UIAbilityContext, settings?: SettingsRepository): Promise<void> {
@@ -238,6 +250,48 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     }
   }
 
+  async enterPictureInPicture(uiContext: UIContext): Promise<boolean> {
+    const openBehavior = appSettings.floatingWindowOpenBehavior;
+    await this.pictureInPicture.enter(
+      uiContext,
+      this.pictureInPictureSnapshot(),
+      FloatingWindowSettingsPolicy.shouldMinimizeAfterOpen(openBehavior)
+    );
+    return FloatingWindowSettingsPolicy.shouldClosePlayerPageAfterOpen(openBehavior);
+  }
+
+  bindPictureInPictureContext(uiContext: UIContext): void {
+    this.pictureInPictureUIContext = uiContext;
+    this.refreshPictureInPicturePreferences();
+  }
+
+  unbindPictureInPictureContext(): void {
+    this.pictureInPictureUIContext = undefined;
+    this.pictureInPicture.configureAutoStart(undefined, false).catch((error: Object): void => {
+      console.warn(`Unable to disable automatic PiP: ${PlaybackRuntime.messageOf(error)}`);
+    });
+  }
+
+  refreshPictureInPicturePreferences(): void {
+    this.syncPictureInPicture();
+  }
+
+  onForeground(): void {
+    if (FloatingWindowSettingsPolicy.shouldCloseOnForeground(
+      appSettings.floatingWindowAutoCloseBehavior
+    )) {
+      this.stopPictureInPicture('application foreground');
+    }
+  }
+
+  onFullPlayerOpened(): void {
+    if (FloatingWindowSettingsPolicy.shouldCloseOnPlayerPageOpened(
+      appSettings.floatingWindowAutoCloseBehavior
+    )) {
+      this.stopPictureInPicture('full player opened');
+    }
+  }
+
   play(): void {
     if (!this.playerStore.hasCurrentTrack()) {
       return;
@@ -247,6 +301,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       this.playerStore.state = PlayerState.PLAYING;
       this.playerStore.transportState = this.stateReducer.reduce(PlayerState.PLAYING, true);
       this.startDemoProgress();
+      this.syncSessionState();
       return;
     }
     this.updatePlaybackIntent(true);
@@ -274,6 +329,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       this.playerStore.playWhenReady = false;
       this.playerStore.state = PlayerState.PAUSED;
       this.playerStore.transportState = this.stateReducer.reduce(PlayerState.PAUSED, false);
+      this.syncSessionState();
       return;
     }
     this.updatePlaybackIntent(false);
@@ -458,6 +514,8 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     ++this.queueBuildEpoch;
     ++this.seekEpoch;
     this.pendingSeekPositionMs = undefined;
+    this.pictureInPictureUIContext = undefined;
+    await this.pictureInPicture.dispose();
     await this.engine.shutdown();
     await this.session?.shutdown();
     this.playerStore.setMiniArtwork(undefined, '');
@@ -1138,6 +1196,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
         currentTrackId
       );
     }
+    this.syncPictureInPicture();
   }
 
   private persistProgress(completed: boolean): void {
@@ -1186,6 +1245,45 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       this.playerStore.repeatMode,
       this.playerStore.shuffleEnabled
     );
+    this.syncPictureInPicture();
+  }
+
+  private pictureInPictureSnapshot(): PlaybackPictureInPictureSnapshot {
+    const track = this.playerStore.currentTrack;
+    return new PlaybackPictureInPictureSnapshot(
+      track?.id ?? -1,
+      track === undefined ? '' : this.resolveArtworkUri(track.largeArtworkPath),
+      track?.artworkWidth ?? 0,
+      track?.artworkHeight ?? 0,
+      track !== undefined,
+      this.playerStore.showsPauseControl(),
+      PlaybackPictureInPicturePolicy.transportControlsEnabled(
+        this.playerStore.queuePhase === QueueBuildPhase.READY,
+        this.playerStore.queueSize
+      )
+    );
+  }
+
+  private syncPictureInPicture(): void {
+    const snapshot = this.pictureInPictureSnapshot();
+    this.pictureInPicture.sync(snapshot);
+    const autoStartEnabled = FloatingWindowSettingsPolicy.shouldEnableAutoStart(
+      appSettings.floatingWindowAutoStartOnMinimize,
+      snapshot.hasCurrentTrack,
+      snapshot.playing
+    );
+    this.pictureInPicture.configureAutoStart(
+      this.pictureInPictureUIContext,
+      autoStartEnabled
+    ).catch((error: Object): void => {
+      console.warn(`Unable to configure automatic PiP: ${PlaybackRuntime.messageOf(error)}`);
+    });
+  }
+
+  private stopPictureInPicture(reason: string): void {
+    this.pictureInPicture.stop().catch((error: Object): void => {
+      console.warn(`Unable to stop PiP after ${reason}: ${PlaybackRuntime.messageOf(error)}`);
+    });
   }
 
   private updatePlaybackIntent(playWhenReady: boolean): void {
@@ -1362,6 +1460,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     if (playWhenReady) {
       this.startDemoProgress();
     }
+    this.syncSessionState();
   }
 
   private startDemoProgress(): void {
@@ -1387,6 +1486,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
         this.playerStore.playWhenReady = false;
         this.playerStore.state = PlayerState.COMPLETED;
         this.playerStore.transportState = this.stateReducer.settleCompletion();
+        this.syncSessionState();
       }
     }, 1000);
   }

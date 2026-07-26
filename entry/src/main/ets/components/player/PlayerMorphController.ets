@@ -707,6 +707,7 @@ export class PlayerMorphController {
           this.playerMorphPhase = PlayerMorphPhase.OPEN;
           this.fullPlayerSideContentReady = true;
           this.releaseMorphArtworkSource();
+          playbackRuntime.onFullPlayerOpened();
         } else {
           this.beginMorphBackgroundHandoff(epoch);
         }
@@ -758,6 +759,7 @@ export class PlayerMorphController {
           this.playerMorphPhase = PlayerMorphPhase.OPEN;
           this.fullPlayerSideContentReady = true;
           this.releaseMorphArtworkSource();
+          playbackRuntime.onFullPlayerOpened();
         }
       }
     }, () => {

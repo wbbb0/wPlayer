@@ -2,6 +2,11 @@ import { SettingsRepository } from './SettingsRepository';
 import { CompletedCollectionMode } from '../playback/model/PlaybackModels';
 import { CompletedCollectionSettingPolicy } from './CompletedCollectionSettingPolicy';
 import { DemoLibraryMode } from '../demo/DemoLibraryMode';
+import {
+  FloatingWindowAutoCloseBehavior,
+  FloatingWindowOpenBehavior,
+  FloatingWindowSettingsPolicy
+} from './FloatingWindowSettingsPolicy';
 
 @Observed
 export class AppSettingsStore {
@@ -13,6 +18,12 @@ export class AppSettingsStore {
   rememberLibrarySort: boolean = true;
   preserveShuffleOnManualPlay: boolean = false;
   autoRemoveUnavailableOnPlayback: boolean = false;
+  floatingWindowOpenBehavior: FloatingWindowOpenBehavior =
+    FloatingWindowSettingsPolicy.OPEN_BEHAVIOR_DEFAULT;
+  floatingWindowAutoStartOnMinimize: boolean =
+    FloatingWindowSettingsPolicy.AUTO_START_ON_MINIMIZE_DEFAULT;
+  floatingWindowAutoCloseBehavior: FloatingWindowAutoCloseBehavior =
+    FloatingWindowSettingsPolicy.AUTO_CLOSE_BEHAVIOR_DEFAULT;
   completedCollectionMode: CompletedCollectionMode = CompletedCollectionMode.SMART;
   demoLibraryEnabled: boolean = false;
 
@@ -33,6 +44,18 @@ export class AppSettingsStore {
     this.preserveShuffleOnManualPlay = repository.getPreserveShuffleOnManualPlayEnabled(false);
     this.autoRemoveUnavailableOnPlayback =
       repository.getAutoRemoveUnavailableOnPlaybackEnabled(false);
+    this.floatingWindowOpenBehavior =
+      repository.getFloatingWindowOpenBehavior(
+        FloatingWindowSettingsPolicy.OPEN_BEHAVIOR_DEFAULT
+      );
+    this.floatingWindowAutoStartOnMinimize =
+      repository.getFloatingWindowAutoStartOnMinimizeEnabled(
+        FloatingWindowSettingsPolicy.AUTO_START_ON_MINIMIZE_DEFAULT
+      );
+    this.floatingWindowAutoCloseBehavior =
+      repository.getFloatingWindowAutoCloseBehavior(
+        FloatingWindowSettingsPolicy.AUTO_CLOSE_BEHAVIOR_DEFAULT
+      );
     this.completedCollectionMode = CompletedCollectionSettingPolicy.normalize(
       repository.getCompletedCollectionMode(CompletedCollectionMode.SMART)
     );
@@ -87,6 +110,23 @@ export class AppSettingsStore {
   setAutoRemoveUnavailableOnPlayback(value: boolean): void {
     this.autoRemoveUnavailableOnPlayback = value;
     this.repository?.setAutoRemoveUnavailableOnPlaybackEnabled(value);
+  }
+
+  setFloatingWindowOpenBehavior(value: FloatingWindowOpenBehavior): void {
+    this.floatingWindowOpenBehavior =
+      FloatingWindowSettingsPolicy.normalizeOpenBehavior(value);
+    this.repository?.setFloatingWindowOpenBehavior(this.floatingWindowOpenBehavior);
+  }
+
+  setFloatingWindowAutoStartOnMinimize(value: boolean): void {
+    this.floatingWindowAutoStartOnMinimize = value;
+    this.repository?.setFloatingWindowAutoStartOnMinimizeEnabled(value);
+  }
+
+  setFloatingWindowAutoCloseBehavior(value: FloatingWindowAutoCloseBehavior): void {
+    this.floatingWindowAutoCloseBehavior =
+      FloatingWindowSettingsPolicy.normalizeAutoCloseBehavior(value);
+    this.repository?.setFloatingWindowAutoCloseBehavior(this.floatingWindowAutoCloseBehavior);
   }
 
   setCompletedCollectionMode(value: CompletedCollectionMode): void {

@@ -12,6 +12,7 @@ export struct SettingsPage {
   @Prop bottomInset: number = 0;
   scroller: Scroller = new Scroller();
   openNavigationCustomization: () => void = (): void => {};
+  openFloatingWindowSettings: () => void = (): void => {};
   openAbout: () => void = (): void => {};
   openPrivacyPolicy: () => void = (): void => {};
   openDataAndPermissions: () => void = (): void => {};
@@ -99,6 +100,13 @@ export struct SettingsPage {
               isOn: this.settingsStore.autoRemoveUnavailableOnPlayback,
               onChange: (value: boolean): void =>
                 this.settingsStore.setAutoRemoveUnavailableOnPlayback(value)
+            })
+            this.ItemDivider()
+            SettingsLinkItem({
+              symbol: $r('sys.symbol.square_fill_grid_2x2'),
+              title: '浮窗',
+              description: '设置浮窗打开、自动启动与关闭行为',
+              onActivate: this.openFloatingWindowSettings
             })
             this.ItemDivider()
             Row({ space: 14 }) {

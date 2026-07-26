@@ -128,6 +128,26 @@ suppressing another.
 - Remove replacement foreground and reveal real controls in the same final frame.
 - Preserve the pre-transition mini-bar HDS state when returning.
 
+## Album-artwork picture-in-picture
+
+- The cover page keeps the picture-in-picture action visible and disables it when no current track exists, so
+  asynchronous queue restoration does not require a structural UI rebuild.
+- Starting picture-in-picture is an explicit user action; returning the application to the background must not race
+  the foreground-only PiP start request.
+- The PiP content follows the current artwork aspect ratio and uses a square fallback when dimensions are missing.
+- Track changes update both the PiP artwork and its content size.
+- Use the system video-play PiP control panel for play/pause and previous/next; forward those actions to the one
+  application PlaybackRuntime and synchronize system control state back from PlayerStore.
+- “打开浮窗后的行为” offers do nothing, minimize the application and close the full-player page, defaulting to
+  minimize. On desktop and 2-in-1 devices, minimize the main window through the window-management API after PiP
+  starts; only fall back to moving the ability to the background when window minimization reports that the
+  capability is unsupported. Closing the player page must not stop audio playback.
+- “播放时最小化自动打开浮窗” defaults to disabled. When enabled, arm system PiP auto-start only while a current
+  track is actively playing; pausing, clearing the current track or disabling the preference must disarm it.
+- “何时自动关闭小窗” offers never, when the application returns to the foreground and when the full-player page
+  opens, defaulting to the application-foreground trigger.
+- PiP content is display-only. It does not create another playback engine or independently own playback state.
+
 ## Animation and rendering implementation
 
 - Model multi-stage transitions with an explicit enum phase.

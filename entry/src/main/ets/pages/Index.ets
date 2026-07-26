@@ -146,6 +146,7 @@ struct Index {
       try {
         this.settingsRepository = new SettingsRepository(abilityContext);
         this.settingsStore.initialize(this.settingsRepository);
+        playbackRuntime.bindPictureInPictureContext(this.getUIContext());
         this.playlistController.bindSettings(this.settingsRepository);
         this.navigationController.bindSettings(this.settingsRepository, this.settingsStore);
       } catch (error) {
@@ -186,6 +187,7 @@ struct Index {
     this.playlistController.dispose();
     this.libraryStore.dispose();
     this.playlistStore.dispose();
+    playbackRuntime.unbindPictureInPictureContext();
     playbackRuntime.setPaletteChangeListener(undefined);
     this.navigationChromeController.dispose();
     appAppearanceController.removeListener(this.appearanceListener);
@@ -442,6 +444,8 @@ struct Index {
       onRememberLastTabChange: (value: boolean): void =>
         this.navigationController.setRememberLastTab(value),
       onRememberSortChange: (value: boolean): void => this.libraryStore.setRememberSort(value),
+      onPictureInPictureSettingsChange: (): void =>
+        playbackRuntime.refreshPictureInPicturePreferences(),
       onDemoLibraryChange: (value: boolean): void => {
         this.setDemoLibraryEnabled(value);
       },

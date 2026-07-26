@@ -2,6 +2,11 @@ import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { CompletedCollectionSettingPolicy } from './CompletedCollectionSettingPolicy';
+import {
+  FloatingWindowAutoCloseBehavior,
+  FloatingWindowOpenBehavior,
+  FloatingWindowSettingsPolicy
+} from './FloatingWindowSettingsPolicy';
 
 const SETTINGS_FILE_NAME: string = 'wplayer_settings';
 const LAST_TAB_INDEX_KEY: string = 'navigation.last_tab_index';
@@ -26,6 +31,10 @@ const REMEMBER_LAST_TAB_KEY: string = 'navigation.remember_last_tab';
 const REMEMBER_LIBRARY_SORT_KEY: string = 'library.remember_sort';
 const PRESERVE_SHUFFLE_ON_MANUAL_PLAY_KEY: string = 'playback.preserve_shuffle_on_manual_play';
 const AUTO_REMOVE_UNAVAILABLE_ON_PLAYBACK_KEY: string = 'playback.auto_remove_unavailable';
+const FLOATING_WINDOW_LEGACY_AUTO_MINIMIZE_APP_KEY: string = 'floating_window.auto_minimize_app';
+const FLOATING_WINDOW_OPEN_BEHAVIOR_KEY: string = 'floating_window.open_behavior';
+const FLOATING_WINDOW_AUTO_START_ON_MINIMIZE_KEY: string = 'floating_window.auto_start_on_minimize';
+const FLOATING_WINDOW_AUTO_CLOSE_BEHAVIOR_KEY: string = 'floating_window.auto_close_behavior';
 const COMPLETED_COLLECTION_MODE_KEY: string = 'playback.completed_collection.mode';
 const COMPLETED_COLLECTION_CURRENT_KEY: string = 'playback.completed_collection.current_enabled';
 const RECENT_PLAYLIST_TARGET_IDS_KEY: string = 'playlist.recent_target_ids';
@@ -249,6 +258,47 @@ export class SettingsRepository {
     this.setValue(AUTO_REMOVE_UNAVAILABLE_ON_PLAYBACK_KEY, value);
   }
 
+  getFloatingWindowOpenBehavior(
+    defaultValue: FloatingWindowOpenBehavior = FloatingWindowSettingsPolicy.OPEN_BEHAVIOR_DEFAULT
+  ): FloatingWindowOpenBehavior {
+    return FloatingWindowSettingsPolicy.normalizeOpenBehavior(
+      this.getNumber(FLOATING_WINDOW_OPEN_BEHAVIOR_KEY, defaultValue)
+    );
+  }
+
+  setFloatingWindowOpenBehavior(value: FloatingWindowOpenBehavior): void {
+    this.setValue(
+      FLOATING_WINDOW_OPEN_BEHAVIOR_KEY,
+      FloatingWindowSettingsPolicy.normalizeOpenBehavior(value)
+    );
+  }
+
+  getFloatingWindowAutoStartOnMinimizeEnabled(
+    defaultValue: boolean = FloatingWindowSettingsPolicy.AUTO_START_ON_MINIMIZE_DEFAULT
+  ): boolean {
+    return this.getBoolean(FLOATING_WINDOW_AUTO_START_ON_MINIMIZE_KEY, defaultValue);
+  }
+
+  setFloatingWindowAutoStartOnMinimizeEnabled(value: boolean): void {
+    this.setValue(FLOATING_WINDOW_AUTO_START_ON_MINIMIZE_KEY, value);
+  }
+
+  getFloatingWindowAutoCloseBehavior(
+    defaultValue: FloatingWindowAutoCloseBehavior =
+      FloatingWindowSettingsPolicy.AUTO_CLOSE_BEHAVIOR_DEFAULT
+  ): FloatingWindowAutoCloseBehavior {
+    return FloatingWindowSettingsPolicy.normalizeAutoCloseBehavior(
+      this.getNumber(FLOATING_WINDOW_AUTO_CLOSE_BEHAVIOR_KEY, defaultValue)
+    );
+  }
+
+  setFloatingWindowAutoCloseBehavior(value: FloatingWindowAutoCloseBehavior): void {
+    this.setValue(
+      FLOATING_WINDOW_AUTO_CLOSE_BEHAVIOR_KEY,
+      FloatingWindowSettingsPolicy.normalizeAutoCloseBehavior(value)
+    );
+  }
+
   getCompletedCollectionMode(defaultValue: number = 0): number {
     return this.getNumber(COMPLETED_COLLECTION_MODE_KEY, defaultValue);
   }
@@ -312,6 +362,45 @@ export class SettingsRepository {
       const storedEnabled = this.store.getSync(COMPLETED_COLLECTION_CURRENT_KEY, true);
       if (!this.store.hasSync(COMPLETED_COLLECTION_CURRENT_KEY) || typeof storedEnabled !== 'boolean') {
         updates.push({ key: COMPLETED_COLLECTION_CURRENT_KEY, value: true });
+      }
+      const hasOpenBehavior = this.store.hasSync(FLOATING_WINDOW_OPEN_BEHAVIOR_KEY);
+      const storedOpenBehavior = this.store.getSync(
+        FLOATING_WINDOW_OPEN_BEHAVIOR_KEY,
+        FloatingWindowSettingsPolicy.OPEN_BEHAVIOR_DEFAULT
+      );
+      let openBehavior: FloatingWindowOpenBehavior =
+        FloatingWindowSettingsPolicy.OPEN_BEHAVIOR_DEFAULT;
+      if (hasOpenBehavior && typeof storedOpenBehavior === 'number') {
+        openBehavior = FloatingWindowSettingsPolicy.normalizeOpenBehavior(storedOpenBehavior);
+      } else if (!hasOpenBehavior &&
+        this.store.hasSync(FLOATING_WINDOW_LEGACY_AUTO_MINIMIZE_APP_KEY)) {
+        const legacyAutoMinimize = this.store.getSync(
+          FLOATING_WINDOW_LEGACY_AUTO_MINIMIZE_APP_KEY,
+          true
+        );
+        if (typeof legacyAutoMinimize === 'boolean') {
+          openBehavior = FloatingWindowSettingsPolicy.openBehaviorFromLegacy(legacyAutoMinimize);
+        }
+      }
+      if (!hasOpenBehavior || typeof storedOpenBehavior !== 'number' ||
+        storedOpenBehavior !== openBehavior) {
+        updates.push({ key: FLOATING_WINDOW_OPEN_BEHAVIOR_KEY, value: openBehavior });
+      }
+      const storedAutoCloseBehavior = this.store.getSync(
+        FLOATING_WINDOW_AUTO_CLOSE_BEHAVIOR_KEY,
+        FloatingWindowSettingsPolicy.AUTO_CLOSE_BEHAVIOR_DEFAULT
+      );
+      const autoCloseBehavior = FloatingWindowSettingsPolicy.normalizeAutoCloseBehavior(
+        typeof storedAutoCloseBehavior === 'number' ?
+          storedAutoCloseBehavior : FloatingWindowSettingsPolicy.AUTO_CLOSE_BEHAVIOR_DEFAULT
+      );
+      if (!this.store.hasSync(FLOATING_WINDOW_AUTO_CLOSE_BEHAVIOR_KEY) ||
+        typeof storedAutoCloseBehavior !== 'number' ||
+        storedAutoCloseBehavior !== autoCloseBehavior) {
+        updates.push({
+          key: FLOATING_WINDOW_AUTO_CLOSE_BEHAVIOR_KEY,
+          value: autoCloseBehavior
+        });
       }
       if (updates.length > 0) {
         this.setValues(updates);

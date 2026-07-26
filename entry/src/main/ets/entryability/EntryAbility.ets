@@ -91,6 +91,7 @@ export default class EntryAbility extends UIAbility {
   onForeground(): void {
     appAppearanceController.notifyChanged();
     this.applyMainWindowAppearance();
+    playbackRuntime.onForeground();
     hilog.info(DOMAIN, TAG, 'Ability entered foreground');
   }
 

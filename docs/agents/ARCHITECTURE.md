@@ -14,6 +14,8 @@ The current application is composed through these boundaries:
 - `pages/Index.ets` is the root ArkUI shell and the current UI composition boundary.
 - `playback/PlaybackRuntime.ets` is the application playback coordinator and singleton command facade.
 - PlaybackRuntime owns the single PlaybackEngine, PlaybackSession, PlaybackQueue and PlayerStore.
+- PlaybackRuntime owns PlaybackPictureInPicture, which adapts system PiP lifecycle and controls to the existing
+  playback command facade without becoming a second playback-state owner.
 - PlaybackRuntime exposes the shared MusicRepository used by the root shell to construct LibraryStore and
   PlaylistStore.
 - SettingsRepository owns persisted preferences; AppSettingsStore exposes observable settings state.
@@ -70,6 +72,7 @@ internals. Do not perform a repository-wide dependency-injection rewrite solely 
 - PlaybackRuntime coordinates commands, queue behavior, progress, recovery, metadata synchronization and Store
   projection.
 - PlaybackSession owns AVSession and background-control integration.
+- PlaybackPictureInPicture owns system PiP nodes, lifecycle callbacks and control-event adaptation.
 - PlayerStore is observable UI state, not a command service and not an AVPlayer state machine.
 - PlaybackQueue owns queue identity, ordering, shuffle and cursor invariants.
 - Support policies own independently testable decisions such as power, reconnect and state reduction.

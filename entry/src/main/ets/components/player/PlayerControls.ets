@@ -1,6 +1,7 @@
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { PlayerStore, RepeatMode } from '../../playback/model/PlaybackModels';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
+import { DynamicColor, DynamicContainerRole } from '../../appearance/DynamicColor';
 
 export enum PlayerTransportAction {
   PREVIOUS,
@@ -13,69 +14,84 @@ export enum PlayerModeAction {
 }
 
 @Component
+export struct PlayerSymbolIcon {
+  @Prop symbol: Resource;
+  @Prop iconSize: number = 20;
+  @Prop contentColor: ResourceColor = '#FFFFFFFF';
+  @Prop animateColor: boolean = true;
+
+  build() {
+    Stack() {
+      SymbolGlyph(this.symbol)
+        .fontSize(this.iconSize)
+        .fontColor([this.contentColor])
+        .renderingStrategy(SymbolRenderingStrategy.MULTIPLE_OPACITY)
+        .animation(this.animateColor ? {
+          duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION,
+          curve: Curve.EaseInOut
+        } : undefined)
+    }
+  }
+}
+
+@Component
+export struct PlayerImageIcon {
+  @Prop source: Resource;
+  @Prop iconSize: number = 20;
+  @Prop contentColor: ResourceColor = '#FFFFFFFF';
+  @Prop animateColor: boolean = true;
+
+  build() {
+    Stack() {
+      Image(this.source)
+        .width(this.iconSize)
+        .height(this.iconSize)
+        .fillColor(this.contentColor)
+        .animation(this.animateColor ? {
+          duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION,
+          curve: Curve.EaseInOut
+        } : undefined)
+    }
+  }
+}
+
+@Component
 export struct PlayerPlaybackButton {
   @ObjectLink playerStore: PlayerStore;
   @Prop buttonSize: number = 40;
-  @Prop rootAnimationEnabled: boolean = true;
   @Prop iconAnimationEnabled: boolean = true;
+  @Prop contentColor: string = '';
 
-  @Builder
-  private Icon() {
-    if (this.iconAnimationEnabled) {
-      SymbolGlyph(this.playerStore.showsPauseControl() ?
-        $r('sys.symbol.pause') : $r('sys.symbol.play_fill'))
-        .fontSize(this.buttonSize * 0.42)
-        .fontColor([this.playerStore.themeOnSecondary()])
-        .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
-        .renderingStrategy(SymbolRenderingStrategy.MULTIPLE_OPACITY)
-    } else {
-      SymbolGlyph(this.playerStore.showsPauseControl() ?
-        $r('sys.symbol.pause') : $r('sys.symbol.play_fill'))
-        .fontSize(this.buttonSize * 0.42)
-        .fontColor([this.playerStore.themeOnSecondary()])
-        .renderingStrategy(SymbolRenderingStrategy.MULTIPLE_OPACITY)
-    }
+  private icon(): Resource {
+    return this.playerStore.showsPauseControl() ?
+      $r('sys.symbol.pause') : $r('sys.symbol.play_fill');
   }
 
-  @Builder
-  private ButtonBody() {
-    Stack() {
-      this.Icon()
-    }
-    .width(this.buttonSize)
-    .height(this.buttonSize)
-    .borderRadius(this.buttonSize / 2)
-    .backgroundColor(this.playerStore.themeSecondary())
-    .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
-    .clickEffect({ level: ClickEffectLevel.MIDDLE })
-    .accessibilityText(this.playerStore.showsPauseControl() ? '暂停' : '播放')
-    .onClick(() => {
-      playbackRuntime.togglePlayback();
-    })
-  }
-
-  @Builder
-  private ButtonBodyWithoutAnimation() {
-    Stack() {
-      this.Icon()
-    }
-    .width(this.buttonSize)
-    .height(this.buttonSize)
-    .borderRadius(this.buttonSize / 2)
-    .backgroundColor(this.playerStore.themeSecondary())
-    .clickEffect({ level: ClickEffectLevel.MIDDLE })
-    .accessibilityText(this.playerStore.showsPauseControl() ? '暂停' : '播放')
-    .onClick(() => {
-      playbackRuntime.togglePlayback();
-    })
+  private iconColor(): string {
+    return this.contentColor.length > 0 ? this.contentColor : DynamicColor.foreground(
+      this.playerStore.themeBaseBackground,
+      DynamicContainerRole.PRIMARY
+    );
   }
 
   build() {
-    if (this.rootAnimationEnabled) {
-      this.ButtonBody()
-    } else {
-      this.ButtonBodyWithoutAnimation()
+    Stack() {
+      PlayerSymbolIcon({
+        symbol: this.icon(),
+        iconSize: this.buttonSize * 0.42,
+        contentColor: this.iconColor(),
+        animateColor: this.iconAnimationEnabled
+      })
     }
+    .width(this.buttonSize)
+    .height(this.buttonSize)
+    .borderRadius(this.buttonSize / 2)
+    .backgroundColor(Color.Transparent)
+    .clickEffect({ level: ClickEffectLevel.LIGHT })
+    .accessibilityText(this.playerStore.showsPauseControl() ? '暂停' : '播放')
+    .onClick(() => {
+      playbackRuntime.togglePlayback();
+    })
   }
 }
 
@@ -101,17 +117,17 @@ export struct PlayerTransportButton {
 
   build() {
     Stack() {
-      Image(this.icon())
-        .width(this.buttonSize * 0.45)
-        .height(this.buttonSize * 0.45)
-        .fillColor(this.iconColor())
-        .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+      PlayerImageIcon({
+        source: this.icon(),
+        iconSize: this.buttonSize * 0.45,
+        contentColor: this.iconColor()
+      })
     }
     .width(this.buttonSize)
     .height(this.buttonSize)
     .borderRadius(this.buttonSize / 2)
-    .backgroundColor($r('app.color.glass_surface_subtle'))
-    .clickEffect({ level: ClickEffectLevel.MIDDLE })
+    .backgroundColor(Color.Transparent)
+    .clickEffect({ level: ClickEffectLevel.LIGHT })
     .accessibilityText(this.accessibilityLabel())
     .onClick(() => {
       if (this.action === PlayerTransportAction.PREVIOUS) {
@@ -128,6 +144,7 @@ export struct PlayerModeButton {
   @ObjectLink playerStore: PlayerStore;
   @Prop action: PlayerModeAction = PlayerModeAction.SHUFFLE;
   @Prop buttonSize: number = 44;
+  @Prop contentColor: string = '#FFFFFFFF';
 
   private symbol(): Resource {
     if (this.action === PlayerModeAction.SHUFFLE) {
@@ -150,19 +167,16 @@ export struct PlayerModeButton {
   }
 
   private modeForegroundColor(): string {
-    if (!this.active()) {
-      return this.playerStore.themeOnPrimary();
-    }
-    const primary = this.playerStore.themePrimary();
-    return primary.length > 0 ? primary : this.playerStore.themeBaseBackground;
+    return this.contentColor;
   }
 
   build() {
     Stack() {
-      SymbolGlyph(this.symbol())
-        .fontSize(this.buttonSize * 0.5)
-        .fontColor([this.modeForegroundColor()])
-        .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+      PlayerSymbolIcon({
+        symbol: this.symbol(),
+        iconSize: this.buttonSize * 0.5,
+        contentColor: this.modeForegroundColor()
+      })
 
       if (!this.active()) {
         Row()
@@ -177,9 +191,8 @@ export struct PlayerModeButton {
     .width(this.buttonSize)
     .height(this.buttonSize)
     .borderRadius(this.buttonSize / 2)
-    .backgroundColor(this.active() ?
-      this.playerStore.themeOnPrimary() : $r('app.color.glass_surface_subtle'))
-    .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+    .backgroundColor(Color.Transparent)
+    .opacity(this.active() ? 1 : 0.72)
     .clickEffect({ level: ClickEffectLevel.LIGHT })
     .accessibilityText(this.accessibilityLabel())
     .onClick(() => {

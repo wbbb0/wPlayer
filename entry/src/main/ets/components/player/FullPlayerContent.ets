@@ -12,7 +12,9 @@ import {
 import {
   PlayerModeAction,
   PlayerModeButton,
+  PlayerImageIcon,
   PlayerPlaybackButton,
+  PlayerSymbolIcon,
   PlayerTransportAction,
   PlayerTransportButton
 } from './PlayerControls';
@@ -35,6 +37,7 @@ import {
 } from './PlayerActionMenus';
 import { LayoutLength } from '../layout/LayoutLength';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
+import { DynamicColor, ForegroundEmphasis } from '../../appearance/DynamicColor';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { PlayerTrackMarquee } from './PlayerTrackMarquee';
 import { PageLayoutSpec } from '../layout/PageLayoutSpec';
@@ -52,6 +55,8 @@ struct TimedLyricRow {
   @ObjectLink playerStore: PlayerStore;
   @Prop line: TimedLyricLine;
   @Prop index: number = -1;
+  @Prop primaryContentColor: string = '#FFFFFFFF';
+  @Prop secondaryContentColor: string = '#B8FFFFFF';
 
   build() {
     Text(this.line.text)
@@ -60,7 +65,7 @@ struct TimedLyricRow {
       .lineHeight(38)
       .fontWeight(FontWeight.Bold)
       .fontColor(this.index === this.playerStore.activeLyricIndex ?
-        this.playerStore.themeOnPrimary() : this.playerStore.themeOnPrimaryMedium())
+        this.primaryContentColor : this.secondaryContentColor)
       .animation({ duration: PlayerMotionSpec.LYRIC_FOCUS_DURATION, curve: Curve.EaseInOut })
       .opacity(this.index === this.playerStore.activeLyricIndex ? 1 : 0.72)
       .textAlign(TextAlign.Start)
@@ -78,6 +83,8 @@ struct TimedLyricRow {
 struct PlayerProgressControl {
   @ObjectLink playerStore: PlayerStore;
   @ObjectLink progressStore: PlaybackProgressStore;
+  @Prop primaryContentColor: string = '#FFFFFFFF';
+  @Prop secondaryContentColor: string = '#B8FFFFFF';
   onSeek: (positionMs: number) => void = (_positionMs: number): void => {};
   @State private seeking: boolean = false;
   @State private seekPreviewMs: number = 0;
@@ -116,9 +123,9 @@ struct PlayerProgressControl {
         style: SliderStyle.OutSet
       })
         .width('100%')
-        .selectedColor(this.playerStore.themeOnPrimary())
-        .trackColor(this.playerStore.themeOnPrimaryMedium())
-        .blockColor(this.playerStore.themeOnPrimary())
+        .selectedColor(this.primaryContentColor)
+        .trackColor(this.secondaryContentColor)
+        .blockColor(this.primaryContentColor)
         .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
         .trackThickness(PlayerLayoutSpec.FULL_PLAYER_PROGRESS_TRACK_THICKNESS)
         .enabled(this.progressStore.durationMs > 0)
@@ -138,12 +145,12 @@ struct PlayerProgressControl {
       Row() {
         Text(this.durationLabel(this.displayedPositionMs()))
           .fontSize(11)
-          .fontColor(this.playerStore.themeOnPrimaryMedium())
+          .fontColor(this.secondaryContentColor)
           .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
         Blank()
         Text(this.durationLabel(this.progressStore.durationMs))
           .fontSize(11)
-          .fontColor(this.playerStore.themeOnPrimaryMedium())
+          .fontColor(this.secondaryContentColor)
           .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       }
       .width('100%')
@@ -169,7 +176,7 @@ export struct FullPlayerContent {
   @Prop paneCount: number = 1;
   @Prop activePage: FullPlayerPage = FullPlayerPage.COVER;
   @Prop sideContentReady: boolean = true;
-  @Prop primaryContentColor: string = '';
+  @Prop primaryContentColor: string = '#FFFFFFFF';
   @Prop previousArtworkTarget: PlayerPoint = {
     x: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_X,
     y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y
@@ -396,8 +403,11 @@ export struct FullPlayerContent {
   }
 
   private contentColor(): string {
-    return this.primaryContentColor.length > 0 ?
-      this.primaryContentColor : this.playerStore.themeOnPrimary();
+    return this.primaryContentColor;
+  }
+
+  private secondaryContentColor(): string {
+    return DynamicColor.withEmphasis(this.contentColor(), ForegroundEmphasis.MEDIUM);
   }
 
   private pageButtonDisabled(page: FullPlayerPage): boolean {
@@ -498,17 +508,17 @@ export struct FullPlayerContent {
 
       Row() {
         Stack() {
-          Image($r('app.media.control_chevron_down'))
-            .width(PlayerLayoutSpec.FULL_PLAYER_CLOSE_ICON_SIZE)
-            .height(PlayerLayoutSpec.FULL_PLAYER_CLOSE_ICON_SIZE)
-            .fillColor(this.contentColor())
-            .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+          PlayerImageIcon({
+            source: $r('app.media.control_chevron_down'),
+            iconSize: PlayerLayoutSpec.FULL_PLAYER_CLOSE_ICON_SIZE,
+            contentColor: this.contentColor()
+          })
         }
         .width(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE)
         .height(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE)
         .borderRadius(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE / 2)
-        .backgroundColor($r('app.color.glass_surface_subtle'))
-        .clickEffect({ level: ClickEffectLevel.MIDDLE })
+        .backgroundColor(Color.Transparent)
+        .clickEffect({ level: ClickEffectLevel.LIGHT })
         .accessibilityText('收起播放器')
         .onClick(() => {
           this.onClose();
@@ -532,7 +542,7 @@ export struct FullPlayerContent {
       Text('当前播放队列')
         .fontSize(24)
         .fontWeight(FontWeight.Bold)
-        .fontColor(this.playerStore.themeOnPrimary())
+        .fontColor(this.contentColor())
         .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -541,38 +551,42 @@ export struct FullPlayerContent {
         Button(`操作 ${this.selectedQueueEntries.length}`)
           .height(40)
           .enabled(this.selectedQueueEntries.length > 0)
-          .fontColor(this.playerStore.themeOnPrimary())
-          .backgroundColor($r('app.color.glass_surface_subtle'))
+          .fontColor(this.contentColor())
+          .backgroundColor(Color.Transparent)
           .bindMenu(this.QueueSelectionMenu(), { placement: Placement.BottomRight })
         Button('取消')
           .height(40)
-          .fontColor(this.playerStore.themeOnPrimary())
+          .fontColor(this.contentColor())
           .backgroundColor(Color.Transparent)
           .onClick(() => this.cancelQueueSelection())
       } else {
         Text(`${this.playerStore.queueSize} 首`)
           .fontSize(13)
-          .fontColor(this.playerStore.themeOnPrimaryMedium())
+          .fontColor(this.secondaryContentColor())
           .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
         PlayerModeButton({
           playerStore: this.playerStore,
           action: PlayerModeAction.SHUFFLE,
-          buttonSize: 44
+          buttonSize: 44,
+          contentColor: this.contentColor()
         })
         PlayerModeButton({
           playerStore: this.playerStore,
           action: PlayerModeAction.REPEAT,
-          buttonSize: 44
+          buttonSize: 44,
+          contentColor: this.contentColor()
         })
         Button() {
-          SymbolGlyph($r('sys.symbol.checkmark_square_on_square'))
-            .fontSize(21)
-            .fontColor([this.playerStore.themeOnPrimary()])
+          PlayerSymbolIcon({
+            symbol: $r('sys.symbol.checkmark_square_on_square'),
+            iconSize: 21,
+            contentColor: this.contentColor()
+          })
         }
         .width(44)
         .height(44)
         .borderRadius(22)
-        .backgroundColor($r('app.color.glass_surface_subtle'))
+        .backgroundColor(Color.Transparent)
         .accessibilityText('多选')
         .onClick(() => {
           this.queueSelectionActive = true;
@@ -591,16 +605,17 @@ export struct FullPlayerContent {
   @Builder
   private PageNavigationButton(page: FullPlayerPage) {
     Stack() {
-      SymbolGlyph(page === FullPlayerPage.QUEUE ?
-        $r('sys.symbol.music_note_list_fill') : $r('sys.symbol.lyrics_square'))
-        .fontSize(22)
-        .fontColor([this.contentColor()])
-        .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+      PlayerSymbolIcon({
+        symbol: page === FullPlayerPage.QUEUE ?
+          $r('sys.symbol.music_note_list_fill') : $r('sys.symbol.lyrics_square'),
+        iconSize: 22,
+        contentColor: this.contentColor()
+      })
     }
     .width(44)
     .height(44)
     .borderRadius(22)
-    .backgroundColor($r('app.color.glass_surface_subtle'))
+    .backgroundColor(Color.Transparent)
     .clickEffect({ level: ClickEffectLevel.LIGHT })
     .enabled(!this.pageButtonDisabled(page))
     .opacity(this.pageButtonDisabled(page) ? 0.38 : 1)
@@ -617,12 +632,12 @@ export struct FullPlayerContent {
         Text(this.playerStore.currentTrack?.title ?? '尚未播放')
           .fontSize(18)
           .fontWeight(FontWeight.Bold)
-          .fontColor(this.playerStore.themeOnPrimary())
+          .fontColor(this.contentColor())
           .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
           .maxLines(1)
         Text(this.currentArtistLabel())
           .fontSize(12)
-          .fontColor(this.playerStore.themeOnPrimaryMedium())
+          .fontColor(this.secondaryContentColor())
           .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
           .maxLines(1)
       }
@@ -646,11 +661,11 @@ export struct FullPlayerContent {
           Text('队列为空')
             .fontSize(18)
             .fontWeight(FontWeight.Medium)
-            .fontColor(this.playerStore.themeOnPrimary())
+            .fontColor(this.contentColor())
             .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
           Text('从音乐库选择歌曲后会显示在这里')
             .fontSize(14)
-            .fontColor(this.playerStore.themeOnPrimaryMedium())
+            .fontColor(this.secondaryContentColor())
             .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
         }
         .justifyContent(FlexAlign.Center)
@@ -664,7 +679,7 @@ export struct FullPlayerContent {
                 if (index > 0) {
                   Divider()
                     .strokeWidth(PlayerLayoutSpec.FULL_PLAYER_QUEUE_DIVIDER_HEIGHT)
-                    .color(this.playerStore.themeOnPrimaryMedium())
+                    .color(this.secondaryContentColor())
                     .opacity(PlayerLayoutSpec.FULL_PLAYER_QUEUE_DIVIDER_OPACITY)
                     .margin({
                       left: PlayerLayoutSpec.FULL_PLAYER_QUEUE_INDEX_WIDTH +
@@ -680,9 +695,9 @@ export struct FullPlayerContent {
                     artworkPath: this.onResolveQueueArtwork(entry.track.smallArtworkPath),
                     queueIndex: index,
                     currentQueueIndex: this.playerStore.queueCurrentIndex,
-                    primaryColor: this.playerStore.themeOnPrimary(),
-                    secondaryColor: this.playerStore.themeOnPrimaryMedium(),
-                    tertiaryColor: this.playerStore.themeOnPrimaryMedium(),
+                    primaryColor: this.contentColor(),
+                    secondaryColor: this.secondaryContentColor(),
+                    tertiaryColor: this.secondaryContentColor(),
                     animateColors: true,
                     active: entry.track.id === this.playerStore.currentTrack?.id,
                     activeBackgroundColor: $r('app.color.glass_surface_strong'),
@@ -807,16 +822,16 @@ export struct FullPlayerContent {
           }
 
           Stack() {
-            Image($r('app.media.control_more'))
-              .width(20)
-              .height(20)
-              .fillColor(this.contentColor())
-              .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+            PlayerImageIcon({
+              source: $r('app.media.control_more'),
+              iconSize: 20,
+              contentColor: this.contentColor()
+            })
           }
           .width(40)
           .height(40)
           .borderRadius(20)
-          .backgroundColor($r('app.color.glass_surface_subtle'))
+          .backgroundColor(Color.Transparent)
           .clickEffect({ level: ClickEffectLevel.MIDDLE })
           .accessibilityText('更多操作')
           .bindMenu(this.CurrentTrackMenu(), { placement: Placement.BottomRight })
@@ -827,12 +842,12 @@ export struct FullPlayerContent {
         if (this.measuresArtworkTarget) {
           Text(this.currentArtistLabel())
             .fontSize(PlayerLayoutSpec.FULL_PLAYER_ARTIST_SIZE)
-            .fontColor(this.playerStore.themeOnPrimaryMedium())
+            .fontColor(this.secondaryContentColor())
             .maxLines(1)
         } else {
           Text(this.currentArtistLabel())
             .fontSize(PlayerLayoutSpec.FULL_PLAYER_ARTIST_SIZE)
-            .fontColor(this.playerStore.themeOnPrimaryMedium())
+            .fontColor(this.secondaryContentColor())
             .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
             .maxLines(1)
             .id('full_player_artist_action')
@@ -853,6 +868,8 @@ export struct FullPlayerContent {
       PlayerProgressControl({
         playerStore: this.playerStore,
         progressStore: this.playerStore.progress,
+        primaryContentColor: this.contentColor(),
+        secondaryContentColor: this.secondaryContentColor(),
         onSeek: (positionMs: number): void => this.onSeek(positionMs)
       })
 
@@ -871,7 +888,8 @@ export struct FullPlayerContent {
             contentColor: this.contentColor() })
           PlayerPlaybackButton({
             playerStore: this.playerStore,
-            buttonSize: PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE
+            buttonSize: PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE,
+            contentColor: this.contentColor()
           })
             .opacity(this.showPlaybackButton ? 1 : 0)
             .enabled(this.showPlaybackButton)
@@ -907,7 +925,13 @@ export struct FullPlayerContent {
         List({ space: 14, scroller: this.lyricScroller }) {
           LazyForEach(this.playerStore.lyricDataSource, (line: TimedLyricLine, index: number) => {
             ListItem() {
-              TimedLyricRow({ playerStore: this.playerStore, line: line, index: index })
+              TimedLyricRow({
+                playerStore: this.playerStore,
+                line: line,
+                index: index,
+                primaryContentColor: this.contentColor(),
+                secondaryContentColor: this.secondaryContentColor()
+              })
                 .reuseId('timed_lyric')
             }
           }, (line: TimedLyricLine, index: number) => `${line.timeMs}_${index}`)
@@ -932,7 +956,7 @@ export struct FullPlayerContent {
             .fontSize(20)
             .lineHeight(34)
             .fontWeight(FontWeight.Medium)
-            .fontColor(this.playerStore.themeOnPrimary())
+            .fontColor(this.contentColor())
             .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
             .textAlign(TextAlign.Start)
         }
@@ -951,11 +975,11 @@ export struct FullPlayerContent {
           Text('暂未找到内嵌歌词')
             .fontSize(22)
             .fontWeight(FontWeight.Medium)
-            .fontColor(this.playerStore.themeOnPrimary())
+            .fontColor(this.contentColor())
             .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
           Text('当前仅读取音乐文件内部的歌词文本')
             .fontSize(14)
-            .fontColor(this.playerStore.themeOnPrimaryMedium())
+            .fontColor(this.secondaryContentColor())
             .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
             .textAlign(TextAlign.Center)
         }
@@ -1006,7 +1030,7 @@ export struct FullPlayerContent {
       }
       Text(this.currentArtistLabel())
         .fontSize(PlayerLayoutSpec.FULL_PLAYER_ARTIST_SIZE)
-        .fontColor(this.playerStore.themeOnPrimaryMedium())
+        .fontColor(this.secondaryContentColor())
         .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -1038,7 +1062,8 @@ export struct FullPlayerContent {
       })
       PlayerPlaybackButton({
         playerStore: this.playerStore,
-        buttonSize: PlayerLayoutSpec.ULTRA_COMPACT_PLAYBACK_BUTTON_SIZE
+        buttonSize: PlayerLayoutSpec.ULTRA_COMPACT_PLAYBACK_BUTTON_SIZE,
+        contentColor: this.contentColor()
       })
         .opacity(this.showPlaybackButton ? 1 : 0)
         .enabled(this.showPlaybackButton)
@@ -1091,14 +1116,14 @@ export struct FullPlayerContent {
       Text('当前播放队列')
         .fontSize(20)
         .fontWeight(FontWeight.Bold)
-        .fontColor(this.playerStore.themeOnPrimary())
+        .fontColor(this.contentColor())
         .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .layoutWeight(1)
       Text(`${this.playerStore.queueSize} 首`)
         .fontSize(13)
-        .fontColor(this.playerStore.themeOnPrimaryMedium())
+        .fontColor(this.secondaryContentColor())
         .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
     }
     .width(this.pageWidth())

@@ -5,6 +5,7 @@
   "main": "",
   "author": "韩旭龙",
   "license": "GPL-3.0-only",
-  "dependencies": {}
+  "dependencies": {
+    "libwplayerbackground.so": "file:./src/main/cpp/types/libwplayerbackground"
+  }
 }
-

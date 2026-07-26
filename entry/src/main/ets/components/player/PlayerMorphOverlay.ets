@@ -1,4 +1,3 @@
-import { DynamicColor } from '../../appearance/DynamicColor';
 import { image } from '@kit.ImageKit';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { PlayerStore, QueueTrack } from '../../playback/model/PlaybackModels';
@@ -94,16 +93,6 @@ export struct PlayerMorphOverlay {
   @Builder
   private MorphPlayer() {
     Stack() {
-      Stack()
-        .width('100%')
-        .height('100%')
-        .backgroundColor(DynamicColor.blendOpaque(
-          this.collapsedSurfaceColor,
-          this.playerThemeBackground,
-          this.controller.clamp(this.controller.playerExpandProgress, 0, 1)
-        ))
-        .opacity(this.controller.playerMorphBackgroundOpacity)
-
       Stack() {
         Stack() {
           FullPlayerContent({
@@ -224,8 +213,8 @@ export struct PlayerMorphOverlay {
       PlayerPlaybackButton({
         playerStore: this.playerStore,
         buttonSize: this.controller.morphPlaybackButtonFrame().width,
-        rootAnimationEnabled: false,
-        iconAnimationEnabled: false
+        iconAnimationEnabled: false,
+        contentColor: this.controller.morphPlaybackButtonColor()
       })
         .opacity(this.controller.morphPlaybackButtonOpacity())
         .position({ x: 0, y: 0 })
@@ -274,6 +263,7 @@ export struct PlayerMorphOverlay {
     .width('100%')
     .height('100%')
     .id(FULL_PLAYER_VERTICAL_GESTURE_HOST_ID)
+    .zIndex(2)
     .parallelGesture(
       PanGesture({
         direction: PanDirection.Vertical,

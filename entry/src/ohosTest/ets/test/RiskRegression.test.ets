@@ -29,6 +29,8 @@ import {
   PlayerMotionSpec
 } from '../../../main/ets/components/player/PlayerMotion';
 import { AppShellLayoutSpec } from '../../../main/ets/components/layout/AppShellLayoutSpec';
+import { DynamicBackgroundArtworkLoad } from
+  '../../../main/ets/components/player/DynamicBackgroundArtworkLoad';
 
 class FakeResource {
   released: number = 0;
@@ -36,6 +38,18 @@ class FakeResource {
 
 export default function riskRegressionTest() {
   describe('RiskRegression', () => {
+    it('invalidates stale dynamic background artwork loads without clearing a newer load', 0, () => {
+      const load = new DynamicBackgroundArtworkLoad();
+      const firstGeneration = load.begin('artwork://first');
+      load.invalidateUnless('artwork://second');
+      const secondGeneration = load.begin('artwork://second');
+
+      expect(load.finish('artwork://first', firstGeneration)).assertFalse();
+      expect(load.isLoading('artwork://second')).assertTrue();
+      expect(load.finish('artwork://second', secondGeneration)).assertTrue();
+      expect(load.isLoading('artwork://second')).assertFalse();
+    });
+
     it('startsDragRenderingAtRecognitionOrigin', 0, () => {
       expect(PlayerMotionSpec.distanceFromRecognitionOrigin(4)).assertEqual(0);
       expect(PlayerMotionSpec.distanceFromRecognitionOrigin(10)).assertEqual(6);

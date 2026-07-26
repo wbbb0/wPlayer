@@ -17,6 +17,7 @@ import { ComponentContent, promptAction, SymbolGlyphModifier } from '@kit.ArkUI'
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { AppAppearancePalette } from '../../appearance/AppAppearance';
+import { systemBarStyleController } from '../../appearance/SystemBarStyleController';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import {
   DynamicColor,
@@ -88,6 +89,10 @@ import { PlaylistsPage } from '../../pages/library/PlaylistsPage';
 import { PlaylistDetailPage } from '../../pages/library/PlaylistDetailPage';
 import { SongsPage } from '../../pages/library/SongsPage';
 import { SettingsPage } from '../../pages/settings/SettingsPage';
+import { DebugPage } from '../../pages/settings/DebugPage';
+import { DynamicBackgroundDebugPage } from '../../pages/settings/DynamicBackgroundDebugPage';
+import { DynamicBackgroundV2DebugPage } from '../../pages/settings/DynamicBackgroundV2DebugPage';
+import { DynamicBackgroundV3DebugPage } from '../../pages/settings/DynamicBackgroundV3DebugPage';
 import { NavigationCustomizationPage } from '../../pages/settings/NavigationCustomizationPage';
 import { AboutPage } from '../../pages/settings/AboutPage';
 import { PrivacyPolicyPage } from '../../pages/settings/PrivacyPolicyPage';
@@ -1184,7 +1189,26 @@ export struct ResponsiveNavigationShell {
           name: NavigationRoute.OPEN_SOURCE_LICENSES
         }),
         onRememberLastTabChange: this.onRememberLastTabChange,
-        onRememberSortChange: this.onRememberSortChange,
+        onRememberSortChange: this.onRememberSortChange
+      })
+    } else if (navigationPageKind(routeId) === NavigationPageKind.DEBUG) {
+      DebugPage({
+        settingsStore: this.settingsStore,
+        topInset: this.topInset,
+        bottomInset: this.bottomInset,
+        scroller: this.routeScroller(routeId),
+        openDynamicBackgroundV1: (): void =>
+          this.routePathStack(NavigationRoute.DEBUG).pushPath({
+            name: NavigationRoute.DYNAMIC_BACKGROUND_DEBUG
+          }),
+        openDynamicBackgroundV2: (): void =>
+          this.routePathStack(NavigationRoute.DEBUG).pushPath({
+            name: NavigationRoute.DYNAMIC_BACKGROUND_V2_DEBUG
+          }),
+        openDynamicBackgroundV3: (): void =>
+          this.routePathStack(NavigationRoute.DEBUG).pushPath({
+            name: NavigationRoute.DYNAMIC_BACKGROUND_V3_DEBUG
+          }),
         onDemoLibraryChange: this.onDemoLibraryChange
       })
     }
@@ -1349,6 +1373,83 @@ export struct ResponsiveNavigationShell {
         this.playbackChromeBackgroundColor()
       ))
       .bindToScrollable([this.customizationScroller])
+    } else if (name === NavigationRoute.DYNAMIC_BACKGROUND_DEBUG) {
+      HdsNavDestination() {
+        DynamicBackgroundDebugPage({
+          playerStore: this.playerStore,
+          bottomInset: this.bottomInset
+        })
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor('#FF000000')
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        '动态背景',
+        undefined,
+        '#FF000000',
+        {
+          backgroundColor: '#FF000000',
+          contentColor: '#FFFFFFFF',
+          controlBackgroundColor: '#24FFFFFF'
+        }
+      ))
+      .onShown((): void => {
+        systemBarStyleController.submitContentColor(
+          NavigationRoute.DYNAMIC_BACKGROUND_DEBUG,
+          '#FFFFFFFF'
+        );
+      })
+      .onHidden((): void => {
+        systemBarStyleController.removeContentColor(NavigationRoute.DYNAMIC_BACKGROUND_DEBUG);
+      })
+    } else if (name === NavigationRoute.DYNAMIC_BACKGROUND_V2_DEBUG) {
+      HdsNavDestination() {
+        DynamicBackgroundV2DebugPage({
+          playerStore: this.playerStore,
+          bottomInset: this.bottomInset
+        })
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor('#FF000000')
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        '动态背景 v2',
+        undefined,
+        '#FF000000',
+        {
+          backgroundColor: '#FF000000',
+          contentColor: '#FFFFFFFF',
+          controlBackgroundColor: '#24FFFFFF'
+        }
+      ))
+      .onShown((): void => {
+        systemBarStyleController.submitContentColor(
+          NavigationRoute.DYNAMIC_BACKGROUND_V2_DEBUG,
+          '#FFFFFFFF'
+        );
+      })
+      .onHidden((): void => {
+        systemBarStyleController.removeContentColor(NavigationRoute.DYNAMIC_BACKGROUND_V2_DEBUG);
+      })
+    } else if (name === NavigationRoute.DYNAMIC_BACKGROUND_V3_DEBUG) {
+      HdsNavDestination() {
+        DynamicBackgroundV3DebugPage({
+          playerStore: this.playerStore,
+          bottomInset: this.bottomInset
+        })
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(this.themePageBackground)
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        '动态背景 v3',
+        undefined,
+        this.playbackChromeBackgroundColor()
+      ))
     } else if (name === NavigationRoute.ABOUT) {
       HdsNavDestination() {
         Stack({ alignContent: Alignment.Bottom }) {

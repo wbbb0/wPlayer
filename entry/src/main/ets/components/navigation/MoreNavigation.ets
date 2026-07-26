@@ -1,3 +1,5 @@
+import BuildProfile from 'entry/BuildProfile';
+
 export class NavigationRoute {
   static readonly PLAYLISTS: string = 'playlists';
   static readonly SONGS: string = 'songs';
@@ -5,6 +7,10 @@ export class NavigationRoute {
   static readonly LIBRARY_MANAGEMENT: string = 'libraryManagement';
   static readonly SETTINGS: string = 'settings';
   static readonly NAVIGATION_CUSTOMIZATION: string = 'navigationCustomization';
+  static readonly DEBUG: string = 'debug';
+  static readonly DYNAMIC_BACKGROUND_DEBUG: string = 'dynamicBackgroundDebug';
+  static readonly DYNAMIC_BACKGROUND_V2_DEBUG: string = 'dynamicBackgroundV2Debug';
+  static readonly DYNAMIC_BACKGROUND_V3_DEBUG: string = 'dynamicBackgroundV3Debug';
   static readonly ABOUT: string = 'about';
   static readonly PRIVACY_POLICY: string = 'privacyPolicy';
   static readonly DATA_AND_PERMISSIONS: string = 'dataAndPermissions';
@@ -16,7 +22,8 @@ export enum NavigationPageKind {
   SONGS = 1,
   ALBUMS = 2,
   LIBRARY_MANAGEMENT = 3,
-  SETTINGS = 4
+  SETTINGS = 4,
+  DEBUG = 5
 }
 
 export interface NavigationPageItem {
@@ -29,7 +36,7 @@ export interface NavigationPageItem {
 
 export const PRIMARY_NAVIGATION_COUNT: number = 3;
 
-export const DYNAMIC_NAVIGATION_ITEMS: Array<NavigationPageItem> = [
+const DEFAULT_DYNAMIC_NAVIGATION_ITEMS: Array<NavigationPageItem> = [
   {
     routeId: NavigationRoute.PLAYLISTS,
     kind: NavigationPageKind.PLAYLISTS,
@@ -59,6 +66,18 @@ export const DYNAMIC_NAVIGATION_ITEMS: Array<NavigationPageItem> = [
     symbol: $r('sys.symbol.externaldrive_fill')
   }
 ];
+
+const DEBUG_NAVIGATION_ITEM: NavigationPageItem = {
+  routeId: NavigationRoute.DEBUG,
+  kind: NavigationPageKind.DEBUG,
+  label: '调试工具',
+  description: '演示数据、动态背景与开发阶段视觉测试',
+  symbol: $r('sys.symbol.gearshape_fill')
+};
+
+export const DYNAMIC_NAVIGATION_ITEMS: Array<NavigationPageItem> = BuildProfile.DEBUG ?
+  DEFAULT_DYNAMIC_NAVIGATION_ITEMS.concat([DEBUG_NAVIGATION_ITEM]) :
+  DEFAULT_DYNAMIC_NAVIGATION_ITEMS;
 
 export const SETTINGS_NAVIGATION_ITEM: NavigationPageItem = {
   routeId: NavigationRoute.SETTINGS,

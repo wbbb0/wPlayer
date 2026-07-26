@@ -4,7 +4,6 @@ import { SettingsLinkItem, SettingsToggleItem } from '../../components/settings/
 import { AppSettingsStore } from '../../settings/AppSettingsStore';
 import { CompletedCollectionMode } from '../../playback/model/PlaybackModels';
 import { CompletedCollectionSettingPolicy } from '../../settings/CompletedCollectionSettingPolicy';
-import BuildProfile from 'entry/BuildProfile';
 
 @Component
 export struct SettingsPage {
@@ -19,7 +18,6 @@ export struct SettingsPage {
   openOpenSourceLicenses: () => void = (): void => {};
   onRememberLastTabChange: (value: boolean) => void = (_value: boolean): void => {};
   onRememberSortChange: (value: boolean) => void = (_value: boolean): void => {};
-  onDemoLibraryChange: (value: boolean) => void = (_value: boolean): void => {};
 
   @Builder
   private SectionTitle(title: string) {
@@ -168,24 +166,6 @@ export struct SettingsPage {
           .width('100%')
           .borderRadius(20)
           .backgroundColor($r('app.color.glass_surface'))
-        }
-
-        if (BuildProfile.DEBUG) {
-          Column() {
-            this.SectionTitle('调试')
-            Column() {
-              SettingsToggleItem({
-                symbol: $r('sys.symbol.opticaldisc'),
-                title: '演示音乐库',
-                description: '显示截图用虚构歌曲、播放列表、歌词和播放队列',
-                isOn: this.settingsStore.demoLibraryEnabled,
-                onChange: this.onDemoLibraryChange
-              })
-            }
-            .width('100%')
-            .borderRadius(20)
-            .backgroundColor($r('app.color.glass_surface'))
-          }
         }
 
         Column() {

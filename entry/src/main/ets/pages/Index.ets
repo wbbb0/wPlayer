@@ -2,7 +2,12 @@ import { ComponentContent, window } from '@kit.ArkUI';
 import { HdsTabsController } from '@kit.UIDesignKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { common } from '@kit.AbilityKit';
-import { PlayerFrame, PlayerMotionSpec, PlayerPoint } from '../components/player/PlayerMotion';
+import {
+  PlayerFrame,
+  PlayerMorphPhase,
+  PlayerMotionSpec,
+  PlayerPoint
+} from '../components/player/PlayerMotion';
 import { LibraryStore } from '../library/store/LibraryStore';
 import {
   LibraryNavigationTarget,
@@ -27,6 +32,7 @@ import { IndexPlaylistController } from '../components/library/IndexPlaylistCont
 import { PlayerGeometryProbe } from '../components/player/FullPlayerGeometryProbe';
 import { PlayerMorphController } from '../components/player/PlayerMorphController';
 import { PlayerMorphOverlay } from '../components/player/PlayerMorphOverlay';
+import { PlayerDynamicBackgroundLayer } from '../components/player/PlayerDynamicBackground';
 import {
   IndexNavigationController
 } from '../components/navigation/IndexNavigationController';
@@ -465,6 +471,17 @@ struct Index {
   }
 
   @Builder
+  private FullPlayerDynamicBackground() {
+    PlayerDynamicBackgroundLayer({
+      controller: this.playerMorphController,
+      playerStore: this.playerStore,
+      binding: this.playerMorphController.dynamicBackgroundBinding,
+      collapsedSurfaceColor: this.morphCollapsedSurfaceColor(),
+      playerThemeBackground: this.playerThemeBackground()
+    })
+  }
+
+  @Builder
   private FullPlayerOverlay() {
     PlayerMorphOverlay({
       controller: this.playerMorphController,
@@ -475,7 +492,7 @@ struct Index {
       bottomInset: this.navigationAvoidHeight,
       collapsedSurfaceColor: this.morphCollapsedSurfaceColor(),
       playerThemeBackground: this.playerThemeBackground(),
-      primaryContentColor: this.animatedThemeOnPrimary,
+      primaryContentColor: '#FFFFFFFF',
       onRequestAddToPlaylist: (trackIds: Array<number>): void =>
         this.playlistController.requestTrackIdsAddToPlaylist(trackIds),
       onOpenTrackActions: (trackId: number, anchorId: string): void =>
@@ -498,7 +515,7 @@ struct Index {
       bottomInset: this.navigationAvoidHeight,
       rootFrame: this.playerMorphController.rootFrame,
       paneCount: this.fullPlayerPaneCount(),
-      primaryContentColor: this.animatedThemeOnPrimary,
+      primaryContentColor: '#FFFFFFFF',
       previousArtworkTarget: this.playerMorphController.artworkTarget,
       previousCenteredArtworkTarget: this.playerMorphController.centeredArtworkTarget,
       onArtworkTarget: (target: PlayerPoint): void => {
@@ -536,7 +553,11 @@ struct Index {
 
       this.SheetHosts()
 
-      if (this.isMorphActive()) {
+      this.FullPlayerDynamicBackground()
+
+      // Read the observable phase directly so ArkUI reliably removes the
+      // full-screen hit-test layer after the closing handoff completes.
+      if (this.playerMorphController.playerMorphPhase !== PlayerMorphPhase.IDLE) {
         this.FullPlayerOverlay()
       }
     }

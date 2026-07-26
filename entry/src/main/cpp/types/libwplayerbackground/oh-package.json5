@@ -1,0 +1,6 @@
+{
+  "name": "libwplayerbackground.so",
+  "types": "./Index.d.ts",
+  "version": "1.0.0",
+  "description": "Native dynamic background renderer based on aadishv/html-music"
+}

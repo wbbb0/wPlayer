@@ -13,3 +13,8 @@ export class MiniPlayerBinding {
     height: PlayerLayoutSpec.DEFAULT_MINI_PLAYER_SIZE
   };
 }
+
+@Observed
+export class PlayerDynamicBackgroundBinding {
+  active: boolean = false;
+}

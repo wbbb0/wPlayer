@@ -4,6 +4,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { image } from '@kit.ImageKit';
 import { vibrator } from '@kit.SensorServiceKit';
 import { systemBarStyleController } from '../../appearance/SystemBarStyleController';
+import { DynamicColor, DynamicContainerRole } from '../../appearance/DynamicColor';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { AppShellLayoutSpec } from '../layout/AppShellLayoutSpec';
@@ -20,7 +21,7 @@ import {
   PlayerMotionSpec,
   PlayerPoint
 } from './PlayerMotion';
-import { MiniPlayerBinding } from './MiniPlayerBinding';
+import { MiniPlayerBinding, PlayerDynamicBackgroundBinding } from './MiniPlayerBinding';
 
 const PLAYER_SYSTEM_BAR_OWNER = 'full_player';
 
@@ -32,6 +33,8 @@ export interface ResponsiveLayoutChange {
 @Observed
 export class PlayerMorphController {
   readonly miniPlayerBinding: MiniPlayerBinding = new MiniPlayerBinding();
+  readonly dynamicBackgroundBinding: PlayerDynamicBackgroundBinding =
+    new PlayerDynamicBackgroundBinding();
   playerExpandProgress: number = 0;
   playerGestureAxis: PlayerGestureAxis = PlayerGestureAxis.UNDECIDED;
   swipeHapticTriggered: boolean = false;
@@ -78,6 +81,7 @@ export class PlayerMorphController {
     width: PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE,
     height: PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE
   };
+  frozenMiniPlayerForeground: string = '#FFFFFFFF';
   private returnToExpandedMiniBar: boolean = false;
   private fullPlayerGestureStartPosition: number = FullPlayerPage.COVER;
   private miniPlayerGestureRegion: MiniPlayerGestureRegion = MiniPlayerGestureRegion.OTHER;
@@ -101,7 +105,7 @@ export class PlayerMorphController {
     if (this.isMorphActive()) {
       systemBarStyleController.submitContentColor(
         PLAYER_SYSTEM_BAR_OWNER,
-        this.playerStore.themeOnPrimary()
+        '#FFFFFFFF'
       );
     } else {
       systemBarStyleController.removeContentColor(PLAYER_SYSTEM_BAR_OWNER);
@@ -159,6 +163,7 @@ export class PlayerMorphController {
     this.fullPlayerSideContentReady = false;
     this.playerExpandProgress = 0;
     this.playerMorphBackgroundOpacity = 1;
+    this.dynamicBackgroundBinding.active = false;
     this.miniPlayerBinding.sourceVisible = true;
     this.miniPlayerBinding.sourceMarqueeActive = true;
     this.releaseMorphArtworkSource();
@@ -272,6 +277,7 @@ export class PlayerMorphController {
       };
       this.freezeArtworkTargetForCurrentPage();
       this.freezePlaybackButtonTarget();
+      this.freezeMiniPlayerForeground();
     } catch (error) {
       const businessError = error as BusinessError;
       console.warn(`Unable to query mini player geometry: ${businessError.code}, ${businessError.message}`);
@@ -289,7 +295,15 @@ export class PlayerMorphController {
       };
       this.freezeArtworkTargetForCurrentPage();
       this.freezePlaybackButtonTarget();
+      this.freezeMiniPlayerForeground();
     }
+  }
+
+  private freezeMiniPlayerForeground(): void {
+    this.frozenMiniPlayerForeground = DynamicColor.foreground(
+      this.playerStore.themeBaseBackground,
+      DynamicContainerRole.PRIMARY
+    );
   }
 
   private freezeArtworkTargetForCurrentPage(): void {
@@ -441,6 +455,14 @@ export class PlayerMorphController {
     );
   }
 
+  morphPlaybackButtonColor(): string {
+    return DynamicColor.blendOpaque(
+      this.frozenMiniPlayerForeground,
+      '#FFFFFFFF',
+      PlayerMotionSpec.foregroundColorProgress(this.playerExpandProgress)
+    );
+  }
+
   private currentPagerArtworkTarget(): PlayerPoint {
     return {
       x: FullPlayerPagerSpec.pagerPageTargetX(
@@ -472,6 +494,7 @@ export class PlayerMorphController {
   private beginMorphPhase(phase: PlayerMorphPhase): number {
     this.morphTransitionEpoch += 1;
     this.playerMorphPhase = phase;
+    this.dynamicBackgroundBinding.active = true;
     this.miniPlayerBinding.sourceVisible = false;
     this.miniPlayerBinding.sourceMarqueeActive = false;
     this.syncSystemBarContentColor();
@@ -511,6 +534,7 @@ export class PlayerMorphController {
           return;
         }
         this.playerMorphPhase = PlayerMorphPhase.IDLE;
+        this.dynamicBackgroundBinding.active = false;
         this.fullPlayerSideContentReady = false;
         this.miniPlayerBinding.sourceVisible = true;
         this.miniPlayerBinding.sourceMarqueeActive = true;

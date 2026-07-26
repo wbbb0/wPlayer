@@ -32,8 +32,17 @@ export class AppNavigationStyle {
   }
 
   static secondaryTitleBar(title: string, menu?: HdsNavigationMenuContentOptions,
-    gradientBackgroundColor?: ResourceColor): HdsNavigationTitleBarOptions {
-    return AppNavigationStyle.createTitleBar(title, true, true, menu, undefined, gradientBackgroundColor);
+    gradientBackgroundColor?: ResourceColor,
+    colors?: AppNavigationColorOverride): HdsNavigationTitleBarOptions {
+    return AppNavigationStyle.createTitleBar(
+      title,
+      true,
+      true,
+      menu,
+      undefined,
+      gradientBackgroundColor,
+      colors
+    );
   }
 
   static secondaryBackOnlyTitleBar(menu?: HdsNavigationMenuContentOptions,
@@ -63,7 +72,8 @@ export class AppNavigationStyle {
   private static createTitleBar(title: string, avoidLayoutSafeArea: boolean, enableComponentSafeArea: boolean,
     menu?: HdsNavigationMenuContentOptions,
     titleContent?: ComponentContent<AppPrimaryTitleParams>,
-    gradientBackgroundColor?: ResourceColor): HdsNavigationTitleBarOptions {
+    gradientBackgroundColor?: ResourceColor,
+    colors?: AppNavigationColorOverride): HdsNavigationTitleBarOptions {
     const content: TitleBarContentOptions = { menu: menu };
     if (titleContent === undefined) {
       content.title = { mainTitle: title };
@@ -80,7 +90,10 @@ export class AppNavigationStyle {
         materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
       }
     };
-    if (gradientBackgroundColor !== undefined) {
+    if (colors !== undefined) {
+      style.originalStyle = AppNavigationStyle.colorStyle(colors);
+      style.scrollEffectStyle = AppNavigationStyle.colorStyle(colors);
+    } else if (gradientBackgroundColor !== undefined) {
       style.originalStyle = AppNavigationStyle.backgroundStyle(gradientBackgroundColor);
       style.scrollEffectStyle = AppNavigationStyle.backgroundStyle(gradientBackgroundColor);
     }

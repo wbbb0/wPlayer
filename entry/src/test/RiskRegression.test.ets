@@ -34,6 +34,16 @@ import { PlayerStore } from '../main/ets/playback/model/PlaybackModels';
 import {
   NavigationChromeController
 } from '../main/ets/components/navigation/NavigationChromeController';
+import { DynamicBackgroundDebugSpec } from
+  '../main/ets/components/player/DynamicBackgroundDebugSpec';
+import { DynamicBackgroundTextureAlgorithm } from
+  '../main/ets/components/player/DynamicBackgroundTextureAlgorithm';
+import { DynamicBackgroundV2Spec } from
+  '../main/ets/components/player/DynamicBackgroundV2Spec';
+import { DynamicBackgroundV3Spec } from
+  '../main/ets/components/player/DynamicBackgroundV3Spec';
+import { DynamicBackgroundArtworkLoad } from
+  '../main/ets/components/player/DynamicBackgroundArtworkLoad';
 
 class FakeResource {
   released: number = 0;
@@ -125,6 +135,17 @@ export default function riskRegressionTest() {
       expect(PlayerMotionSpec.fullContentOpacity(0)).assertEqual(0);
     });
 
+    it('reveals the dynamic player background and white foreground within the morph', 0, () => {
+      expect(PlayerMotionSpec.dynamicBackgroundReveal(0)).assertEqual(0);
+      expect(PlayerMotionSpec.dynamicBackgroundReveal(
+        PlayerMotionSpec.DYNAMIC_BACKGROUND_REVEAL_END
+      )).assertEqual(1);
+      expect(PlayerMotionSpec.foregroundColorProgress(0)).assertEqual(0);
+      expect(PlayerMotionSpec.foregroundColorProgress(
+        PlayerMotionSpec.FOREGROUND_COLOR_TRANSITION_END
+      )).assertEqual(1);
+    });
+
     it('derives one or two full-player panes from measured geometry', 0, () => {
       expect(FullPlayerPagerSpec.paneCount(720, 1280)).assertEqual(1);
       expect(FullPlayerPagerSpec.paneCount(1280, 720)).assertEqual(2);
@@ -145,6 +166,60 @@ export default function riskRegressionTest() {
         .assertEqual(FullPlayerLayoutMode.ULTRA_COMPACT);
       expect(PlayerLayoutSpec.fullPlayerLayoutMode(720, 360, 2))
         .assertEqual(FullPlayerLayoutMode.REGULAR);
+    });
+
+    it('keeps dynamic background layers asynchronous and bounded', 0, () => {
+      const firstPhase = DynamicBackgroundDebugSpec.phase(
+        12,
+        DynamicBackgroundDebugSpec.LAYER_ONE_PERIOD_SECONDS,
+        1
+      );
+      const secondPhase = DynamicBackgroundDebugSpec.phase(
+        12,
+        DynamicBackgroundDebugSpec.LAYER_TWO_PERIOD_SECONDS,
+        1
+      );
+      expect(firstPhase === secondPhase).assertFalse();
+      expect(Math.abs(DynamicBackgroundDebugSpec.layerOneX(12, 1, 22)) <= 22).assertTrue();
+      expect(Math.abs(DynamicBackgroundDebugSpec.layerTwoY(12, 1, 22)) <= 22).assertTrue();
+      expect(DynamicBackgroundDebugSpec.layerOneX(12, 0, 22)).assertEqual(0);
+      expect(DynamicBackgroundDebugSpec.LAYER_ONE_PERIOD_SECONDS).assertEqual(24);
+      expect(DynamicBackgroundDebugSpec.LAYER_TWO_PERIOD_SECONDS).assertEqual(31.5);
+      expect(DynamicBackgroundDebugSpec.DEFAULT_TEXTURE_SCALE).assertEqual(1.25);
+      expect(DynamicBackgroundTextureAlgorithm.WARP_AMOUNT).assertEqual(0.12);
+      expect(DynamicBackgroundTextureAlgorithm.BLUR_RADIUS > 0).assertTrue();
+      expect(DynamicBackgroundV2Spec.LARGE_SPRITE_SIZE_RATIO).assertEqual(1.25);
+      expect(DynamicBackgroundV2Spec.MEDIUM_SPRITE_SIZE_RATIO).assertEqual(0.8);
+      expect(DynamicBackgroundV2Spec.SMALL_SPRITE_SIZE_RATIO).assertEqual(0.5);
+      expect(DynamicBackgroundV2Spec.TINY_SPRITE_SIZE_RATIO).assertEqual(0.25);
+      expect(DynamicBackgroundV2Spec.TWIST_ANGLE_RADIANS).assertEqual(-3.25);
+      expect(DynamicBackgroundV2Spec.TWIST_RADIUS).assertEqual(900);
+      expect(DynamicBackgroundV2Spec.BLUR_RADIUS).assertEqual(100);
+      expect(DynamicBackgroundV2Spec.SATURATION).assertEqual(2.75);
+      expect(DynamicBackgroundV2Spec.rotationRadians(1, 0.003, 1) > 0).assertTrue();
+      expect(DynamicBackgroundV3Spec.BLUR_RADIUS > 0).assertTrue();
+      expect(DynamicBackgroundV3Spec.BLUR_PASSES).assertEqual(9);
+      expect(DynamicBackgroundV3Spec.OVERSCAN >= 1).assertTrue();
+      expect(DynamicBackgroundV3Spec.WORK_TEXTURE_SIZE).assertEqual(256);
+      expect(DynamicBackgroundV3Spec.FRAME_RATE > 0).assertTrue();
+      expect(DynamicBackgroundV3Spec.TRANSITION_FRAME_RATE >=
+        DynamicBackgroundV3Spec.FRAME_RATE).assertTrue();
+      expect(DynamicBackgroundV3Spec.INITIAL_REVEAL_DURATION_RATIO).assertEqual(0.5);
+      expect(DynamicBackgroundV3Spec.nativeRenderScale(3) < 0.4).assertTrue();
+    });
+
+    it('invalidates stale dynamic background artwork loads without clearing a newer load', 0, () => {
+      const load = new DynamicBackgroundArtworkLoad();
+      const firstGeneration = load.begin('artwork://first');
+      expect(load.isLoading('artwork://first')).assertTrue();
+
+      load.invalidateUnless('artwork://second');
+      expect(load.isCurrent('artwork://first', firstGeneration)).assertFalse();
+      const secondGeneration = load.begin('artwork://second');
+      expect(load.finish('artwork://first', firstGeneration)).assertFalse();
+      expect(load.isLoading('artwork://second')).assertTrue();
+      expect(load.finish('artwork://second', secondGeneration)).assertTrue();
+      expect(load.isLoading('artwork://second')).assertFalse();
     });
 
     it('keeps the expanded compact mini player clear of collapsed navigation', 0, () => {

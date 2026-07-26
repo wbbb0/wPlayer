@@ -207,6 +207,16 @@ export class PlayerMotionSpec {
   static readonly MINI_CONTENT_FADE_RATE: number = 4.2;
   static readonly MINI_CONTENT_VISIBLE_LIMIT: number = 0.32;
   static readonly MINI_BAR_CONTENT_FADE_DURATION: number = 180;
+  static readonly DYNAMIC_BACKGROUND_REVEAL_START: number = 0.08;
+  static readonly DYNAMIC_BACKGROUND_REVEAL_END: number = 0.36;
+  // Extends the background clipping shell past every window edge before the
+  // opening spring settles. The foreground keeps its exact morph geometry
+  // while the background absorbs overshoot in either direction.
+  static readonly MORPH_BACKGROUND_BLEED_START: number = 0.68;
+  static readonly MORPH_BACKGROUND_BLEED_END: number = 0.9;
+  static readonly MORPH_BACKGROUND_EDGE_BLEED: number = 16;
+  static readonly FOREGROUND_COLOR_TRANSITION_START: number = 0.08;
+  static readonly FOREGROUND_COLOR_TRANSITION_END: number = 0.52;
   static readonly PLAYBACK_BUTTON_SHADOW_PROGRESS_RANGE: number = 0.6;
   static readonly PLAYBACK_BUTTON_POSITION_SETTLE_PROGRESS: number = 0.25;
   static readonly FULL_ARTWORK_SHADOW_RADIUS: number = 52;
@@ -244,6 +254,35 @@ export class PlayerMotionSpec {
       PlayerMotionSpec.PLAYBACK_BUTTON_POSITION_SETTLE_PROGRESS
     ));
     return Math.max(0, Math.min(1, (expandProgress - settle) / (1 - settle)));
+  }
+
+  static dynamicBackgroundReveal(expandProgress: number): number {
+    return PlayerMotionSpec.smoothRange(
+      expandProgress,
+      PlayerMotionSpec.DYNAMIC_BACKGROUND_REVEAL_START,
+      PlayerMotionSpec.DYNAMIC_BACKGROUND_REVEAL_END
+    );
+  }
+
+  static morphBackgroundEdgeBleed(expandProgress: number): number {
+    return PlayerMotionSpec.MORPH_BACKGROUND_EDGE_BLEED * PlayerMotionSpec.smoothRange(
+      expandProgress,
+      PlayerMotionSpec.MORPH_BACKGROUND_BLEED_START,
+      PlayerMotionSpec.MORPH_BACKGROUND_BLEED_END
+    );
+  }
+
+  static foregroundColorProgress(expandProgress: number): number {
+    return PlayerMotionSpec.smoothRange(
+      expandProgress,
+      PlayerMotionSpec.FOREGROUND_COLOR_TRANSITION_START,
+      PlayerMotionSpec.FOREGROUND_COLOR_TRANSITION_END
+    );
+  }
+
+  private static smoothRange(value: number, start: number, end: number): number {
+    const progress = Math.max(0, Math.min(1, (value - start) / Math.max(0.01, end - start)));
+    return progress * progress * (3 - 2 * progress);
   }
 }
 

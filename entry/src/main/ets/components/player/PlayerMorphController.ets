@@ -22,6 +22,12 @@ import {
   PlayerPoint
 } from './PlayerMotion';
 import { MiniPlayerBinding, PlayerDynamicBackgroundBinding } from './MiniPlayerBinding';
+import { PlayerMorphGeometry } from './PlayerMorphGeometry';
+import {
+  MiniBarResizeAction,
+  PlayerMorphGesturePolicy
+} from './PlayerMorphGesturePolicy';
+import { PlayerMorphTransitionCoordinator } from './PlayerMorphTransitionCoordinator';
 
 const PLAYER_SYSTEM_BAR_OWNER = 'full_player';
 
@@ -86,10 +92,8 @@ export class PlayerMorphController {
   private fullPlayerGestureStartPosition: number = FullPlayerPage.COVER;
   private miniPlayerGestureRegion: MiniPlayerGestureRegion = MiniPlayerGestureRegion.OTHER;
   private miniPlayerHorizontalGestureOffset: number = 0;
-  private morphTransitionEpoch: number = 0;
-  private lifecycleEpoch: number = 0;
-  private attached: boolean = false;
-  private uiContext?: UIContext;
+  private readonly transitionCoordinator: PlayerMorphTransitionCoordinator =
+    new PlayerMorphTransitionCoordinator();
   private readonly playerStore: PlayerStore;
   private readonly compactTabsController: HdsTabsController;
   private readonly condensedCompactTabsController: HdsTabsController;
@@ -149,16 +153,12 @@ export class PlayerMorphController {
   }
 
   attach(uiContext: UIContext): void {
-    this.lifecycleEpoch += 1;
-    this.attached = true;
-    this.uiContext = uiContext;
+    this.transitionCoordinator.attach(uiContext);
   }
 
   dispose(): void {
     systemBarStyleController.removeContentColor(PLAYER_SYSTEM_BAR_OWNER);
-    this.attached = false;
-    this.lifecycleEpoch += 1;
-    this.morphTransitionEpoch += 1;
+    this.transitionCoordinator.dispose();
     this.playerMorphPhase = PlayerMorphPhase.IDLE;
     this.fullPlayerSideContentReady = false;
     this.playerExpandProgress = 0;
@@ -167,22 +167,18 @@ export class PlayerMorphController {
     this.miniPlayerBinding.sourceVisible = true;
     this.miniPlayerBinding.sourceMarqueeActive = true;
     this.releaseMorphArtworkSource();
-    this.uiContext = undefined;
   }
 
   private context(): UIContext {
-    if (this.uiContext === undefined) {
-      throw new Error('PlayerMorphController is not attached to a UIContext');
-    }
-    return this.uiContext;
+    return this.transitionCoordinator.context();
   }
 
   clamp(value: number, minimum: number, maximum: number): number {
-    return Math.max(minimum, Math.min(maximum, value));
+    return PlayerMorphGeometry.clamp(value, minimum, maximum);
   }
 
   usesWideLayout(width: number = this.rootFrame.width): boolean {
-    return width >= AppShellLayoutSpec.SIDE_NAVIGATION_BREAKPOINT;
+    return PlayerMorphGeometry.usesWideLayout(width);
   }
 
   fullPlayerPaneCount(width: number = this.rootFrame.width,
@@ -391,17 +387,19 @@ export class PlayerMorphController {
   }
 
   morphValue(start: number, end: number): number {
-    const progress = this.clamp(this.playerExpandProgress, 0, 1);
-    return start + (end - start) * progress;
+    return PlayerMorphGeometry.morphValue(start, end, this.playerExpandProgress);
   }
 
   fullPlayerFrame(): PlayerFrame {
-    return this.playerMorphPhase === PlayerMorphPhase.OPEN ? this.rootFrame : this.frozenRootFrame;
+    return PlayerMorphGeometry.fullPlayerFrame(
+      this.playerMorphPhase,
+      this.rootFrame,
+      this.frozenRootFrame
+    );
   }
 
   renderedFullPlayerPaneCount(): number {
-    const frame = this.fullPlayerFrame();
-    return FullPlayerPagerSpec.paneCount(frame.width, frame.height);
+    return PlayerMorphGeometry.paneCount(this.fullPlayerFrame());
   }
 
   fullPlayerArtworkTarget(): PlayerPoint {
@@ -410,13 +408,7 @@ export class PlayerMorphController {
   }
 
   miniPlaybackButtonFrame(): PlayerFrame {
-    const size = PlayerLayoutSpec.MINI_PLAYBACK_BUTTON_SIZE;
-    return {
-      x: this.frozenMiniPlayerFrame.x + this.frozenMiniPlayerFrame.width - size - 8,
-      y: this.frozenMiniPlayerFrame.y + (this.frozenMiniPlayerFrame.height - size) / 2,
-      width: size,
-      height: size
-    };
+    return PlayerMorphGeometry.miniPlaybackButtonFrame(this.frozenMiniPlayerFrame);
   }
 
   private miniPlaybackButtonVisible(): boolean {
@@ -425,14 +417,11 @@ export class PlayerMorphController {
   }
 
   morphPlaybackButtonFrame(): PlayerFrame {
-    const miniButton = this.miniPlaybackButtonFrame();
-    const fullButton = this.frozenPlaybackButtonTarget;
-    return {
-      x: this.morphValue(miniButton.x, fullButton.x),
-      y: this.morphValue(miniButton.y, fullButton.y),
-      width: this.morphValue(miniButton.width, fullButton.width),
-      height: this.morphValue(miniButton.height, fullButton.height)
-    };
+    return PlayerMorphGeometry.interpolateFrame(
+      this.miniPlaybackButtonFrame(),
+      this.frozenPlaybackButtonTarget,
+      this.playerExpandProgress
+    );
   }
 
   shouldRenderPlaybackButtonProxy(): boolean {
@@ -492,31 +481,34 @@ export class PlayerMorphController {
   }
 
   private beginMorphPhase(phase: PlayerMorphPhase): number {
-    this.morphTransitionEpoch += 1;
+    const epoch = this.transitionCoordinator.beginTransition();
     this.playerMorphPhase = phase;
     this.dynamicBackgroundBinding.active = true;
     this.miniPlayerBinding.sourceVisible = false;
     this.miniPlayerBinding.sourceMarqueeActive = false;
     this.syncSystemBarContentColor();
-    return this.morphTransitionEpoch;
+    return epoch;
   }
 
   private isCurrentMorphTransition(epoch: number): boolean {
-    return this.attached && epoch === this.morphTransitionEpoch;
+    return this.transitionCoordinator.isCurrentTransition(epoch);
   }
 
   private isCurrentLifecycle(epoch: number): boolean {
-    return this.attached && epoch === this.lifecycleEpoch;
+    return this.transitionCoordinator.isCurrentLifecycle(epoch);
   }
 
   private morphVerticalTravelDistance(): number {
-    return Math.max(1, this.frozenMiniPlayerFrame.y - this.frozenRootFrame.y);
+    return PlayerMorphGeometry.verticalTravelDistance(
+      this.frozenMiniPlayerFrame,
+      this.frozenRootFrame
+    );
   }
 
   private morphGestureCompletionProgress(): number {
-    return Math.min(
-      PlayerMotionSpec.GESTURE_COMPLETION_FRACTION,
-      PlayerMotionSpec.GESTURE_COMPLETION_MAX_DISTANCE / this.morphVerticalTravelDistance()
+    return PlayerMorphGeometry.gestureCompletionProgress(
+      this.frozenMiniPlayerFrame,
+      this.frozenRootFrame
     );
   }
 
@@ -571,21 +563,11 @@ export class PlayerMorphController {
   }
 
   beginMiniPlayerTouch(localX: number): void {
-    const miniPlayerWidth = Math.max(
+    this.miniPlayerGestureRegion = PlayerMorphGesturePolicy.miniPlayerRegion(
+      localX,
       this.miniPlayerBinding.measuredFrame.width,
-      PlayerLayoutSpec.DEFAULT_MINI_PLAYER_SIZE
+      this.miniBarExpanded
     );
-    if (localX <= PlayerLayoutSpec.DEFAULT_MINI_PLAYER_SIZE) {
-      this.miniPlayerGestureRegion = MiniPlayerGestureRegion.ARTWORK;
-      return;
-    }
-    const playbackButtonStart = miniPlayerWidth -
-      PlayerLayoutSpec.MINI_PLAYBACK_BUTTON_SIZE - 8;
-    if (this.miniBarExpanded && localX >= playbackButtonStart) {
-      this.miniPlayerGestureRegion = MiniPlayerGestureRegion.PLAYBACK_BUTTON;
-      return;
-    }
-    this.miniPlayerGestureRegion = MiniPlayerGestureRegion.OTHER;
   }
 
   beginMiniPlayerGesture(): void {
@@ -594,13 +576,11 @@ export class PlayerMorphController {
   }
 
   updateMiniPlayerGesture(event: GestureEvent): void {
-    const horizontalDistance = Math.abs(event.offsetX);
-    const verticalDistance = Math.abs(event.offsetY);
-    if (this.playerGestureAxis === PlayerGestureAxis.UNDECIDED &&
-      Math.max(horizontalDistance, verticalDistance) > PlayerMotionSpec.GESTURE_AXIS_LOCK_DISTANCE) {
-      this.playerGestureAxis = horizontalDistance > verticalDistance ?
-        PlayerGestureAxis.HORIZONTAL : PlayerGestureAxis.VERTICAL;
-    }
+    this.playerGestureAxis = PlayerMorphGesturePolicy.resolveAxis(
+      this.playerGestureAxis,
+      event.offsetX,
+      event.offsetY
+    );
     if (this.playerGestureAxis === PlayerGestureAxis.HORIZONTAL) {
       const horizontalOffset = PlayerMotionSpec.distanceFromRecognitionOrigin(event.offsetX);
       this.miniPlayerHorizontalGestureOffset = horizontalOffset;
@@ -612,9 +592,8 @@ export class PlayerMorphController {
         }
         return;
       }
-      const renderDistance = Math.abs(horizontalOffset);
-      this.miniPlayerOffsetX = horizontalOffset /
-        (1 + renderDistance / PlayerMotionSpec.HORIZONTAL_SWIPE_RESISTANCE);
+      this.miniPlayerOffsetX =
+        PlayerMorphGesturePolicy.resistedHorizontalOffset(horizontalOffset);
       const reachedActionPoint = Math.abs(this.miniPlayerOffsetX) >=
         PlayerMotionSpec.HORIZONTAL_HAPTIC_THRESHOLD;
       if (reachedActionPoint && !this.swipeHapticTriggered) {
@@ -658,7 +637,7 @@ export class PlayerMorphController {
       }
       const shouldChangeTrack = Math.abs(swipeOffset) >=
         PlayerMotionSpec.HORIZONTAL_HAPTIC_THRESHOLD;
-      const lifecycleEpoch = this.lifecycleEpoch;
+      const lifecycleEpoch = this.transitionCoordinator.currentLifecycle();
       this.miniPlayerGestureRegion = MiniPlayerGestureRegion.OTHER;
       this.context().animateTo({
         duration: PlayerMotionSpec.CANCEL_DURATION,
@@ -723,15 +702,15 @@ export class PlayerMorphController {
   }
 
   private miniBarResizeStyle(horizontalOffset: number): HdsBarStyle | undefined {
-    if (!this.miniBarExpanded &&
-      this.miniPlayerGestureRegion === MiniPlayerGestureRegion.ARTWORK &&
-      horizontalOffset <= -PlayerMotionSpec.HORIZONTAL_HAPTIC_THRESHOLD) {
+    const action = PlayerMorphGesturePolicy.miniBarResizeAction(
+      this.miniPlayerGestureRegion,
+      this.miniBarExpanded,
+      horizontalOffset
+    );
+    if (action === MiniBarResizeAction.EXPAND) {
       return HdsBarStyle.EXPAND;
     }
-    if (this.miniBarExpanded &&
-      (this.miniPlayerGestureRegion === MiniPlayerGestureRegion.ARTWORK ||
-        this.miniPlayerGestureRegion === MiniPlayerGestureRegion.PLAYBACK_BUTTON) &&
-      horizontalOffset >= PlayerMotionSpec.HORIZONTAL_HAPTIC_THRESHOLD) {
+    if (action === MiniBarResizeAction.COLLAPSE) {
       return HdsBarStyle.COLLAPSE;
     }
     return undefined;
@@ -882,12 +861,12 @@ export class PlayerMorphController {
   private finishFullPlayerPageGesture(): void {
     const paneCount = this.fullPlayerPaneCount();
     const pageSpan = Math.max(1, this.fullPlayerPageSpan());
-    const movement = this.fullPlayerPagePosition - this.fullPlayerGestureStartPosition;
-    let targetPosition = Math.round(this.fullPlayerGestureStartPosition);
-    if (Math.abs(movement) * pageSpan >= FullPlayerPagerSpec.swipeCompletionDistance(pageSpan)) {
-      targetPosition += movement > 0 ? 1 : -1;
-    }
-    targetPosition = FullPlayerPagerSpec.clampPosition(targetPosition, paneCount);
+    const targetPosition = PlayerMorphGesturePolicy.fullPlayerTargetPosition(
+      this.fullPlayerGestureStartPosition,
+      this.fullPlayerPagePosition,
+      pageSpan,
+      paneCount
+    );
     this.fullPlayerPage = FullPlayerPagerSpec.nearestPage(targetPosition, paneCount);
     this.context().animateTo({
       curve: curves.springMotion(

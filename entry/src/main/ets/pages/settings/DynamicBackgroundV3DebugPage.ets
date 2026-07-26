@@ -1,6 +1,6 @@
-import { image } from '@kit.ImageKit';
 import { DynamicBackgroundV3NativeContext } from 'libwplayerbackground.so';
-import { DynamicBackgroundArtworkLoad } from '../../components/player/DynamicBackgroundArtworkLoad';
+import { DynamicBackgroundArtworkCoordinator } from
+  '../../components/player/DynamicBackgroundArtworkCoordinator';
 import { DynamicBackgroundV3Spec } from '../../components/player/DynamicBackgroundV3Spec';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
 
@@ -51,39 +51,24 @@ export struct DynamicBackgroundV3DebugPage {
   @State private speed: number = DynamicBackgroundV3Spec.DEFAULT_SPEED;
   @State private controlsVisible: boolean = true;
   @State private animationPaused: boolean = false;
-  private nativeContext?: DynamicBackgroundV3NativeContext;
-  private decodedArtwork?: image.PixelMap;
-  private decodedArtworkUri: string = '';
-  private readonly artworkLoad: DynamicBackgroundArtworkLoad =
-    new DynamicBackgroundArtworkLoad();
-  private uploadedArtworkKey: string = '';
-  private uploadInProgressKey: string = '';
-  private uploadRefreshPending: boolean = false;
-  private uploadGeneration: number = 0;
+  private readonly artworkCoordinator: DynamicBackgroundArtworkCoordinator =
+    new DynamicBackgroundArtworkCoordinator('DynamicBackgroundV3Debug');
   private pageVisible: boolean = false;
-  private nativeContextGeneration: number = 0;
   private artworkSyncScheduled: boolean = false;
 
   aboutToAppear(): void {
     this.pageVisible = true;
-    this.nativeContext?.setPaused(this.animationPaused);
-    this.ensureArtworkSource();
-    this.ensureArtworkUploaded();
+    this.artworkCoordinator.activate(this.playerStore);
+    this.artworkCoordinator.setPaused(this.animationPaused);
   }
 
   aboutToDisappear(): void {
     this.pageVisible = false;
-    this.artworkLoad.cancel();
-    this.uploadGeneration += 1;
-    this.uploadInProgressKey = '';
-    this.uploadRefreshPending = false;
-    this.nativeContext?.setPaused(true);
-    this.releaseDecodedArtwork();
+    this.artworkCoordinator.deactivate();
   }
 
   onDidBuild(): void {
-    this.ensureArtworkSource();
-    this.ensureArtworkUploaded();
+    this.artworkCoordinator.sync();
   }
 
   private onPlayerStoreChanged(): void {
@@ -93,230 +78,24 @@ export struct DynamicBackgroundV3DebugPage {
     this.artworkSyncScheduled = true;
     Promise.resolve().then((): void => {
       this.artworkSyncScheduled = false;
-      if (!this.pageVisible) {
-        return;
+      if (this.pageVisible) {
+        this.artworkCoordinator.sync();
       }
-      this.ensureArtworkSource();
-      this.ensureArtworkUploaded();
     });
-  }
-
-  private currentArtworkUri(): string {
-    if (this.playerStore.miniArtworkUri.length > 0 &&
-      !this.playerStore.miniArtworkUri.startsWith('demo-artwork://')) {
-      return this.playerStore.miniArtworkUri;
-    }
-    return this.playerStore.heroArtworkUri;
-  }
-
-  private backgroundSource(): image.PixelMap | undefined {
-    if (this.playerStore.miniArtwork !== undefined) {
-      return this.playerStore.miniArtwork;
-    }
-    const uri = this.currentArtworkUri();
-    if (this.decodedArtworkUri === uri && this.decodedArtwork !== undefined) {
-      return this.decodedArtwork;
-    }
-    // A URI-backed source is decoded to WORK_TEXTURE_SIZE below. Do not read the
-    // full hero PixelMap while that small source is available.
-    if (uri.length > 0 && !uri.startsWith('demo-artwork://')) {
-      return undefined;
-    }
-    return this.playerStore.heroArtwork;
-  }
-
-  private artworkKey(): string {
-    const track = this.playerStore.currentTrack;
-    if (track === undefined || this.backgroundSource() === undefined) {
-      return '';
-    }
-    const artworkIdentity = track.smallArtworkHash.length > 0 ?
-      track.smallArtworkHash :
-      (track.largeArtworkHash.length > 0 ? track.largeArtworkHash : this.currentArtworkUri());
-    let sourceRevision = '';
-    if (this.playerStore.miniArtwork !== undefined) {
-      sourceRevision = `mini:${this.playerStore.miniArtworkRevision}`;
-    } else if (this.decodedArtworkUri === this.currentArtworkUri() &&
-      this.decodedArtwork !== undefined) {
-      sourceRevision = `decoded:${this.decodedArtworkUri}`;
-    } else if (this.playerStore.heroArtwork !== undefined) {
-      sourceRevision = `hero:${this.playerStore.heroArtworkRevision}`;
-    }
-    return `artwork:${artworkIdentity.length > 0 ? artworkIdentity : track.id}:${sourceRevision}`;
-  }
-
-  private releasePixelMap(pixelMap: image.PixelMap | undefined): void {
-    pixelMap?.release().catch((error: Object): void => {
-      const message = error instanceof Error ? error.message : `${error}`;
-      console.warn(`Unable to release dynamic background v3 artwork: ${message}`);
-    });
-  }
-
-  private releaseDecodedArtwork(): void {
-    this.releasePixelMap(this.decodedArtwork);
-    this.decodedArtwork = undefined;
-    this.decodedArtworkUri = '';
-  }
-
-  private ensureArtworkSource(): void {
-    if (!this.pageVisible) {
-      return;
-    }
-    if (this.playerStore.miniArtwork !== undefined) {
-      this.artworkLoad.invalidateUnless();
-      if (this.decodedArtwork !== undefined) {
-        this.releaseDecodedArtwork();
-      }
-      return;
-    }
-    const uri = this.currentArtworkUri();
-    if (uri.length === 0 || uri.startsWith('demo-artwork://')) {
-      this.artworkLoad.invalidateUnless();
-      if (this.playerStore.heroArtwork !== undefined &&
-        this.decodedArtwork !== undefined) {
-        this.releaseDecodedArtwork();
-      }
-      return;
-    }
-    this.artworkLoad.invalidateUnless(uri);
-    if (this.decodedArtworkUri === uri || this.artworkLoad.isLoading(uri)) {
-      return;
-    }
-    const generation = this.artworkLoad.begin(uri);
-    this.decodeArtworkUri(uri, generation);
-  }
-
-  private async decodeArtworkUri(uri: string, generation: number): Promise<void> {
-    let source: image.ImageSource | undefined;
-    let pixelMap: image.PixelMap | undefined;
-    try {
-      source = image.createImageSource(uri);
-      const sourceInfo = await source.getImageInfo();
-      const longestEdge = Math.max(sourceInfo.size.width, sourceInfo.size.height);
-      const maximumEdge = DynamicBackgroundV3Spec.WORK_TEXTURE_SIZE;
-      const decodeScale = longestEdge > maximumEdge ? maximumEdge / longestEdge : 1;
-      pixelMap = await source.createPixelMapUsingAllocator({
-        desiredSize: {
-          width: Math.max(1, Math.round(sourceInfo.size.width * decodeScale)),
-          height: Math.max(1, Math.round(sourceInfo.size.height * decodeScale))
-        },
-        desiredPixelFormat: image.PixelMapFormat.RGBA_8888
-      }, image.AllocatorType.SHARE_MEMORY);
-      if (!this.pageVisible || !this.artworkLoad.isCurrent(uri, generation) ||
-        uri !== this.currentArtworkUri()) {
-        this.artworkLoad.finish(uri, generation);
-        this.releasePixelMap(pixelMap);
-        return;
-      }
-      this.releaseDecodedArtwork();
-      this.decodedArtwork = pixelMap;
-      this.decodedArtworkUri = uri;
-      this.artworkLoad.finish(uri, generation);
-      this.ensureArtworkUploaded();
-    } catch (error) {
-      this.artworkLoad.finish(uri, generation);
-      const message = error instanceof Error ? error.message : `${error}`;
-      console.error(`Unable to decode dynamic background v3 artwork: ${message}`);
-    } finally {
-      if (source !== undefined) {
-        try {
-          await source.release();
-        } catch (error) {
-          const message = error instanceof Error ? error.message : `${error}`;
-          console.warn(`Unable to release dynamic background v3 image source: ${message}`);
-        }
-      }
-    }
-  }
-
-  private ensureArtworkUploaded(): void {
-    const source = this.backgroundSource();
-    const key = this.artworkKey();
-    if (!this.pageVisible || this.nativeContext === undefined || source === undefined ||
-      key.length === 0 || key === this.uploadedArtworkKey) {
-      return;
-    }
-    if (this.uploadInProgressKey.length > 0) {
-      if (key !== this.uploadInProgressKey) {
-        this.uploadRefreshPending = true;
-      }
-      return;
-    }
-    this.uploadRefreshPending = false;
-    this.uploadInProgressKey = key;
-    const uploadGeneration = ++this.uploadGeneration;
-    this.uploadArtwork(source, key, this.nativeContextGeneration, uploadGeneration);
-  }
-
-  private async uploadArtwork(source: image.PixelMap, key: string,
-    nativeContextGeneration: number, uploadGeneration: number): Promise<void> {
-    try {
-      const info = await source.getImageInfo();
-      const stride = info.size.width * 4;
-      const pixels = new ArrayBuffer(stride * info.size.height);
-      await source.readPixels({
-        pixels: pixels,
-        offset: 0,
-        stride: stride,
-        region: { x: 0, y: 0, size: info.size }
-      });
-      if (!this.pageVisible || key !== this.artworkKey() || this.nativeContext === undefined ||
-        nativeContextGeneration !== this.nativeContextGeneration) {
-        return;
-      }
-      // PixelMap.readPixels(PositionArea) exposes BGRA byte order on HarmonyOS.
-      this.nativeContext.setArtwork(pixels, info.size.width, info.size.height, true);
-      this.uploadedArtworkKey = key;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : `${error}`;
-      console.error(`Unable to upload dynamic background v3 artwork: ${message}`);
-    } finally {
-      if (uploadGeneration === this.uploadGeneration) {
-        const shouldRefresh = this.uploadRefreshPending;
-        if (this.uploadInProgressKey === key) {
-          this.uploadInProgressKey = '';
-        }
-        this.uploadRefreshPending = false;
-        if (shouldRefresh && this.pageVisible) {
-          this.ensureArtworkUploaded();
-        }
-      }
-    }
-  }
-
-  private hasBackgroundSource(): boolean {
-    return this.backgroundSource() !== undefined ||
-      this.currentArtworkUri().length > 0;
   }
 
   private currentTrackTitle(): string {
     return this.playerStore.currentTrack?.title ?? '没有正在播放的歌曲';
   }
 
-  private configureNativeContext(): void {
-    const density = this.getUIContext().vp2px(1);
-    this.nativeContext?.setRenderScale(DynamicBackgroundV3Spec.nativeRenderScale(density));
-    this.nativeContext?.setFrameRates(
-      DynamicBackgroundV3Spec.FRAME_RATE,
-      DynamicBackgroundV3Spec.TRANSITION_FRAME_RATE,
-      DynamicBackgroundV3Spec.ARTWORK_TRANSITION_DURATION_SECONDS,
-      DynamicBackgroundV3Spec.INITIAL_REVEAL_DURATION_RATIO
-    );
-    this.nativeContext?.setWorkTextureSize(DynamicBackgroundV3Spec.WORK_TEXTURE_SIZE);
-    this.nativeContext?.setBlurRadius(DynamicBackgroundV3Spec.BLUR_RADIUS);
-    this.nativeContext?.setOverscan(DynamicBackgroundV3Spec.OVERSCAN);
-    this.nativeContext?.setSpeed(this.speed);
-    this.nativeContext?.setPaused(this.animationPaused || !this.pageVisible);
-  }
-
   private toggleAnimation(): void {
     this.animationPaused = !this.animationPaused;
-    this.nativeContext?.setPaused(this.animationPaused);
+    this.artworkCoordinator.setPaused(this.animationPaused);
   }
 
   private resetParameters(): void {
     this.speed = DynamicBackgroundV3Spec.DEFAULT_SPEED;
-    this.nativeContext?.setSpeed(this.speed);
+    this.artworkCoordinator.setSpeed(this.speed);
   }
 
   @Builder
@@ -330,20 +109,15 @@ export struct DynamicBackgroundV3DebugPage {
       .height('100%')
       .hitTestBehavior(HitTestMode.None)
       .onLoad((context: object): void => {
-        this.nativeContextGeneration += 1;
-        this.nativeContext = context as DynamicBackgroundV3NativeContext;
-        this.uploadedArtworkKey = '';
-        this.configureNativeContext();
-        this.ensureArtworkUploaded();
+        const density = this.getUIContext().vp2px(1);
+        this.artworkCoordinator.attachNativeContext(
+          context as DynamicBackgroundV3NativeContext,
+          density,
+          this.speed,
+          this.animationPaused || !this.pageVisible
+        );
       })
-      .onDestroy((): void => {
-        this.nativeContextGeneration += 1;
-        this.uploadGeneration += 1;
-        this.nativeContext = undefined;
-        this.uploadedArtworkKey = '';
-        this.uploadInProgressKey = '';
-        this.uploadRefreshPending = false;
-      })
+      .onDestroy((): void => this.artworkCoordinator.detachNativeContext())
   }
 
   @Builder
@@ -407,7 +181,7 @@ export struct DynamicBackgroundV3DebugPage {
         step: 0.05,
         onChange: (value: number): void => {
           this.speed = value;
-          this.nativeContext?.setSpeed(value);
+          this.artworkCoordinator.setSpeed(value);
         }
       })
     }
@@ -422,7 +196,7 @@ export struct DynamicBackgroundV3DebugPage {
     Stack({ alignContent: Alignment.Center }) {
       this.NativeBackground()
 
-      if (!this.hasBackgroundSource()) {
+      if (!this.artworkCoordinator.hasBackgroundSource()) {
         this.EmptyState()
       }
 

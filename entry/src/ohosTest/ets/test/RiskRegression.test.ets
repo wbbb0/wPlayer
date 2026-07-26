@@ -31,6 +31,8 @@ import {
 import { AppShellLayoutSpec } from '../../../main/ets/components/layout/AppShellLayoutSpec';
 import { DynamicBackgroundArtworkLoad } from
   '../../../main/ets/components/player/DynamicBackgroundArtworkLoad';
+import { DynamicBackgroundArtworkUploadState } from
+  '../../../main/ets/components/player/DynamicBackgroundArtworkUploadState';
 
 class FakeResource {
   released: number = 0;
@@ -48,6 +50,21 @@ export default function riskRegressionTest() {
       expect(load.isLoading('artwork://second')).assertTrue();
       expect(load.finish('artwork://second', secondGeneration)).assertTrue();
       expect(load.isLoading('artwork://second')).assertFalse();
+    });
+
+    it('keeps a superseded artwork upload away from a replacement native surface', 0, () => {
+      const state = new DynamicBackgroundArtworkUploadState();
+      state.attachContext();
+      const obsolete = state.begin('artwork://first');
+      state.noteDesiredKey('artwork://second');
+
+      expect(state.canCommit(obsolete, 'artwork://second', true, true)).assertFalse();
+      expect(state.finish(obsolete)).assertTrue();
+      const current = state.begin('artwork://second');
+      expect(state.canCommit(current, 'artwork://second', true, true)).assertTrue();
+
+      state.attachContext();
+      expect(state.canCommit(current, 'artwork://second', true, true)).assertFalse();
     });
 
     it('startsDragRenderingAtRecognitionOrigin', 0, () => {

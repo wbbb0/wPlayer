@@ -490,8 +490,6 @@ struct Index {
       libraryStore: this.libraryStore,
       topInset: this.statusBarAvoidHeight,
       bottomInset: this.navigationAvoidHeight,
-      collapsedSurfaceColor: this.morphCollapsedSurfaceColor(),
-      playerThemeBackground: this.playerThemeBackground(),
       primaryContentColor: '#FFFFFFFF',
       onRequestAddToPlaylist: (trackIds: Array<number>): void =>
         this.playlistController.requestTrackIdsAddToPlaylist(trackIds),

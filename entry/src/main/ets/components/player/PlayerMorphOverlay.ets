@@ -34,8 +34,6 @@ export struct PlayerMorphOverlay {
   @ObjectLink libraryStore: LibraryStore;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
-  @Prop collapsedSurfaceColor: string = '';
-  @Prop playerThemeBackground: string = '';
   @Prop primaryContentColor: string = '';
   onRequestAddToPlaylist: (trackIds: Array<number>) => void =
     (_trackIds: Array<number>): void => {};

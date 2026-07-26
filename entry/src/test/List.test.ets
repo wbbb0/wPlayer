@@ -20,6 +20,7 @@ import repositoryInvalidationTest from './RepositoryInvalidation.test';
 import libraryListDataSourceTest from './LibraryListDataSource.test';
 import trackDetailPresentationTest from './TrackDetailPresentation.test';
 import artworkPaletteExtractorTest from './ArtworkPaletteExtractor.test';
+import playerMorphPolicyTest from './PlayerMorphPolicy.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -44,4 +45,5 @@ export default function testsuite() {
   libraryListDataSourceTest();
   trackDetailPresentationTest();
   artworkPaletteExtractorTest();
+  playerMorphPolicyTest();
 }

@@ -2,6 +2,7 @@
 
 #include "apple_music_renderer.h"
 
+#include <cmath>
 #include <hilog/log.h>
 #include <memory>
 #include <mutex>
@@ -211,7 +212,8 @@ napi_value PluginManager::SetSpeed(napi_env env, napi_callback_info info)
     OH_NativeXComponent *component = nullptr;
     double speed = 1.0;
     if (!NativeComponentFromCallback(env, info, &argumentCount, arguments, &component) ||
-        argumentCount < 1 || napi_get_value_double(env, arguments[0], &speed) != napi_ok) {
+        argumentCount < 1 || napi_get_value_double(env, arguments[0], &speed) != napi_ok ||
+        !std::isfinite(speed)) {
         return nullptr;
     }
     const auto renderer = RendererFor(component);
@@ -228,7 +230,8 @@ napi_value PluginManager::SetRenderScale(napi_env env, napi_callback_info info)
     OH_NativeXComponent *component = nullptr;
     double scale = 1.0;
     if (!NativeComponentFromCallback(env, info, &argumentCount, arguments, &component) ||
-        argumentCount < 1 || napi_get_value_double(env, arguments[0], &scale) != napi_ok) {
+        argumentCount < 1 || napi_get_value_double(env, arguments[0], &scale) != napi_ok ||
+        !std::isfinite(scale)) {
         return nullptr;
     }
     const auto renderer = RendererFor(component);
@@ -252,7 +255,9 @@ napi_value PluginManager::SetFrameRates(napi_env env, napi_callback_info info)
         napi_get_value_double(env, arguments[0], &backgroundFps) != napi_ok ||
         napi_get_value_double(env, arguments[1], &transitionFps) != napi_ok ||
         napi_get_value_double(env, arguments[2], &transitionDuration) != napi_ok ||
-        napi_get_value_double(env, arguments[3], &initialRevealDurationRatio) != napi_ok) {
+        napi_get_value_double(env, arguments[3], &initialRevealDurationRatio) != napi_ok ||
+        !std::isfinite(backgroundFps) || !std::isfinite(transitionFps) ||
+        !std::isfinite(transitionDuration) || !std::isfinite(initialRevealDurationRatio)) {
         return nullptr;
     }
     const auto renderer = RendererFor(component);
@@ -291,7 +296,8 @@ napi_value PluginManager::SetBlurRadius(napi_env env, napi_callback_info info)
     double actualPixelRadius = 86.0;
     if (!NativeComponentFromCallback(env, info, &argumentCount, arguments, &component) ||
         argumentCount < 1 ||
-        napi_get_value_double(env, arguments[0], &actualPixelRadius) != napi_ok) {
+        napi_get_value_double(env, arguments[0], &actualPixelRadius) != napi_ok ||
+        !std::isfinite(actualPixelRadius)) {
         return nullptr;
     }
     const auto renderer = RendererFor(component);
@@ -308,7 +314,8 @@ napi_value PluginManager::SetOverscan(napi_env env, napi_callback_info info)
     OH_NativeXComponent *component = nullptr;
     double overscan = 1.16;
     if (!NativeComponentFromCallback(env, info, &argumentCount, arguments, &component) ||
-        argumentCount < 1 || napi_get_value_double(env, arguments[0], &overscan) != napi_ok) {
+        argumentCount < 1 || napi_get_value_double(env, arguments[0], &overscan) != napi_ok ||
+        !std::isfinite(overscan)) {
         return nullptr;
     }
     const auto renderer = RendererFor(component);

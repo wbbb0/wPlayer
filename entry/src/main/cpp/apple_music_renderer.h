@@ -49,7 +49,7 @@ private:
     void RestoreCachedArtwork();
     void UploadFirstArtworkTexture(const std::vector<uint8_t> &artwork,
         int32_t size, bool swapRedBlue);
-    void ApplyPendingConfiguration();
+    bool ApplyPendingConfiguration();
     bool CopyCurrentFrameToPrevious();
     void DrawFullscreen();
     void RenderScene();
@@ -103,6 +103,7 @@ private:
     bool sceneDirty_ = true;
 
     std::mutex stateMutex_;
+    std::recursive_mutex renderMutex_;
     std::vector<uint8_t> pendingArtwork_;
     int32_t pendingArtworkWidth_ = 0;
     int32_t pendingArtworkHeight_ = 0;
@@ -135,6 +136,7 @@ private:
     double lastTimestampSeconds_ = 0.0;
     double lastAnimationTimestampSeconds_ = 0.0;
     double lastPresentedTimestampSeconds_ = 0.0;
+    double nextGeometryRetryTimestampSeconds_ = 0.0;
     double animationSeconds_ = 0.0;
 };
 

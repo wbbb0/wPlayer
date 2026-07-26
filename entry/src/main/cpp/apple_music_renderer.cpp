@@ -1,4 +1,5 @@
 #include "apple_music_renderer.h"
+#include "dynamic_background_render_policy.h"
 
 #include <algorithm>
 #include <cmath>
@@ -12,6 +13,24 @@ constexpr uint32_t APP_LOG_DOMAIN = 0xD004201;
 constexpr char APP_LOG_TAG[] = "WPlayerBackground";
 constexpr int32_t BLUR_PASSES = 9;
 constexpr int32_t MAX_ARTWORK_DIMENSION = 4096;
+constexpr int32_t MAX_RENDER_TARGET_DIMENSION = 4096;
+constexpr double GEOMETRY_RETRY_INTERVAL_SECONDS = 0.5;
+
+bool ScaledBufferDimension(uint64_t logicalDimension, float scale, int32_t &bufferDimension)
+{
+    if (!DynamicBackgroundRenderPolicy::IsLogicalDimensionSupported(logicalDimension) ||
+        !std::isfinite(scale) || scale <= 0.0f) {
+        return false;
+    }
+    const double scaledDimension =
+        static_cast<double>(logicalDimension) * static_cast<double>(scale);
+    if (!std::isfinite(scaledDimension) ||
+        scaledDimension > static_cast<double>(MAX_RENDER_TARGET_DIMENSION)) {
+        return false;
+    }
+    bufferDimension = std::max(2, static_cast<int32_t>(std::lround(scaledDimension)));
+    return true;
+}
 
 std::vector<uint8_t> CenterCropToWorkTexture(const std::vector<uint8_t> &source,
     int32_t sourceWidth, int32_t sourceHeight, int32_t targetSize)
@@ -240,18 +259,31 @@ AppleMusicRenderer::~AppleMusicRenderer()
 
 bool AppleMusicRenderer::Initialize(OHNativeWindow *window, uint64_t width, uint64_t height)
 {
+    std::lock_guard<std::recursive_mutex> renderLock(renderMutex_);
+    float scale = 1.0f;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        scale = renderScale_;
+    }
+    int32_t nextBufferWidth = 0;
+    int32_t nextBufferHeight = 0;
+    if (window == nullptr ||
+        !ScaledBufferDimension(width, scale, nextBufferWidth) ||
+        !ScaledBufferDimension(height, scale, nextBufferHeight)) {
+        OH_LOG_Print(LOG_APP, LOG_ERROR, APP_LOG_DOMAIN, APP_LOG_TAG,
+            "Rejected unsupported initial surface dimensions");
+        return false;
+    }
     Release();
     window_ = window;
-    float scale = 1.0f;
     {
         std::lock_guard<std::mutex> lock(stateMutex_);
         logicalWidth_ = width;
         logicalHeight_ = height;
         geometryDirty_ = true;
-        scale = renderScale_;
     }
-    bufferWidth_ = std::max(2, static_cast<int32_t>(std::lround(width * scale)));
-    bufferHeight_ = std::max(2, static_cast<int32_t>(std::lround(height * scale)));
+    bufferWidth_ = nextBufferWidth;
+    bufferHeight_ = nextBufferHeight;
     const int32_t geometryResult = OH_NativeWindow_NativeWindowHandleOpt(
         window_, SET_BUFFER_GEOMETRY, bufferWidth_, bufferHeight_);
     if (geometryResult != 0) {
@@ -301,8 +333,11 @@ bool AppleMusicRenderer::Initialize(OHNativeWindow *window, uint64_t width, uint
     }
     {
         std::lock_guard<std::mutex> lock(stateMutex_);
-        if (logicalWidth_ == width && logicalHeight_ == height &&
-            std::abs(renderScale_ - scale) <= 0.001f) {
+        const bool configurationStillCurrent =
+            logicalWidth_ == width && logicalHeight_ == height &&
+            std::abs(renderScale_ - scale) <= 0.001f;
+        if (DynamicBackgroundRenderPolicy::CanCommitGeometry(
+            true, true, configurationStillCurrent)) {
             geometryDirty_ = false;
         }
     }
@@ -316,6 +351,12 @@ bool AppleMusicRenderer::Initialize(OHNativeWindow *window, uint64_t width, uint
 void AppleMusicRenderer::Resize(uint64_t width, uint64_t height)
 {
     std::lock_guard<std::mutex> lock(stateMutex_);
+    int32_t ignoredWidth = 0;
+    int32_t ignoredHeight = 0;
+    if (!ScaledBufferDimension(width, renderScale_, ignoredWidth) ||
+        !ScaledBufferDimension(height, renderScale_, ignoredHeight)) {
+        return;
+    }
     logicalWidth_ = width;
     logicalHeight_ = height;
     geometryDirty_ = true;
@@ -364,6 +405,14 @@ void AppleMusicRenderer::SetRenderScale(float scale)
     }
     std::lock_guard<std::mutex> lock(stateMutex_);
     const float clamped = std::clamp(scale, 0.05f, 1.0f);
+    int32_t ignoredWidth = 0;
+    int32_t ignoredHeight = 0;
+    if ((logicalWidth_ > 0 &&
+        !ScaledBufferDimension(logicalWidth_, clamped, ignoredWidth)) ||
+        (logicalHeight_ > 0 &&
+        !ScaledBufferDimension(logicalHeight_, clamped, ignoredHeight))) {
+        return;
+    }
     if (std::abs(renderScale_ - clamped) > 0.001f) {
         renderScale_ = clamped;
         geometryDirty_ = true;
@@ -413,7 +462,7 @@ void AppleMusicRenderer::SetOverscan(float overscan)
     overscan_ = std::clamp(overscan, 1.0f, 2.0f);
 }
 
-void AppleMusicRenderer::ApplyPendingConfiguration()
+bool AppleMusicRenderer::ApplyPendingConfiguration()
 {
     uint64_t logicalWidth = 0;
     uint64_t logicalHeight = 0;
@@ -426,23 +475,28 @@ void AppleMusicRenderer::ApplyPendingConfiguration()
         logicalHeight = logicalHeight_;
         scale = renderScale_;
     }
-    if (!dirty || window_ == nullptr || logicalWidth == 0 || logicalHeight == 0) {
-        return;
+    if (!dirty) {
+        return true;
     }
-    const int32_t nextBufferWidth =
-        std::max(2, static_cast<int32_t>(std::lround(logicalWidth * scale)));
-    const int32_t nextBufferHeight =
-        std::max(2, static_cast<int32_t>(std::lround(logicalHeight * scale)));
+    if (window_ == nullptr || logicalWidth == 0 || logicalHeight == 0) {
+        return false;
+    }
+    int32_t nextBufferWidth = 0;
+    int32_t nextBufferHeight = 0;
+    if (!ScaledBufferDimension(logicalWidth, scale, nextBufferWidth) ||
+        !ScaledBufferDimension(logicalHeight, scale, nextBufferHeight)) {
+        return false;
+    }
     const int32_t result = OH_NativeWindow_NativeWindowHandleOpt(
         window_, SET_BUFFER_GEOMETRY, nextBufferWidth, nextBufferHeight);
     if (result != 0) {
         OH_LOG_Print(LOG_APP, LOG_ERROR, APP_LOG_DOMAIN, APP_LOG_TAG,
             "SET_BUFFER_GEOMETRY failed: %{public}d", result);
-        return;
+        return false;
     }
     if (eglContext_ == EGL_NO_CONTEXT ||
         !eglMakeCurrent(eglDisplay_, eglSurface_, eglSurface_, eglContext_)) {
-        return;
+        return false;
     }
     const int32_t previousBufferWidth = bufferWidth_;
     const int32_t previousBufferHeight = bufferHeight_;
@@ -453,12 +507,15 @@ void AppleMusicRenderer::ApplyPendingConfiguration()
         bufferHeight_ = previousBufferHeight;
         OH_LOG_Print(LOG_APP, LOG_ERROR, APP_LOG_DOMAIN, APP_LOG_TAG,
             "Unable to recreate render targets for resized surface");
-        return;
+        return false;
     }
     {
         std::lock_guard<std::mutex> lock(stateMutex_);
-        if (logicalWidth_ == logicalWidth && logicalHeight_ == logicalHeight &&
-            std::abs(renderScale_ - scale) <= 0.001f) {
+        const bool configurationStillCurrent =
+            logicalWidth_ == logicalWidth && logicalHeight_ == logicalHeight &&
+            std::abs(renderScale_ - scale) <= 0.001f;
+        if (DynamicBackgroundRenderPolicy::CanCommitGeometry(
+            true, true, configurationStillCurrent)) {
             geometryDirty_ = false;
         }
     }
@@ -469,6 +526,7 @@ void AppleMusicRenderer::ApplyPendingConfiguration()
     artworkTransitionProgress_ = 1.0f;
     artworkTransitionSeconds_ = 0.0;
     artworkTransitionJustStarted_ = false;
+    return true;
 }
 
 void AppleMusicRenderer::UploadPendingArtwork()
@@ -555,6 +613,7 @@ void AppleMusicRenderer::UploadFirstArtworkTexture(const std::vector<uint8_t> &a
 
 void AppleMusicRenderer::Render(double timestampSeconds)
 {
+    std::lock_guard<std::recursive_mutex> renderLock(renderMutex_);
     if (eglDisplay_ == EGL_NO_DISPLAY || eglSurface_ == EGL_NO_SURFACE ||
         eglContext_ == EGL_NO_CONTEXT) {
         return;
@@ -595,16 +654,41 @@ void AppleMusicRenderer::Render(double timestampSeconds)
         (hasUploadedArtwork_ && initialRevealProgress_ < 1.0f);
     const double presentationInterval =
         transitioning ? transitionFrameInterval : backgroundFrameInterval;
-    if (!artworkPending && !geometryPending &&
-        timestampSeconds > 0.0 && lastPresentedTimestampSeconds_ > 0.0 &&
-        timestampSeconds - lastPresentedTimestampSeconds_ <
-            presentationInterval * 0.95) {
+    const bool geometryRetryDue = DynamicBackgroundRenderPolicy::GeometryRetryDue(
+        geometryPending,
+        timestampSeconds,
+        nextGeometryRetryTimestampSeconds_
+    );
+    if (geometryPending && !geometryRetryDue) {
+        return;
+    }
+    if (!DynamicBackgroundRenderPolicy::ShouldPresent(
+        timestampSeconds,
+        lastPresentedTimestampSeconds_,
+        presentationInterval,
+        artworkPending,
+        geometryRetryDue)) {
         return;
     }
     if (!eglMakeCurrent(eglDisplay_, eglSurface_, eglSurface_, eglContext_)) {
         return;
     }
-    ApplyPendingConfiguration();
+    bool geometryApplied = !geometryPending;
+    if (geometryRetryDue) {
+        geometryApplied = ApplyPendingConfiguration();
+        if (geometryApplied) {
+            nextGeometryRetryTimestampSeconds_ = 0.0;
+        } else if (timestampSeconds > 0.0) {
+            nextGeometryRetryTimestampSeconds_ =
+                timestampSeconds + GEOMETRY_RETRY_INTERVAL_SECONDS;
+        }
+    }
+    if (!DynamicBackgroundRenderPolicy::CanRenderFrame(
+        geometryPending,
+        geometryRetryDue,
+        geometryApplied)) {
+        return;
+    }
     UploadPendingArtwork();
     if (!hasUploadedArtwork_) {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -624,7 +708,10 @@ void AppleMusicRenderer::Render(double timestampSeconds)
         lastTimestampSeconds_ = timestampSeconds;
         lastAnimationTimestampSeconds_ = timestampSeconds;
     } else {
-        delta = std::clamp(timestampSeconds - lastTimestampSeconds_, 0.0, 0.20);
+        delta = DynamicBackgroundRenderPolicy::ClampedDelta(
+            timestampSeconds,
+            lastTimestampSeconds_
+        );
         lastTimestampSeconds_ = timestampSeconds;
     }
     if (initialRevealJustStarted_) {
@@ -641,8 +728,10 @@ void AppleMusicRenderer::Render(double timestampSeconds)
             backgroundFrameInterval * 0.95;
     if (animationDue) {
         if (timestampSeconds > 0.0 && lastAnimationTimestampSeconds_ > 0.0) {
-            const double animationDelta = std::clamp(
-                timestampSeconds - lastAnimationTimestampSeconds_, 0.0, 0.20);
+            const double animationDelta = DynamicBackgroundRenderPolicy::ClampedDelta(
+                timestampSeconds,
+                lastAnimationTimestampSeconds_
+            );
             animationSeconds_ += animationDelta * static_cast<double>(speed);
         }
         lastAnimationTimestampSeconds_ = timestampSeconds;
@@ -983,6 +1072,7 @@ void AppleMusicRenderer::DestroyPrograms()
 
 void AppleMusicRenderer::Release()
 {
+    std::lock_guard<std::recursive_mutex> renderLock(renderMutex_);
     if (eglDisplay_ != EGL_NO_DISPLAY && eglContext_ != EGL_NO_CONTEXT) {
         eglMakeCurrent(eglDisplay_, eglSurface_, eglSurface_, eglContext_);
         DestroyRenderTargets();
@@ -1022,6 +1112,7 @@ void AppleMusicRenderer::Release()
     initialRevealJustStarted_ = false;
     lastAnimationTimestampSeconds_ = 0.0;
     lastPresentedTimestampSeconds_ = 0.0;
+    nextGeometryRetryTimestampSeconds_ = 0.0;
 }
 
 } // namespace wplayer

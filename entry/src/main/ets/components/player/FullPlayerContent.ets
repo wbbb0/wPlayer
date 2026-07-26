@@ -2,163 +2,27 @@ import {
   FullPlayerLayoutMode,
   FullPlayerPage,
   FullPlayerPagerSpec,
-  FULL_PLAYER_HORIZONTAL_GESTURE_HOST_ID,
-  FULL_PLAYER_VERTICAL_GESTURE_HOST_ID,
   PlayerFrame,
   PlayerLayoutSpec,
-  PlayerMotionSpec,
   PlayerPoint
 } from './PlayerMotion';
-import {
-  PlayerModeAction,
-  PlayerModeButton,
-  PlayerImageIcon,
-  PlayerPlaybackButton,
-  PlayerSymbolIcon,
-  PlayerTransportAction,
-  PlayerTransportButton
-} from './PlayerControls';
-import { PlayerHeroArtwork } from './PlayerArtworkViews';
-import {
-  LyricIndexListener,
-  PlaybackProgressStore,
-  PlayerStore,
-  QueueEntry,
-  QueueTrack,
-  QueueIndexListener
-} from '../../playback/model/PlaybackModels';
-import { TimedLyricLine } from '../../playback/lyrics/LyricsParser';
-import { QueueTrackRow } from './QueueTrackRow';
-import {
-  CurrentTrackActionMenu,
-  CurrentTrackActionMenuParams,
-  PlayerQueueSelectionMenu,
-  PlayerQueueSelectionMenuParams
-} from './PlayerActionMenus';
-import { LayoutLength } from '../layout/LayoutLength';
+import { PlayerImageIcon } from './PlayerControls';
+import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import { DynamicColor, ForegroundEmphasis } from '../../appearance/DynamicColor';
-import { playbackRuntime } from '../../playback/PlaybackRuntime';
-import { PlayerTrackMarquee } from './PlayerTrackMarquee';
 import { PageLayoutSpec } from '../layout/PageLayoutSpec';
 import { LibraryStore } from '../../library/store/LibraryStore';
-import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
 import {
-  AvailabilityState,
   LibraryNavigationTarget,
   TrackListItem
 } from '../../library/model/LibraryModels';
-
-@Reusable
-@Component
-struct TimedLyricRow {
-  @ObjectLink playerStore: PlayerStore;
-  @Prop line: TimedLyricLine;
-  @Prop index: number = -1;
-  @Prop primaryContentColor: string = '#FFFFFFFF';
-  @Prop secondaryContentColor: string = '#B8FFFFFF';
-
-  build() {
-    Text(this.line.text)
-      .width('100%')
-      .fontSize(23)
-      .lineHeight(38)
-      .fontWeight(FontWeight.Bold)
-      .fontColor(this.index === this.playerStore.activeLyricIndex ?
-        this.primaryContentColor : this.secondaryContentColor)
-      .animation({ duration: PlayerMotionSpec.LYRIC_FOCUS_DURATION, curve: Curve.EaseInOut })
-      .opacity(this.index === this.playerStore.activeLyricIndex ? 1 : 0.72)
-      .textAlign(TextAlign.Start)
-      .scale({
-        x: this.index === this.playerStore.activeLyricIndex ? 1 : 0.88,
-        y: this.index === this.playerStore.activeLyricIndex ? 1 : 0.88,
-        centerX: '0%',
-        centerY: '50%'
-      })
-      .animation({ duration: PlayerMotionSpec.LYRIC_FOCUS_DURATION, curve: Curve.EaseInOut })
-  }
-}
-
-@Component
-struct PlayerProgressControl {
-  @ObjectLink playerStore: PlayerStore;
-  @ObjectLink progressStore: PlaybackProgressStore;
-  @Prop primaryContentColor: string = '#FFFFFFFF';
-  @Prop secondaryContentColor: string = '#B8FFFFFF';
-  onSeek: (positionMs: number) => void = (_positionMs: number): void => {};
-  @State private seeking: boolean = false;
-  @State private seekPreviewMs: number = 0;
-
-  private durationLabel(durationMs: number): string {
-    const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-  }
-
-  private displayedPositionMs(): number {
-    if (this.seeking) {
-      return this.seekPreviewMs;
-    }
-    return Math.max(0, Math.min(this.progressStore.positionMs, this.progressStore.durationMs));
-  }
-
-  private updateSeek(value: number, mode: SliderChangeMode): void {
-    this.seekPreviewMs = Math.max(0, Math.min(value, this.progressStore.durationMs));
-    if (mode === SliderChangeMode.Begin || mode === SliderChangeMode.Moving) {
-      this.seeking = true;
-      return;
-    }
-    this.seeking = false;
-    this.onSeek(Math.round(this.seekPreviewMs));
-  }
-
-  build() {
-    Column({ space: 2 }) {
-      Slider({
-        value: this.displayedPositionMs(),
-        min: 0,
-        max: Math.max(1, this.progressStore.durationMs),
-        step: 1000,
-        style: SliderStyle.OutSet
-      })
-        .width('100%')
-        .selectedColor(this.primaryContentColor)
-        .trackColor(this.secondaryContentColor)
-        .blockColor(this.primaryContentColor)
-        .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
-        .trackThickness(PlayerLayoutSpec.FULL_PLAYER_PROGRESS_TRACK_THICKNESS)
-        .enabled(this.progressStore.durationMs > 0)
-        .onChange((value: number, mode: SliderChangeMode) => {
-          this.updateSeek(value, mode);
-        })
-        .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) => {
-          recognizers.forEach((recognizer: GestureRecognizer) => {
-            const targetId = recognizer.getEventTargetInfo().getId();
-            if (targetId === FULL_PLAYER_HORIZONTAL_GESTURE_HOST_ID ||
-              targetId === FULL_PLAYER_VERTICAL_GESTURE_HOST_ID) {
-              recognizer.preventBegin();
-            }
-          });
-        })
-
-      Row() {
-        Text(this.durationLabel(this.displayedPositionMs()))
-          .fontSize(11)
-          .fontColor(this.secondaryContentColor)
-          .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
-        Blank()
-        Text(this.durationLabel(this.progressStore.durationMs))
-          .fontSize(11)
-          .fontColor(this.secondaryContentColor)
-          .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
-      }
-      .width('100%')
-    }
-    .width('100%')
-    .margin({ top: 8 })
-  }
-}
+import { FullPlayerCoverPage } from './FullPlayerCoverPage';
+import { FullPlayerLyricsPage } from './FullPlayerLyricsPage';
+import {
+  FullPlayerQueueHeader,
+  FullPlayerQueuePage,
+  FullPlayerQueueSelectionStore
+} from './FullPlayerQueuePage';
 
 @Component
 export struct FullPlayerContent {
@@ -203,130 +67,11 @@ export struct FullPlayerContent {
   onArtworkTarget: (target: PlayerPoint) => void = (_target: PlayerPoint): void => {};
   onCenteredArtworkTarget: (target: PlayerPoint) => void = (_target: PlayerPoint): void => {};
   onPlaybackButtonTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
-  private readonly queueScroller: Scroller = new Scroller();
-  private readonly lyricScroller: Scroller = new Scroller();
-  private lastFocusedQueueIndex: number = -1;
-  private lastFocusedLyricIndex: number = -1;
-  @State private selectedQueueEntries: Array<QueueEntry> = [];
-  @State private queueSelectionActive: boolean = false;
-  private readonly queueIndexListener: QueueIndexListener = (index: number): void => {
-    if (this.measuresArtworkTarget || index < 0 || this.playerStore.queueSize === 0) {
-      return;
-    }
-    this.focusQueueIndex(index, true);
-  };
-  private readonly lyricIndexListener: LyricIndexListener = (index: number): void => {
-    if (this.measuresArtworkTarget || index < 0 || this.playerStore.timedLyrics.length === 0) {
-      return;
-    }
-    const targetIndex = Math.max(0, index - 2);
-    this.lastFocusedLyricIndex = index;
-    this.lyricScroller.scrollToIndex(targetIndex, true, ScrollAlign.START);
-  };
-
-  private queueEntrySelected(entryId: number): boolean {
-    return this.selectedQueueEntries.some((entry: QueueEntry): boolean =>
-      entry.queueEntryId === entryId);
-  }
-
-  private queueActionTrack(track: QueueTrack): TrackListItem {
-    return {
-      id: track.id,
-      title: track.title,
-      artistDisplay: track.artistDisplay,
-      albumDisplay: track.albumDisplay,
-      durationMs: track.durationMs,
-      trackNumber: 0,
-      discNumber: 0,
-      smallArtworkHash: track.smallArtworkHash,
-      smallArtworkPath: track.smallArtworkPath,
-      artworkHash: track.largeArtworkHash,
-      artworkPath: track.largeArtworkPath,
-      artworkWidth: track.artworkWidth,
-      artworkHeight: track.artworkHeight,
-      palettePrimary: track.palettePrimary,
-      paletteSecondary: track.paletteSecondary,
-      paletteAccent: track.paletteAccent,
-      sectionKey: '',
-      availability: AvailabilityState.AVAILABLE
-    };
-  }
-
-  private toggleQueueSelection(entry: QueueEntry): void {
-    if (this.queueEntrySelected(entry.queueEntryId)) {
-      this.selectedQueueEntries =
-        this.selectedQueueEntries.filter((selected: QueueEntry): boolean =>
-          selected.queueEntryId !== entry.queueEntryId);
-    } else {
-      this.selectedQueueEntries = this.selectedQueueEntries.concat([entry]);
-    }
-  }
-
-  private cancelQueueSelection(): void {
-    this.queueSelectionActive = false;
-    this.selectedQueueEntries = [];
-  }
-
-  @Builder
-  private QueueSelectionMenu() {
-    PlayerQueueSelectionMenu(new PlayerQueueSelectionMenuParams(
-      () => {
-        playbackRuntime.playQueueSelection(
-          this.selectedQueueEntries.map((entry: QueueEntry) => entry.track)
-        );
-        this.cancelQueueSelection();
-      },
-      () => playbackRuntime.insertQueueTracks(
-        this.selectedQueueEntries.map((entry: QueueEntry) => entry.track)
-      ),
-      () => playbackRuntime.appendQueueTracks(
-        this.selectedQueueEntries.map((entry: QueueEntry) => entry.track)
-      ),
-      () => this.onRequestAddToPlaylist(
-        this.selectedQueueEntries.map((entry: QueueEntry): number => entry.track.id)
-      ),
-      () => {
-        playbackRuntime.removeQueueEntries(
-          this.selectedQueueEntries.map((entry: QueueEntry): number => entry.queueEntryId)
-        );
-        this.cancelQueueSelection();
-      }
-    ))
-  }
-
-  @Builder
-  private CurrentTrackMenu() {
-    CurrentTrackActionMenu(new CurrentTrackActionMenuParams(
-      this.playerStore.currentTrack !== undefined,
-      this.playerStore.completedCollectionEnabled,
-      () => playbackRuntime.insertCurrentNext(),
-      () => playbackRuntime.appendCurrentToQueue(),
-      () => {
-        if (this.playerStore.currentTrack !== undefined) {
-          this.onRequestAddToPlaylist([this.playerStore.currentTrack.id]);
-        }
-      },
-      () => {
-        if (this.playerStore.currentTrack !== undefined) {
-          this.onOpenTrackDetails(this.queueActionTrack(this.playerStore.currentTrack));
-        }
-      },
-      this.onCompletedCollectionChange
-    ))
-  }
+  @State private queueSelectionStore: FullPlayerQueueSelectionStore =
+    new FullPlayerQueueSelectionStore();
 
   private pageWidth(): number {
     return FullPlayerPagerSpec.pageSpan(this.rootFrame.width, this.paneCount);
-  }
-
-  private artworkSlotSize(): number {
-    return PlayerLayoutSpec.fullArtworkSize(
-      this.rootFrame.width,
-      this.rootFrame.height,
-      this.topInset,
-      this.bottomInset,
-      this.paneCount
-    );
   }
 
   private isUltraCompact(): boolean {
@@ -339,57 +84,6 @@ export struct FullPlayerContent {
     ) === FullPlayerLayoutMode.ULTRA_COMPACT;
   }
 
-  private recordArtworkTarget(newValue: Area): void {
-    if (!this.measuresArtworkTarget) {
-      return;
-    }
-    const pageWidth = this.pageWidth();
-    const layoutTarget: PlayerPoint = {
-      x: LayoutLength.toNumber(
-        newValue.globalPosition.x,
-        this.previousCenteredArtworkTarget.x + this.rootFrame.x
-      ) - this.rootFrame.x,
-      y: LayoutLength.toNumber(
-        newValue.globalPosition.y,
-        this.previousArtworkTarget.y + this.rootFrame.y
-      ) - this.rootFrame.y
-    };
-    const ultraCompact = this.isUltraCompact();
-    const centeredTarget: PlayerPoint = {
-      x: ultraCompact ?
-        FullPlayerPagerSpec.centeredArtworkTargetX(layoutTarget.x, pageWidth) :
-        layoutTarget.x,
-      y: layoutTarget.y
-    };
-    this.onCenteredArtworkTarget(centeredTarget);
-    this.onArtworkTarget({
-      x: ultraCompact ?
-        FullPlayerPagerSpec.artworkTargetX(layoutTarget.x, this.pagePosition, pageWidth) :
-        FullPlayerPagerSpec.pagerArtworkTargetX(
-          centeredTarget.x,
-          this.pagePosition,
-          pageWidth
-        ),
-      y: centeredTarget.y
-    });
-  }
-
-  private recordPlaybackButtonTarget(newValue: Area, fallbackSize: number): void {
-    if (!this.measuresArtworkTarget) {
-      return;
-    }
-    const layoutX = LayoutLength.toNumber(newValue.globalPosition.x, this.rootFrame.x) -
-      this.rootFrame.x;
-    this.onPlaybackButtonTarget({
-      x: this.isUltraCompact() ?
-        FullPlayerPagerSpec.artworkTargetX(layoutX, this.pagePosition, this.pageWidth()) :
-        layoutX,
-      y: LayoutLength.toNumber(newValue.globalPosition.y, this.rootFrame.y) - this.rootFrame.y,
-      width: LayoutLength.toNumber(newValue.width, fallbackSize),
-      height: LayoutLength.toNumber(newValue.height, fallbackSize)
-    });
-  }
-
   private currentArtistLabel(): string {
     if (this.playerStore.currentTrack === undefined) {
       return '选择一首音乐开始播放';
@@ -398,23 +92,12 @@ export struct FullPlayerContent {
       this.playerStore.currentTrack.artistDisplay : '未知艺术家';
   }
 
-  private currentTitleLabel(): string {
-    return this.playerStore.currentTrack?.title ?? '尚未播放';
-  }
-
   private contentColor(): string {
     return this.primaryContentColor;
   }
 
   private secondaryContentColor(): string {
     return DynamicColor.withEmphasis(this.contentColor(), ForegroundEmphasis.MEDIUM);
-  }
-
-  private pageButtonDisabled(page: FullPlayerPage): boolean {
-    const currentPosition = Math.round(
-      FullPlayerPagerSpec.clampPosition(this.pagePosition, this.paneCount)
-    );
-    return currentPosition === FullPlayerPagerSpec.positionForPage(page, this.paneCount);
   }
 
   private isPageInActiveViewport(page: FullPlayerPage): boolean {
@@ -427,52 +110,6 @@ export struct FullPlayerContent {
 
   private shouldRenderPage(page: FullPlayerPage): boolean {
     return this.sideContentReady || this.isPageInActiveViewport(page);
-  }
-
-  aboutToAppear(): void {
-    if (!this.measuresArtworkTarget) {
-      this.playerStore.addQueueIndexListener(this.queueIndexListener);
-      this.playerStore.addLyricIndexListener(this.lyricIndexListener);
-    }
-  }
-
-  aboutToDisappear(): void {
-    if (!this.measuresArtworkTarget) {
-      this.playerStore.removeQueueIndexListener(this.queueIndexListener);
-      this.playerStore.removeLyricIndexListener(this.lyricIndexListener);
-    }
-  }
-
-  private focusQueueIndex(index: number, animated: boolean): void {
-    this.lastFocusedQueueIndex = index;
-    this.queueScroller.scrollToIndex(index, animated, ScrollAlign.START);
-  }
-
-  onDidBuild(): void {
-    if (this.measuresArtworkTarget) {
-      return;
-    }
-    if (this.sideContentReady &&
-      this.shouldRenderPage(FullPlayerPage.QUEUE) &&
-      this.playerStore.queueCurrentIndex >= 0 &&
-      this.lastFocusedQueueIndex !== this.playerStore.queueCurrentIndex) {
-      this.focusQueueIndex(this.playerStore.queueCurrentIndex, false);
-    }
-    if (!this.shouldRenderPage(FullPlayerPage.LYRICS)) {
-      return;
-    }
-    const lyricIndex = this.playerStore.activeLyricIndex;
-    if (this.playerStore.timedLyrics.length === 0) {
-      this.lastFocusedLyricIndex = -1;
-    }
-    if (lyricIndex >= 0 && lyricIndex !== this.lastFocusedLyricIndex) {
-      this.lastFocusedLyricIndex = lyricIndex;
-      this.lyricIndexListener(lyricIndex);
-    }
-  }
-
-  private lyricEndOffset(): number {
-    return Math.max(0, (this.rootFrame.height - this.topInset - this.bottomInset) * 0.62);
   }
 
   private headerTextInset(page: FullPlayerPage): number {
@@ -538,90 +175,14 @@ export struct FullPlayerContent {
 
   @Builder
   private QueueHeader() {
-    Row({ space: 8 }) {
-      Text('当前播放队列')
-        .fontSize(24)
-        .fontWeight(FontWeight.Bold)
-        .fontColor(this.contentColor())
-        .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
-        .maxLines(1)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
-        .layoutWeight(1)
-      if (this.queueSelectionActive) {
-        Button(`操作 ${this.selectedQueueEntries.length}`)
-          .height(40)
-          .enabled(this.selectedQueueEntries.length > 0)
-          .fontColor(this.contentColor())
-          .backgroundColor(Color.Transparent)
-          .bindMenu(this.QueueSelectionMenu(), { placement: Placement.BottomRight })
-        Button('取消')
-          .height(40)
-          .fontColor(this.contentColor())
-          .backgroundColor(Color.Transparent)
-          .onClick(() => this.cancelQueueSelection())
-      } else {
-        Text(`${this.playerStore.queueSize} 首`)
-          .fontSize(13)
-          .fontColor(this.secondaryContentColor())
-          .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
-        PlayerModeButton({
-          playerStore: this.playerStore,
-          action: PlayerModeAction.SHUFFLE,
-          buttonSize: 44,
-          contentColor: this.contentColor()
-        })
-        PlayerModeButton({
-          playerStore: this.playerStore,
-          action: PlayerModeAction.REPEAT,
-          buttonSize: 44,
-          contentColor: this.contentColor()
-        })
-        Button() {
-          PlayerSymbolIcon({
-            symbol: $r('sys.symbol.checkmark_square_on_square'),
-            iconSize: 21,
-            contentColor: this.contentColor()
-          })
-        }
-        .width(44)
-        .height(44)
-        .borderRadius(22)
-        .backgroundColor(Color.Transparent)
-        .accessibilityText('多选')
-        .onClick(() => {
-          this.queueSelectionActive = true;
-          this.selectedQueueEntries = [];
-        })
-      }
-    }
-    .width(this.pageWidth())
-    .height(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE)
-    .padding({
-      left: this.headerTextInset(FullPlayerPage.QUEUE),
-      right: PlayerLayoutSpec.FULL_PLAYER_PAGE_HORIZONTAL_INSET
-    })
-  }
-
-  @Builder
-  private PageNavigationButton(page: FullPlayerPage) {
-    Stack() {
-      PlayerSymbolIcon({
-        symbol: page === FullPlayerPage.QUEUE ?
-          $r('sys.symbol.music_note_list_fill') : $r('sys.symbol.lyrics_square'),
-        iconSize: 22,
-        contentColor: this.contentColor()
-      })
-    }
-    .width(44)
-    .height(44)
-    .borderRadius(22)
-    .backgroundColor(Color.Transparent)
-    .clickEffect({ level: ClickEffectLevel.LIGHT })
-    .enabled(!this.pageButtonDisabled(page))
-    .opacity(this.pageButtonDisabled(page) ? 0.38 : 1)
-    .accessibilityText(page === FullPlayerPage.QUEUE ? '打开播放队列' : '打开歌词')
-    .onClick(() => {
-      this.onNavigatePage(page);
+    FullPlayerQueueHeader({
+      playerStore: this.playerStore,
+      selectionStore: this.queueSelectionStore,
+      pageWidth: this.pageWidth(),
+      leadingInset: this.headerTextInset(FullPlayerPage.QUEUE),
+      primaryContentColor: this.contentColor(),
+      secondaryContentColor: this.secondaryContentColor(),
+      onRequestAddToPlaylist: this.onRequestAddToPlaylist
     })
   }
 
@@ -654,459 +215,96 @@ export struct FullPlayerContent {
 
   @Builder
   private QueuePage() {
-    Stack({ alignContent: Alignment.Bottom }) {
-    Column() {
-      if (this.playerStore.queueSize === 0) {
-        Column({ space: 8 }) {
-          Text('队列为空')
-            .fontSize(18)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(this.contentColor())
-            .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
-          Text('从音乐库选择歌曲后会显示在这里')
-            .fontSize(14)
-            .fontColor(this.secondaryContentColor())
-            .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
-        }
-        .justifyContent(FlexAlign.Center)
-        .layoutWeight(1)
-        .width('100%')
-      } else {
-        List({ space: 0, scroller: this.queueScroller }) {
-          LazyForEach(this.playerStore.queueDataSource, (entry: QueueEntry, index: number) => {
-            ListItem() {
-              Column() {
-                if (index > 0) {
-                  Divider()
-                    .strokeWidth(PlayerLayoutSpec.FULL_PLAYER_QUEUE_DIVIDER_HEIGHT)
-                    .color(this.secondaryContentColor())
-                    .opacity(PlayerLayoutSpec.FULL_PLAYER_QUEUE_DIVIDER_OPACITY)
-                    .margin({
-                      left: PlayerLayoutSpec.FULL_PLAYER_QUEUE_INDEX_WIDTH +
-                        PlayerLayoutSpec.FULL_PLAYER_QUEUE_ARTWORK_SIZE + 20 +
-                        PlayerLayoutSpec.FULL_PLAYER_QUEUE_CONTENT_HORIZONTAL_INSET,
-                      right: PlayerLayoutSpec.FULL_PLAYER_QUEUE_CONTENT_HORIZONTAL_INSET
-                    })
-                }
-                Row() {
-                  QueueTrackRow({
-                    track: this.queueActionTrack(entry.track),
-                    store: this.libraryStore,
-                    artworkPath: this.onResolveQueueArtwork(entry.track.smallArtworkPath),
-                    queueIndex: index,
-                    currentQueueIndex: this.playerStore.queueCurrentIndex,
-                    primaryColor: this.contentColor(),
-                    secondaryColor: this.secondaryContentColor(),
-                    tertiaryColor: this.secondaryContentColor(),
-                    animateColors: true,
-                    active: entry.track.id === this.playerStore.currentTrack?.id,
-                    activeBackgroundColor: $r('app.color.glass_surface_strong'),
-                    activeShadowColor: $r('app.color.artwork_shadow'),
-                    activeShadowRadius: PlayerLayoutSpec.FULL_PLAYER_QUEUE_SHADOW_RADIUS,
-                    activeShadowOffsetY: PlayerLayoutSpec.FULL_PLAYER_QUEUE_SHADOW_OFFSET_Y,
-                    horizontalInset: PlayerLayoutSpec.FULL_PLAYER_QUEUE_CONTENT_HORIZONTAL_INSET,
-                    verticalInset: PlayerLayoutSpec.FULL_PLAYER_QUEUE_ROW_VERTICAL_INSET,
-                    rowCornerRadius: 14,
-                    artworkSize: PlayerLayoutSpec.FULL_PLAYER_QUEUE_ARTWORK_SIZE,
-                    artworkCornerRadius: PlayerLayoutSpec.FULL_ARTWORK_RADIUS,
-                    queueIndexWidth: PlayerLayoutSpec.FULL_PLAYER_QUEUE_INDEX_WIDTH,
-                    queueGestureDistance: PlayerMotionSpec.GESTURE_AXIS_LOCK_DISTANCE,
-                    menuPlacement: Placement.BottomLeft,
-                    onNavigateAction: this.onNavigateLibrary,
-                    onRequestAddToPlaylist: (items: Array<TrackListItem>): void =>
-                      this.onRequestAddToPlaylist(items.map((item: TrackListItem): number => item.id)),
-                    onOpenDetails: (track: TrackListItem): void =>
-                      this.onOpenTrackDetails(track),
-                    selectionMode: this.queueSelectionActive,
-                    selected: this.queueEntrySelected(entry.queueEntryId),
-                    onActivate: (track: TrackListItem): void => {
-                      this.onPlayQueueTrack(track.id);
-                    },
-                    onToggleSelection: (_track: TrackListItem): void =>
-                      this.toggleQueueSelection(entry)
-                  })
-                    .reuseId(this.queueSelectionActive ?
-                      'player_queue_selection' : 'player_queue_track')
-                }
-                .width('100%')
-                .padding({
-                  left: PlayerLayoutSpec.FULL_PLAYER_QUEUE_SHADOW_CLEARANCE,
-                  right: PlayerLayoutSpec.FULL_PLAYER_QUEUE_SHADOW_CLEARANCE
-                })
-              }
-              .width('100%')
-            }
-            .height(PlayerLayoutSpec.FULL_PLAYER_QUEUE_ITEM_HEIGHT)
-          }, (entry: QueueEntry) => `${entry.queueEntryId}`)
-        }
-        .layoutWeight(1)
-        .width('100%')
-        .edgeEffect(EdgeEffect.Spring)
-        .cachedCount(LibraryPagingPolicy.TRACK_PAGE_SIZE, true)
-        .scrollBar(BarState.Auto)
-        .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) => {
-          recognizers.forEach((recognizer: GestureRecognizer) => {
-            if (recognizer.getEventTargetInfo().getId() === FULL_PLAYER_VERTICAL_GESTURE_HOST_ID) {
-              recognizer.preventBegin();
-            }
-          });
-        })
-      }
-    }
-    .width(this.pageWidth())
-    .height('100%')
-    .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) => {
-      recognizers.forEach((recognizer: GestureRecognizer) => {
-        if (recognizer.getEventTargetInfo().getId() === FULL_PLAYER_VERTICAL_GESTURE_HOST_ID) {
-          recognizer.preventBegin();
-        }
-      });
+    FullPlayerQueuePage({
+      playerStore: this.playerStore,
+      libraryStore: this.libraryStore,
+      selectionStore: this.queueSelectionStore,
+      pageWidth: this.pageWidth(),
+      paneCount: this.paneCount,
+      bottomInset: this.bottomInset,
+      listenerActive: !this.measuresArtworkTarget,
+      primaryContentColor: this.contentColor(),
+      secondaryContentColor: this.secondaryContentColor(),
+      onPlayQueueTrack: this.onPlayQueueTrack,
+      onResolveQueueArtwork: this.onResolveQueueArtwork,
+      onOpenTrackDetails: this.onOpenTrackDetails,
+      onNavigateLibrary: this.onNavigateLibrary,
+      onRequestAddToPlaylist: this.onRequestAddToPlaylist
     })
-    .padding({
-      top: PlayerLayoutSpec.FULL_PLAYER_PAGE_TOP_INSET +
-        (this.paneCount > 1 ? PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE : 0),
-      bottom: this.bottomInset + PlayerLayoutSpec.FULL_PLAYER_BOTTOM_INSET
-    })
-    }
-    .width(this.pageWidth())
-    .height('100%')
-  }
-
-  @Builder
-  private PlayerArtwork() {
-    Stack() {
-      if (this.showArtwork) {
-        PlayerHeroArtwork({
-          playerStore: this.playerStore,
-          slotSize: this.artworkSlotSize(),
-          cornerRadius: PlayerLayoutSpec.FULL_ARTWORK_RADIUS,
-          interpolation: this.heroArtworkInterpolation
-        })
-      }
-    }
-    .width(this.artworkSlotSize())
-    .height(this.artworkSlotSize())
-    .borderRadius(this.artworkSlotSize() / 2)
-    .accessibilityText('歌曲封面，长按打开更多操作')
-    .onAreaChange((_oldValue: Area, newValue: Area) => this.recordArtworkTarget(newValue))
   }
 
   @Builder
   private CoverPage() {
-    Column() {
-      Blank().layoutWeight(1)
-
-      this.PlayerArtwork()
-
-      Blank().layoutWeight(1)
-
-      Column({ space: 5 }) {
-        Row({ space: 8 }) {
-          if (this.measuresArtworkTarget) {
-            Text(this.currentTitleLabel())
-              .fontSize(PlayerLayoutSpec.FULL_PLAYER_TITLE_SIZE)
-              .fontWeight(FontWeight.Bold)
-              .fontColor(this.contentColor())
-              .maxLines(1)
-              .layoutWeight(1)
-          } else {
-            PlayerTrackMarquee({
-              playerStore: this.playerStore,
-              active: this.marqueeActive,
-              titleColor: this.contentColor(),
-              titleSize: PlayerLayoutSpec.FULL_PLAYER_TITLE_SIZE,
-              titleWeight: FontWeight.Bold,
-              animateColor: true
-            })
-              .layoutWeight(1)
-          }
-
-          Stack() {
-            PlayerImageIcon({
-              source: $r('app.media.control_more'),
-              iconSize: 20,
-              contentColor: this.contentColor()
-            })
-          }
-          .width(40)
-          .height(40)
-          .borderRadius(20)
-          .backgroundColor(Color.Transparent)
-          .clickEffect({ level: ClickEffectLevel.MIDDLE })
-          .accessibilityText('更多操作')
-          .bindMenu(this.CurrentTrackMenu(), { placement: Placement.BottomRight })
-        }
-        .width('100%')
-        .alignItems(VerticalAlign.Center)
-
-        if (this.measuresArtworkTarget) {
-          Text(this.currentArtistLabel())
-            .fontSize(PlayerLayoutSpec.FULL_PLAYER_ARTIST_SIZE)
-            .fontColor(this.secondaryContentColor())
-            .maxLines(1)
-        } else {
-          Text(this.currentArtistLabel())
-            .fontSize(PlayerLayoutSpec.FULL_PLAYER_ARTIST_SIZE)
-            .fontColor(this.secondaryContentColor())
-            .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
-            .maxLines(1)
-            .id('full_player_artist_action')
-            .accessibilityText('查看艺术家、专辑艺术家或专辑')
-            .onClick(() => {
-              if (this.playerStore.currentTrack !== undefined) {
-                this.onOpenTrackActions(
-                  this.playerStore.currentTrack.id,
-                  'full_player_artist_action'
-                );
-              }
-            })
-        }
-      }
-      .alignItems(HorizontalAlign.Start)
-      .width('100%')
-
-      PlayerProgressControl({
-        playerStore: this.playerStore,
-        progressStore: this.playerStore.progress,
-        primaryContentColor: this.contentColor(),
-        secondaryContentColor: this.secondaryContentColor(),
-        onSeek: (positionMs: number): void => this.onSeek(positionMs)
-      })
-
-      Stack() {
-        Row() {
-          this.PageNavigationButton(FullPlayerPage.QUEUE)
-          Blank()
-          this.PageNavigationButton(FullPlayerPage.LYRICS)
-        }
-        .width('100%')
-        .align(Alignment.Center)
-
-        Row({ space: 16 }) {
-          PlayerTransportButton({ playerStore: this.playerStore,
-            action: PlayerTransportAction.PREVIOUS, buttonSize: 52,
-            contentColor: this.contentColor() })
-          PlayerPlaybackButton({
-            playerStore: this.playerStore,
-            buttonSize: PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE,
-            contentColor: this.contentColor()
-          })
-            .opacity(this.showPlaybackButton ? 1 : 0)
-            .enabled(this.showPlaybackButton)
-            .onAreaChange((_oldValue: Area, newValue: Area) => {
-              this.recordPlaybackButtonTarget(
-                newValue,
-                PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE
-              );
-            })
-          PlayerTransportButton({ playerStore: this.playerStore,
-            action: PlayerTransportAction.NEXT, buttonSize: 52,
-            contentColor: this.contentColor() })
-        }
-        .align(Alignment.Center)
-      }
-      .height(64)
-      .width('100%')
-      .margin({ top: 18, bottom: 12 })
-    }
-    .width(this.pageWidth())
-    .height('100%')
-    .padding({
-      left: PlayerLayoutSpec.FULL_PLAYER_PAGE_HORIZONTAL_INSET,
-      right: PlayerLayoutSpec.FULL_PLAYER_PAGE_HORIZONTAL_INSET,
-      bottom: this.bottomInset + PlayerLayoutSpec.FULL_PLAYER_BOTTOM_INSET
+    FullPlayerCoverPage({
+      playerStore: this.playerStore,
+      ultraCompact: false,
+      marqueeActive: this.marqueeActive,
+      topInset: this.topInset,
+      bottomInset: this.bottomInset,
+      showArtwork: this.showArtwork,
+      showPlaybackButton: this.showPlaybackButton,
+      heroArtworkInterpolation: this.heroArtworkInterpolation,
+      measuresArtworkTarget: this.measuresArtworkTarget,
+      rootFrame: this.rootFrame,
+      pagePosition: this.pagePosition,
+      paneCount: this.paneCount,
+      primaryContentColor: this.contentColor(),
+      previousArtworkTarget: this.previousArtworkTarget,
+      previousCenteredArtworkTarget: this.previousCenteredArtworkTarget,
+      onNavigatePage: this.onNavigatePage,
+      onSeek: this.onSeek,
+      onOpenTrackActions: this.onOpenTrackActions,
+      onOpenTrackDetails: this.onOpenTrackDetails,
+      onRequestAddToPlaylist: this.onRequestAddToPlaylist,
+      onCompletedCollectionChange: this.onCompletedCollectionChange,
+      onArtworkTarget: this.onArtworkTarget,
+      onCenteredArtworkTarget: this.onCenteredArtworkTarget,
+      onPlaybackButtonTarget: this.onPlaybackButtonTarget
     })
   }
 
   @Builder
   private LyricsPage() {
-    Column() {
-      if (this.playerStore.timedLyrics.length > 0) {
-        List({ space: 14, scroller: this.lyricScroller }) {
-          LazyForEach(this.playerStore.lyricDataSource, (line: TimedLyricLine, index: number) => {
-            ListItem() {
-              TimedLyricRow({
-                playerStore: this.playerStore,
-                line: line,
-                index: index,
-                primaryContentColor: this.contentColor(),
-                secondaryContentColor: this.secondaryContentColor()
-              })
-                .reuseId('timed_lyric')
-            }
-          }, (line: TimedLyricLine, index: number) => `${line.timeMs}_${index}`)
-        }
-        .width('100%')
-        .layoutWeight(1)
-        .edgeEffect(EdgeEffect.Spring)
-        .cachedCount(LibraryPagingPolicy.TRACK_PAGE_SIZE, true)
-        .scrollBar(BarState.Off)
-        .contentEndOffset(this.lyricEndOffset())
-        .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) => {
-          recognizers.forEach((recognizer: GestureRecognizer) => {
-            if (recognizer.getEventTargetInfo().getId() === FULL_PLAYER_VERTICAL_GESTURE_HOST_ID) {
-              recognizer.preventBegin();
-            }
-          });
-        })
-      } else if (this.playerStore.lyrics.length > 0) {
-        Scroll() {
-          Text(this.playerStore.lyrics)
-            .width('100%')
-            .fontSize(20)
-            .lineHeight(34)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(this.contentColor())
-            .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
-            .textAlign(TextAlign.Start)
-        }
-        .width('100%')
-        .layoutWeight(1)
-        .edgeEffect(EdgeEffect.Spring)
-        .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) => {
-          recognizers.forEach((recognizer: GestureRecognizer) => {
-            if (recognizer.getEventTargetInfo().getId() === FULL_PLAYER_VERTICAL_GESTURE_HOST_ID) {
-              recognizer.preventBegin();
-            }
-          });
-        })
-      } else {
-        Column({ space: 10 }) {
-          Text('暂未找到内嵌歌词')
-            .fontSize(22)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(this.contentColor())
-            .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
-          Text('当前仅读取音乐文件内部的歌词文本')
-            .fontSize(14)
-            .fontColor(this.secondaryContentColor())
-            .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
-            .textAlign(TextAlign.Center)
-        }
-        .justifyContent(FlexAlign.Center)
-        .layoutWeight(1)
-        .width('100%')
-      }
-    }
-    .width(this.pageWidth())
-    .height('100%')
-    .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) => {
-      if (this.playerStore.timedLyrics.length === 0 && this.playerStore.lyrics.length === 0) {
-        return;
-      }
-      recognizers.forEach((recognizer: GestureRecognizer) => {
-        if (recognizer.getEventTargetInfo().getId() === FULL_PLAYER_VERTICAL_GESTURE_HOST_ID) {
-          recognizer.preventBegin();
-        }
-      });
+    FullPlayerLyricsPage({
+      playerStore: this.playerStore,
+      pageWidth: this.pageWidth(),
+      paneCount: this.paneCount,
+      rootHeight: this.rootFrame.height,
+      topInset: this.topInset,
+      bottomInset: this.bottomInset,
+      listenerActive: !this.measuresArtworkTarget,
+      primaryContentColor: this.contentColor(),
+      secondaryContentColor: this.secondaryContentColor()
     })
-    .padding({
-      left: PlayerLayoutSpec.FULL_PLAYER_LYRICS_HORIZONTAL_INSET,
-      right: PlayerLayoutSpec.FULL_PLAYER_LYRICS_HORIZONTAL_INSET,
-      top: this.paneCount > 1 ? 0 : PlayerLayoutSpec.FULL_PLAYER_PAGE_TOP_INSET,
-      bottom: this.bottomInset + PlayerLayoutSpec.FULL_PLAYER_BOTTOM_INSET
-    })
-  }
-
-  @Builder
-  private UltraCompactMetadata() {
-    Column({ space: 4 }) {
-      if (this.measuresArtworkTarget) {
-        Text(this.currentTitleLabel())
-          .fontSize(PlayerLayoutSpec.FULL_PLAYER_TITLE_SIZE)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(this.contentColor())
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-      } else {
-        PlayerTrackMarquee({
-          playerStore: this.playerStore,
-          active: this.marqueeActive,
-          titleColor: this.contentColor(),
-          titleSize: PlayerLayoutSpec.FULL_PLAYER_TITLE_SIZE,
-          titleWeight: FontWeight.Bold,
-          animateColor: true
-        })
-      }
-      Text(this.currentArtistLabel())
-        .fontSize(PlayerLayoutSpec.FULL_PLAYER_ARTIST_SIZE)
-        .fontColor(this.secondaryContentColor())
-        .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
-        .maxLines(1)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
-        .id('ultra_compact_player_artist_action')
-        .accessibilityText('查看艺术家、专辑艺术家或专辑')
-        .onClick(() => {
-          if (!this.measuresArtworkTarget && this.playerStore.currentTrack !== undefined) {
-            this.onOpenTrackActions(
-              this.playerStore.currentTrack.id,
-              'ultra_compact_player_artist_action'
-            );
-          }
-        })
-    }
-    .alignItems(HorizontalAlign.Start)
-    .justifyContent(FlexAlign.End)
-    .width('100%')
-    .height(PlayerLayoutSpec.ULTRA_COMPACT_TEXT_HEIGHT)
-  }
-
-  @Builder
-  private UltraCompactControls() {
-    Column({ space: PlayerLayoutSpec.ULTRA_COMPACT_CONTROL_GAP }) {
-      PlayerTransportButton({
-        playerStore: this.playerStore,
-        action: PlayerTransportAction.PREVIOUS,
-        buttonSize: PlayerLayoutSpec.ULTRA_COMPACT_TRANSPORT_BUTTON_SIZE,
-        contentColor: this.contentColor()
-      })
-      PlayerPlaybackButton({
-        playerStore: this.playerStore,
-        buttonSize: PlayerLayoutSpec.ULTRA_COMPACT_PLAYBACK_BUTTON_SIZE,
-        contentColor: this.contentColor()
-      })
-        .opacity(this.showPlaybackButton ? 1 : 0)
-        .enabled(this.showPlaybackButton)
-        .onAreaChange((_oldValue: Area, newValue: Area) => {
-          this.recordPlaybackButtonTarget(
-            newValue,
-            PlayerLayoutSpec.ULTRA_COMPACT_PLAYBACK_BUTTON_SIZE
-          );
-        })
-      PlayerTransportButton({
-        playerStore: this.playerStore,
-        action: PlayerTransportAction.NEXT,
-        buttonSize: PlayerLayoutSpec.ULTRA_COMPACT_TRANSPORT_BUTTON_SIZE,
-        contentColor: this.contentColor()
-      })
-    }
-    .alignItems(HorizontalAlign.Center)
-    .justifyContent(FlexAlign.Center)
-    .width(PlayerLayoutSpec.ULTRA_COMPACT_CONTROL_RAIL_WIDTH)
   }
 
   @Builder
   private UltraCompactCoverPage() {
-    Row({ space: PlayerLayoutSpec.ULTRA_COMPACT_COLUMN_GAP }) {
-      Column() {
-        this.PlayerArtwork()
-        Blank().layoutWeight(1)
-        this.UltraCompactMetadata()
-      }
-      .layoutWeight(1)
-      .height('100%')
-      .alignItems(HorizontalAlign.Start)
-
-      this.UltraCompactControls()
-    }
-    .width(this.pageWidth())
-    .height('100%')
-    .alignItems(VerticalAlign.Center)
-    .padding({
-      left: PlayerLayoutSpec.ULTRA_COMPACT_HORIZONTAL_INSET,
-      right: PlayerLayoutSpec.ULTRA_COMPACT_HORIZONTAL_INSET,
-      top: this.topInset + PlayerLayoutSpec.ULTRA_COMPACT_VERTICAL_INSET,
-      bottom: this.bottomInset + PlayerLayoutSpec.ULTRA_COMPACT_VERTICAL_INSET
+    FullPlayerCoverPage({
+      playerStore: this.playerStore,
+      ultraCompact: true,
+      marqueeActive: this.marqueeActive,
+      topInset: this.topInset,
+      bottomInset: this.bottomInset,
+      showArtwork: this.showArtwork,
+      showPlaybackButton: this.showPlaybackButton,
+      heroArtworkInterpolation: this.heroArtworkInterpolation,
+      measuresArtworkTarget: this.measuresArtworkTarget,
+      rootFrame: this.rootFrame,
+      pagePosition: this.pagePosition,
+      paneCount: this.paneCount,
+      primaryContentColor: this.contentColor(),
+      previousArtworkTarget: this.previousArtworkTarget,
+      previousCenteredArtworkTarget: this.previousCenteredArtworkTarget,
+      onNavigatePage: this.onNavigatePage,
+      onSeek: this.onSeek,
+      onOpenTrackActions: this.onOpenTrackActions,
+      onOpenTrackDetails: this.onOpenTrackDetails,
+      onRequestAddToPlaylist: this.onRequestAddToPlaylist,
+      onCompletedCollectionChange: this.onCompletedCollectionChange,
+      onArtworkTarget: this.onArtworkTarget,
+      onCenteredArtworkTarget: this.onCenteredArtworkTarget,
+      onPlaybackButtonTarget: this.onPlaybackButtonTarget
     })
   }
 

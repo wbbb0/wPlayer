@@ -33,7 +33,6 @@ export struct FullPlayerContent {
   @Prop bottomInset: number = 0;
   @Prop showArtwork: boolean = true;
   @Prop showPlaybackButton: boolean = true;
-  @Prop heroArtworkInterpolation: ImageInterpolation = ImageInterpolation.High;
   @Prop measuresArtworkTarget: boolean = false;
   @Prop rootFrame: PlayerFrame = { x: 0, y: 0, width: 0, height: 0 };
   @Prop pagePosition: number = FullPlayerPage.COVER;
@@ -243,7 +242,6 @@ export struct FullPlayerContent {
       bottomInset: this.bottomInset,
       showArtwork: this.showArtwork,
       showPlaybackButton: this.showPlaybackButton,
-      heroArtworkInterpolation: this.heroArtworkInterpolation,
       measuresArtworkTarget: this.measuresArtworkTarget,
       rootFrame: this.rootFrame,
       pagePosition: this.pagePosition,
@@ -289,7 +287,6 @@ export struct FullPlayerContent {
       bottomInset: this.bottomInset,
       showArtwork: this.showArtwork,
       showPlaybackButton: this.showPlaybackButton,
-      heroArtworkInterpolation: this.heroArtworkInterpolation,
       measuresArtworkTarget: this.measuresArtworkTarget,
       rootFrame: this.rootFrame,
       pagePosition: this.pagePosition,

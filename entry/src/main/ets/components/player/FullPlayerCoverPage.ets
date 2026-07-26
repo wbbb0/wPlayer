@@ -36,7 +36,6 @@ export struct FullPlayerCoverPage {
   @Prop bottomInset: number = 0;
   @Prop showArtwork: boolean = true;
   @Prop showPlaybackButton: boolean = true;
-  @Prop heroArtworkInterpolation: ImageInterpolation = ImageInterpolation.High;
   @Prop measuresArtworkTarget: boolean = false;
   @Prop rootFrame: PlayerFrame = { x: 0, y: 0, width: 0, height: 0 };
   @Prop pagePosition: number = FullPlayerPage.COVER;
@@ -241,7 +240,7 @@ export struct FullPlayerCoverPage {
           playerStore: this.playerStore,
           slotSize: this.artworkSlotSize(),
           cornerRadius: PlayerLayoutSpec.FULL_ARTWORK_RADIUS,
-          interpolation: this.heroArtworkInterpolation
+          interpolation: ImageInterpolation.Medium
         })
       }
     }

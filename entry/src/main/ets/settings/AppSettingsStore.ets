@@ -10,7 +10,6 @@ import {
 
 @Observed
 export class AppSettingsStore {
-  highQualityHeroArtwork: boolean = true;
   followPlaybackTheme: boolean = true;
   rememberPlaybackPosition: boolean = true;
   autoResumeAfterOutputReconnect: boolean = true;
@@ -35,7 +34,6 @@ export class AppSettingsStore {
     if (this.initialized) {
       return;
     }
-    this.highQualityHeroArtwork = repository.getHighQualityHeroArtworkEnabled(true);
     this.followPlaybackTheme = repository.getFollowPlaybackThemeEnabled(true);
     this.rememberPlaybackPosition = repository.getRememberPlaybackPositionEnabled(true);
     this.autoResumeAfterOutputReconnect = repository.getAutoResumeAfterOutputReconnectEnabled(true);
@@ -62,11 +60,6 @@ export class AppSettingsStore {
     this.demoLibraryEnabled = DemoLibraryMode.isAvailable() && repository.getDemoLibraryEnabled(false);
     DemoLibraryMode.setEnabled(this.demoLibraryEnabled);
     this.initialized = true;
-  }
-
-  setHighQualityHeroArtwork(value: boolean): void {
-    this.highQualityHeroArtwork = value;
-    this.repository?.setHighQualityHeroArtworkEnabled(value);
   }
 
   setFollowPlaybackTheme(value: boolean): void {

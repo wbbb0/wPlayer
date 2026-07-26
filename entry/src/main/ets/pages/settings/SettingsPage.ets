@@ -50,14 +50,6 @@ export struct SettingsPage {
           this.SectionTitle('外观')
           Column() {
             SettingsToggleItem({
-              symbol: $r('sys.symbol.opticaldisc'),
-              title: '高质量主封面',
-              description: '播放页主封面使用高质量缩放，可能增加渲染开销',
-              isOn: this.settingsStore.highQualityHeroArtwork,
-              onChange: (value: boolean): void => this.settingsStore.setHighQualityHeroArtwork(value)
-            })
-            this.ItemDivider()
-            SettingsToggleItem({
               symbol: $r('sys.symbol.square_fill_grid_2x2'),
               title: '播放主题融入背景',
               description: '使用当前歌曲的主题色轻微着色应用背景',

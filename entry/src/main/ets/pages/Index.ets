@@ -484,7 +484,6 @@ struct Index {
     PlayerMorphOverlay({
       controller: this.playerMorphController,
       playerStore: this.playerStore,
-      settingsStore: this.settingsStore,
       libraryStore: this.libraryStore,
       topInset: this.statusBarAvoidHeight,
       bottomInset: this.navigationAvoidHeight,
@@ -505,7 +504,6 @@ struct Index {
   private FullPlayerGeometryProbe() {
     PlayerGeometryProbe({
       playerStore: this.geometryPlayerStore,
-      settingsStore: this.settingsStore,
       libraryStore: this.libraryStore,
       topInset: this.statusBarAvoidHeight,
       bottomInset: this.navigationAvoidHeight,

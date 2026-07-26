@@ -1,4 +1,3 @@
-import { AppSettingsStore } from '../../settings/AppSettingsStore';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { FullPlayerContent } from './FullPlayerContent';
 import { LibraryStore } from '../../library/store/LibraryStore';
@@ -11,7 +10,6 @@ import {
 @Component
 export struct PlayerGeometryProbe {
   @ObjectLink playerStore: PlayerStore;
-  @ObjectLink settingsStore: AppSettingsStore;
   @ObjectLink libraryStore: LibraryStore;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
@@ -32,8 +30,6 @@ export struct PlayerGeometryProbe {
         topInset: this.topInset,
         bottomInset: this.bottomInset,
         showArtwork: false,
-        heroArtworkInterpolation: this.settingsStore.highQualityHeroArtwork ?
-          ImageInterpolation.High : ImageInterpolation.Medium,
         measuresArtworkTarget: true,
         rootFrame: this.rootFrame,
         pagePosition: FullPlayerPage.COVER,

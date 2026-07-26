@@ -1,6 +1,5 @@
 import { curves } from '@kit.ArkUI';
 import { image } from '@kit.ImageKit';
-import { AppSettingsStore } from '../../settings/AppSettingsStore';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { ArtworkLayout } from '../artwork/ArtworkLayout';
 import { ArtworkFitMode, ArtworkView } from '../artwork/ArtworkView';
@@ -23,7 +22,6 @@ import {
 @Component
 export struct PlayerMorphArtwork {
   @ObjectLink playerStore: PlayerStore;
-  @ObjectLink settingsStore: AppSettingsStore;
   @State contextMenuShown: boolean = false;
   private contextPreviewWidth: number = 0;
   private contextPreviewHeight: number = 0;
@@ -196,8 +194,7 @@ export struct PlayerMorphArtwork {
         fitMode: ArtworkFitMode.COVER,
         resolvedCornerRadius: this.sourceRadius() * this.contextPreviewRestScale,
         shadowEnabled: false,
-        interpolation: this.settingsStore.highQualityHeroArtwork ?
-          ImageInterpolation.High : ImageInterpolation.Medium
+        interpolation: ImageInterpolation.Medium
       })
     }
     .width(this.contextPreviewWidth * this.contextPreviewRestScale)
@@ -227,8 +224,7 @@ export struct PlayerMorphArtwork {
         animateShadowChanges: this.morphPhase === PlayerMorphPhase.OPEN,
         shadowSpringResponse: PlayerMotionSpec.ARTWORK_STATE_SPRING_RESPONSE,
         shadowSpringDamping: PlayerMotionSpec.ARTWORK_STATE_SPRING_DAMPING,
-        interpolation: this.settingsStore.highQualityHeroArtwork ?
-          ImageInterpolation.High : ImageInterpolation.Medium,
+        interpolation: ImageInterpolation.Medium,
         resizeContentWithBounds: true
       })
         .scale({

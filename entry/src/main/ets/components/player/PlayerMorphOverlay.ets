@@ -1,7 +1,6 @@
 import { image } from '@kit.ImageKit';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { PlayerStore, QueueTrack } from '../../playback/model/PlaybackModels';
-import { AppSettingsStore } from '../../settings/AppSettingsStore';
 import { FullPlayerContent } from './FullPlayerContent';
 import { MiniPlayerContent } from './MiniPlayerSurface';
 import { PlayerPlaybackButton } from './PlayerControls';
@@ -26,7 +25,6 @@ import {
 export struct PlayerMorphOverlay {
   @ObjectLink controller: PlayerMorphController;
   @ObjectLink playerStore: PlayerStore;
-  @ObjectLink settingsStore: AppSettingsStore;
   @ObjectLink libraryStore: LibraryStore;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
@@ -88,8 +86,6 @@ export struct PlayerMorphOverlay {
             bottomInset: this.bottomInset,
             showArtwork: false,
             showPlaybackButton: this.controller.shouldShowFullPlaybackButton(),
-            heroArtworkInterpolation: this.settingsStore.highQualityHeroArtwork ?
-              ImageInterpolation.High : ImageInterpolation.Medium,
             rootFrame: this.controller.fullPlayerFrame(),
             pagePosition: this.controller.fullPlayerPagePosition,
             paneCount: this.controller.renderedFullPlayerPaneCount(),
@@ -174,7 +170,6 @@ export struct PlayerMorphOverlay {
   private MorphArtwork() {
     PlayerMorphArtwork({
       playerStore: this.playerStore,
-      settingsStore: this.settingsStore,
       expandProgress: this.controller.playerExpandProgress,
       morphPhase: this.controller.playerMorphPhase,
       fullPlayerPage: this.controller.fullPlayerPage,

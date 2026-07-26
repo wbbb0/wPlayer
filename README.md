@@ -47,8 +47,8 @@ w播放器是一款原生 HarmonyOS 本地音乐播放器，为希望获得干�
 
 ## 支持环境
 
-- 最低兼容 HarmonyOS SDK 6.1.0，API 23
-- 目标及编译 HarmonyOS SDK 6.1.1，API 24
+- 当前最低兼容及目标 HarmonyOS SDK 6.1.0，API 23
+- 构建工具模型版本 6.1.1；实际 SDK 选择以 `build-profile.json5` 和本机 DevEco 配置为准
 - 设备类型：手机、平板和 2in1
 - 开发环境：Windows、DevEco Studio、DevEco CLI
 
@@ -72,6 +72,8 @@ pre-commit 与 CI 检查，阻止密码、证书、Profile、KeyStore 路径或�
 ## 项目文档
 
 - [构建指南](docs/BUILDING.md)
+- [发布与签名指南](docs/RELEASING.md)
+- [Agent 工程规范](docs/agents/)
 - [隐私政策](PRIVACY.md)
 - [安全策略](.github/SECURITY.md)
 - [第三方软件使用清单](THIRD_PARTY_NOTICES.md)

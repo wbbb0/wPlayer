@@ -1,0 +1,133 @@
+# Architecture Boundaries
+
+## Purpose
+
+This document defines ownership and dependency direction. It describes the current application boundary while also
+preventing new coupling. If implementation and this document disagree, determine whether the code is an intentional
+exception or architecture drift before changing either.
+
+## Application composition
+
+The current application is composed through these boundaries:
+
+- `entryability/EntryAbility.ets` owns HarmonyOS ability and window lifecycle.
+- `pages/Index.ets` is the root ArkUI shell and the current UI composition boundary.
+- `playback/PlaybackRuntime.ets` is the application playback coordinator and singleton command facade.
+- PlaybackRuntime owns the single PlaybackEngine, PlaybackSession, PlaybackQueue and PlayerStore.
+- PlaybackRuntime exposes the shared MusicRepository used by the root shell to construct LibraryStore and
+  PlaylistStore.
+- SettingsRepository owns persisted preferences; AppSettingsStore exposes observable settings state.
+
+Leaf pages and components must not create an alternative application graph.
+
+## Dependency direction
+
+Use this direction:
+
+```text
+EntryAbility
+  └─ root composition and application lifecycle
+       ├─ observable stores
+       ├─ application command facades
+       └─ repositories
+            └─ databases, Picker access, metadata and native services
+
+Pages and components
+  ├─ read observable stores
+  ├─ render state
+  └─ issue user-intent commands
+```
+
+Lower-level data, playback and service code must not depend on pages or UI components.
+
+## UI boundary
+
+Pages and components may:
+
+- read observable Store state;
+- invoke commands exposed by the current application coordinator;
+- own ephemeral presentation state such as menu visibility, local gesture progress and focus;
+- call pure layout, formatting and interaction policies.
+
+Pages and components must not:
+
+- instantiate AVPlayer, PlaybackEngine, PlaybackSession, relationalStore or a file Picker authorization service;
+- perform SQL, metadata extraction or raw file access;
+- maintain a second copy of playback, library or settings truth;
+- construct long-lived repositories or application runtimes;
+- work around a shared invariant with page-specific state.
+
+`playbackRuntime` is currently the playback command facade. Leaf UI may invoke its public playback commands, but
+must not access its internal engine, session or repository. The root `Index` composition boundary is the only current
+UI exception allowed to share `playbackRuntime.repository` with application stores.
+
+Prefer introducing a narrow command interface when new behavior would make leaf UI depend on more PlaybackRuntime
+internals. Do not perform a repository-wide dependency-injection rewrite solely to rename the existing facade.
+
+## Playback ownership
+
+- PlaybackEngine exclusively owns AVPlayer creation, raw state transitions and source preparation.
+- PlaybackRuntime coordinates commands, queue behavior, progress, recovery, metadata synchronization and Store
+  projection.
+- PlaybackSession owns AVSession and background-control integration.
+- PlayerStore is observable UI state, not a command service and not an AVPlayer state machine.
+- PlaybackQueue owns queue identity, ordering, shuffle and cursor invariants.
+- Support policies own independently testable decisions such as power, reconnect and state reduction.
+
+Use request epochs or equivalent invalidation for asynchronous work that can be superseded. A stale completion must
+not publish state, release a resource now owned by newer work, or clear a current operation.
+
+## Library ownership
+
+- MediaPickerService owns Picker interaction and documented URI authorization.
+- MediaImporter owns import orchestration, duplicate proof and per-item outcomes.
+- MetadataReader owns documented media metadata and artwork extraction.
+- Format-specific readers own explicitly supported fallback parsing.
+- MusicRepository is the library facade used by stores and playback coordination.
+- LibraryDatabase owns schema creation, versioning and relational-store lifecycle.
+- MusicLibraryQueries and MusicLibraryImporter own query and persistence operations respectively.
+- LibraryStore owns observable library UI state and session-only operation reports.
+- ArtworkCache owns persistent resized artwork files; ArtworkMemoryCache owns playback-time decoded artwork.
+
+Do not make URI strings, display names, quick fingerprints or metadata alone authoritative proof of physical file
+identity.
+
+## Playlist ownership
+
+- PlaylistRepository owns playlist and membership persistence.
+- PlaylistStore owns observable playlist UI state.
+- M3uCodec and M3uEncoding own parsing, serialization and encoding decisions.
+- M3uImportMatcher owns matching imported rows against the current library.
+- M3uTransferService owns Picker/file orchestration for transfer operations.
+- UI policies own selection and menu decisions, not persistence.
+
+PlaylistRepository shares LibraryDatabase through MusicRepository. Do not create a second relational store for the
+same library graph.
+
+## Settings ownership
+
+- SettingsRepository owns Preferences reads and writes.
+- AppSettingsStore owns observable settings state.
+- Small normalization and fallback decisions belong in named policy types.
+- Pages render and dispatch settings changes; they do not read Preferences directly.
+
+## Navigation ownership
+
+- Persistent navigation hosts live at the root tab shell.
+- Each tab owns one controlled navigation stack.
+- Shared route definitions and responsive promotion/demotion logic stay in the navigation layer.
+- Feature pages must not create private nested Navigation stacks.
+- Detail pages do not replace or own persistent tab/player chrome.
+
+Detailed behavior is defined in `UI_CONTRACTS.md`.
+
+## Boundary-change checklist
+
+When changing an ownership boundary:
+
+1. Name the invariant and its new owner.
+2. Search all direct imports and construction sites.
+3. Update callers in one coherent change.
+4. Remove the superseded path; do not leave two active owners.
+5. Add tests at the policy or state boundary.
+6. Update this document and affected scoped agent-instruction files.

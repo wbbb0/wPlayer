@@ -1,12 +1,14 @@
 # 构建 w播放器
 
-本文说明如何在新的 Windows 开发环境中构建 w播放器。项目主要模块为 `entry`，最低兼容 HarmonyOS SDK 为 6.1.0/API 23，目标及编译 SDK 为 6.1.1/API 24。
+本文说明如何在新的 Windows 开发环境中构建 w播放器。项目主要模块为 `entry`。当前
+`build-profile.json5` 配置的最低兼容及目标 SDK 均为 HarmonyOS 6.1.0/API 23；构建工具模型版本为
+6.1.1。修改 SDK 版本前应以项目配置和已安装 SDK 为准。
 
 ## 环境要求
 
 - Windows 10 或 Windows 11
 - Git
-- 能够提供目标及编译用 HarmonyOS SDK 6.1.1/API 24 的 DevEco Studio；生成的应用最低兼容 API 23
+- 能够提供项目当前配置 API 的 DevEco Studio 和 HarmonyOS SDK
 - Node.js 和 npm
 - DevEco CLI
 - 可选：已启用开发者模式的 HarmonyOS 设备及 HDC
@@ -87,21 +89,10 @@ Remove-Item $signingBackup
 
 ### 发布签名
 
-发布构建必须在 `build-profile.json5` 中保留名为 `release` 的本机签名配置，并让产品 `default` 选择它，同时使用 release build mode：
+发布构建使用产品 `release`、签名配置 `release` 和 release build mode。完整的发布身份、材料校验、构建
+命令和提交前恢复流程见[发布与签名指南](RELEASING.md)。
 
-```powershell
-devecocli build --build-mode release
-```
-
-也可以在 DevEco Studio 的 Hvigor 任务面板中，将顶部 **Build Mode** 切换为
-**Release**，然后运行根项目“其他/Customize”分组下的
-`assembleReleaseSignedApp`。该任务会确认产品选择了名为 `release` 的配置，并在打包后核对模块元数据；只有 `buildMode: release` 且 `debug: false` 才会成功。
-
-签名构建产物通常位于：
-
-```text
-entry/build/default/outputs/default/entry-default-signed.hap
-```
+不要让产品 `default` 临时选择发布签名；调试与发布产品应始终保持各自独立的签名映射。
 
 ## 安装与启动
 

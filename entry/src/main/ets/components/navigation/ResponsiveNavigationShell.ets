@@ -2161,6 +2161,7 @@ export struct ResponsiveNavigationShell {
     .width('100%')
     .height(AppShellLayoutSpec.WIDE_MINI_PLAYER_HOST_HEIGHT)
     .clip(true)
+    .hitTestBehavior(HitTestMode.Transparent)
   }
 
   build() {

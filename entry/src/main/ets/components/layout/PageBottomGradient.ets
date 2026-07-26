@@ -18,6 +18,6 @@ export struct PageBottomGradient {
           [DynamicColor.withOpacity(this.maskColor, PageBottomGradient.EDGE_OPACITY), 1]
         ]
       })
-      .hitTestBehavior(HitTestMode.Transparent)
+      .hitTestBehavior(HitTestMode.None)
   }
 }

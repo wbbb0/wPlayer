@@ -1,6 +1,10 @@
 import { PageLayoutSpec } from '../../components/layout/PageLayoutSpec';
 import { PageScrollBehavior, PageScrollContentBehavior } from '../../components/layout/PageScrollBehavior';
-import { SettingsLinkItem, SettingsToggleItem } from '../../components/settings/SettingsItem';
+import {
+  SettingsLinkItem,
+  SettingsSelectItem,
+  SettingsToggleItem
+} from '../../components/settings/SettingsItem';
 import { AppSettingsStore } from '../../settings/AppSettingsStore';
 import { CompletedCollectionMode } from '../../playback/model/PlaybackModels';
 import { CompletedCollectionSettingPolicy } from '../../settings/CompletedCollectionSettingPolicy';
@@ -103,42 +107,25 @@ export struct SettingsPage {
             })
             this.ItemDivider()
             SettingsLinkItem({
-              symbol: $r('sys.symbol.square_fill_grid_2x2'),
+              imageSource: $r('app.media.control_picture_in_picture'),
               title: '浮窗',
               description: '设置浮窗打开、自动启动与关闭行为',
               onActivate: this.openFloatingWindowSettings
             })
             this.ItemDivider()
-            Row({ space: 14 }) {
-              SymbolGlyph($r('sys.symbol.checkmark_circle_fill'))
-                .fontSize(23)
-                .fontColor([$r('app.color.theme_accent')])
-              Column({ space: 3 }) {
-                Text('完整听过收集')
-                  .fontSize(16)
-                  .fontWeight(FontWeight.Medium)
-                  .fontColor($r('app.color.text_primary'))
-                Text('设置新播放队列是否自动开启收集')
-                  .fontSize(12)
-                  .fontColor($r('app.color.text_secondary'))
-                  .maxLines(2)
+            SettingsSelectItem({
+              symbol: $r('sys.symbol.checkmark_circle_fill'),
+              title: '完整听过收集',
+              description: '设置新播放队列是否自动开启收集',
+              options: ['智能', '默认开启', '默认关闭'],
+              selected: this.settingsStore.completedCollectionMode,
+              value: CompletedCollectionSettingPolicy.label(
+                this.settingsStore.completedCollectionMode
+              ),
+              onSelect: (index: number): void => {
+                this.settingsStore.setCompletedCollectionMode(index as CompletedCollectionMode);
               }
-              .alignItems(HorizontalAlign.Start)
-              .layoutWeight(1)
-              Select([
-                { value: '智能' },
-                { value: '默认开启' },
-                { value: '默认关闭' }
-              ])
-                .selected(this.settingsStore.completedCollectionMode)
-                .value(CompletedCollectionSettingPolicy.label(this.settingsStore.completedCollectionMode))
-                .onSelect((index: number) => {
-                  this.settingsStore.setCompletedCollectionMode(index as CompletedCollectionMode);
-                })
-            }
-            .width('100%')
-            .constraintSize({ minHeight: 76 })
-            .padding({ left: 18, right: 14, top: 12, bottom: 12 })
+            })
           }
           .width('100%')
           .borderRadius(20)

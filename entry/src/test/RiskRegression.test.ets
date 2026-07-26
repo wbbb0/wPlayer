@@ -182,8 +182,10 @@ export default function riskRegressionTest() {
       )).assertEqual(1);
     });
 
-    it('derives one or two full-player panes from measured geometry', 0, () => {
+    it('requires both landscape geometry and enough width for two full-player panes', 0, () => {
       expect(FullPlayerPagerSpec.paneCount(720, 1280)).assertEqual(1);
+      expect(FullPlayerPagerSpec.paneCount(719, 480)).assertEqual(1);
+      expect(FullPlayerPagerSpec.paneCount(720, 480)).assertEqual(2);
       expect(FullPlayerPagerSpec.paneCount(1280, 720)).assertEqual(2);
       expect(FullPlayerPagerSpec.pageSpan(1280, 2)).assertEqual(640);
       expect(FullPlayerPagerSpec.positionForPage(FullPlayerPage.QUEUE, 2)).assertEqual(0);

@@ -112,6 +112,8 @@ suppressing another.
 
 ## Full-player shared-element morph
 
+- Use the two-pane full-player pager only for landscape viewports at least 720vp wide; narrower windows retain the
+  single-pane pager.
 - Freeze source and destination geometry when a transition begins.
 - Use one overlay artwork instance.
 - Drive position, scale, corner radius and shadow from one progress value.

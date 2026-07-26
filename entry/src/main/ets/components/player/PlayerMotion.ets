@@ -70,6 +70,7 @@ export const FULL_PLAYER_HORIZONTAL_GESTURE_HOST_ID: string = 'full_player_horiz
 
 export class FullPlayerPagerSpec {
   static readonly PAGE_COUNT: number = 3;
+  static readonly MIN_TWO_PANE_WIDTH: number = 720;
   static readonly SWIPE_COMPLETION_FRACTION: number = 0.12;
   static readonly SWIPE_COMPLETION_MAX_DISTANCE: number = 56;
   static readonly SIDE_PAGE_HANDOFF_FRACTION: number = 0.3;
@@ -85,7 +86,7 @@ export class FullPlayerPagerSpec {
   }
 
   static paneCount(width: number, height: number): number {
-    return width > height ? 2 : 1;
+    return width >= FullPlayerPagerSpec.MIN_TWO_PANE_WIDTH && width > height ? 2 : 1;
   }
 
   static pageSpan(viewportWidth: number, paneCount: number): number {

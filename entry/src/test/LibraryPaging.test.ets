@@ -1,12 +1,18 @@
 import { describe, it, expect } from '@ohos/hypium';
 import {
   AlbumSortField,
+  LibraryCatalog,
+  LibraryIndexPresentation,
   LibrarySection,
   SortDirection,
   TrackSortField
 } from '../main/ets/library/model/LibraryModels';
 import { LibrarySortPlan } from '../main/ets/library/data/LibrarySortPlan';
 import { LibraryQueryPagingPolicy } from '../main/ets/library/data/LibraryQueryPagingPolicy';
+import {
+  LibrarySectionPagePlanner,
+  LibrarySectionPageSegment
+} from '../main/ets/library/data/LibrarySectionPagePlanner';
 import { LibraryPagingPolicy } from '../main/ets/library/store/LibraryPagingPolicy';
 import {
   LibraryPageLoader,
@@ -46,6 +52,65 @@ class PagingTestLoader implements LibraryPageLoader<PagingTestItem> {
   }
 }
 
+class ControlledPagingTestLoader implements LibraryPageLoader<PagingTestItem> {
+  startedOffsets: Array<number> = [];
+  activeLoads: number = 0;
+  maxActiveLoads: number = 0;
+  private readonly releases: Map<number, () => void> = new Map<number, () => void>();
+
+  load(offset: number, limit: number): Promise<Array<PagingTestItem>> {
+    this.startedOffsets.push(offset);
+    this.activeLoads += 1;
+    this.maxActiveLoads = Math.max(this.maxActiveLoads, this.activeLoads);
+    return new Promise<Array<PagingTestItem>>((resolve) => {
+      this.releases.set(offset, (): void => {
+        this.activeLoads -= 1;
+        const items: Array<PagingTestItem> = [];
+        for (let index = offset; index < offset + limit; index += 1) {
+          const item = new PagingTestItem();
+          item.id = index;
+          items.push(item);
+        }
+        resolve(items);
+      });
+    });
+  }
+
+  release(offset: number): void {
+    const release = this.releases.get(offset);
+    if (release !== undefined) {
+      this.releases.delete(offset);
+      release();
+    }
+  }
+}
+
+class UpgradableFailurePagingTestLoader implements LibraryPageLoader<PagingTestItem> {
+  loadCount: number = 0;
+  private failFirstLoad?: () => void;
+
+  load(offset: number, limit: number): Promise<Array<PagingTestItem>> {
+    this.loadCount += 1;
+    if (this.loadCount === 1) {
+      return new Promise<Array<PagingTestItem>>((_resolve, reject) => {
+        this.failFirstLoad = (): void => reject(new Error('expected first failure'));
+      });
+    }
+    const items: Array<PagingTestItem> = [];
+    for (let index = offset; index < offset + limit; index += 1) {
+      const item = new PagingTestItem();
+      item.id = index;
+      items.push(item);
+    }
+    return Promise.resolve(items);
+  }
+
+  failFirst(): void {
+    this.failFirstLoad?.();
+    this.failFirstLoad = undefined;
+  }
+}
+
 class RecordingDataChangeListener implements DataChangeListener {
   operations: Array<DataOperation> = [];
   notifications: number = 0;
@@ -67,10 +132,17 @@ class RecordingDataChangeListener implements DataChangeListener {
 }
 
 const CHARACTERIZED_SECTIONS: Array<LibrarySection> = [
-  { label: '#', startIndex: 0 },
-  { label: 'A', startIndex: 2 },
-  { label: 'B', startIndex: 5 },
-  { label: 'Z', startIndex: 8 }
+  { label: 'A', startIndex: 0 },
+  { label: 'B', startIndex: 2 },
+  { label: 'Z', startIndex: 5 },
+  { label: '#', startIndex: 8 }
+];
+
+const DESCENDING_SECTIONS: Array<LibrarySection> = [
+  { label: 'Z', startIndex: 0 },
+  { label: 'B', startIndex: 3 },
+  { label: 'A', startIndex: 6 },
+  { label: '#', startIndex: 9 }
 ];
 
 function source(pageSize: number = 8, maxCachedPages: number = 5):
@@ -80,6 +152,20 @@ function source(pageSize: number = 8, maxCachedPages: number = 5):
     maxCachedPages,
     (item: PagingTestItem): string => `${item.id}`
   );
+}
+
+function expectInvalidSectionCatalog(sections: Array<LibrarySection>, totalCount: number): void {
+  let rejected = false;
+  try {
+    LibrarySectionPagePlanner.plan({
+      totalCount: totalCount,
+      sections: sections,
+      indexPresentation: LibraryIndexPresentation.ALPHABET
+    }, 0, 8);
+  } catch (_error) {
+    rejected = true;
+  }
+  expect(rejected).assertTrue();
 }
 
 export default function libraryPagingTest() {
@@ -119,12 +205,16 @@ export default function libraryPagingTest() {
         .assertEqual("t.title_section = '#' ASC, t.title_natural_key ASC, t.id ASC");
       expect(ascending.sectionOrderClause)
         .assertEqual("t.title_section = '#' ASC, t.title_section ASC");
+      expect(ascending.sectionLocalOrderClause)
+        .assertEqual('t.title_natural_key ASC, t.id ASC');
 
       const descending = LibrarySortPlan.album(AlbumSortField.ALBUM_ARTIST, SortDirection.DESCENDING);
       expect(descending.orderClause)
         .assertEqual("al.artist_section = '#' ASC, al.artist_natural_key DESC, al.id DESC");
       expect(descending.sectionOrderClause)
         .assertEqual("al.artist_section = '#' ASC, al.artist_section DESC");
+      expect(descending.sectionLocalOrderClause)
+        .assertEqual('al.artist_natural_key DESC, al.id DESC');
     });
 
     it('keeps unknown release dates last in both directions', 0, () => {
@@ -153,6 +243,112 @@ export default function libraryPagingTest() {
       expect(LibraryPagingPolicy.selectedSectionIndex(CHARACTERIZED_SECTIONS, 2)).assertEqual(1);
       expect(LibraryPagingPolicy.selectedSectionIndex(CHARACTERIZED_SECTIONS, 7)).assertEqual(2);
       expect(LibraryPagingPolicy.selectedSectionIndex(CHARACTERIZED_SECTIONS, 999)).assertEqual(3);
+    });
+
+    it('plans a global page across ordered alphabet sections', 0, () => {
+      const segments: Array<LibrarySectionPageSegment> = LibrarySectionPagePlanner.plan({
+        totalCount: 12,
+        sections: CHARACTERIZED_SECTIONS,
+        indexPresentation: LibraryIndexPresentation.ALPHABET
+      }, 1, 8);
+
+      expect(segments.length).assertEqual(4);
+      expect(segments[0].label).assertEqual('A');
+      expect(segments[0].localOffset).assertEqual(1);
+      expect(segments[0].limit).assertEqual(1);
+      expect(segments[1].label).assertEqual('B');
+      expect(segments[1].localOffset).assertEqual(0);
+      expect(segments[1].limit).assertEqual(3);
+      expect(segments[2].label).assertEqual('Z');
+      expect(segments[2].localOffset).assertEqual(0);
+      expect(segments[2].limit).assertEqual(3);
+      expect(segments[3].label).assertEqual('#');
+      expect(segments[3].localOffset).assertEqual(0);
+      expect(segments[3].limit).assertEqual(1);
+    });
+
+    it('keeps the unknown section last for ascending and descending page plans', 0, () => {
+      const ascending = LibrarySectionPagePlanner.plan({
+        totalCount: 12,
+        sections: CHARACTERIZED_SECTIONS,
+        indexPresentation: LibraryIndexPresentation.ALPHABET
+      }, 7, 4);
+      expect(ascending.length).assertEqual(2);
+      expect(ascending[0].label).assertEqual('Z');
+      expect(ascending[0].localOffset).assertEqual(2);
+      expect(ascending[0].limit).assertEqual(1);
+      expect(ascending[1].label).assertEqual('#');
+      expect(ascending[1].limit).assertEqual(3);
+
+      const descending = LibrarySectionPagePlanner.plan({
+        totalCount: 12,
+        sections: DESCENDING_SECTIONS,
+        indexPresentation: LibraryIndexPresentation.ALPHABET
+      }, 8, 4);
+      expect(descending.length).assertEqual(2);
+      expect(descending[0].label).assertEqual('A');
+      expect(descending[0].localOffset).assertEqual(2);
+      expect(descending[0].limit).assertEqual(1);
+      expect(descending[1].label).assertEqual('#');
+      expect(descending[1].limit).assertEqual(3);
+    });
+
+    it('bounds section page plans at exact boundaries and the catalog end', 0, () => {
+      const catalog: LibraryCatalog = {
+        totalCount: 12,
+        sections: CHARACTERIZED_SECTIONS,
+        indexPresentation: LibraryIndexPresentation.ALPHABET
+      };
+      const exact: Array<LibrarySectionPageSegment> =
+        LibrarySectionPagePlanner.plan(catalog, 5, 3);
+      expect(exact.length).assertEqual(1);
+      expect(exact[0].label).assertEqual('Z');
+      expect(exact[0].localOffset).assertEqual(0);
+      expect(exact[0].limit).assertEqual(3);
+
+      const tail: Array<LibrarySectionPageSegment> =
+        LibrarySectionPagePlanner.plan(catalog, 10, 8);
+      expect(tail.length).assertEqual(1);
+      expect(tail[0].label).assertEqual('#');
+      expect(tail[0].localOffset).assertEqual(2);
+      expect(tail[0].limit).assertEqual(2);
+      expect(LibrarySectionPagePlanner.plan(catalog, 12, 8).length).assertEqual(0);
+    });
+
+    it('rejects inconsistent alphabet section catalogs', 0, () => {
+      expectInvalidSectionCatalog([], -1);
+      expectInvalidSectionCatalog([], 1.5);
+      expectInvalidSectionCatalog([], Number.POSITIVE_INFINITY);
+      expectInvalidSectionCatalog([], Number.NaN);
+      expectInvalidSectionCatalog([], 3);
+      expectInvalidSectionCatalog([{ label: 'A', startIndex: 1 }], 3);
+      expectInvalidSectionCatalog([
+        { label: 'A', startIndex: 0 },
+        { label: 'B', startIndex: 2 },
+        { label: 'C', startIndex: 2 }
+      ], 4);
+      expectInvalidSectionCatalog([
+        { label: 'A', startIndex: 0 },
+        { label: 'B', startIndex: 3 },
+        { label: 'C', startIndex: 2 }
+      ], 4);
+      expectInvalidSectionCatalog([
+        { label: 'A', startIndex: 0 },
+        { label: 'B', startIndex: 4 }
+      ], 4);
+      expectInvalidSectionCatalog([
+        { label: 'A', startIndex: 0 },
+        { label: 'B', startIndex: 1.5 }
+      ], 4);
+      expectInvalidSectionCatalog([
+        { label: 'A', startIndex: 0 },
+        { label: 'B', startIndex: Number.POSITIVE_INFINITY }
+      ], 4);
+      expectInvalidSectionCatalog([
+        { label: 'A', startIndex: 0 },
+        { label: 'B', startIndex: Number.NaN }
+      ], 4);
+      expectInvalidSectionCatalog([{ label: '#', startIndex: 0 }], 0);
     });
 
     it('loads a deep page and bounds its change notification', 0, async () => {
@@ -184,6 +380,48 @@ export default function libraryPagingTest() {
 
       expect(loader.loadCount).assertEqual(1);
       expect(dataSource.getData(16).value !== undefined).assertTrue();
+    });
+
+    it('bounds concurrency and starts the latest visible window before stale queued pages', 0, async () => {
+      const loader = new ControlledPagingTestLoader();
+      const dataSource = source(4, 5);
+      dataSource.reset(100, loader);
+
+      const staleRange = dataSource.ensureRange(0, 15, 0);
+      expect(loader.startedOffsets.length).assertEqual(2);
+      expect(loader.startedOffsets[0]).assertEqual(0);
+      expect(loader.startedOffsets[1]).assertEqual(4);
+
+      const latestRange = dataSource.ensureRange(40, 47, 40);
+      loader.release(0);
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      expect(loader.startedOffsets[2]).assertEqual(40);
+
+      loader.release(4);
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      expect(loader.startedOffsets[3]).assertEqual(44);
+      expect(loader.startedOffsets.includes(8)).assertFalse();
+      expect(loader.startedOffsets.includes(12)).assertFalse();
+      expect(loader.maxActiveLoads).assertEqual(2);
+
+      loader.release(40);
+      loader.release(44);
+      await Promise.all([staleRange, latestRange]);
+      expect(dataSource.getData(40).value !== undefined).assertTrue();
+    });
+
+    it('retries an opportunistic request after the latest visible range upgrades it', 0, async () => {
+      const loader = new UpgradableFailurePagingTestLoader();
+      const dataSource = source();
+      dataSource.reset(20, loader);
+
+      dataSource.getData(0);
+      const visibleLoad = dataSource.ensureRange(0, 0);
+      loader.failFirst();
+      await visibleLoad;
+
+      expect(loader.loadCount).assertEqual(2);
+      expect(dataSource.getData(0).value !== undefined).assertTrue();
     });
 
     it('discards page completion after a reset', 0, async () => {

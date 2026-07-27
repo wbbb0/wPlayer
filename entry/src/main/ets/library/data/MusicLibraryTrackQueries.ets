@@ -20,6 +20,10 @@ import { LibraryDatabase } from './LibraryDatabase';
 import { LibraryQueryPagingPolicy } from './LibraryQueryPagingPolicy';
 import { trackListItemFromCurrentRow } from './MusicLibraryQueryRows';
 import { LibrarySortDescriptor, LibrarySortPlan } from './LibrarySortPlan';
+import {
+  LibrarySectionPagePlanner,
+  LibrarySectionPageSegment
+} from './LibrarySectionPagePlanner';
 import { RelationalStoreSafety } from './RelationalStoreSafety';
 
 const PLAYBACK_QUEUE_QUERY_BATCH_SIZE = 128;
@@ -39,26 +43,49 @@ export class MusicLibraryTrackQueries {
   }
 
   async getTrackPage(field: TrackSortField, direction: SortDirection,
-    offset: number, limit: number): Promise<LibraryPage<TrackListItem>> {
+    catalog: LibraryCatalog, offset: number, limit: number): Promise<LibraryPage<TrackListItem>> {
     const safeOffset = LibraryQueryPagingPolicy.offset(offset);
     const safeLimit = LibraryQueryPagingPolicy.limit(limit);
+    const descriptor = LibrarySortPlan.track(field, direction);
     return {
       offset: safeOffset,
-      items: await this.queryTrackItems(
-        LibrarySortPlan.track(field, direction),
-        ' LIMIT ? OFFSET ?',
-        [safeLimit, safeOffset]
-      )
+      items: descriptor.alphabetic ?
+        await this.queryTrackSectionPage(descriptor, catalog, safeOffset, safeLimit) :
+        await this.queryTrackItems(descriptor, '', descriptor.orderClause,
+          ' LIMIT ? OFFSET ?', [safeLimit, safeOffset])
     };
   }
 
   getTrackPlaybackOrder(field: TrackSortField,
     direction: SortDirection): Promise<Array<TrackListItem>> {
-    return this.queryTrackItems(LibrarySortPlan.track(field, direction), '', []);
+    const descriptor = LibrarySortPlan.track(field, direction);
+    return this.queryTrackItems(descriptor, '', descriptor.orderClause, '', []);
   }
 
-  private async queryTrackItems(descriptor: LibrarySortDescriptor,
-    paginationClause: string, bindArgs: Array<number>): Promise<Array<TrackListItem>> {
+  private async queryTrackSectionPage(descriptor: LibrarySortDescriptor, catalog: LibraryCatalog,
+    offset: number, limit: number): Promise<Array<TrackListItem>> {
+    const segments = LibrarySectionPagePlanner.plan(catalog, offset, limit);
+    const items: Array<TrackListItem> = [];
+    for (let index = 0; index < segments.length; index += 1) {
+      const segment: LibrarySectionPageSegment = segments[index];
+      const segmentItems = await this.queryTrackItems(
+        descriptor,
+        ` WHERE ${descriptor.sectionExpression} = ?`,
+        descriptor.sectionLocalOrderClause,
+        ' LIMIT ? OFFSET ?',
+        [segment.label, segment.limit, segment.localOffset]
+      );
+      if (segmentItems.length !== segment.limit) {
+        throw new Error('Track catalog changed while loading an alphabetic page');
+      }
+      items.push(...segmentItems);
+    }
+    return items;
+  }
+
+  private async queryTrackItems(descriptor: LibrarySortDescriptor, filterClause: string,
+    orderClause: string, paginationClause: string,
+    bindArgs: Array<relationalStore.ValueType>): Promise<Array<TrackListItem>> {
     let resultSet: relationalStore.ResultSet | undefined;
     const items: Array<TrackListItem> = [];
     try {
@@ -74,7 +101,8 @@ export class MusicLibraryTrackQueries {
          FROM track t
          JOIN media_file m ON m.id = t.media_file_id
          LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
-         ORDER BY ${descriptor.orderClause}${paginationClause}`,
+         ${filterClause}
+         ORDER BY ${orderClause}${paginationClause}`,
         bindArgs
       );
       while (resultSet.goToNextRow()) {

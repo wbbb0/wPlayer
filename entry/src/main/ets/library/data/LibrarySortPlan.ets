@@ -16,13 +16,15 @@ export class LibrarySortDescriptor {
   readonly sectionExpression: string;
   readonly orderClause: string;
   readonly sectionOrderClause: string;
+  readonly sectionLocalOrderClause: string;
 
   constructor(alphabetic: boolean, sectionExpression: string, orderClause: string,
-    sectionOrderClause: string = '') {
+    sectionOrderClause: string = '', sectionLocalOrderClause: string = '') {
     this.alphabetic = alphabetic;
     this.sectionExpression = sectionExpression;
     this.orderClause = orderClause;
     this.sectionOrderClause = sectionOrderClause;
+    this.sectionLocalOrderClause = sectionLocalOrderClause;
   }
 
   indexPresentation(): LibraryIndexPresentation {
@@ -76,7 +78,8 @@ export class LibrarySortPlan {
       true,
       sectionExpression,
       `${sectionExpression} = '#' ASC, ${valueExpression} ${order}, ${idExpression} ${order}`,
-      `${sectionExpression} = '#' ASC, ${sectionExpression} ${order}`
+      `${sectionExpression} = '#' ASC, ${sectionExpression} ${order}`,
+      `${valueExpression} ${order}, ${idExpression} ${order}`
     );
   }
 

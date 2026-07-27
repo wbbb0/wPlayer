@@ -230,11 +230,11 @@ export class MusicRepository implements LibraryRemovalRepository {
   }
 
   getTrackPage(field: TrackSortField, direction: SortDirection,
-    offset: number, limit: number): Promise<LibraryPage<TrackListItem>> {
+    catalog: LibraryCatalog, offset: number, limit: number): Promise<LibraryPage<TrackListItem>> {
     if (DemoLibraryMode.isEnabled()) {
       return Promise.resolve(DemoMusicLibrary.trackPage(field, direction, offset, limit));
     }
-    return this.queries.getTrackPage(field, direction, offset, limit);
+    return this.queries.getTrackPage(field, direction, catalog, offset, limit);
   }
 
   getPlaybackTrack(trackId: number): Promise<PlaybackTrack | undefined> {
@@ -415,11 +415,11 @@ export class MusicRepository implements LibraryRemovalRepository {
   }
 
   getAlbumPage(field: AlbumSortField, direction: SortDirection,
-    offset: number, limit: number): Promise<LibraryPage<AlbumListItem>> {
+    catalog: LibraryCatalog, offset: number, limit: number): Promise<LibraryPage<AlbumListItem>> {
     if (DemoLibraryMode.isEnabled()) {
       return Promise.resolve(DemoMusicLibrary.albumPage(field, direction, offset, limit));
     }
-    return this.queries.getAlbumPage(field, direction, offset, limit);
+    return this.queries.getAlbumPage(field, direction, catalog, offset, limit);
   }
 
   getAlbumDetail(albumId: number): Promise<AlbumDetail | undefined> {

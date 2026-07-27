@@ -17,6 +17,7 @@ import {
   ImportItemDetailKind,
   ImportItemResult,
   LibraryStatistics,
+  LibraryCatalog,
   LibraryIndexPresentation,
   LibrarySection,
   SortDirection,
@@ -57,15 +58,20 @@ class TrackPageLoader implements LibraryPageLoader<TrackListItem> {
   private readonly repository: MusicRepository;
   private readonly field: TrackSortField;
   private readonly direction: SortDirection;
+  private readonly catalog: LibraryCatalog;
 
-  constructor(repository: MusicRepository, field: TrackSortField, direction: SortDirection) {
+  constructor(repository: MusicRepository, field: TrackSortField, direction: SortDirection,
+    catalog: LibraryCatalog) {
     this.repository = repository;
     this.field = field;
     this.direction = direction;
+    this.catalog = catalog;
   }
 
   async load(offset: number, limit: number): Promise<Array<TrackListItem>> {
-    const page = await this.repository.getTrackPage(this.field, this.direction, offset, limit);
+    const page = await this.repository.getTrackPage(
+      this.field, this.direction, this.catalog, offset, limit
+    );
     return page.items;
   }
 }
@@ -74,15 +80,20 @@ class AlbumPageLoader implements LibraryPageLoader<AlbumListItem> {
   private readonly repository: MusicRepository;
   private readonly field: AlbumSortField;
   private readonly direction: SortDirection;
+  private readonly catalog: LibraryCatalog;
 
-  constructor(repository: MusicRepository, field: AlbumSortField, direction: SortDirection) {
+  constructor(repository: MusicRepository, field: AlbumSortField, direction: SortDirection,
+    catalog: LibraryCatalog) {
     this.repository = repository;
     this.field = field;
     this.direction = direction;
+    this.catalog = catalog;
   }
 
   async load(offset: number, limit: number): Promise<Array<AlbumListItem>> {
-    const page = await this.repository.getAlbumPage(this.field, this.direction, offset, limit);
+    const page = await this.repository.getAlbumPage(
+      this.field, this.direction, this.catalog, offset, limit
+    );
     return page.items;
   }
 }
@@ -308,14 +319,14 @@ export class LibraryStore {
     const albumSnapshot = snapshots[1];
     this.trackDataSource.reset(
       trackSnapshot.totalCount,
-      new TrackPageLoader(this.repository, trackField, trackDirection)
+      new TrackPageLoader(this.repository, trackField, trackDirection, trackSnapshot)
     );
     this.publishTrackProjection(trackField, trackDirection);
     this.trackSections = trackSnapshot.sections;
     this.trackIndexPresentation = trackSnapshot.indexPresentation;
     this.albumDataSource.reset(
       albumSnapshot.totalCount,
-      new AlbumPageLoader(this.repository, albumField, albumDirection)
+      new AlbumPageLoader(this.repository, albumField, albumDirection, albumSnapshot)
     );
     this.albumSections = albumSnapshot.sections;
     this.albumIndexPresentation = albumSnapshot.indexPresentation;
@@ -345,7 +356,7 @@ export class LibraryStore {
       if (generation === this.trackSortGeneration) {
         this.trackDataSource.reset(
           snapshot.totalCount,
-          new TrackPageLoader(this.repository, field, direction)
+          new TrackPageLoader(this.repository, field, direction, snapshot)
         );
         this.publishTrackProjection(field, direction);
         this.trackSections = snapshot.sections;
@@ -373,7 +384,7 @@ export class LibraryStore {
       if (generation === this.albumSortGeneration) {
         this.albumDataSource.reset(
           snapshot.totalCount,
-          new AlbumPageLoader(this.repository, field, direction)
+          new AlbumPageLoader(this.repository, field, direction, snapshot)
         );
         this.albumSections = snapshot.sections;
         this.albumIndexPresentation = snapshot.indexPresentation;
@@ -862,7 +873,7 @@ export class LibraryStore {
       lastIndex,
       LibraryPagingPolicy.TRACK_QUERY_PAGE_SIZE
     );
-    this.trackDataSource.ensureRange(start, end).catch((error: Object): void => {
+    this.trackDataSource.ensureRange(start, end, firstIndex).catch((error: Object): void => {
       this.errorMessage = LibraryStore.errorMessageOf(error);
       console.warn(`Unable to load visible track range: ${this.errorMessage}`);
     });
@@ -877,7 +888,7 @@ export class LibraryStore {
       lastIndex,
       LibraryPagingPolicy.ALBUM_QUERY_PAGE_SIZE
     );
-    this.albumDataSource.ensureRange(start, end).catch((error: Object): void => {
+    this.albumDataSource.ensureRange(start, end, firstIndex).catch((error: Object): void => {
       this.errorMessage = LibraryStore.errorMessageOf(error);
       console.warn(`Unable to load visible album range: ${this.errorMessage}`);
     });

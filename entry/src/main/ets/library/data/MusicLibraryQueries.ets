@@ -57,8 +57,8 @@ export class MusicLibraryQueries {
   }
 
   getTrackPage(field: TrackSortField, direction: SortDirection,
-    offset: number, limit: number): Promise<LibraryPage<TrackListItem>> {
-    return this.track.getTrackPage(field, direction, offset, limit);
+    catalog: LibraryCatalog, offset: number, limit: number): Promise<LibraryPage<TrackListItem>> {
+    return this.track.getTrackPage(field, direction, catalog, offset, limit);
   }
 
   getTrackPlaybackOrder(field: TrackSortField, direction: SortDirection): Promise<Array<TrackListItem>> {
@@ -103,8 +103,8 @@ export class MusicLibraryQueries {
   }
 
   getAlbumPage(field: AlbumSortField, direction: SortDirection,
-    offset: number, limit: number): Promise<LibraryPage<AlbumListItem>> {
-    return this.album.getAlbumPage(field, direction, offset, limit);
+    catalog: LibraryCatalog, offset: number, limit: number): Promise<LibraryPage<AlbumListItem>> {
+    return this.album.getAlbumPage(field, direction, catalog, offset, limit);
   }
 
   getAlbumDetail(albumId: number): Promise<AlbumDetail | undefined> {

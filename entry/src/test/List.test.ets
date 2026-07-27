@@ -29,6 +29,8 @@ import systemBarStyleControllerTest from './SystemBarStyleController.test';
 import libraryRemovalServiceTest from './LibraryRemovalService.test';
 import playbackSourceCleanupTest from './PlaybackSourceCleanup.test';
 import playbackSourcePreparationTest from './PlaybackSourcePreparation.test';
+import mediaImportOperationTest from './MediaImportOperation.test';
+import mediaDuplicateProofTest from './MediaDuplicateProof.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -62,4 +64,6 @@ export default function testsuite() {
   libraryRemovalServiceTest();
   playbackSourceCleanupTest();
   playbackSourcePreparationTest();
+  mediaImportOperationTest();
+  mediaDuplicateProofTest();
 }

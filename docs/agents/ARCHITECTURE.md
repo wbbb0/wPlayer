@@ -83,7 +83,10 @@ not publish state, release a resource now owned by newer work, or clear a curren
 ## Library ownership
 
 - MediaPickerService owns Picker interaction and documented URI authorization.
-- MediaImporter owns import orchestration, duplicate proof and per-item outcomes.
+- MediaImporter is the stable library-facing façade and owns the single active MediaImportOperation.
+- MediaImportSession owns one Picker import session and its per-item outcomes; MediaFileChecker owns file-check
+  orchestration; MediaDuplicateProof owns full-fingerprint duplicate proof; MediaArtworkPipeline owns bounded
+  artwork work and importer-scoped cleanup.
 - LibraryRemovalService coordinates committed library deletion with post-commit Picker authorization cleanup.
 - MetadataReader owns documented media metadata and artwork extraction.
 - Format-specific readers own explicitly supported fallback parsing.

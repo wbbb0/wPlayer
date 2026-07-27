@@ -10,7 +10,8 @@ Before changing library behavior, read:
 ## Ownership
 
 - Picker interaction and URI authorization belong to MediaPickerService.
-- Import orchestration, deduplication and per-item outcomes belong to MediaImporter.
+- MediaImporter is the stable façade and owns the active MediaImportOperation. Import-session outcomes,
+  file checking, duplicate proof and artwork work belong to their dedicated importer collaborators.
 - Committed library deletion and post-commit URI authorization cleanup belong to LibraryRemovalService.
 - Metadata and embedded artwork extraction belong to MetadataReader and format-specific readers.
 - Relational lifecycle and schema belong to LibraryDatabase.

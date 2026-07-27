@@ -1,4 +1,8 @@
 import { ParsedMetadata } from '../model/LibraryModels';
+import {
+  MediaImportCancellation,
+  MediaImportWorkQueue
+} from '../importer/MediaImportContracts';
 
 export interface ArtworkWorkRequest {
   trackId: number;
@@ -21,9 +25,7 @@ export interface ArtworkWorkResult {
   errorMessage: string;
 }
 
-export interface ArtworkWorkCancellation {
-  isCancelled(): boolean;
-}
+export type ArtworkWorkCancellation = MediaImportCancellation;
 
 export type ArtworkWorkProcessor = (
   request: ArtworkWorkRequest,
@@ -35,25 +37,27 @@ interface QueuedArtworkWork {
   resolve: (result: ArtworkWorkResult) => void;
 }
 
-export class ArtworkWorkSession implements ArtworkWorkCancellation {
+export class ArtworkWorkSession implements ArtworkWorkCancellation, MediaImportWorkQueue {
   private readonly processor: ArtworkWorkProcessor;
   private readonly queue: Array<QueuedArtworkWork> = [];
   private queueHead: number = 0;
   private readonly idleWaiters: Array<() => void> = [];
   private runningWorkers: number = 0;
   private cancelled: boolean = false;
+  private readonly cancellation?: ArtworkWorkCancellation;
   private processingEnabled: boolean;
   private readonly concurrency: number;
 
   constructor(processor: ArtworkWorkProcessor, startImmediately: boolean = true,
-    concurrency: number = 1) {
+    concurrency: number = 1, cancellation?: ArtworkWorkCancellation) {
     this.processor = processor;
     this.processingEnabled = startImmediately;
     this.concurrency = Math.max(1, concurrency);
+    this.cancellation = cancellation;
   }
 
   enqueue(request: ArtworkWorkRequest): Promise<ArtworkWorkResult> {
-    if (this.cancelled) {
+    if (this.isCancelled()) {
       return Promise.resolve(ArtworkWorkSession.skipped());
     }
     return new Promise<ArtworkWorkResult>((resolve: (result: ArtworkWorkResult) => void) => {
@@ -65,7 +69,7 @@ export class ArtworkWorkSession implements ArtworkWorkCancellation {
   }
 
   startProcessing(): void {
-    if (this.cancelled || this.processingEnabled) {
+    if (this.isCancelled() || this.processingEnabled) {
       return;
     }
     this.processingEnabled = true;
@@ -86,7 +90,7 @@ export class ArtworkWorkSession implements ArtworkWorkCancellation {
   }
 
   isCancelled(): boolean {
-    return this.cancelled;
+    return this.cancelled || (this.cancellation?.isCancelled() ?? false);
   }
 
   hasScheduledWork(): boolean {
@@ -103,7 +107,7 @@ export class ArtworkWorkSession implements ArtworkWorkCancellation {
   }
 
   private start(): void {
-    if (!this.processingEnabled || this.cancelled) {
+    if (!this.processingEnabled || this.isCancelled()) {
       return;
     }
     while (this.runningWorkers < this.concurrency && this.pendingCount() > 0) {
@@ -119,13 +123,16 @@ export class ArtworkWorkSession implements ArtworkWorkCancellation {
   }
 
   private async runWorker(): Promise<void> {
-    while (this.pendingCount() > 0 && !this.cancelled) {
+    while (this.pendingCount() > 0 && !this.isCancelled()) {
       const item = this.takeNext();
       if (item === undefined) {
         return;
       }
       try {
-        item.resolve(await this.processor(item.request, this));
+        item.resolve(await this.processor(
+          item.request,
+          this.cancellation === undefined ? this : this.cancellation
+        ));
       } catch (error) {
         item.resolve({
           outcome: ArtworkWorkOutcome.FAILED,

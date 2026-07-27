@@ -32,7 +32,7 @@ export class PageScrollContentBehavior implements AttributeModifier<ColumnAttrib
 export class PageListBehavior implements AttributeModifier<ListAttribute> {
   private readonly cacheCount: number;
 
-  constructor(cacheCount: number = LibraryPagingPolicy.TRACK_PAGE_SIZE) {
+  constructor(cacheCount: number = LibraryPagingPolicy.TRACK_UI_CACHE_COUNT) {
     this.cacheCount = cacheCount;
   }
 
@@ -47,7 +47,7 @@ export class PageListBehavior implements AttributeModifier<ListAttribute> {
 export class PageGridBehavior implements AttributeModifier<GridAttribute> {
   private readonly cacheCount: number;
 
-  constructor(cacheCount: number = LibraryPagingPolicy.ALBUM_PAGE_SIZE) {
+  constructor(cacheCount: number = LibraryPagingPolicy.ALBUM_UI_CACHE_COUNT) {
     this.cacheCount = cacheCount;
   }
 

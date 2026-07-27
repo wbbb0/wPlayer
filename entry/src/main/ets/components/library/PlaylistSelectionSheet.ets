@@ -143,7 +143,7 @@ export struct PlaylistSelectionSheet {
         }
         .width('100%')
         .layoutWeight(1)
-        .cachedCount(LibraryPagingPolicy.TRACK_PAGE_SIZE, true)
+        .cachedCount(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT, true)
       }
 
       if (this.store.errorMessage.length > 0) {

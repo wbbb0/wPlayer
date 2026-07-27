@@ -44,7 +44,7 @@ export struct PlaylistDetailPage {
   onOpenTrackDetails: (track: TrackListItem) => void =
     (_track: TrackListItem): void => {};
   private readonly scrollBehavior: PageListBehavior =
-    new PageListBehavior(LibraryPagingPolicy.TRACK_PAGE_SIZE);
+    new PageListBehavior(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT);
 
   aboutToAppear(): void {
     this.store.loadDetail(this.playlistId);

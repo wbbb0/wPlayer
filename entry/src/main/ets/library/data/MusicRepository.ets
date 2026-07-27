@@ -14,7 +14,8 @@ import {
   PlaylistSummary,
   PlaylistTrackSortField,
   PlaylistTransferTrack,
-  LibrarySnapshot,
+  LibraryCatalog,
+  LibraryPage,
   LibraryStatistics,
   MediaFileCheckCandidate,
   SortDirection,
@@ -182,14 +183,29 @@ export class MusicRepository {
     return this.queries.getStatistics();
   }
 
-  getTracks(
+  getTrackPlaybackOrder(
     field: TrackSortField,
     direction: SortDirection
-  ): Promise<LibrarySnapshot<TrackListItem>> {
+  ): Promise<Array<TrackListItem>> {
     if (DemoLibraryMode.isEnabled()) {
-      return Promise.resolve(DemoMusicLibrary.trackSnapshot(field, direction));
+      return Promise.resolve(DemoMusicLibrary.tracks(field, direction));
     }
-    return this.queries.getTracks(field, direction);
+    return this.queries.getTrackPlaybackOrder(field, direction);
+  }
+
+  getTrackCatalog(field: TrackSortField, direction: SortDirection): Promise<LibraryCatalog> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.trackCatalog(field, direction));
+    }
+    return this.queries.getTrackCatalog(field, direction);
+  }
+
+  getTrackPage(field: TrackSortField, direction: SortDirection,
+    offset: number, limit: number): Promise<LibraryPage<TrackListItem>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.trackPage(field, direction, offset, limit));
+    }
+    return this.queries.getTrackPage(field, direction, offset, limit);
   }
 
   getPlaybackTrack(trackId: number): Promise<PlaybackTrack | undefined> {
@@ -344,14 +360,19 @@ export class MusicRepository {
     return removed;
   }
 
-  getAlbums(
-    field: AlbumSortField,
-    direction: SortDirection
-  ): Promise<LibrarySnapshot<AlbumListItem>> {
+  getAlbumCatalog(field: AlbumSortField, direction: SortDirection): Promise<LibraryCatalog> {
     if (DemoLibraryMode.isEnabled()) {
-      return Promise.resolve(DemoMusicLibrary.albumSnapshot(field, direction));
+      return Promise.resolve(DemoMusicLibrary.albumCatalog(field, direction));
     }
-    return this.queries.getAlbums(field, direction);
+    return this.queries.getAlbumCatalog(field, direction);
+  }
+
+  getAlbumPage(field: AlbumSortField, direction: SortDirection,
+    offset: number, limit: number): Promise<LibraryPage<AlbumListItem>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.albumPage(field, direction, offset, limit));
+    }
+    return this.queries.getAlbumPage(field, direction, offset, limit);
   }
 
   getAlbumDetail(albumId: number): Promise<AlbumDetail | undefined> {

@@ -192,7 +192,7 @@ export struct TaskResultDetails {
         .layoutWeight(1)
         .edgeEffect(EdgeEffect.Spring)
         .sticky(StickyStyle.Header)
-        .cachedCount(LibraryPagingPolicy.TRACK_PAGE_SIZE, true)
+        .cachedCount(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT, true)
       } else if (this.emptyText.length > 0) {
         Text(this.emptyText)
           .fontColor($r('app.color.text_secondary'))

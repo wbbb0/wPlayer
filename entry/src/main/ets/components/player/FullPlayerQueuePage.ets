@@ -359,7 +359,7 @@ export struct FullPlayerQueuePage {
           .layoutWeight(1)
           .width('100%')
           .edgeEffect(EdgeEffect.Spring)
-          .cachedCount(LibraryPagingPolicy.TRACK_PAGE_SIZE, true)
+          .cachedCount(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT, true)
           .scrollBar(BarState.Auto)
           .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) =>
             this.blockVerticalPlayerGesture(recognizers))

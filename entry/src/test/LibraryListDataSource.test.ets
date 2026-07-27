@@ -33,38 +33,35 @@ function item(id: number, label: string): ListTestItem {
 
 export default function libraryListDataSourceTest() {
   describe('LibraryListDataSource', () => {
-    it('marks retained positions changed when replacement data has new fields', 0, () => {
+    it('publishes one reload when replacement data has new fields', 0, () => {
       const source = new LibraryListDataSource<ListTestItem>();
       const listener = new RecordingDataChangeListener();
       source.registerDataChangeListener(listener);
 
       source.replace([item(1, '49')]);
       expect(listener.operations.length).assertEqual(1);
-      expect(listener.operations[0].type).assertEqual(DataOperationType.ADD);
+      expect(listener.operations[0].type).assertEqual(DataOperationType.RELOAD);
 
       source.replace([item(1, '19')]);
       expect(listener.operations.length).assertEqual(1);
-      expect(listener.operations[0].type).assertEqual(DataOperationType.CHANGE);
+      expect(listener.operations[0].type).assertEqual(DataOperationType.RELOAD);
       expect(source.getData(0).label).assertEqual('19');
     });
 
-    it('combines retained changes with tail additions and deletions', 0, () => {
+    it('keeps replacement notifications bounded for large lists', 0, () => {
       const source = new LibraryListDataSource<ListTestItem>();
       const listener = new RecordingDataChangeListener();
       source.registerDataChangeListener(listener);
 
-      source.replace([item(1, 'a'), item(2, 'b')]);
-      source.replace([item(2, 'b2'), item(1, 'a2'), item(3, 'c')]);
-      expect(listener.operations.length).assertEqual(3);
-      expect(listener.operations[0].type).assertEqual(DataOperationType.CHANGE);
-      expect(listener.operations[1].type).assertEqual(DataOperationType.CHANGE);
-      expect(listener.operations[2].type).assertEqual(DataOperationType.ADD);
+      const items: Array<ListTestItem> = [];
+      for (let index = 0; index < 59000; index += 1) {
+        items.push(item(index, `${index}`));
+      }
+      source.replace(items);
 
-      source.replace([item(2, 'b3')]);
-      expect(listener.operations.length).assertEqual(2);
-      expect(listener.operations[0].type).assertEqual(DataOperationType.CHANGE);
-      expect(listener.operations[1].type).assertEqual(DataOperationType.DELETE);
-      expect(source.totalCount()).assertEqual(1);
+      expect(listener.operations.length).assertEqual(1);
+      expect(listener.operations[0].type).assertEqual(DataOperationType.RELOAD);
+      expect(source.totalCount()).assertEqual(59000);
     });
 
     it('returns an isolated snapshot for selection and playback operations', 0, () => {

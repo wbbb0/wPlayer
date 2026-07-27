@@ -107,7 +107,7 @@ export struct FullPlayerLyricsPage {
         .width('100%')
         .layoutWeight(1)
         .edgeEffect(EdgeEffect.Spring)
-        .cachedCount(LibraryPagingPolicy.TRACK_PAGE_SIZE, true)
+        .cachedCount(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT, true)
         .scrollBar(BarState.Off)
         .contentEndOffset(this.lyricEndOffset())
         .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) =>

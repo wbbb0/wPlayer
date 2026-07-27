@@ -43,7 +43,7 @@ export struct AlbumDetailPage {
   private multipleDiscResult: boolean = false;
   scroller: Scroller = new Scroller();
   private readonly scrollBehavior: PageListBehavior =
-    new PageListBehavior(LibraryPagingPolicy.TRACK_PAGE_SIZE);
+    new PageListBehavior(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT);
   onOpenArtist: (artist: ArtistReference) => void = (_artist: ArtistReference): void => {};
   onOpenAlbum: (album: AlbumListItem) => void = (_album: AlbumListItem): void => {};
   onAlbumAction: (album: AlbumListItem, action: AlbumAction) => void =

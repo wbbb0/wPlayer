@@ -9,6 +9,7 @@ import {
 } from '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
+import { LibrarySlot } from '../../library/store/PagedLibraryDataSource';
 import {
   LibraryTrackRow,
   LibraryTrackRowVariant
@@ -35,7 +36,7 @@ export struct SongsPage {
     (_track: TrackListItem): void => {};
   scroller: Scroller = new Scroller();
   private readonly scrollBehavior: PageListBehavior =
-    new PageListBehavior(LibraryPagingPolicy.TRACK_PAGE_SIZE);
+    new PageListBehavior(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT);
 
   aboutToAppear(): void {
     this.selection.deleteEnabled = false;
@@ -87,41 +88,74 @@ export struct SongsPage {
     } else {
       Stack({ alignContent: Alignment.End }) {
         List({ space: 0, scroller: this.scroller }) {
-          LazyForEach(this.store.trackDataSource, (track: TrackListItem, index: number) => {
+          LazyForEach(this.store.trackDataSource, (slot: LibrarySlot<TrackListItem>) => {
             ListItem() {
               Column() {
                 Divider()
                   .color($r('app.color.text_tertiary'))
-                  .opacity(index > 0 ? 0.3 : 0)
+                  .opacity(slot.index > 0 ? 0.3 : 0)
                   .margin({ left: 80, right: PageLayoutSpec.HORIZONTAL_INSET })
-                LibraryTrackRow({
-                  track: track,
-                  store: this.store,
-                  variant: LibraryTrackRowVariant.LIBRARY,
-                  artworkPath: track.smallArtworkPath.length > 0 ?
-                    this.store.resolveArtworkPath(track.smallArtworkPath) : '',
-                  actionAnchorPrefix: 'songs',
-                  menuPlacement: Placement.BottomLeft,
-                  horizontalInset: 16,
-                  verticalInset: 8,
-                  artworkSize: 52,
-                  artworkCornerRadius: 10,
-                  selectionMode: this.selection.active,
-                  selected: this.selection.isSelected(track.id),
-                  onActivate: this.onPlayTrack,
-                  onOpenActions: this.onOpenTrackActions,
-                  onOpenDetails: this.onOpenTrackDetails,
-                  onNavigateAction: this.onNavigateTrackAction,
-                  onRequestAddToPlaylist: this.onRequestAddToPlaylist,
-                  onToggleSelection: (item: TrackListItem): void => this.toggleSelection(item)
-                })
+                if (slot.value !== undefined) {
+                  LibraryTrackRow({
+                    track: slot.value,
+                    store: this.store,
+                    variant: LibraryTrackRowVariant.LIBRARY,
+                    artworkPath: slot.value.smallArtworkPath.length > 0 ?
+                      this.store.resolveArtworkPath(slot.value.smallArtworkPath) : '',
+                    actionAnchorPrefix: 'songs',
+                    menuPlacement: Placement.BottomLeft,
+                    horizontalInset: 16,
+                    verticalInset: 8,
+                    artworkSize: 52,
+                    artworkCornerRadius: 10,
+                    selectionMode: this.selection.active,
+                    selected: this.selection.isSelected(slot.value.id),
+                    onActivate: this.onPlayTrack,
+                    onOpenActions: this.onOpenTrackActions,
+                    onOpenDetails: this.onOpenTrackDetails,
+                    onNavigateAction: this.onNavigateTrackAction,
+                    onRequestAddToPlaylist: this.onRequestAddToPlaylist,
+                    onToggleSelection: (item: TrackListItem): void => this.toggleSelection(item)
+                  })
+                    .height(68)
+                    .reuseId(this.selection.active ? 'songs_library_selection' : 'songs_library_actions')
+                } else {
+                  Row({ space: 12 }) {
+                    Row()
+                      .width(52)
+                      .height(52)
+                      .borderRadius(10)
+                      .backgroundColor($r('app.color.text_tertiary'))
+                      .opacity(0.12)
+                    Column({ space: 8 }) {
+                      Row()
+                        .width('58%')
+                        .height(12)
+                        .borderRadius(6)
+                        .backgroundColor($r('app.color.text_tertiary'))
+                        .opacity(0.14)
+                      Row()
+                        .width('38%')
+                        .height(10)
+                        .borderRadius(5)
+                        .backgroundColor($r('app.color.text_tertiary'))
+                        .opacity(0.1)
+                    }
+                    .alignItems(HorizontalAlign.Start)
+                    .layoutWeight(1)
+                    Row()
+                      .width(38)
+                      .height(38)
+                  }
                   .height(68)
-                  .reuseId(this.selection.active ? 'songs_library_selection' : 'songs_library_actions')
+                  .width('100%')
+                  .padding({ left: 16, right: 16 })
+                }
               }
               .width('100%')
             }
             .height(69)
-          }, (track: TrackListItem) => `${track.id}`)
+          }, (slot: LibrarySlot<TrackListItem>) => slot.key)
         }
         .width('100%')
         .height('100%')
@@ -129,7 +163,7 @@ export struct SongsPage {
         .contentEndOffset(PageLayoutSpec.contentEnd(this.bottomInset))
         .scrollBar(this.store.trackIndexPresentation === LibraryIndexPresentation.ALPHABET ?
           BarState.Off : BarState.Auto)
-        .onScrollIndex((firstIndex: number, _lastIndex: number, _centerIndex: number) => {
+        .onScrollIndex((firstIndex: number, lastIndex: number, _centerIndex: number) => {
           if (firstIndex < 0) {
             return;
           }
@@ -137,6 +171,7 @@ export struct SongsPage {
           if (sectionIndex >= 0 && sectionIndex !== this.selectedSectionIndex) {
             this.selectedSectionIndex = sectionIndex;
           }
+          this.store.ensureTrackRange(firstIndex, lastIndex);
         })
         .attributeModifier(this.scrollBehavior)
 
@@ -147,6 +182,7 @@ export struct SongsPage {
             selectedIndex: this.selectedSectionIndex,
             onSelect: (itemIndex: number, sectionIndex: number) => {
               this.selectedSectionIndex = sectionIndex;
+              this.store.ensureTrackRange(itemIndex, itemIndex);
               this.scroller.scrollToIndex(itemIndex, false, ScrollAlign.START);
             }
           })

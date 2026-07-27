@@ -696,13 +696,13 @@ export struct ResponsiveNavigationShell {
   }
 
   private shuffleAllTracks(): void {
-    this.libraryStore.loadTrackSnapshot()
+    this.libraryStore.loadTrackPlaybackOrder()
       .then((items: Array<TrackListItem>) => playbackRuntime.shuffleAll(items))
       .catch((error: Object) => console.warn(`Unable to load shuffle queue: ${error}`));
   }
 
   private playLibraryTrack(item: TrackListItem): void {
-    this.libraryStore.loadTrackSnapshot()
+    this.libraryStore.loadTrackPlaybackOrder()
       .then((items: Array<TrackListItem>) => playbackRuntime.playFromLibrary(item, items))
       .catch((error: Object) => console.warn(`Unable to load playback queue: ${error}`));
   }

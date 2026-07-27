@@ -6,8 +6,9 @@ import {
   ArtistDetail,
   ArtistReference,
   AvailabilityState,
+  LibraryCatalog,
   LibraryIndexPresentation,
-  LibrarySnapshot,
+  LibraryPage,
   LibraryStatistics,
   MediaFormat,
   PlaylistDetail,
@@ -23,6 +24,7 @@ import {
   TrackNavigationTargets,
   TrackSortField
 } from '../library/model/LibraryModels';
+import { LibraryQueryPagingPolicy } from '../library/data/LibraryQueryPagingPolicy';
 import { BundledArtworkCatalog } from '../library/artwork/BundledArtworkCatalog';
 import { PlaybackTrack, QueueTrack, ResumeState } from '../playback/model/PlaybackModels';
 
@@ -314,12 +316,20 @@ export class DemoMusicLibrary {
     };
   }
 
-  static trackSnapshot(field: TrackSortField, direction: SortDirection): LibrarySnapshot<TrackListItem> {
+  static trackCatalog(field: TrackSortField, direction: SortDirection): LibraryCatalog {
     return {
-      items: DemoMusicLibrary.tracks(field, direction),
+      totalCount: DemoMusicLibrary.tracks(field, direction).length,
       sections: [],
       indexPresentation: LibraryIndexPresentation.SCROLLBAR
     };
+  }
+
+  static trackPage(field: TrackSortField, direction: SortDirection,
+    offset: number, limit: number): LibraryPage<TrackListItem> {
+    const items = DemoMusicLibrary.tracks(field, direction);
+    const safeOffset = LibraryQueryPagingPolicy.offset(offset);
+    const safeLimit = LibraryQueryPagingPolicy.limit(limit);
+    return { offset: safeOffset, items: items.slice(safeOffset, safeOffset + safeLimit) };
   }
 
   static albums(field: AlbumSortField, direction: SortDirection): Array<AlbumListItem> {
@@ -336,12 +346,20 @@ export class DemoMusicLibrary {
     return albums;
   }
 
-  static albumSnapshot(field: AlbumSortField, direction: SortDirection): LibrarySnapshot<AlbumListItem> {
+  static albumCatalog(field: AlbumSortField, direction: SortDirection): LibraryCatalog {
     return {
-      items: DemoMusicLibrary.albums(field, direction),
+      totalCount: DemoMusicLibrary.albums(field, direction).length,
       sections: [],
       indexPresentation: LibraryIndexPresentation.SCROLLBAR
     };
+  }
+
+  static albumPage(field: AlbumSortField, direction: SortDirection,
+    offset: number, limit: number): LibraryPage<AlbumListItem> {
+    const items = DemoMusicLibrary.albums(field, direction);
+    const safeOffset = LibraryQueryPagingPolicy.offset(offset);
+    const safeLimit = LibraryQueryPagingPolicy.limit(limit);
+    return { offset: safeOffset, items: items.slice(safeOffset, safeOffset + safeLimit) };
   }
 
   static statistics(): LibraryStatistics {

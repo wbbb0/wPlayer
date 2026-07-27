@@ -87,10 +87,17 @@ export interface LibrarySection {
   startIndex: number;
 }
 
-export interface LibrarySnapshot<T> {
-  items: Array<T>;
+/** Stable metadata for the complete logical result set behind a paged library list. */
+export interface LibraryCatalog {
+  totalCount: number;
   sections: Array<LibrarySection>;
   indexPresentation: LibraryIndexPresentation;
+}
+
+/** A bounded page whose offset is expressed in complete-result-set indexes. */
+export interface LibraryPage<T> {
+  offset: number;
+  items: Array<T>;
 }
 
 export enum ArtworkPictureType {

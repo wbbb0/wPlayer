@@ -14,6 +14,7 @@ import {
 } from '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
+import { LibrarySlot } from '../../library/store/PagedLibraryDataSource';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { LayoutLength } from '../../components/layout/LayoutLength';
@@ -120,23 +121,48 @@ export struct AlbumsPage {
       Column() {
         Stack({ alignContent: Alignment.End }) {
         Grid(this.scroller) {
-          LazyForEach(this.store.albumDataSource, (album: AlbumListItem) => {
+          LazyForEach(this.store.albumDataSource, (slot: LibrarySlot<AlbumListItem>) => {
             GridItem() {
-              AlbumGridItem({
-                store: this.store,
-                album: album,
-                actionsEnabled: true,
-                selectionMode: this.selection.active,
-                selected: this.selection.isSelected(album.id),
-                onActivate: this.onOpenAlbum,
-                onToggleSelection: (selectedAlbum: AlbumListItem): void =>
-                  this.toggleSelection(selectedAlbum),
-                onAction: this.onAlbumAction,
-                onNavigate: this.onNavigateAlbumAction
-              })
-                .reuseId(this.selection.active ? 'albums_selection' : 'albums_actions')
+              if (slot.value !== undefined) {
+                AlbumGridItem({
+                  store: this.store,
+                  album: slot.value,
+                  actionsEnabled: true,
+                  selectionMode: this.selection.active,
+                  selected: this.selection.isSelected(slot.value.id),
+                  onActivate: this.onOpenAlbum,
+                  onToggleSelection: (selectedAlbum: AlbumListItem): void =>
+                    this.toggleSelection(selectedAlbum),
+                  onAction: this.onAlbumAction,
+                  onNavigate: this.onNavigateAlbumAction
+                })
+                  .reuseId(this.selection.active ? 'albums_selection' : 'albums_actions')
+              } else {
+                Column({ space: 7 }) {
+                  Row()
+                    .width('100%')
+                    .aspectRatio(1)
+                    .borderRadius(18)
+                    .backgroundColor($r('app.color.text_tertiary'))
+                    .opacity(0.12)
+                  Row()
+                    .width('72%')
+                    .height(12)
+                    .borderRadius(6)
+                    .backgroundColor($r('app.color.text_tertiary'))
+                    .opacity(0.14)
+                  Row()
+                    .width('46%')
+                    .height(10)
+                    .borderRadius(5)
+                    .backgroundColor($r('app.color.text_tertiary'))
+                    .opacity(0.1)
+                }
+                .width('100%')
+                .alignItems(HorizontalAlign.Start)
+              }
             }
-          }, (album: AlbumListItem) => `${album.id}`)
+          }, (slot: LibrarySlot<AlbumListItem>) => slot.key)
         }
         .columnsTemplate(PageLayoutSpec.albumColumnsTemplate(
           this.gridWidth,
@@ -159,6 +185,7 @@ export struct AlbumsPage {
           if (sectionIndex >= 0 && sectionIndex !== this.selectedSectionIndex) {
             this.selectedSectionIndex = sectionIndex;
           }
+          this.store.ensureAlbumRange(firstIndex, lastIndex);
         })
         .onAreaChange((_oldValue: Area, newValue: Area) => {
           const nextWidth = LayoutLength.toNumber(newValue.width, this.gridWidth);
@@ -175,6 +202,7 @@ export struct AlbumsPage {
             selectedIndex: this.selectedSectionIndex,
             onSelect: (itemIndex: number, sectionIndex: number) => {
               this.selectedSectionIndex = sectionIndex;
+              this.store.ensureAlbumRange(itemIndex, itemIndex);
               this.scroller.scrollToIndex(itemIndex, false, ScrollAlign.START);
             }
           })

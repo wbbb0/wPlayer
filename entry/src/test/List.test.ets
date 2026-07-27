@@ -22,6 +22,7 @@ import trackDetailPresentationTest from './TrackDetailPresentation.test';
 import artworkPaletteExtractorTest from './ArtworkPaletteExtractor.test';
 import playerMorphPolicyTest from './PlayerMorphPolicy.test';
 import playbackPictureInPicturePolicyTest from './PlaybackPictureInPicturePolicy.test';
+import playbackPictureInPictureLifecycleTest from './PlaybackPictureInPictureLifecycle.test';
 import floatingWindowSettingsPolicyTest from './FloatingWindowSettingsPolicy.test';
 import bundledArtworkCatalogTest from './BundledArtworkCatalog.test';
 import systemBarStyleControllerTest from './SystemBarStyleController.test';
@@ -51,6 +52,7 @@ export default function testsuite() {
   artworkPaletteExtractorTest();
   playerMorphPolicyTest();
   playbackPictureInPicturePolicyTest();
+  playbackPictureInPictureLifecycleTest();
   floatingWindowSettingsPolicyTest();
   bundledArtworkCatalogTest();
   systemBarStyleControllerTest();

@@ -14,6 +14,9 @@ import {
   PlaybackPictureInPicturePolicy,
   PlaybackPictureInPictureSize
 } from './PlaybackPictureInPicturePolicy';
+import { PlaybackPictureInPictureLifecycle } from './PlaybackPictureInPictureLifecycle';
+
+const PIP_OPERATION_CANCELLED: Error = new Error('画中画启动已取消');
 
 export interface PlaybackPictureInPictureCommands {
   play(): void;
@@ -112,6 +115,8 @@ class PlaybackPictureInPictureArtworkController extends NodeController {
 
 export class PlaybackPictureInPicture {
   private readonly commands: PlaybackPictureInPictureCommands;
+  private readonly lifecycle: PlaybackPictureInPictureLifecycle =
+    new PlaybackPictureInPictureLifecycle();
   private readonly artworkController: PlaybackPictureInPictureArtworkController =
     new PlaybackPictureInPictureArtworkController();
   private readonly xComponentController: XComponentController = new XComponentController();
@@ -125,62 +130,11 @@ export class PlaybackPictureInPicture {
   private enterPromise?: Promise<void>;
   private creationPromise?: Promise<void>;
   private stopPromise?: Promise<void>;
+  private disposePromise?: Promise<void>;
   private stopWhenStarted: boolean = false;
   private autoStartEnabled: boolean = false;
-
-  private readonly stateChangeCallback =
-    (state: PiPWindow.PiPState, _reason: string): void => {
-      switch (state) {
-        case PiPWindow.PiPState.ABOUT_TO_START:
-          this.phase = PlaybackPictureInPicturePhase.STARTING;
-          break;
-        case PiPWindow.PiPState.STARTED:
-          this.phase = PlaybackPictureInPicturePhase.STARTED;
-          this.syncControls();
-          if (this.stopWhenStarted) {
-            this.stopWhenStarted = false;
-            this.stop().catch((error: Object): void => {
-              console.warn(`Unable to stop PiP after startup: ${
-                PlaybackPictureInPicture.messageOf(error)
-              }`);
-            });
-          }
-          break;
-        case PiPWindow.PiPState.ABOUT_TO_STOP:
-        case PiPWindow.PiPState.ABOUT_TO_RESTORE:
-          this.phase = PlaybackPictureInPicturePhase.STOPPING;
-          break;
-        case PiPWindow.PiPState.STOPPED:
-        case PiPWindow.PiPState.ERROR:
-          this.phase = PlaybackPictureInPicturePhase.READY;
-          this.stopWhenStarted = false;
-          this.artworkController.dispose();
-          break;
-        default:
-          break;
-      }
-    };
-
-  private readonly controlEventCallback =
-    (event: PiPWindow.ControlEventParam): void => {
-      switch (event.controlType) {
-        case PiPWindow.PiPControlType.VIDEO_PLAY_PAUSE:
-          if (event.status === PiPWindow.PiPControlStatus.PLAY) {
-            this.commands.play();
-          } else if (event.status === PiPWindow.PiPControlStatus.PAUSE) {
-            this.commands.pause();
-          }
-          break;
-        case PiPWindow.PiPControlType.VIDEO_PREVIOUS:
-          this.commands.previous();
-          break;
-        case PiPWindow.PiPControlType.VIDEO_NEXT:
-          this.commands.next();
-          break;
-        default:
-          break;
-      }
-    };
+  private stateChangeCallback?: (state: PiPWindow.PiPState, reason: string) => void;
+  private controlEventCallback?: (event: PiPWindow.ControlEventParam) => void;
 
   constructor(commands: PlaybackPictureInPictureCommands) {
     this.commands = commands;
@@ -188,6 +142,9 @@ export class PlaybackPictureInPicture {
 
   enter(uiContext: UIContext, snapshot: PlaybackPictureInPictureSnapshot,
     autoMinimizeApp: boolean): Promise<void> {
+    if (!this.lifecycle.canStartOperation()) {
+      return Promise.reject(PIP_OPERATION_CANCELLED);
+    }
     this.sync(snapshot);
     if (!snapshot.hasCurrentTrack) {
       return Promise.reject(new Error('请先选择一首音乐'));
@@ -195,15 +152,29 @@ export class PlaybackPictureInPicture {
     if (!PiPWindow.isPiPEnabled()) {
       return Promise.reject(new Error('当前设备未开启画中画功能'));
     }
-    if (this.phase === PlaybackPictureInPicturePhase.STARTED ||
-      this.phase === PlaybackPictureInPicturePhase.STARTING) {
-      return autoMinimizeApp ? this.minimizeHostApplication(uiContext) : Promise.resolve();
-    }
     if (this.enterPromise !== undefined) {
       return this.enterPromise;
     }
-    this.enterPromise = this.enterInternal(uiContext, autoMinimizeApp).finally((): void => {
-      this.enterPromise = undefined;
+    const epoch = this.lifecycle.current();
+    if (this.phase === PlaybackPictureInPicturePhase.STARTED ||
+      this.phase === PlaybackPictureInPicturePhase.STARTING) {
+      const controller = this.controller;
+      if (!autoMinimizeApp || controller === undefined) {
+        return Promise.resolve();
+      }
+      return this.trackEnterOperation(
+        this.minimizeHostApplication(uiContext, epoch, controller),
+        epoch
+      );
+    }
+    return this.trackEnterOperation(this.enterInternal(uiContext, autoMinimizeApp, epoch), epoch);
+  }
+
+  private trackEnterOperation(operation: Promise<void>, epoch: number): Promise<void> {
+    this.enterPromise = operation.finally((): void => {
+      if (this.lifecycle.isCurrent(epoch)) {
+        this.enterPromise = undefined;
+      }
     });
     return this.enterPromise;
   }
@@ -211,6 +182,9 @@ export class PlaybackPictureInPicture {
   async configureAutoStart(uiContext: UIContext | undefined, enabled: boolean): Promise<void> {
     const changed = enabled !== this.autoStartEnabled;
     this.autoStartEnabled = enabled;
+    if (!this.lifecycle.canStartOperation()) {
+      return;
+    }
     if (this.controller !== undefined) {
       if (changed) {
         this.controller.setAutoStartEnabled(enabled);
@@ -220,7 +194,9 @@ export class PlaybackPictureInPicture {
     if (!enabled || uiContext === undefined) {
       return;
     }
-    await this.ensureController(uiContext);
+    const epoch = this.lifecycle.current();
+    await this.ensureController(uiContext, epoch);
+    this.ensureCurrent(epoch);
   }
 
   sync(snapshot: PlaybackPictureInPictureSnapshot): void {
@@ -234,6 +210,9 @@ export class PlaybackPictureInPicture {
       nextSize.height !== this.contentSize.height;
     this.snapshot = snapshot;
     this.contentSize = nextSize;
+    if (!this.lifecycle.canStartOperation()) {
+      return;
+    }
     if (contentChanged) {
       this.artworkController.update(snapshot.artworkUri);
     }
@@ -250,6 +229,9 @@ export class PlaybackPictureInPicture {
   }
 
   stop(): Promise<void> {
+    if (this.disposePromise !== undefined) {
+      return this.disposePromise;
+    }
     if (this.phase === PlaybackPictureInPicturePhase.STARTING) {
       this.stopWhenStarted = true;
       return Promise.resolve();
@@ -262,8 +244,11 @@ export class PlaybackPictureInPicture {
       return this.stopPromise;
     }
     try {
+      const epoch = this.lifecycle.current();
       this.stopPromise = this.controller.stopPiP().finally((): void => {
-        this.stopPromise = undefined;
+        if (this.lifecycle.isCurrent(epoch)) {
+          this.stopPromise = undefined;
+        }
       });
     } catch (error) {
       return Promise.reject(error);
@@ -271,46 +256,100 @@ export class PlaybackPictureInPicture {
     return this.stopPromise;
   }
 
-  async dispose(): Promise<void> {
-    this.enterPromise = undefined;
-    try {
-      await this.creationPromise;
-    } catch (_error) {
-      // Creation failures are already surfaced to the caller that requested the controller.
+  dispose(): Promise<void> {
+    if (this.disposePromise !== undefined) {
+      return this.disposePromise;
     }
-    try {
-      await this.stopPromise;
-    } catch (_error) {
-      // Stop failures are handled by the caller that requested the stop.
-    }
+    const pendingCreation = this.creationPromise;
+    const pendingEnter = this.enterPromise;
+    const pendingStop = this.stopPromise;
+    const phaseAtDispose = this.phase;
+    const controllerAtDispose = this.controller;
+    this.lifecycle.beginDispose();
+    this.disableAutoStartForDisposal(controllerAtDispose);
+    this.disposePromise = this.lifecycle.runDisposal(
+      pendingCreation,
+      pendingEnter,
+      pendingStop,
+      (pendingStopSucceeded: boolean): Promise<void> =>
+        this.disposeController(pendingStopSucceeded, phaseAtDispose)
+    ).finally((): void => {
+      this.disposePromise = undefined;
+      this.lifecycle.finishDispose();
+    });
+    return this.disposePromise;
+  }
+
+  private async disposeController(pendingStopSucceeded: boolean,
+    phaseAtDispose: PlaybackPictureInPicturePhase): Promise<void> {
     const controller = this.controller;
+    const controlEventCallback = this.controlEventCallback;
     this.creationPromise = undefined;
+    this.enterPromise = undefined;
     this.stopPromise = undefined;
     this.stopWhenStarted = false;
     if (controller !== undefined) {
       try {
         controller.off('stateChange');
-        controller.off('controlEvent', this.controlEventCallback);
-        if (this.phase === PlaybackPictureInPicturePhase.STARTED ||
-          this.phase === PlaybackPictureInPicturePhase.STARTING) {
-          await controller.stopPiP();
-        }
       } catch (error) {
-        console.warn(`Unable to stop PiP: ${PlaybackPictureInPicture.messageOf(error)}`);
+        console.warn(`Unable to detach PiP state callback: ${PlaybackPictureInPicture.messageOf(error)}`);
+      }
+      if (controlEventCallback !== undefined) {
+        try {
+          controller.off('controlEvent', controlEventCallback);
+        } catch (error) {
+          console.warn(`Unable to detach PiP control callback: ${PlaybackPictureInPicture.messageOf(error)}`);
+        }
+      }
+      if (!pendingStopSucceeded &&
+        (phaseAtDispose === PlaybackPictureInPicturePhase.STARTED ||
+          phaseAtDispose === PlaybackPictureInPicturePhase.STARTING ||
+          phaseAtDispose === PlaybackPictureInPicturePhase.STOPPING)) {
+        try {
+          await controller.stopPiP();
+        } catch (error) {
+          console.warn(`Unable to stop PiP: ${PlaybackPictureInPicture.messageOf(error)}`);
+        }
       }
     }
     this.artworkController.dispose();
     this.controller = undefined;
     this.contentNode = null;
+    this.stateChangeCallback = undefined;
+    this.controlEventCallback = undefined;
     this.phase = PlaybackPictureInPicturePhase.IDLE;
   }
 
-  private async enterInternal(uiContext: UIContext, autoMinimizeApp: boolean): Promise<void> {
+  private disableAutoStartForDisposal(controller: PiPWindow.PiPController | undefined): void {
+    if (controller === undefined) {
+      return;
+    }
     try {
-      await this.ensureController(uiContext);
-      this.phase = PlaybackPictureInPicturePhase.STARTING;
-      await this.controller?.startPiP();
+      controller.setAutoStartEnabled(false);
     } catch (error) {
+      console.warn(`Unable to disable automatic PiP during disposal: ${
+        PlaybackPictureInPicture.messageOf(error)
+      }`);
+    }
+  }
+
+  private async enterInternal(uiContext: UIContext, autoMinimizeApp: boolean,
+    epoch: number): Promise<void> {
+    let controller: PiPWindow.PiPController | undefined;
+    try {
+      await this.ensureController(uiContext, epoch);
+      this.ensureCurrent(epoch);
+      controller = this.controller;
+      if (controller === undefined) {
+        throw new Error('画中画控制器不可用');
+      }
+      this.phase = PlaybackPictureInPicturePhase.STARTING;
+      await controller.startPiP();
+      this.ensureOwnedController(epoch, controller);
+    } catch (error) {
+      if (error === PIP_OPERATION_CANCELLED || !this.lifecycle.isCurrent(epoch)) {
+        throw PIP_OPERATION_CANCELLED;
+      }
       if (this.phase !== PlaybackPictureInPicturePhase.STARTED) {
         this.phase = this.controller === undefined ?
           PlaybackPictureInPicturePhase.IDLE : PlaybackPictureInPicturePhase.READY;
@@ -320,20 +359,33 @@ export class PlaybackPictureInPicture {
       throw new Error(`无法启动画中画${code}`);
     }
     if (autoMinimizeApp) {
-      await this.minimizeHostApplication(uiContext);
+      await this.minimizeHostApplication(uiContext, epoch, controller);
     }
   }
 
-  private async minimizeHostApplication(uiContext: UIContext): Promise<void> {
+  private async minimizeHostApplication(uiContext: UIContext, epoch?: number,
+    controller?: PiPWindow.PiPController): Promise<void> {
+    if (epoch !== undefined && controller !== undefined) {
+      this.ensureOwnedController(epoch, controller);
+    }
     const context = uiContext.getHostContext() as common.UIAbilityContext | undefined;
     if (context === undefined) {
       throw new Error('画中画已启动，但无法获取主窗口上下文');
     }
     try {
       const mainWindow = await window.getLastWindow(context);
+      if (epoch !== undefined && controller !== undefined) {
+        this.ensureOwnedController(epoch, controller);
+      }
       await mainWindow.minimize();
+      if (epoch !== undefined && controller !== undefined) {
+        this.ensureOwnedController(epoch, controller);
+      }
       return;
     } catch (error) {
+      if (error === PIP_OPERATION_CANCELLED) {
+        throw PIP_OPERATION_CANCELLED;
+      }
       const businessError = error as BusinessError;
       if (businessError.code !== 801) {
         const code = businessError.code === undefined ? '' : `（${businessError.code}）`;
@@ -341,38 +393,54 @@ export class PlaybackPictureInPicture {
       }
     }
     try {
+      if (epoch !== undefined && controller !== undefined) {
+        this.ensureOwnedController(epoch, controller);
+      }
       await context.moveAbilityToBackground();
+      if (epoch !== undefined && controller !== undefined) {
+        this.ensureOwnedController(epoch, controller);
+      }
     } catch (error) {
+      if (error === PIP_OPERATION_CANCELLED) {
+        throw PIP_OPERATION_CANCELLED;
+      }
       const businessError = error as BusinessError;
       const code = businessError.code === undefined ? '' : `（${businessError.code}）`;
       throw new Error(`画中画已启动，但主窗口无法退至后台${code}`);
     }
   }
 
-  private ensureController(uiContext: UIContext): Promise<void> {
+  private ensureController(uiContext: UIContext, epoch: number): Promise<void> {
+    if (!this.lifecycle.canStartOperation()) {
+      return Promise.reject(PIP_OPERATION_CANCELLED);
+    }
     if (this.controller !== undefined) {
       return Promise.resolve();
     }
     if (this.creationPromise !== undefined) {
       return this.creationPromise;
     }
-    this.creationPromise = this.createController(uiContext).finally((): void => {
-      this.creationPromise = undefined;
+    this.creationPromise = this.createController(uiContext, epoch).finally((): void => {
+      if (this.lifecycle.isCurrent(epoch)) {
+        this.creationPromise = undefined;
+      }
     });
     return this.creationPromise;
   }
 
-  private async createController(uiContext: UIContext): Promise<void> {
+  private async createController(uiContext: UIContext, epoch: number): Promise<void> {
+    this.ensureCurrent(epoch);
     const context = uiContext.getHostContext();
     if (context === undefined) {
       throw new Error('无法获取主窗口上下文');
     }
     this.phase = PlaybackPictureInPicturePhase.CREATING;
     this.artworkController.update(this.snapshot.artworkUri);
-    this.contentNode = typeNode.createNode(uiContext, 'XComponent', {
+    const contentNode = typeNode.createNode(uiContext, 'XComponent', {
       type: XComponentType.SURFACE,
       controller: this.xComponentController
     });
+    this.contentNode = contentNode;
     const config: PiPWindow.PiPConfiguration = {
       context: context,
       componentController: this.xComponentController,
@@ -384,18 +452,96 @@ export class PlaybackPictureInPicture {
       defaultWindowSizeType: 1,
       cornerAdsorptionEnabled: true
     };
+    let controller: PiPWindow.PiPController;
     try {
-      this.controller = await PiPWindow.create(config, this.contentNode);
+      controller = await PiPWindow.create(config, contentNode);
     } catch (error) {
+      if (!this.lifecycle.isCurrent(epoch)) {
+        throw PIP_OPERATION_CANCELLED;
+      }
       this.phase = PlaybackPictureInPicturePhase.IDLE;
       this.contentNode = null;
       throw new Error(PlaybackPictureInPicture.messageOf(error));
     }
-    this.controller.setAutoStartEnabled(this.autoStartEnabled);
-    this.controller.on('stateChange', this.stateChangeCallback);
-    this.controller.on('controlEvent', this.controlEventCallback);
+    this.ensureCurrent(epoch);
+    this.controller = controller;
+    this.registerControllerCallbacks(controller, epoch);
+    controller.setAutoStartEnabled(this.autoStartEnabled);
     this.phase = PlaybackPictureInPicturePhase.READY;
     this.syncControls();
+  }
+
+  private registerControllerCallbacks(controller: PiPWindow.PiPController, epoch: number): void {
+    const stateChangeCallback =
+      (state: PiPWindow.PiPState, _reason: string): void => {
+        if (!this.lifecycle.ownsController(epoch, controller, this.controller)) {
+          return;
+        }
+        this.handleStateChange(state);
+      };
+    const controlEventCallback =
+      (event: PiPWindow.ControlEventParam): void => {
+        if (!this.lifecycle.ownsController(epoch, controller, this.controller)) {
+          return;
+        }
+        this.handleControlEvent(event);
+      };
+    this.stateChangeCallback = stateChangeCallback;
+    this.controlEventCallback = controlEventCallback;
+    controller.on('stateChange', stateChangeCallback);
+    controller.on('controlEvent', controlEventCallback);
+  }
+
+  private handleStateChange(state: PiPWindow.PiPState): void {
+    switch (state) {
+      case PiPWindow.PiPState.ABOUT_TO_START:
+        this.phase = PlaybackPictureInPicturePhase.STARTING;
+        break;
+      case PiPWindow.PiPState.STARTED:
+        this.phase = PlaybackPictureInPicturePhase.STARTED;
+        this.syncControls();
+        if (this.stopWhenStarted) {
+          this.stopWhenStarted = false;
+          this.stop().catch((error: Object): void => {
+            console.warn(`Unable to stop PiP after startup: ${
+              PlaybackPictureInPicture.messageOf(error)
+            }`);
+          });
+        }
+        break;
+      case PiPWindow.PiPState.ABOUT_TO_STOP:
+      case PiPWindow.PiPState.ABOUT_TO_RESTORE:
+        this.phase = PlaybackPictureInPicturePhase.STOPPING;
+        break;
+      case PiPWindow.PiPState.STOPPED:
+      case PiPWindow.PiPState.ERROR:
+        this.phase = PlaybackPictureInPicturePhase.READY;
+        this.stopWhenStarted = false;
+        this.artworkController.dispose();
+        break;
+      default:
+        break;
+    }
+  }
+
+  private handleControlEvent(event: PiPWindow.ControlEventParam): void {
+    switch (event.controlType) {
+      case PiPWindow.PiPControlType.VIDEO_PLAY_PAUSE:
+        if (event.status === PiPWindow.PiPControlStatus.PLAY) {
+          this.commands.play();
+        } else if (event.status === PiPWindow.PiPControlStatus.PAUSE) {
+          this.commands.pause();
+        }
+        break;
+      case PiPWindow.PiPControlType.VIDEO_PREVIOUS:
+        this.commands.previous();
+        break;
+      case PiPWindow.PiPControlType.VIDEO_NEXT:
+        this.commands.next();
+        break;
+      default:
+        break;
+    }
   }
 
   private syncControls(): void {
@@ -422,6 +568,18 @@ export class PlaybackPictureInPicture {
       );
     } catch (error) {
       console.warn(`Unable to synchronize PiP controls: ${PlaybackPictureInPicture.messageOf(error)}`);
+    }
+  }
+
+  private ensureCurrent(epoch: number): void {
+    if (!this.lifecycle.isCurrent(epoch)) {
+      throw PIP_OPERATION_CANCELLED;
+    }
+  }
+
+  private ensureOwnedController(epoch: number, controller: PiPWindow.PiPController): void {
+    if (!this.lifecycle.ownsController(epoch, controller, this.controller)) {
+      throw PIP_OPERATION_CANCELLED;
     }
   }
 

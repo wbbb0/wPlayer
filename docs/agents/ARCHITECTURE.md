@@ -130,6 +130,14 @@ same library graph.
 - Persistent navigation hosts live at the root tab shell.
 - Each tab owns one controlled navigation stack.
 - Shared route definitions and responsive promotion/demotion logic stay in the navigation layer.
+- `IndexNavigationController` and the root shell composition own route selection, tab controllers and the persistent
+  `NavPathStack` and `Scroller` identities. `ResponsiveNavigationShell` owns breakpoint-specific rendering and its
+  root selection-controller identities.
+- `ResponsiveNavigationRouteContent` builds root pages and navigation destinations from navigation-layer-owned
+  identities and user-intent callbacks; it does not own responsive state or create another navigation stack.
+- `ResponsiveNavigationModalHost` hosts navigation-level sheets and content covers while visibility and import
+  orchestration remain Shell-owned. `SelectionNavigationTitleBar` presents selection chrome without owning
+  selection actions or state.
 - Feature pages must not create private nested Navigation stacks.
 - Detail pages do not replace or own persistent tab/player chrome.
 

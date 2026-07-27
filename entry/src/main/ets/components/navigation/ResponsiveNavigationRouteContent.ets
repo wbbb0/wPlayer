@@ -1,0 +1,716 @@
+import {
+  HdsNavDestination,
+  HdsNavDestinationTitleMode,
+  HdsNavigationMenuContentOptions
+} from '@kit.UIDesignKit';
+import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
+import { PageBottomGradient } from '../layout/PageBottomGradient';
+import { AppNavigationStyle } from './AppNavigationStyle';
+import {
+  NavigationPageItem,
+  NavigationPageKind,
+  NavigationRoute,
+  navigationItem,
+  navigationPageKind
+} from './MoreNavigation';
+import {
+  LibraryEntityIdentity,
+  LibraryNavigationTarget,
+  PlaylistSummary,
+  TrackListItem
+} from '../../library/model/LibraryModels';
+import { LibraryStore } from '../../library/store/LibraryStore';
+import { PlaylistStore } from '../../playlist/store/PlaylistStore';
+import { PlayerStore } from '../../playback/model/PlaybackModels';
+import { AppSettingsStore } from '../../settings/AppSettingsStore';
+import { MultiSelectController } from '../library/MultiSelectController';
+import { AlbumAction } from '../library/AlbumGridItem';
+import { PlaylistsPage } from '../../pages/library/PlaylistsPage';
+import { SongsPage } from '../../pages/library/SongsPage';
+import { AlbumsPage } from '../../pages/library/AlbumsPage';
+import { LibraryManagementPage } from '../../pages/library/LibraryManagementPage';
+import { SettingsPage } from '../../pages/settings/SettingsPage';
+import { DebugPage } from '../../pages/settings/DebugPage';
+import { PlaylistDetailPage } from '../../pages/library/PlaylistDetailPage';
+import { AlbumDetailPage } from '../../pages/library/AlbumDetailPage';
+import { ArtistDetailPage } from '../../pages/library/ArtistDetailPage';
+import { FloatingWindowSettingsPage } from '../../pages/settings/FloatingWindowSettingsPage';
+import { DynamicBackgroundDebugPage } from '../../pages/settings/DynamicBackgroundDebugPage';
+import { DynamicBackgroundV2DebugPage } from '../../pages/settings/DynamicBackgroundV2DebugPage';
+import { DynamicBackgroundV3DebugPage } from '../../pages/settings/DynamicBackgroundV3DebugPage';
+import { NavigationCustomizationPage } from '../../pages/settings/NavigationCustomizationPage';
+import { AboutPage } from '../../pages/settings/AboutPage';
+import { PrivacyPolicyPage } from '../../pages/settings/PrivacyPolicyPage';
+import { DataAndPermissionsPage } from '../../pages/settings/DataAndPermissionsPage';
+import { OpenSourceLicensesPage } from '../../pages/settings/OpenSourceLicensesPage';
+import {
+  AlbumDetailRouteParams,
+  ArtistDetailRouteParams,
+  LibraryDetailRoute,
+  albumTarget,
+  artistTarget
+} from './LibraryNavigation';
+import { NavigationChromeController } from './NavigationChromeController';
+import { systemBarStyleController } from '../../appearance/SystemBarStyleController';
+import {
+  DynamicColor,
+  DynamicContainerRole
+} from '../../appearance/DynamicColor';
+
+export const PLAYLIST_DETAIL_ROUTE: string = 'playlist_detail';
+let playlistRouteInstanceId: number = 0;
+
+class EmptyRouteParam {
+}
+
+export class PlaylistDetailRouteParams {
+  readonly instanceId: number;
+  readonly playlistId: number;
+  readonly initialTitle: string;
+  readonly scroller: Scroller = new Scroller();
+  readonly selection: MultiSelectController = new MultiSelectController();
+
+  constructor(playlistId: number, initialTitle: string) {
+    this.instanceId = ++playlistRouteInstanceId;
+    this.playlistId = playlistId;
+    this.initialTitle = initialTitle;
+  }
+}
+
+@Component
+export struct ResponsiveNavigationRouteContent {
+  @ObjectLink libraryStore: LibraryStore;
+  @ObjectLink playlistStore: PlaylistStore;
+  @ObjectLink settingsStore: AppSettingsStore;
+  @ObjectLink playlistsSelection: MultiSelectController;
+  @ObjectLink songsSelection: MultiSelectController;
+  @ObjectLink albumsSelection: MultiSelectController;
+  @Prop routeId: string = NavigationRoute.PLAYLISTS;
+  @Prop topInset: number = 0;
+  @Prop bottomInset: number = 0;
+  scroller: Scroller = new Scroller();
+  onOpenPlaylist: (playlist: PlaylistSummary) => void =
+    (_playlist: PlaylistSummary): void => {};
+  onRequestRenamePlaylist: (playlist: PlaylistSummary) => void =
+    (_playlist: PlaylistSummary): void => {};
+  onPlayTrack: (item: TrackListItem) => void = (_item: TrackListItem): void => {};
+  onOpenTrackActions: (item: TrackListItem, anchorId: string) => void =
+    (_item: TrackListItem, _anchorId: string): void => {};
+  onOpenTrackDetails: (item: TrackListItem) => void = (_item: TrackListItem): void => {};
+  onNavigateLibrary: (target: LibraryNavigationTarget) => void =
+    (_target: LibraryNavigationTarget): void => {};
+  onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
+    (_items: Array<TrackListItem>): void => {};
+  onAlbumAction: (albumId: number, action: AlbumAction) => void =
+    (_albumId: number, _action: AlbumAction): void => {};
+  onOpenNavigationCustomization: () => void = (): void => {};
+  onOpenFloatingWindowSettings: () => void = (): void => {};
+  onOpenAbout: () => void = (): void => {};
+  onOpenPrivacyPolicy: () => void = (): void => {};
+  onOpenDataAndPermissions: () => void = (): void => {};
+  onOpenOpenSourceLicenses: () => void = (): void => {};
+  onRememberLastTabChange: (value: boolean) => void = (_value: boolean): void => {};
+  onRememberSortChange: (value: boolean) => void = (_value: boolean): void => {};
+  onOpenDynamicBackgroundV1: () => void = (): void => {};
+  onOpenDynamicBackgroundV2: () => void = (): void => {};
+  onOpenDynamicBackgroundV3: () => void = (): void => {};
+  onDemoLibraryChange: (value: boolean) => void = (_value: boolean): void => {};
+
+  build() {
+    if (navigationPageKind(this.routeId) === NavigationPageKind.PLAYLISTS) {
+      PlaylistsPage({
+        store: this.playlistStore,
+        selection: this.playlistsSelection,
+        topInset: this.topInset,
+        bottomInset: this.bottomInset,
+        scroller: this.scroller,
+        onOpenPlaylist: this.onOpenPlaylist,
+        onRequestRename: this.onRequestRenamePlaylist,
+        onRequestAddToPlaylist: this.onRequestAddToPlaylist
+      })
+    } else if (navigationPageKind(this.routeId) === NavigationPageKind.SONGS) {
+      SongsPage({
+        store: this.libraryStore,
+        selection: this.songsSelection,
+        topInset: this.topInset,
+        bottomInset: this.bottomInset,
+        scroller: this.scroller,
+        onPlayTrack: this.onPlayTrack,
+        onOpenTrackActions: this.onOpenTrackActions,
+        onOpenTrackDetails: this.onOpenTrackDetails,
+        onNavigateTrackAction: this.onNavigateLibrary,
+        onRequestAddToPlaylist: this.onRequestAddToPlaylist
+      })
+    } else if (navigationPageKind(this.routeId) === NavigationPageKind.ALBUMS) {
+      AlbumsPage({
+        store: this.libraryStore,
+        selection: this.albumsSelection,
+        topInset: this.topInset,
+        bottomInset: this.bottomInset,
+        scroller: this.scroller,
+        onOpenAlbum: (item): void => {
+          this.onNavigateLibrary(albumTarget({
+            id: item.id,
+            title: item.title,
+            palettePrimary: item.palettePrimary
+          }));
+        },
+        onAlbumAction: (item, action): void => this.onAlbumAction(item.id, action),
+        onNavigateAlbumAction: this.onNavigateLibrary,
+        onRequestAddToPlaylist: this.onRequestAddToPlaylist
+      })
+    } else if (navigationPageKind(this.routeId) === NavigationPageKind.LIBRARY_MANAGEMENT) {
+      LibraryManagementPage({
+        store: this.libraryStore,
+        topInset: this.topInset,
+        bottomInset: this.bottomInset,
+        scroller: this.scroller
+      })
+    } else if (navigationPageKind(this.routeId) === NavigationPageKind.SETTINGS) {
+      SettingsPage({
+        settingsStore: this.settingsStore,
+        topInset: this.topInset,
+        bottomInset: this.bottomInset,
+        scroller: this.scroller,
+        openNavigationCustomization: this.onOpenNavigationCustomization,
+        openFloatingWindowSettings: this.onOpenFloatingWindowSettings,
+        openAbout: this.onOpenAbout,
+        openPrivacyPolicy: this.onOpenPrivacyPolicy,
+        openDataAndPermissions: this.onOpenDataAndPermissions,
+        openOpenSourceLicenses: this.onOpenOpenSourceLicenses,
+        onRememberLastTabChange: this.onRememberLastTabChange,
+        onRememberSortChange: this.onRememberSortChange
+      })
+    } else if (navigationPageKind(this.routeId) === NavigationPageKind.DEBUG) {
+      DebugPage({
+        settingsStore: this.settingsStore,
+        topInset: this.topInset,
+        bottomInset: this.bottomInset,
+        scroller: this.scroller,
+        openDynamicBackgroundV1: this.onOpenDynamicBackgroundV1,
+        openDynamicBackgroundV2: this.onOpenDynamicBackgroundV2,
+        openDynamicBackgroundV3: this.onOpenDynamicBackgroundV3,
+        onDemoLibraryChange: this.onDemoLibraryChange
+      })
+    }
+  }
+}
+
+@Component
+export struct ResponsiveNavigationDestinationContent {
+  @ObjectLink libraryStore: LibraryStore;
+  @ObjectLink playlistStore: PlaylistStore;
+  @ObjectLink playerStore: PlayerStore;
+  @ObjectLink settingsStore: AppSettingsStore;
+  @ObjectLink navigationChromeController: NavigationChromeController;
+  @ObjectLink playlistsSelection: MultiSelectController;
+  @ObjectLink songsSelection: MultiSelectController;
+  @ObjectLink albumsSelection: MultiSelectController;
+  @Prop name: string = '';
+  param: Object = new EmptyRouteParam();
+  @Prop topInset: number = 0;
+  @Prop bottomInset: number = 0;
+  @Prop rootWidth: number = 0;
+  @Prop themePageBackground: string = '#FF000000';
+  @Prop orderedItems: Array<NavigationPageItem> = [];
+  customizationScroller: Scroller = new Scroller();
+  floatingWindowSettingsScroller: Scroller = new Scroller();
+  aboutScroller: Scroller = new Scroller();
+  privacyPolicyScroller: Scroller = new Scroller();
+  dataAndPermissionsScroller: Scroller = new Scroller();
+  openSourceLicensesScroller: Scroller = new Scroller();
+  routeScroller: (routeId: string) => Scroller = (_routeId: string): Scroller => new Scroller();
+  onOpenPlaylist: (playlist: PlaylistSummary) => void =
+    (_playlist: PlaylistSummary): void => {};
+  onRequestRenamePlaylist: (playlist: PlaylistSummary) => void =
+    (_playlist: PlaylistSummary): void => {};
+  onPlayTrack: (item: TrackListItem) => void = (_item: TrackListItem): void => {};
+  onOpenNavigationCustomization: () => void = (): void => {};
+  onOpenFloatingWindowSettings: () => void = (): void => {};
+  onOpenAbout: () => void = (): void => {};
+  onOpenPrivacyPolicy: () => void = (): void => {};
+  onOpenDataAndPermissions: () => void = (): void => {};
+  onOpenOpenSourceLicenses: () => void = (): void => {};
+  onRememberLastTabChange: (value: boolean) => void = (_value: boolean): void => {};
+  onRememberSortChange: (value: boolean) => void = (_value: boolean): void => {};
+  onOpenDynamicBackgroundV1: () => void = (): void => {};
+  onOpenDynamicBackgroundV2: () => void = (): void => {};
+  onOpenDynamicBackgroundV3: () => void = (): void => {};
+  onDemoLibraryChange: (value: boolean) => void = (_value: boolean): void => {};
+  playlistSummary: (playlistId: number) => PlaylistSummary | undefined =
+    (_playlistId: number): PlaylistSummary | undefined => undefined;
+  playlistDetailTitleMenu: (params: PlaylistDetailRouteParams) => HdsNavigationMenuContentOptions =
+    (_params: PlaylistDetailRouteParams): HdsNavigationMenuContentOptions => ({ maxCount: 0, value: [] });
+  albumDetailTitleMenu: (params: AlbumDetailRouteParams) => HdsNavigationMenuContentOptions =
+    (_params: AlbumDetailRouteParams): HdsNavigationMenuContentOptions => ({ maxCount: 0, value: [] });
+  artistDetailTitleMenu: (params: ArtistDetailRouteParams) => HdsNavigationMenuContentOptions =
+    (_params: ArtistDetailRouteParams): HdsNavigationMenuContentOptions => ({ maxCount: 0, value: [] });
+  albumDetailBackground: (params: AlbumDetailRouteParams) => string =
+    (_params: AlbumDetailRouteParams): string => '#FF000000';
+  albumDetailContentColor: (params: AlbumDetailRouteParams) => string =
+    (_params: AlbumDetailRouteParams): string => '#FFFFFFFF';
+  albumDetailControlBackgroundColor: (params: AlbumDetailRouteParams) => ResourceColor | undefined =
+    (_params: AlbumDetailRouteParams): ResourceColor | undefined => undefined;
+  playbackChromeBackgroundColor: () => ResourceColor | undefined =
+    (): ResourceColor | undefined => undefined;
+  gradientMaskColor: (color: string) => string = (color: string): string => color;
+  onDestinationBackPressed: () => boolean = (): boolean => false;
+  onNavigationItemMove: (from: number, to: number) => void =
+    (_from: number, _to: number): void => {};
+  onPictureInPictureSettingsChange: () => void = (): void => {};
+  onNavigateLibrary: (target: LibraryNavigationTarget) => void =
+    (_target: LibraryNavigationTarget): void => {};
+  onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
+    (_items: Array<TrackListItem>): void => {};
+  onOpenTrackActions: (
+    item: TrackListItem,
+    anchorId: string,
+    current?: LibraryEntityIdentity
+  ) => void = (_item: TrackListItem, _anchorId: string, _current?: LibraryEntityIdentity): void => {};
+  onOpenTrackDetails: (item: TrackListItem) => void = (_item: TrackListItem): void => {};
+  onAlbumAction: (albumId: number, action: AlbumAction) => void =
+    (_albumId: number, _action: AlbumAction): void => {};
+
+  private activateAlbumChrome(params: AlbumDetailRouteParams): void {
+    params.setPaletteChangeListener((primary: string): void => {
+      this.navigationChromeController.updateAlbum(
+        params.ownerRouteId,
+        params.instanceId,
+        DynamicColor.foreground(primary, DynamicContainerRole.PRIMARY)
+      );
+    });
+    this.navigationChromeController.registerAlbum(
+      params.ownerRouteId,
+      params.instanceId,
+      this.albumDetailContentColor(params)
+    );
+  }
+
+  private deactivateAlbumChrome(params: AlbumDetailRouteParams): void {
+    params.setPaletteChangeListener(undefined);
+    this.navigationChromeController.unregisterAlbum(params.ownerRouteId, params.instanceId);
+  }
+
+  build() {
+    if (this.name === PLAYLIST_DETAIL_ROUTE) {
+      HdsNavDestination() {
+        Stack({ alignContent: Alignment.Bottom }) {
+          PlaylistDetailPage({
+            store: this.playlistStore,
+            libraryStore: this.libraryStore,
+            selection: (this.param as PlaylistDetailRouteParams).selection,
+            playlistId: (this.param as PlaylistDetailRouteParams).playlistId,
+            rootWidth: this.rootWidth,
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            scroller: (this.param as PlaylistDetailRouteParams).scroller,
+            onResolveArtwork: (relativePath: string): string =>
+              this.libraryStore.resolveArtworkPath(relativePath),
+            onRequestAddToPlaylist: this.onRequestAddToPlaylist,
+            onNavigateLibrary: this.onNavigateLibrary,
+            onOpenTrackDetails: this.onOpenTrackDetails
+          })
+          PageBottomGradient({ maskColor: this.themePageBackground })
+        }
+        .width('100%')
+        .height('100%')
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(this.themePageBackground)
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        this.playlistSummary((this.param as PlaylistDetailRouteParams).playlistId)?.name ??
+          (this.param as PlaylistDetailRouteParams).initialTitle,
+        this.playlistDetailTitleMenu(this.param as PlaylistDetailRouteParams),
+        this.playbackChromeBackgroundColor()
+      ))
+      .bindToScrollable([(this.param as PlaylistDetailRouteParams).scroller])
+      .onBackPressed(this.onDestinationBackPressed)
+    } else if (this.name === LibraryDetailRoute.ALBUM) {
+      HdsNavDestination() {
+        Stack({ alignContent: Alignment.Bottom }) {
+          AlbumDetailPage({
+            store: this.libraryStore,
+            state: (this.param as AlbumDetailRouteParams).state,
+            selection: (this.param as AlbumDetailRouteParams).selection,
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            rootWidth: this.rootWidth,
+            currentIdentity: (this.param as AlbumDetailRouteParams).identity(),
+            themeBackground: this.albumDetailBackground(this.param as AlbumDetailRouteParams),
+            scroller: (this.param as AlbumDetailRouteParams).scroller,
+            actionAnchorPrefix: (this.param as AlbumDetailRouteParams).anchorPrefix(),
+            onOpenArtist: (artist): void => this.onNavigateLibrary(artistTarget(artist)),
+            onOpenAlbum: (album): void => this.onNavigateLibrary(albumTarget({
+              id: album.id,
+              title: album.title,
+              palettePrimary: album.palettePrimary
+            })),
+            onAlbumAction: (album, action): void => this.onAlbumAction(album.id, action),
+            onOpenTrackActions: (item: TrackListItem, anchorId: string): void =>
+              this.onOpenTrackActions(item, anchorId, (this.param as AlbumDetailRouteParams).identity()),
+            onOpenTrackDetails: this.onOpenTrackDetails,
+            onNavigateTrackAction: this.onNavigateLibrary,
+            onRequestAddToPlaylist: this.onRequestAddToPlaylist
+          })
+          PageBottomGradient({
+            maskColor: this.albumDetailBackground(this.param as AlbumDetailRouteParams)
+          })
+        }
+        .width('100%')
+        .height('100%')
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(this.albumDetailBackground(this.param as AlbumDetailRouteParams))
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryBackOnlyTitleBar(
+        this.albumDetailTitleMenu(this.param as AlbumDetailRouteParams),
+        {
+          backgroundColor: this.gradientMaskColor(
+            this.albumDetailBackground(this.param as AlbumDetailRouteParams)
+          ),
+          contentColor: this.albumDetailContentColor(this.param as AlbumDetailRouteParams),
+          controlBackgroundColor:
+            this.albumDetailControlBackgroundColor(this.param as AlbumDetailRouteParams)
+        }
+      ))
+      .onShown((): void => this.activateAlbumChrome(this.param as AlbumDetailRouteParams))
+      .onHidden((): void => this.deactivateAlbumChrome(this.param as AlbumDetailRouteParams))
+      .bindToScrollable([(this.param as AlbumDetailRouteParams).scroller])
+      .onBackPressed(this.onDestinationBackPressed)
+    } else if (this.name === LibraryDetailRoute.ARTIST) {
+      HdsNavDestination() {
+        Stack({ alignContent: Alignment.Bottom }) {
+          ArtistDetailPage({
+            store: this.libraryStore,
+            state: (this.param as ArtistDetailRouteParams).state,
+            selection: (this.param as ArtistDetailRouteParams).selection,
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            rootWidth: this.rootWidth,
+            currentIdentity: (this.param as ArtistDetailRouteParams).identity(),
+            scroller: (this.param as ArtistDetailRouteParams).scroller,
+            actionAnchorPrefix: (this.param as ArtistDetailRouteParams).anchorPrefix(),
+            onOpenAlbum: (album): void => this.onNavigateLibrary(albumTarget({
+              id: album.id,
+              title: album.title,
+              palettePrimary: album.palettePrimary
+            })),
+            onOpenTrackActions: (item: TrackListItem, anchorId: string): void =>
+              this.onOpenTrackActions(item, anchorId, (this.param as ArtistDetailRouteParams).identity()),
+            onOpenTrackDetails: this.onOpenTrackDetails,
+            onNavigateTrackAction: this.onNavigateLibrary,
+            onRequestAddToPlaylist: this.onRequestAddToPlaylist
+          })
+          PageBottomGradient({ maskColor: this.themePageBackground })
+        }
+        .width('100%')
+        .height('100%')
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(this.themePageBackground)
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        (this.param as ArtistDetailRouteParams).name,
+        this.artistDetailTitleMenu(this.param as ArtistDetailRouteParams),
+        this.playbackChromeBackgroundColor()
+      ))
+      .bindToScrollable([(this.param as ArtistDetailRouteParams).scroller])
+      .onBackPressed(this.onDestinationBackPressed)
+    } else if (this.name === NavigationRoute.NAVIGATION_CUSTOMIZATION) {
+      HdsNavDestination() {
+        Stack({ alignContent: Alignment.Bottom }) {
+          NavigationCustomizationPage({
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            items: this.orderedItems,
+            scroller: this.customizationScroller,
+            onMove: this.onNavigationItemMove
+          })
+          PageBottomGradient({ maskColor: this.themePageBackground })
+        }
+        .width('100%')
+        .height('100%')
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(this.themePageBackground)
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        '自定义页面',
+        undefined,
+        this.playbackChromeBackgroundColor()
+      ))
+      .bindToScrollable([this.customizationScroller])
+      .onBackPressed(this.onDestinationBackPressed)
+    } else if (this.name === NavigationRoute.FLOATING_WINDOW_SETTINGS) {
+      HdsNavDestination() {
+        Stack({ alignContent: Alignment.Bottom }) {
+          FloatingWindowSettingsPage({
+            settingsStore: this.settingsStore,
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            scroller: this.floatingWindowSettingsScroller,
+            onSettingsChange: this.onPictureInPictureSettingsChange
+          })
+          PageBottomGradient({ maskColor: this.themePageBackground })
+        }
+        .width('100%')
+        .height('100%')
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(this.themePageBackground)
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        '浮窗',
+        undefined,
+        this.playbackChromeBackgroundColor()
+      ))
+      .bindToScrollable([this.floatingWindowSettingsScroller])
+      .onBackPressed(this.onDestinationBackPressed)
+    } else if (this.name === NavigationRoute.DYNAMIC_BACKGROUND_DEBUG) {
+      HdsNavDestination() {
+        DynamicBackgroundDebugPage({
+          playerStore: this.playerStore,
+          bottomInset: this.bottomInset
+        })
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor('#FF000000')
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        '动态背景',
+        undefined,
+        '#FF000000',
+        {
+          backgroundColor: '#FF000000',
+          contentColor: '#FFFFFFFF',
+          controlBackgroundColor: '#24FFFFFF'
+        }
+      ))
+      .onShown((): void => {
+        systemBarStyleController.submitContentColor(
+          NavigationRoute.DYNAMIC_BACKGROUND_DEBUG,
+          '#FFFFFFFF'
+        );
+      })
+      .onHidden((): void => {
+        systemBarStyleController.removeContentColor(NavigationRoute.DYNAMIC_BACKGROUND_DEBUG);
+      })
+      .onBackPressed(this.onDestinationBackPressed)
+    } else if (this.name === NavigationRoute.DYNAMIC_BACKGROUND_V2_DEBUG) {
+      HdsNavDestination() {
+        DynamicBackgroundV2DebugPage({
+          playerStore: this.playerStore,
+          bottomInset: this.bottomInset
+        })
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor('#FF000000')
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        '动态背景 v2',
+        undefined,
+        '#FF000000',
+        {
+          backgroundColor: '#FF000000',
+          contentColor: '#FFFFFFFF',
+          controlBackgroundColor: '#24FFFFFF'
+        }
+      ))
+      .onShown((): void => {
+        systemBarStyleController.submitContentColor(
+          NavigationRoute.DYNAMIC_BACKGROUND_V2_DEBUG,
+          '#FFFFFFFF'
+        );
+      })
+      .onHidden((): void => {
+        systemBarStyleController.removeContentColor(NavigationRoute.DYNAMIC_BACKGROUND_V2_DEBUG);
+      })
+      .onBackPressed(this.onDestinationBackPressed)
+    } else if (this.name === NavigationRoute.DYNAMIC_BACKGROUND_V3_DEBUG) {
+      HdsNavDestination() {
+        DynamicBackgroundV3DebugPage({
+          playerStore: this.playerStore,
+          bottomInset: this.bottomInset
+        })
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(this.themePageBackground)
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        '动态背景 v3',
+        undefined,
+        this.playbackChromeBackgroundColor()
+      ))
+      .onBackPressed(this.onDestinationBackPressed)
+    } else if (this.name === NavigationRoute.ABOUT) {
+      HdsNavDestination() {
+        Stack({ alignContent: Alignment.Bottom }) {
+          AboutPage({
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            scroller: this.aboutScroller
+          })
+          PageBottomGradient({ maskColor: this.themePageBackground })
+        }
+        .width('100%')
+        .height('100%')
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(this.themePageBackground)
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        '关于 w播放器',
+        undefined,
+        this.playbackChromeBackgroundColor()
+      ))
+      .bindToScrollable([this.aboutScroller])
+      .onBackPressed(this.onDestinationBackPressed)
+    } else if (this.name === NavigationRoute.PRIVACY_POLICY) {
+      HdsNavDestination() {
+        Stack({ alignContent: Alignment.Bottom }) {
+          PrivacyPolicyPage({
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            scroller: this.privacyPolicyScroller
+          })
+          PageBottomGradient({ maskColor: this.themePageBackground })
+        }
+        .width('100%')
+        .height('100%')
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(this.themePageBackground)
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        '隐私政策',
+        undefined,
+        this.playbackChromeBackgroundColor()
+      ))
+      .bindToScrollable([this.privacyPolicyScroller])
+      .onBackPressed(this.onDestinationBackPressed)
+    } else if (this.name === NavigationRoute.DATA_AND_PERMISSIONS) {
+      HdsNavDestination() {
+        Stack({ alignContent: Alignment.Bottom }) {
+          DataAndPermissionsPage({
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            scroller: this.dataAndPermissionsScroller
+          })
+          PageBottomGradient({ maskColor: this.themePageBackground })
+        }
+        .width('100%')
+        .height('100%')
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(this.themePageBackground)
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        '数据与权限',
+        undefined,
+        this.playbackChromeBackgroundColor()
+      ))
+      .bindToScrollable([this.dataAndPermissionsScroller])
+      .onBackPressed(this.onDestinationBackPressed)
+    } else if (this.name === NavigationRoute.OPEN_SOURCE_LICENSES) {
+      HdsNavDestination() {
+        Stack({ alignContent: Alignment.Bottom }) {
+          OpenSourceLicensesPage({
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            scroller: this.openSourceLicensesScroller
+          })
+          PageBottomGradient({ maskColor: this.themePageBackground })
+        }
+        .width('100%')
+        .height('100%')
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(this.themePageBackground)
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        '开源软件许可',
+        undefined,
+        this.playbackChromeBackgroundColor()
+      ))
+      .bindToScrollable([this.openSourceLicensesScroller])
+      .onBackPressed(this.onDestinationBackPressed)
+    } else {
+      HdsNavDestination() {
+        Stack({ alignContent: Alignment.Bottom }) {
+          ResponsiveNavigationRouteContent({
+            libraryStore: this.libraryStore,
+            playlistStore: this.playlistStore,
+            settingsStore: this.settingsStore,
+            playlistsSelection: this.playlistsSelection,
+            songsSelection: this.songsSelection,
+            albumsSelection: this.albumsSelection,
+            routeId: this.name,
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            scroller: this.routeScroller(this.name),
+            onOpenPlaylist: this.onOpenPlaylist,
+            onRequestRenamePlaylist: this.onRequestRenamePlaylist,
+            onPlayTrack: this.onPlayTrack,
+            onOpenTrackActions: (item: TrackListItem, anchorId: string): void =>
+              this.onOpenTrackActions(item, anchorId),
+            onOpenTrackDetails: this.onOpenTrackDetails,
+            onNavigateLibrary: this.onNavigateLibrary,
+            onRequestAddToPlaylist: this.onRequestAddToPlaylist,
+            onAlbumAction: this.onAlbumAction,
+            onOpenNavigationCustomization: this.onOpenNavigationCustomization,
+            onOpenFloatingWindowSettings: this.onOpenFloatingWindowSettings,
+            onOpenAbout: this.onOpenAbout,
+            onOpenPrivacyPolicy: this.onOpenPrivacyPolicy,
+            onOpenDataAndPermissions: this.onOpenDataAndPermissions,
+            onOpenOpenSourceLicenses: this.onOpenOpenSourceLicenses,
+            onRememberLastTabChange: this.onRememberLastTabChange,
+            onRememberSortChange: this.onRememberSortChange,
+            onOpenDynamicBackgroundV1: this.onOpenDynamicBackgroundV1,
+            onOpenDynamicBackgroundV2: this.onOpenDynamicBackgroundV2,
+            onOpenDynamicBackgroundV3: this.onOpenDynamicBackgroundV3,
+            onDemoLibraryChange: this.onDemoLibraryChange
+          })
+          PageBottomGradient({ maskColor: this.themePageBackground })
+        }
+        .width('100%')
+        .height('100%')
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(this.themePageBackground)
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        navigationItem(this.name)?.label ?? '',
+        undefined,
+        this.playbackChromeBackgroundColor()
+      ))
+      .bindToScrollable([this.routeScroller(this.name)])
+      .onBackPressed(this.onDestinationBackPressed)
+    }
+  }
+
+}

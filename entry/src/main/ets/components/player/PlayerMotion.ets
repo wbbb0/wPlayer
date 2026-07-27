@@ -320,6 +320,10 @@ export class PlayerMotionSpec {
 }
 
 export class PlayerMorphVisualSpec {
+  static shouldOwnSystemBarContentColor(morphPhase: PlayerMorphPhase): boolean {
+    return morphPhase === PlayerMorphPhase.OPEN;
+  }
+
   static shouldSuspendBackgroundRendering(morphPhase: PlayerMorphPhase): boolean {
     return morphPhase === PlayerMorphPhase.OPEN;
   }

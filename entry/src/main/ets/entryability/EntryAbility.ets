@@ -1,10 +1,11 @@
 import { AbilityConstant, Configuration, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { FrameCallback, window } from '@kit.ArkUI';
+import { window } from '@kit.ArkUI';
 import { appRuntimeLifecycle } from '../application/runtime/AppRuntimeLifecycle';
 import { AppAppearancePalette, appAppearanceController } from '../appearance/AppAppearance';
 import {
+  HarmonySystemBarFrameHost,
   HarmonySystemBarWindow,
   SystemBarWindow,
   systemBarStyleController
@@ -14,27 +15,11 @@ import { playbackRuntime } from '../playback/PlaybackRuntime';
 const DOMAIN = 0x0000;
 const TAG = 'wPlayer/EntryAbility';
 
-class ForegroundSystemBarFrameCallback extends FrameCallback {
-  private readonly onIdleFrame: () => void;
-
-  constructor(onIdleFrame: () => void) {
-    super();
-    this.onIdleFrame = onIdleFrame;
-  }
-
-  onFrame(_frameTimeInNano: number): void {
-  }
-
-  onIdle(_timeLeftInNano: number): void {
-    this.onIdleFrame();
-  }
-}
-
 export default class EntryAbility extends UIAbility {
   private mainWindow?: window.Window;
   private systemBarWindow?: SystemBarWindow;
   private runtimeLease: number = 0;
-  private foregroundEpoch: number = 0;
+  private foregroundActive: boolean = false;
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     try {
@@ -64,6 +49,9 @@ export default class EntryAbility extends UIAbility {
   onConfigurationUpdate(_newConfig: Configuration): void {
     appAppearanceController.notifyChanged();
     this.applyMainWindowAppearance();
+    if (this.foregroundActive) {
+      this.scheduleSystemBarReapply(true);
+    }
     hilog.info(DOMAIN, TAG, 'Application appearance refreshed');
   }
 
@@ -105,27 +93,25 @@ export default class EntryAbility extends UIAbility {
     }
   }
 
-  private scheduleForegroundSystemBarReapply(foregroundEpoch: number): void {
+  private scheduleSystemBarReapply(acrossLayoutFrames: boolean = false): void {
     const targetWindow = this.mainWindow;
     if (targetWindow === undefined) {
       return;
     }
     try {
-      targetWindow.getUIContext().postFrameCallback(new ForegroundSystemBarFrameCallback((): void => {
-        if (this.foregroundEpoch === foregroundEpoch && this.mainWindow === targetWindow) {
-          systemBarStyleController.reapplyCurrentStyle();
-        }
-      }));
+      const frameHost = new HarmonySystemBarFrameHost(targetWindow.getUIContext());
+      if (acrossLayoutFrames) {
+        systemBarStyleController.scheduleReapplyAcrossLayoutFrames(frameHost);
+      } else {
+        systemBarStyleController.scheduleReapplyAfterFrame(frameHost);
+      }
     } catch (error) {
       hilog.error(DOMAIN, TAG, 'Failed to schedule system-bar replay. Cause: %{public}s', JSON.stringify(error));
-      if (this.foregroundEpoch === foregroundEpoch && this.mainWindow === targetWindow) {
-        systemBarStyleController.reapplyCurrentStyle();
-      }
+      systemBarStyleController.reapplyCurrentStyle();
     }
   }
 
   onWindowStageDestroy(): void {
-    this.foregroundEpoch += 1;
     systemBarStyleController.unbindWindow(this.systemBarWindow);
     this.systemBarWindow = undefined;
     this.mainWindow = undefined;
@@ -133,16 +119,18 @@ export default class EntryAbility extends UIAbility {
   }
 
   onForeground(): void {
-    const foregroundEpoch = ++this.foregroundEpoch;
+    this.foregroundActive = true;
+    systemBarStyleController.setReplaySchedulingEnabled(true);
     appAppearanceController.notifyChanged();
     this.applyMainWindowAppearance();
-    this.scheduleForegroundSystemBarReapply(foregroundEpoch);
+    this.scheduleSystemBarReapply();
     playbackRuntime.onForeground();
     hilog.info(DOMAIN, TAG, 'Ability entered foreground');
   }
 
   onBackground(): void {
-    this.foregroundEpoch += 1;
+    this.foregroundActive = false;
+    systemBarStyleController.setReplaySchedulingEnabled(false);
     playbackRuntime.onBackground();
     hilog.info(DOMAIN, TAG, 'Ability entered background');
   }

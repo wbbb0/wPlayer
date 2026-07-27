@@ -585,6 +585,7 @@ struct Index {
           layoutChange.previousWideLayout,
           layoutChange.nextWideLayout
         );
+        this.playerMorphController.reapplySystemBarAfterResponsiveLayoutChange();
       }
     })
   }

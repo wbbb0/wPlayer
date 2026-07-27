@@ -103,6 +103,30 @@ export default function playerMorphPolicyTest() {
       )).assertFalse();
     });
 
+    it('owns white system-bar content only while the full player is stably open', 0, () => {
+      expect(PlayerMorphVisualSpec.shouldOwnSystemBarContentColor(
+        PlayerMorphPhase.IDLE
+      )).assertFalse();
+      expect(PlayerMorphVisualSpec.shouldOwnSystemBarContentColor(
+        PlayerMorphPhase.OPEN_DRAGGING
+      )).assertFalse();
+      expect(PlayerMorphVisualSpec.shouldOwnSystemBarContentColor(
+        PlayerMorphPhase.OPENING
+      )).assertFalse();
+      expect(PlayerMorphVisualSpec.shouldOwnSystemBarContentColor(
+        PlayerMorphPhase.OPEN
+      )).assertTrue();
+      expect(PlayerMorphVisualSpec.shouldOwnSystemBarContentColor(
+        PlayerMorphPhase.CLOSE_DRAGGING
+      )).assertFalse();
+      expect(PlayerMorphVisualSpec.shouldOwnSystemBarContentColor(
+        PlayerMorphPhase.CLOSING
+      )).assertFalse();
+      expect(PlayerMorphVisualSpec.shouldOwnSystemBarContentColor(
+        PlayerMorphPhase.BACKGROUND_HANDOFF
+      )).assertFalse();
+    });
+
     it('consumes back before navigation while any full-player transition is active', 0, () => {
       expect(PlayerMorphInteractionSpec.shouldConsumeBackPress(
         PlayerMorphPhase.IDLE

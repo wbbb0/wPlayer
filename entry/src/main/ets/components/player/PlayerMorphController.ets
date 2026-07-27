@@ -4,7 +4,10 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { image } from '@kit.ImageKit';
 import { vibrator } from '@kit.SensorServiceKit';
 import { BundledArtworkCatalog } from '../../library/artwork/BundledArtworkCatalog';
-import { systemBarStyleController } from '../../appearance/SystemBarStyleController';
+import {
+  HarmonySystemBarFrameHost,
+  systemBarStyleController
+} from '../../appearance/SystemBarStyleController';
 import { DynamicColor, DynamicContainerRole } from '../../appearance/DynamicColor';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
@@ -116,7 +119,7 @@ export class PlayerMorphController {
   }
 
   syncSystemBarContentColor(): void {
-    if (this.isMorphActive()) {
+    if (PlayerMorphVisualSpec.shouldOwnSystemBarContentColor(this.playerMorphPhase)) {
       systemBarStyleController.submitContentColor(
         PLAYER_SYSTEM_BAR_OWNER,
         PlayerMotionSpec.FULL_PLAYER_CONTENT_COLOR
@@ -124,6 +127,15 @@ export class PlayerMorphController {
     } else {
       systemBarStyleController.removeContentColor(PLAYER_SYSTEM_BAR_OWNER);
     }
+  }
+
+  reapplySystemBarAfterResponsiveLayoutChange(): void {
+    if (!PlayerMorphVisualSpec.shouldOwnSystemBarContentColor(this.playerMorphPhase)) {
+      return;
+    }
+    systemBarStyleController.scheduleReapplyAcrossLayoutFrames(
+      new HarmonySystemBarFrameHost(this.context())
+    );
   }
 
   private applyCompactMiniBarStyle(style: HdsBarStyle): void {
@@ -167,9 +179,8 @@ export class PlayerMorphController {
   }
 
   dispose(): void {
-    systemBarStyleController.removeContentColor(PLAYER_SYSTEM_BAR_OWNER);
+    this.setPlayerMorphPhase(PlayerMorphPhase.IDLE);
     this.transitionCoordinator.dispose();
-    this.playerMorphPhase = PlayerMorphPhase.IDLE;
     this.fullPlayerPagerEpoch += 1;
     this.fullPlayerPagerPhase = FullPlayerPagerPhase.SETTLED;
     this.fullPlayerSideContentReady = false;
@@ -518,12 +529,21 @@ export class PlayerMorphController {
       this.fullPlayerPaneCount()
     );
     const epoch = this.transitionCoordinator.beginTransition();
-    this.playerMorphPhase = phase;
+    this.setPlayerMorphPhase(phase);
     this.dynamicBackgroundBinding.active = true;
     this.miniPlayerBinding.sourceVisible = false;
     this.miniPlayerBinding.sourceMarqueeActive = false;
-    this.syncSystemBarContentColor();
     return epoch;
+  }
+
+  private setPlayerMorphPhase(phase: PlayerMorphPhase): void {
+    this.playerMorphPhase = phase;
+    this.syncSystemBarContentColor();
+    if (phase === PlayerMorphPhase.OPEN) {
+      systemBarStyleController.scheduleReapplyAfterFrame(
+        new HarmonySystemBarFrameHost(this.context())
+      );
+    }
   }
 
   private isCurrentMorphTransition(epoch: number): boolean {
@@ -552,7 +572,7 @@ export class PlayerMorphController {
     if (!this.isCurrentMorphTransition(epoch)) {
       return;
     }
-    this.playerMorphPhase = PlayerMorphPhase.BACKGROUND_HANDOFF;
+    this.setPlayerMorphPhase(PlayerMorphPhase.BACKGROUND_HANDOFF);
     this.miniPlayerBinding.sourceVisible = true;
     this.context().animateTo({
       duration: PlayerMotionSpec.BACKGROUND_HANDOFF_DURATION,
@@ -561,12 +581,11 @@ export class PlayerMorphController {
         if (!this.isCurrentMorphTransition(epoch)) {
           return;
         }
-        this.playerMorphPhase = PlayerMorphPhase.IDLE;
+        this.setPlayerMorphPhase(PlayerMorphPhase.IDLE);
         this.dynamicBackgroundBinding.active = false;
         this.fullPlayerSideContentReady = false;
         this.miniPlayerBinding.sourceVisible = true;
         this.miniPlayerBinding.sourceMarqueeActive = true;
-        this.syncSystemBarContentColor();
         this.playerMorphBackgroundOpacity = 1;
         this.releaseMorphArtworkSource();
       }
@@ -719,7 +738,7 @@ export class PlayerMorphController {
           return;
         }
         if (shouldExpand) {
-          this.playerMorphPhase = PlayerMorphPhase.OPEN;
+          this.setPlayerMorphPhase(PlayerMorphPhase.OPEN);
           this.fullPlayerSideContentReady = true;
           this.releaseMorphArtworkSource();
           playbackRuntime.onFullPlayerOpened();
@@ -771,7 +790,7 @@ export class PlayerMorphController {
       ),
       onFinish: () => {
         if (this.isCurrentMorphTransition(epoch)) {
-          this.playerMorphPhase = PlayerMorphPhase.OPEN;
+          this.setPlayerMorphPhase(PlayerMorphPhase.OPEN);
           this.fullPlayerSideContentReady = true;
           this.releaseMorphArtworkSource();
           playbackRuntime.onFullPlayerOpened();
@@ -894,7 +913,7 @@ export class PlayerMorphController {
         if (!this.isCurrentMorphTransition(epoch)) {
           return;
         }
-        this.playerMorphPhase = PlayerMorphPhase.OPEN;
+        this.setPlayerMorphPhase(PlayerMorphPhase.OPEN);
         this.fullPlayerSideContentReady = true;
         this.releaseMorphArtworkSource();
       }

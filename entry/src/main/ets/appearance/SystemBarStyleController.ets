@@ -1,4 +1,4 @@
-import { window } from '@kit.ArkUI';
+import { FrameCallback, window } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
 
 const SOFT_BLACK = '#FF202020';
@@ -11,6 +11,39 @@ class SystemBarColorEntry {
   constructor(ownerId: string, contentColor: string | undefined) {
     this.ownerId = ownerId;
     this.contentColor = contentColor;
+  }
+}
+
+export abstract class SystemBarFrameHost {
+  abstract postFrameCallback(callback: FrameCallback): void;
+}
+
+export class HarmonySystemBarFrameHost extends SystemBarFrameHost {
+  private readonly uiContext: UIContext;
+
+  constructor(uiContext: UIContext) {
+    super();
+    this.uiContext = uiContext;
+  }
+
+  postFrameCallback(callback: FrameCallback): void {
+    this.uiContext.postFrameCallback(callback);
+  }
+}
+
+class SystemBarReplayFrameCallback extends FrameCallback {
+  private readonly onIdleFrame: () => void;
+
+  constructor(onIdleFrame: () => void) {
+    super();
+    this.onIdleFrame = onIdleFrame;
+  }
+
+  onFrame(_frameTimeInNano: number): void {
+  }
+
+  onIdle(_timeLeftInNano: number): void {
+    this.onIdleFrame();
   }
 }
 
@@ -61,11 +94,16 @@ export class SystemBarStyleController {
   private requestEpoch: number = 0;
   private failedRequestEpoch: number = -1;
   private applying: boolean = false;
+  private replaySchedulingEnabled: boolean = false;
+  private replayGeneration: number = 0;
+  private replayPending: boolean = false;
+  private replayFollowUpFrameHost?: SystemBarFrameHost;
 
   bindWindow(mainWindow: SystemBarWindow): void {
     if (this.mainWindow === mainWindow) {
       return;
     }
+    this.invalidateScheduledReapply();
     this.mainWindow = mainWindow;
     this.appliedContentColor = undefined;
     this.appliedStatusBarVisible = undefined;
@@ -77,6 +115,7 @@ export class SystemBarStyleController {
     if (mainWindow !== undefined && this.mainWindow !== mainWindow) {
       return;
     }
+    this.invalidateScheduledReapply();
     this.mainWindow = undefined;
     this.appliedContentColor = undefined;
     this.appliedStatusBarVisible = undefined;
@@ -88,6 +127,66 @@ export class SystemBarStyleController {
     this.appliedStatusBarVisible = undefined;
     this.failedRequestEpoch = -1;
     this.requestApply();
+  }
+
+  setReplaySchedulingEnabled(enabled: boolean): void {
+    if (this.replaySchedulingEnabled === enabled) {
+      return;
+    }
+    this.replaySchedulingEnabled = enabled;
+    if (!enabled) {
+      this.invalidateScheduledReapply();
+    }
+  }
+
+  scheduleReapplyAfterFrame(frameHost: SystemBarFrameHost): void {
+    this.scheduleFrameReplay(frameHost, false);
+  }
+
+  scheduleReapplyAcrossLayoutFrames(frameHost: SystemBarFrameHost): void {
+    this.scheduleFrameReplay(frameHost, true);
+  }
+
+  private scheduleFrameReplay(frameHost: SystemBarFrameHost, followUp: boolean): void {
+    if (!this.replaySchedulingEnabled) {
+      return;
+    }
+    if (followUp) {
+      this.replayFollowUpFrameHost = frameHost;
+    }
+    if (this.replayPending) {
+      return;
+    }
+    this.replayPending = true;
+    const generation = this.replayGeneration;
+    try {
+      frameHost.postFrameCallback(new SystemBarReplayFrameCallback((): void => {
+        if (this.replayGeneration !== generation) {
+          return;
+        }
+        this.replayPending = false;
+        const followUpFrameHost = this.replayFollowUpFrameHost;
+        this.replayFollowUpFrameHost = undefined;
+        this.reapplyCurrentStyle();
+        if (followUpFrameHost !== undefined) {
+          this.scheduleReapplyAfterFrame(followUpFrameHost);
+        }
+      }));
+    } catch (error) {
+      if (this.replayGeneration !== generation) {
+        return;
+      }
+      this.replayPending = false;
+      this.replayFollowUpFrameHost = undefined;
+      console.warn(`Unable to schedule system-bar replay: ${JSON.stringify(error)}`);
+      this.reapplyCurrentStyle();
+    }
+  }
+
+  private invalidateScheduledReapply(): void {
+    this.replayGeneration += 1;
+    this.replayPending = false;
+    this.replayFollowUpFrameHost = undefined;
   }
 
   setAutoContentColor(contentColor: string): void {
@@ -201,9 +300,14 @@ export class SystemBarStyleController {
           enableNavigationBarAnimation: true
         });
         if (this.mainWindow === targetWindow) {
-          this.appliedContentColor = desiredContentColor;
-          this.appliedStatusBarVisible = desiredStatusBarVisible;
-          this.failedRequestEpoch = -1;
+          if (this.requestEpoch === targetEpoch) {
+            this.appliedContentColor = desiredContentColor;
+            this.appliedStatusBarVisible = desiredStatusBarVisible;
+            this.failedRequestEpoch = -1;
+          } else {
+            this.appliedContentColor = undefined;
+            this.appliedStatusBarVisible = undefined;
+          }
         }
       } catch (error) {
         if (this.mainWindow === targetWindow) {

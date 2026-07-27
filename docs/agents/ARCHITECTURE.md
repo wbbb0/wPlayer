@@ -84,6 +84,7 @@ not publish state, release a resource now owned by newer work, or clear a curren
 
 - MediaPickerService owns Picker interaction and documented URI authorization.
 - MediaImporter owns import orchestration, duplicate proof and per-item outcomes.
+- LibraryRemovalService coordinates committed library deletion with post-commit Picker authorization cleanup.
 - MetadataReader owns documented media metadata and artwork extraction.
 - Format-specific readers own explicitly supported fallback parsing.
 - MusicRepository is the library facade used by stores and playback coordination.

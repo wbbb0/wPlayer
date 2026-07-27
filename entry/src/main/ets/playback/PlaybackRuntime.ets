@@ -43,6 +43,7 @@ import { OutputReconnectPolicy } from './support/OutputReconnectPolicy';
 import { DemoLibraryMode } from '../demo/DemoLibraryMode';
 import { DemoMusicLibrary } from '../demo/DemoMusicLibrary';
 import { FloatingWindowSettingsPolicy } from '../settings/FloatingWindowSettingsPolicy';
+import { LibraryRemovalService } from '../library/maintenance/LibraryRemovalService';
 import {
   PlaybackPictureInPicture,
   PlaybackPictureInPictureCommands,
@@ -66,6 +67,8 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   private readonly coverageTracker: PlaybackCoverageTracker = new PlaybackCoverageTracker();
   private readonly stateReducer: PlaybackStateReducer = new PlaybackStateReducer();
   private readonly outputReconnectPolicy: OutputReconnectPolicy = new OutputReconnectPolicy();
+  private readonly libraryRemoval: LibraryRemovalService =
+    new LibraryRemovalService(this.repository);
   private readonly pictureInPicture: PlaybackPictureInPicture;
   private pictureInPictureUIContext?: UIContext;
   private context?: common.UIAbilityContext;
@@ -1032,7 +1035,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       return;
     }
     await this.prepareForTrackRemoval([trackId]);
-    await this.repository.removeTracks([trackId]);
+    await this.libraryRemoval.removeTracks([trackId]);
   }
 
   private async loadCurrentHeroArtwork(track: QueueTrack, epoch: number): Promise<void> {

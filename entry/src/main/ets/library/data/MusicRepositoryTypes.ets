@@ -27,6 +27,16 @@ export interface LibraryMaintenanceStatus {
   total: number;
 }
 
+export interface LibraryRemovalCommit {
+  removedCount: number;
+  persistedUris: Array<string>;
+}
+
+export interface LibraryRemovalRepository {
+  commitClearLibrary(): Promise<LibraryRemovalCommit>;
+  commitRemoveTracks(trackIds: Array<number>): Promise<LibraryRemovalCommit>;
+}
+
 export interface ArtworkImportInput {
   metadata: ParsedArtwork;
   sourceHash?: string;

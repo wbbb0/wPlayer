@@ -11,6 +11,7 @@ Before changing library behavior, read:
 
 - Picker interaction and URI authorization belong to MediaPickerService.
 - Import orchestration, deduplication and per-item outcomes belong to MediaImporter.
+- Committed library deletion and post-commit URI authorization cleanup belong to LibraryRemovalService.
 - Metadata and embedded artwork extraction belong to MetadataReader and format-specific readers.
 - Relational lifecycle and schema belong to LibraryDatabase.
 - Queries and writes belong to their repository/data helpers.

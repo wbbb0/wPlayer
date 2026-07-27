@@ -26,6 +26,9 @@ import playbackPictureInPictureLifecycleTest from './PlaybackPictureInPictureLif
 import floatingWindowSettingsPolicyTest from './FloatingWindowSettingsPolicy.test';
 import bundledArtworkCatalogTest from './BundledArtworkCatalog.test';
 import systemBarStyleControllerTest from './SystemBarStyleController.test';
+import libraryRemovalServiceTest from './LibraryRemovalService.test';
+import playbackSourceCleanupTest from './PlaybackSourceCleanup.test';
+import playbackSourcePreparationTest from './PlaybackSourcePreparation.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -56,4 +59,7 @@ export default function testsuite() {
   floatingWindowSettingsPolicyTest();
   bundledArtworkCatalogTest();
   systemBarStyleControllerTest();
+  libraryRemovalServiceTest();
+  playbackSourceCleanupTest();
+  playbackSourcePreparationTest();
 }

@@ -5,6 +5,11 @@ import { media } from '@kit.MediaKit';
 import { AvailabilityState } from '../../library/model/LibraryModels';
 import { PlaybackTrack, PlayerState } from '../model/PlaybackModels';
 import { RequestEpoch } from '../support/RequestEpoch';
+import {
+  PlaybackSourceCleanup,
+  PlaybackSourceCleanupResult
+} from './PlaybackSourceCleanup';
+import { PlaybackSourcePreparation } from './PlaybackSourcePreparation';
 
 const STATE_WAIT_TIMEOUT_MS = 10000;
 const SEEK_WAIT_TIMEOUT_MS = 8000;
@@ -65,6 +70,7 @@ export class PlaybackEngine {
 
   playTrack(track: PlaybackTrack, resumePositionMs: number, playWhenReady: () => boolean): Promise<void> {
     const epoch = this.requestEpoch.begin();
+    this.rejectPendingWaits(PLAYBACK_REQUEST_SUPERSEDED);
     this.listener?.onStateChanged(PlayerState.LOADING);
     return this.enqueue(async () => {
       this.activeEpoch = epoch;
@@ -164,13 +170,14 @@ export class PlaybackEngine {
       throw new Error('音乐文件当前不可用，请重新授权或重新导入');
     }
     let sourcePreparationActive = false;
+    let sourceFile: fs.File | undefined;
+    let player: media.AVPlayer | undefined;
     try {
-      const player = await this.ensurePlayer();
+      player = await this.ensurePlayer();
       this.ensureCurrent(epoch);
       await this.resetForSource(player);
       this.ensureCurrent(epoch);
 
-      let sourceFile: fs.File;
       try {
         sourceFile = fs.openSync(track.uri, fs.OpenMode.READ_ONLY);
       } catch (error) {
@@ -184,16 +191,24 @@ export class PlaybackEngine {
       this.sourceFile = sourceFile;
       sourcePreparationActive = true;
       const initialized = this.waitForState('initialized');
-      player.fdSrc = { fd: sourceFile.fd, offset: 0, length: track.fileSize };
-      await initialized;
-      this.ensureCurrent(epoch);
-      player.audioRendererInfo = {
-        usage: audio.StreamUsage.STREAM_USAGE_MUSIC,
-        rendererFlags: 0
-      };
-      await player.prepare();
+      const sourcePlayer: media.AVPlayer = player;
+      const openedSourceFile: fs.File = sourceFile;
+      await PlaybackSourcePreparation.run(
+        initialized,
+        (): void => {
+          sourcePlayer.fdSrc = { fd: openedSourceFile.fd, offset: 0, length: track.fileSize };
+        },
+        (): void => {
+          sourcePlayer.audioRendererInfo = {
+            usage: audio.StreamUsage.STREAM_USAGE_MUSIC,
+            rendererFlags: 0
+          };
+        },
+        (): Promise<void> => sourcePlayer.prepare(),
+        (): void => this.ensureCurrent(epoch),
+        (): Promise<void> => this.discardFailedSource(sourcePlayer, openedSourceFile)
+      );
       sourcePreparationActive = false;
-      this.ensureCurrent(epoch);
       if (resumePositionMs > 0) {
         await this.seekInternal(resumePositionMs);
         this.ensureCurrent(epoch);
@@ -214,13 +229,14 @@ export class PlaybackEngine {
         this.publishConfirmedState(epoch, PlayerState.PLAYING);
       }
     } catch (error) {
+      const sourcePreparationFailed = sourcePreparationActive;
       if (error === PLAYBACK_REQUEST_SUPERSEDED) {
         throw PLAYBACK_REQUEST_SUPERSEDED;
       }
       if (error instanceof PlaybackFileError) {
         throw error;
       }
-      if (sourcePreparationActive) {
+      if (sourcePreparationFailed) {
         throw new PlaybackFileError(
           `无法解析音乐文件：${PlaybackEngine.messageOf(error)}`,
           AvailabilityState.CORRUPTED
@@ -301,15 +317,44 @@ export class PlaybackEngine {
   }
 
   private async resetForSource(player: media.AVPlayer): Promise<void> {
-    if (this.rawState !== 'idle') {
-      try {
-        await player.reset();
-        this.rawState = player.state;
-      } catch (error) {
-        throw new Error(`Unable to reset AVPlayer: ${PlaybackEngine.messageOf(error)}`);
-      }
+    const cleanup = await this.cleanupSource(player);
+    if (cleanup.resetError !== undefined) {
+      PlaybackEngine.warnCleanupError('release unusable AVPlayer', cleanup.releaseError);
+      throw new Error(`Unable to reset AVPlayer: ${PlaybackEngine.messageOf(cleanup.resetError)}`);
     }
-    this.closeSourceFile();
+  }
+
+  private async discardFailedSource(player: media.AVPlayer, sourceFile: fs.File): Promise<void> {
+    this.rejectPendingWaits(new Error('Playback source preparation abandoned'));
+    const cleanup = await this.cleanupSource(player, sourceFile, true);
+    PlaybackEngine.warnCleanupError('reset failed playback source', cleanup.resetError);
+    PlaybackEngine.warnCleanupError('release unusable AVPlayer', cleanup.releaseError);
+  }
+
+  private cleanupSource(player: media.AVPlayer,
+    expectedSourceFile?: fs.File,
+    forceReset: boolean = false): Promise<PlaybackSourceCleanupResult> {
+    return PlaybackSourceCleanup.run(
+      async (): Promise<void> => {
+        if (this.rawState !== 'released' && (forceReset || this.rawState !== 'idle')) {
+          await player.reset();
+          this.rawState = player.state;
+        }
+      },
+      async (): Promise<void> => {
+        try {
+          if (this.rawState !== 'released') {
+            await player.release();
+          }
+        } finally {
+          if (this.player === player) {
+            this.player = undefined;
+            this.rawState = 'released';
+          }
+        }
+      },
+      (): void => this.closeSourceFile(expectedSourceFile)
+    );
   }
 
   private seekInternal(positionMs: number): Promise<void> {
@@ -471,14 +516,21 @@ export class PlaybackEngine {
     }
   }
 
-  private closeSourceFile(): void {
-    if (this.sourceFile !== undefined) {
+  private closeSourceFile(expected?: fs.File): void {
+    if (this.sourceFile !== undefined &&
+      (expected === undefined || this.sourceFile === expected)) {
       try {
         fs.closeSync(this.sourceFile);
       } catch (error) {
         console.warn(`Unable to close playback file: ${PlaybackEngine.messageOf(error)}`);
       }
       this.sourceFile = undefined;
+    }
+  }
+
+  private static warnCleanupError(operation: string, error?: Object): void {
+    if (error !== undefined) {
+      console.warn(`Unable to ${operation}: ${PlaybackEngine.messageOf(error)}`);
     }
   }
 

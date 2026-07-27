@@ -36,6 +36,8 @@ import {
   ArtworkCleanupCandidate,
   DuplicateCandidate,
   ImportTrackResult,
+  LibraryRemovalCommit,
+  LibraryRemovalRepository,
   TrackImportInput
 } from './MusicRepositoryTypes';
 import { ArtworkPaletteUpdate, PaletteRefreshAsset } from './MusicRepositoryTypes';
@@ -69,7 +71,7 @@ export {
  * Lifecycle and destructive maintenance remain here; query and import workflows are
  * delegated to dedicated collaborators so their transactional boundaries are explicit.
  */
-export class MusicRepository {
+export class MusicRepository implements LibraryRemovalRepository {
   private readonly database: LibraryDatabase = new LibraryDatabase();
   private readonly queries: MusicLibraryQueries = new MusicLibraryQueries(this.database);
   private readonly importer: MusicLibraryImporter = new MusicLibraryImporter(this.database);
@@ -131,12 +133,33 @@ export class MusicRepository {
     await this.database.close();
   }
 
-  async clearLibrary(): Promise<void> {
+  async commitClearLibrary(): Promise<LibraryRemovalCommit> {
     if (DemoLibraryMode.isEnabled()) {
-      return;
+      return { removedCount: 0, persistedUris: [] };
     }
-    await this.database.enqueueWrite(async (transaction: relationalStore.Transaction) => {
+    const commit = await this.database.enqueueWrite(
+      async (transaction: relationalStore.Transaction): Promise<LibraryRemovalCommit> => {
       const now = Date.now();
+      const persistedUris: Array<string> = [];
+      let removedCount = 0;
+      const persistedResult = await transaction.querySql(
+        'SELECT uri FROM media_file WHERE authorization_persisted = 1 ORDER BY id'
+      );
+      try {
+        while (persistedResult.goToNextRow()) {
+          persistedUris.push(persistedResult.getString(0));
+        }
+      } finally {
+        persistedResult.close();
+      }
+      const countResult = await transaction.querySql('SELECT COUNT(*) FROM track');
+      try {
+        if (countResult.goToNextRow()) {
+          removedCount = countResult.getLong(0);
+        }
+      } finally {
+        countResult.close();
+      }
       await transaction.execute('DELETE FROM track_artwork');
       await transaction.execute('DELETE FROM track_credit');
       await transaction.execute('DELETE FROM track_genre');
@@ -152,12 +175,18 @@ export class MusicRepository {
         'UPDATE artwork_asset SET ref_count = 0, unreferenced_at = ? WHERE ref_count <> 0 OR unreferenced_at IS NULL',
         [now]
       );
-    });
+      return {
+        removedCount: removedCount,
+        persistedUris: persistedUris
+      };
+      }
+    );
     this.invalidations.publish(
       MusicRepository.allLibraryAndPlaylistProjections(),
       RepositoryInvalidationReason.LIBRARY_CLEARED,
       PlaylistDetailTarget.ALL
     );
+    return commit;
   }
 
   async rebuildSortIndexes(): Promise<void> {
@@ -271,22 +300,37 @@ export class MusicRepository {
     return this.queries.getUnavailableTracks();
   }
 
-  async removeTracks(trackIds: Array<number>): Promise<number> {
+  async commitRemoveTracks(trackIds: Array<number>): Promise<LibraryRemovalCommit> {
     if (DemoLibraryMode.isEnabled()) {
-      return 0;
+      return { removedCount: 0, persistedUris: [] };
     }
     const uniqueIds = Array.from(new Set<number>(trackIds.filter((id: number) => id >= 0)));
     if (uniqueIds.length === 0) {
-      return 0;
+      return { removedCount: 0, persistedUris: [] };
     }
-    const removed = await this.database.enqueueWrite(
-      async (transaction: relationalStore.Transaction): Promise<number> => {
+    const commit = await this.database.enqueueWrite(
+      async (transaction: relationalStore.Transaction): Promise<LibraryRemovalCommit> => {
       const now = Date.now();
       let removed = 0;
+      const persistedUris: Array<string> = [];
       const affectedAlbums: Set<number> = new Set<number>();
       for (let offset = 0; offset < uniqueIds.length; offset += 300) {
         const batch = uniqueIds.slice(offset, Math.min(offset + 300, uniqueIds.length));
         const placeholders = batch.map((_id: number) => '?').join(', ');
+        const persistedResult = await transaction.querySql(
+          `SELECT m.uri FROM media_file m
+           INNER JOIN track t ON t.media_file_id = m.id
+           WHERE t.id IN (${placeholders}) AND m.authorization_persisted = 1
+           ORDER BY t.id`,
+          batch
+        );
+        try {
+          while (persistedResult.goToNextRow()) {
+            persistedUris.push(persistedResult.getString(0));
+          }
+        } finally {
+          persistedResult.close();
+        }
         const albumResult = await transaction.querySql(
           `SELECT DISTINCT album_id FROM track
            WHERE id IN (${placeholders}) AND album_id IS NOT NULL`,
@@ -347,17 +391,20 @@ export class MusicRepository {
         )`
       );
       await transaction.execute('DELETE FROM genre WHERE id NOT IN (SELECT genre_id FROM track_genre)');
-      return removed;
+      return {
+        removedCount: removed,
+        persistedUris: persistedUris
+      };
       }
     );
-    if (removed > 0) {
+    if (commit.removedCount > 0) {
       this.invalidations.publish(
         MusicRepository.allLibraryAndPlaylistProjections(),
         RepositoryInvalidationReason.TRACKS_REMOVED,
         PlaylistDetailTarget.ALL
       );
     }
-    return removed;
+    return commit;
   }
 
   getAlbumCatalog(field: AlbumSortField, direction: SortDirection): Promise<LibraryCatalog> {
@@ -616,13 +663,6 @@ export class MusicRepository {
 
   hasUri(uri: string): Promise<boolean> {
     return this.queries.hasUri(uri);
-  }
-
-  getPersistedMediaUris(): Promise<Array<string>> {
-    if (DemoLibraryMode.isEnabled()) {
-      return Promise.resolve([]);
-    }
-    return this.queries.getPersistedMediaUris();
   }
 
   hasUris(uris: Array<string>): Promise<Array<string>> {

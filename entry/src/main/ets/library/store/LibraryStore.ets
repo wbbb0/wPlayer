@@ -35,6 +35,7 @@ import { LibraryTrackProjection, TrackProjectionSnapshot } from './LibraryTrackP
 import { LibraryPlaybackBridge } from './LibraryPlaybackBridge';
 import { ImportPerformanceTrace } from '../importer/ImportPerformanceTrace';
 import { ImportDetailPolicy } from '../importer/ImportDetailPolicy';
+import { LibraryRemovalService } from '../maintenance/LibraryRemovalService';
 import {
   ArtworkPaletteUpdate,
   LibraryMaintenanceStatus,
@@ -189,6 +190,7 @@ export class LibraryStore {
   sortIndexError: string = '';
   private readonly repository: MusicRepository;
   private readonly playbackBridge?: LibraryPlaybackBridge;
+  private readonly removalService: LibraryRemovalService;
   private importer?: MediaImporter;
   private artworkCache?: ArtworkCache;
   private settings?: SettingsRepository;
@@ -217,6 +219,7 @@ export class LibraryStore {
   constructor(repository?: MusicRepository, playbackBridge?: LibraryPlaybackBridge) {
     this.repository = repository === undefined ? new MusicRepository() : repository;
     this.playbackBridge = playbackBridge;
+    this.removalService = new LibraryRemovalService(this.repository);
   }
 
   addArtworkChangeListener(listener: ArtworkChangeListener): void {
@@ -263,7 +266,12 @@ export class LibraryStore {
       if (databaseRebuilt) {
         this.artworkCache.clearAll();
       }
-      this.importer = new MediaImporter(context, this.repository, this.artworkCache);
+      this.importer = new MediaImporter(
+        context,
+        this.repository,
+        this.artworkCache,
+        this.removalService
+      );
       await this.importer.cleanupArtworkStorage();
       this.lastSeenInvalidationRevision = this.repository.currentInvalidationRevision();
       await this.refresh();
@@ -712,9 +720,9 @@ export class LibraryStore {
     this.errorMessage = '';
     try {
       await this.playbackBridge?.prepareForTrackRemoval(trackIds);
-      const removed = await this.repository.removeTracks(trackIds);
+      const commit = await this.removalService.removeTracks(trackIds);
       await this.synchronizeCommittedChanges();
-      this.lastMessage = `已从音乐库移除 ${removed} 首失效文件记录`;
+      this.lastMessage = `已从音乐库移除 ${commit.removedCount} 首失效文件记录`;
     } catch (error) {
       this.errorMessage = LibraryStore.errorMessageOf(error);
     } finally {

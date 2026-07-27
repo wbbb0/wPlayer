@@ -59,6 +59,7 @@ import {
   ensureReadPermissions,
   selectAudioFiles
 } from './MediaPickerService';
+import { LibraryRemovalService } from '../maintenance/LibraryRemovalService';
 
 export type ImportProgressCallback = (progress: ImportProgress) => void;
 export type ImportStartedCallback = () => void;
@@ -122,6 +123,7 @@ export class MediaImporter {
   private readonly context: common.UIAbilityContext;
   private readonly repository: MusicRepository;
   private readonly artworkCache: ArtworkCache;
+  private readonly removalService: LibraryRemovalService;
   private cancelRequested: boolean = false;
   private importing: boolean = false;
   private readonly artworkPreparations: Map<string, Promise<ArtworkCacheResult>> = new Map();
@@ -130,10 +132,13 @@ export class MediaImporter {
   private artworkCleanupTail: Promise<void> = Promise.resolve();
   private activeArtworkSession?: ArtworkWorkSession;
 
-  constructor(context: common.UIAbilityContext, repository: MusicRepository, artworkCache: ArtworkCache) {
+  constructor(context: common.UIAbilityContext, repository: MusicRepository, artworkCache: ArtworkCache,
+    removalService?: LibraryRemovalService) {
     this.context = context;
     this.repository = repository;
     this.artworkCache = artworkCache;
+    this.removalService = removalService === undefined ?
+      new LibraryRemovalService(repository) : removalService;
   }
 
   isImporting(): boolean {
@@ -215,9 +220,7 @@ export class MediaImporter {
       throw new Error('Cannot clear the library during an import');
     }
     await this.artworkCleanupTail;
-    const persistedUris = await this.repository.getPersistedMediaUris();
-    await revokeReadPermissions(persistedUris);
-    await this.repository.clearLibrary();
+    await this.removalService.clearLibrary();
     const assets = await this.repository.getUnreferencedArtworkAssets();
     for (let index = 0; index < assets.length; index += 1) {
       const asset = assets[index];

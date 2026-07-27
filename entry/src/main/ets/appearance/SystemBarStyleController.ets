@@ -14,8 +14,44 @@ class SystemBarColorEntry {
   }
 }
 
+export abstract class SystemBarWindow {
+  abstract setSystemBarEnable(names: Array<'status' | 'navigation'>): Promise<void>;
+  abstract setSystemBarProperties(systemBarProperties: window.SystemBarProperties): Promise<void>;
+}
+
+export class HarmonySystemBarWindow extends SystemBarWindow {
+  private readonly targetWindow: window.Window;
+
+  constructor(targetWindow: window.Window) {
+    super();
+    this.targetWindow = targetWindow;
+  }
+
+  setSystemBarEnable(names: Array<'status' | 'navigation'>): Promise<void> {
+    try {
+      return this.targetWindow.setWindowSystemBarEnable(names);
+    } catch (error) {
+      const businessError = error as BusinessError;
+      return Promise.reject(new Error(
+        `Unable to enable system bars: ${businessError.code}, ${businessError.message}`
+      ));
+    }
+  }
+
+  setSystemBarProperties(systemBarProperties: window.SystemBarProperties): Promise<void> {
+    try {
+      return this.targetWindow.setWindowSystemBarProperties(systemBarProperties);
+    } catch (error) {
+      const businessError = error as BusinessError;
+      return Promise.reject(new Error(
+        `Unable to set system-bar properties: ${businessError.code}, ${businessError.message}`
+      ));
+    }
+  }
+}
+
 export class SystemBarStyleController {
-  private mainWindow?: window.Window;
+  private mainWindow?: SystemBarWindow;
   private readonly colorEntries: Array<SystemBarColorEntry> = [];
   private autoContentColor: string = SOFT_BLACK;
   private fullscreenOverlayActive: boolean = false;
@@ -26,7 +62,7 @@ export class SystemBarStyleController {
   private failedRequestEpoch: number = -1;
   private applying: boolean = false;
 
-  bindWindow(mainWindow: window.Window): void {
+  bindWindow(mainWindow: SystemBarWindow): void {
     if (this.mainWindow === mainWindow) {
       return;
     }
@@ -37,7 +73,7 @@ export class SystemBarStyleController {
     this.requestApply();
   }
 
-  unbindWindow(mainWindow?: window.Window): void {
+  unbindWindow(mainWindow?: SystemBarWindow): void {
     if (mainWindow !== undefined && this.mainWindow !== mainWindow) {
       return;
     }
@@ -45,6 +81,13 @@ export class SystemBarStyleController {
     this.appliedContentColor = undefined;
     this.appliedStatusBarVisible = undefined;
     this.failedRequestEpoch = -1;
+  }
+
+  reapplyCurrentStyle(): void {
+    this.appliedContentColor = undefined;
+    this.appliedStatusBarVisible = undefined;
+    this.failedRequestEpoch = -1;
+    this.requestApply();
   }
 
   setAutoContentColor(contentColor: string): void {
@@ -146,10 +189,10 @@ export class SystemBarStyleController {
       const targetWindow = this.mainWindow;
       const targetEpoch = this.requestEpoch;
       try {
-        await targetWindow.setWindowSystemBarEnable(
+        await targetWindow.setSystemBarEnable(
           desiredStatusBarVisible ? ['status', 'navigation'] : ['navigation']
         );
-        await targetWindow.setWindowSystemBarProperties({
+        await targetWindow.setSystemBarProperties({
           statusBarColor: '#00000000',
           statusBarContentColor: desiredContentColor,
           navigationBarColor: '#00000000',

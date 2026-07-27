@@ -24,6 +24,7 @@ import playerMorphPolicyTest from './PlayerMorphPolicy.test';
 import playbackPictureInPicturePolicyTest from './PlaybackPictureInPicturePolicy.test';
 import floatingWindowSettingsPolicyTest from './FloatingWindowSettingsPolicy.test';
 import bundledArtworkCatalogTest from './BundledArtworkCatalog.test';
+import systemBarStyleControllerTest from './SystemBarStyleController.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -52,4 +53,5 @@ export default function testsuite() {
   playbackPictureInPicturePolicyTest();
   floatingWindowSettingsPolicyTest();
   bundledArtworkCatalogTest();
+  systemBarStyleControllerTest();
 }

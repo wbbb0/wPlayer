@@ -1,17 +1,40 @@
 import { AbilityConstant, Configuration, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { window } from '@kit.ArkUI';
+import { FrameCallback, window } from '@kit.ArkUI';
 import { appRuntimeLifecycle } from '../application/runtime/AppRuntimeLifecycle';
 import { AppAppearancePalette, appAppearanceController } from '../appearance/AppAppearance';
-import { systemBarStyleController } from '../appearance/SystemBarStyleController';
+import {
+  HarmonySystemBarWindow,
+  SystemBarWindow,
+  systemBarStyleController
+} from '../appearance/SystemBarStyleController';
 import { playbackRuntime } from '../playback/PlaybackRuntime';
 
 const DOMAIN = 0x0000;
 const TAG = 'wPlayer/EntryAbility';
+
+class ForegroundSystemBarFrameCallback extends FrameCallback {
+  private readonly onIdleFrame: () => void;
+
+  constructor(onIdleFrame: () => void) {
+    super();
+    this.onIdleFrame = onIdleFrame;
+  }
+
+  onFrame(_frameTimeInNano: number): void {
+  }
+
+  onIdle(_timeLeftInNano: number): void {
+    this.onIdleFrame();
+  }
+}
+
 export default class EntryAbility extends UIAbility {
   private mainWindow?: window.Window;
+  private systemBarWindow?: SystemBarWindow;
   private runtimeLease: number = 0;
+  private foregroundEpoch: number = 0;
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     try {
@@ -58,9 +81,9 @@ export default class EntryAbility extends UIAbility {
       try {
         this.mainWindow = windowStage.getMainWindowSync();
         await this.mainWindow.setWindowLayoutFullScreen(true);
-        await this.mainWindow.setWindowSystemBarEnable(['status', 'navigation']);
         await this.applyMainWindowAppearance();
-        systemBarStyleController.bindWindow(this.mainWindow);
+        this.systemBarWindow = new HarmonySystemBarWindow(this.mainWindow);
+        systemBarStyleController.bindWindow(this.systemBarWindow);
       } catch (windowError) {
         const businessError = windowError as BusinessError;
         hilog.error(DOMAIN, TAG, 'Failed to configure main window. Cause: %{public}s', JSON.stringify(businessError));
@@ -82,20 +105,44 @@ export default class EntryAbility extends UIAbility {
     }
   }
 
+  private scheduleForegroundSystemBarReapply(foregroundEpoch: number): void {
+    const targetWindow = this.mainWindow;
+    if (targetWindow === undefined) {
+      return;
+    }
+    try {
+      targetWindow.getUIContext().postFrameCallback(new ForegroundSystemBarFrameCallback((): void => {
+        if (this.foregroundEpoch === foregroundEpoch && this.mainWindow === targetWindow) {
+          systemBarStyleController.reapplyCurrentStyle();
+        }
+      }));
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, 'Failed to schedule system-bar replay. Cause: %{public}s', JSON.stringify(error));
+      if (this.foregroundEpoch === foregroundEpoch && this.mainWindow === targetWindow) {
+        systemBarStyleController.reapplyCurrentStyle();
+      }
+    }
+  }
+
   onWindowStageDestroy(): void {
-    systemBarStyleController.unbindWindow(this.mainWindow);
+    this.foregroundEpoch += 1;
+    systemBarStyleController.unbindWindow(this.systemBarWindow);
+    this.systemBarWindow = undefined;
     this.mainWindow = undefined;
     hilog.info(DOMAIN, TAG, 'Window stage destroyed');
   }
 
   onForeground(): void {
+    const foregroundEpoch = ++this.foregroundEpoch;
     appAppearanceController.notifyChanged();
     this.applyMainWindowAppearance();
+    this.scheduleForegroundSystemBarReapply(foregroundEpoch);
     playbackRuntime.onForeground();
     hilog.info(DOMAIN, TAG, 'Ability entered foreground');
   }
 
   onBackground(): void {
+    this.foregroundEpoch += 1;
     playbackRuntime.onBackground();
     hilog.info(DOMAIN, TAG, 'Ability entered background');
   }

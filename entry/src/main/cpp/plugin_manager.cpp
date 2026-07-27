@@ -2,12 +2,14 @@
 
 #include "apple_music_renderer.h"
 
+#include <algorithm>
 #include <cmath>
 #include <hilog/log.h>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 namespace wplayer {
 namespace {
@@ -22,6 +24,7 @@ struct ComponentState {
 };
 
 std::mutex g_componentMutex;
+std::mutex g_frameCallbackMutex;
 std::unordered_map<std::string, ComponentState> g_components;
 OH_NativeXComponent_Callback g_surfaceCallbacks {};
 
@@ -54,6 +57,14 @@ std::shared_ptr<AppleMusicRenderer> RendererFor(OH_NativeXComponent *component)
     return iterator->second.renderer;
 }
 
+auto ComponentForPointerLocked(OH_NativeXComponent *component)
+{
+    return std::find_if(g_components.begin(), g_components.end(),
+        [component](const auto &entry) {
+            return entry.second.component == component;
+        });
+}
+
 bool NativeComponentFromCallback(napi_env env, napi_callback_info info,
     size_t *argumentCount, napi_value *arguments, OH_NativeXComponent **component)
 {
@@ -70,7 +81,8 @@ bool NativeComponentFromCallback(napi_env env, napi_callback_info info,
         *component != nullptr;
 }
 
-void ConfigureFrameCallback(OH_NativeXComponent *component, bool paused);
+bool ConfigureFrameCallback(OH_NativeXComponent *component, bool updatePaused,
+    bool requestedPaused, bool &effectivePaused);
 
 void OnFrame(OH_NativeXComponent *component, uint64_t timestamp, uint64_t)
 {
@@ -80,16 +92,29 @@ void OnFrame(OH_NativeXComponent *component, uint64_t timestamp, uint64_t)
     }
 }
 
-void ConfigureFrameCallback(OH_NativeXComponent *component, bool paused)
+bool ConfigureFrameCallback(OH_NativeXComponent *component, bool updatePaused,
+    bool requestedPaused, bool &effectivePaused)
 {
     if (component == nullptr) {
-        return;
+        return false;
+    }
+    std::lock_guard<std::mutex> callbackLock(g_frameCallbackMutex);
+    {
+        std::lock_guard<std::mutex> componentLock(g_componentMutex);
+        const auto iterator = ComponentForPointerLocked(component);
+        if (iterator == g_components.end()) {
+            return false;
+        }
+        if (updatePaused) {
+            iterator->second.paused = requestedPaused;
+        }
+        effectivePaused = iterator->second.paused;
     }
     OH_NativeXComponent_UnregisterOnFrameCallback(component);
-    if (paused) {
-        return;
+    if (!effectivePaused) {
+        OH_NativeXComponent_RegisterOnFrameCallback(component, OnFrame);
     }
-    OH_NativeXComponent_RegisterOnFrameCallback(component, OnFrame);
+    return true;
 }
 
 void OnSurfaceCreated(OH_NativeXComponent *component, void *window)
@@ -107,19 +132,8 @@ void OnSurfaceCreated(OH_NativeXComponent *component, void *window)
             "Unable to initialize v3 surface");
         return;
     }
-    bool paused = false;
-    {
-        std::string id;
-        if (ComponentId(component, id)) {
-            std::lock_guard<std::mutex> lock(g_componentMutex);
-            const auto iterator = g_components.find(id);
-            if (iterator != g_components.end()) {
-                paused = iterator->second.paused;
-            }
-        }
-    }
-    ConfigureFrameCallback(component, paused);
-    if (!paused) {
+    bool paused = true;
+    if (ConfigureFrameCallback(component, false, false, paused) && !paused) {
         renderer->Render(0.0);
     }
 }
@@ -140,8 +154,19 @@ void OnSurfaceChanged(OH_NativeXComponent *component, void *window)
 
 void OnSurfaceDestroyed(OH_NativeXComponent *component, void *)
 {
-    ConfigureFrameCallback(component, true);
-    const auto renderer = RendererFor(component);
+    std::shared_ptr<AppleMusicRenderer> renderer;
+    {
+        std::lock_guard<std::mutex> callbackLock(g_frameCallbackMutex);
+        {
+            std::lock_guard<std::mutex> componentLock(g_componentMutex);
+            const auto iterator = ComponentForPointerLocked(component);
+            if (iterator != g_components.end()) {
+                renderer = std::move(iterator->second.renderer);
+                g_components.erase(iterator);
+            }
+        }
+        OH_NativeXComponent_UnregisterOnFrameCallback(component);
+    }
     if (renderer != nullptr) {
         renderer->Release();
     }
@@ -193,15 +218,8 @@ napi_value PluginManager::SetPaused(napi_env env, napi_callback_info info)
     if (renderer != nullptr) {
         renderer->SetPaused(paused);
     }
-    std::string id;
-    if (ComponentId(component, id)) {
-        std::lock_guard<std::mutex> lock(g_componentMutex);
-        const auto iterator = g_components.find(id);
-        if (iterator != g_components.end() && iterator->second.component == component) {
-            iterator->second.paused = paused;
-        }
-    }
-    ConfigureFrameCallback(component, paused);
+    bool effectivePaused = paused;
+    ConfigureFrameCallback(component, true, paused, effectivePaused);
     return nullptr;
 }
 
@@ -341,14 +359,19 @@ void PluginManager::Export(napi_env env, napi_value exports)
     if (!ComponentId(component, id)) {
         return;
     }
+    std::shared_ptr<AppleMusicRenderer> displacedRenderer;
     {
         std::lock_guard<std::mutex> lock(g_componentMutex);
         auto &state = g_components[id];
         if (state.renderer == nullptr || state.component != component) {
+            displacedRenderer = std::move(state.renderer);
             state.renderer = std::make_shared<AppleMusicRenderer>();
             state.paused = false;
         }
         state.component = component;
+    }
+    if (displacedRenderer != nullptr) {
+        displacedRenderer->Release();
     }
 
     g_surfaceCallbacks.OnSurfaceCreated = OnSurfaceCreated;

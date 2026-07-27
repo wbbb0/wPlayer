@@ -89,7 +89,9 @@ not publish state, release a resource now owned by newer work, or clear a curren
 - Format-specific readers own explicitly supported fallback parsing.
 - MusicRepository is the library facade used by stores and playback coordination.
 - LibraryDatabase owns schema creation, versioning and relational-store lifecycle.
-- MusicLibraryQueries and MusicLibraryImporter own query and persistence operations respectively.
+- MusicLibraryQueries is the stable repository-facing query facade. Track, album, detail/navigation and maintenance
+  data-access classes own their same-domain reads and writes; MusicRepository retains projection invalidation.
+- MusicLibraryImporter owns transactional import persistence.
 - LibraryStore owns observable library UI state and session-only operation reports.
 - ArtworkCache owns persistent resized artwork files; ArtworkMemoryCache owns playback-time decoded artwork.
 

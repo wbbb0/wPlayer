@@ -3,8 +3,7 @@ import { FullPlayerContent } from './FullPlayerContent';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import {
   FullPlayerPage,
-  PlayerFrame,
-  PlayerPoint
+  PlayerFrame
 } from './PlayerMotion';
 
 @Component
@@ -16,10 +15,12 @@ export struct PlayerGeometryProbe {
   @Prop rootFrame: PlayerFrame = { x: 0, y: 0, width: 0, height: 0 };
   @Prop paneCount: number = 1;
   @Prop primaryContentColor: string = '';
-  @Prop previousArtworkTarget: PlayerPoint = { x: 0, y: 0 };
-  @Prop previousCenteredArtworkTarget: PlayerPoint = { x: 0, y: 0 };
-  onArtworkTarget: (target: PlayerPoint) => void = (_target: PlayerPoint): void => {};
-  onCenteredArtworkTarget: (target: PlayerPoint) => void = (_target: PlayerPoint): void => {};
+  @Prop artworkSourceWidth: number = 0;
+  @Prop artworkSourceHeight: number = 0;
+  @Prop previousArtworkFrame: PlayerFrame = { x: 0, y: 0, width: 0, height: 0 };
+  @Prop previousCenteredArtworkFrame: PlayerFrame = { x: 0, y: 0, width: 0, height: 0 };
+  onArtworkTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
+  onCenteredArtworkTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
   onPlaybackButtonTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
 
   build() {
@@ -35,13 +36,15 @@ export struct PlayerGeometryProbe {
         pagePosition: FullPlayerPage.COVER,
         paneCount: this.paneCount,
         primaryContentColor: this.primaryContentColor,
-        previousArtworkTarget: this.previousArtworkTarget,
-        previousCenteredArtworkTarget: this.previousCenteredArtworkTarget,
+        artworkSourceWidth: this.artworkSourceWidth,
+        artworkSourceHeight: this.artworkSourceHeight,
+        previousArtworkFrame: this.previousArtworkFrame,
+        previousCenteredArtworkFrame: this.previousCenteredArtworkFrame,
         onClose: (): void => {},
-        onArtworkTarget: (target: PlayerPoint): void => {
+        onArtworkTarget: (target: PlayerFrame): void => {
           this.onArtworkTarget(target);
         },
-        onCenteredArtworkTarget: (target: PlayerPoint): void => {
+        onCenteredArtworkTarget: (target: PlayerFrame): void => {
           this.onCenteredArtworkTarget(target);
         },
         onPlaybackButtonTarget: (target: PlayerFrame): void => {

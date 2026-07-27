@@ -3,8 +3,7 @@ import {
   FullPlayerPage,
   FullPlayerPagerSpec,
   PlayerFrame,
-  PlayerLayoutSpec,
-  PlayerPoint
+  PlayerLayoutSpec
 } from './PlayerMotion';
 import { PlayerImageIcon } from './PlayerControls';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
@@ -40,13 +39,19 @@ export struct FullPlayerContent {
   @Prop activePage: FullPlayerPage = FullPlayerPage.COVER;
   @Prop sideContentReady: boolean = true;
   @Prop primaryContentColor: string = '#FFFFFFFF';
-  @Prop previousArtworkTarget: PlayerPoint = {
+  @Prop artworkSourceWidth: number = 0;
+  @Prop artworkSourceHeight: number = 0;
+  @Prop previousArtworkFrame: PlayerFrame = {
     x: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_X,
-    y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y
+    y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y,
+    width: PlayerLayoutSpec.FULL_ARTWORK_SIZE,
+    height: PlayerLayoutSpec.FULL_ARTWORK_SIZE
   };
-  @Prop previousCenteredArtworkTarget: PlayerPoint = {
+  @Prop previousCenteredArtworkFrame: PlayerFrame = {
     x: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_X,
-    y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y
+    y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y,
+    width: PlayerLayoutSpec.FULL_ARTWORK_SIZE,
+    height: PlayerLayoutSpec.FULL_ARTWORK_SIZE
   };
   onClose: () => void = (): void => {};
   onNavigatePage: (page: FullPlayerPage) => void = (_page: FullPlayerPage): void => {};
@@ -63,8 +68,8 @@ export struct FullPlayerContent {
     (_trackIds: Array<number>): void => {};
   onCompletedCollectionChange: (enabled: boolean) => void =
     (_enabled: boolean): void => {};
-  onArtworkTarget: (target: PlayerPoint) => void = (_target: PlayerPoint): void => {};
-  onCenteredArtworkTarget: (target: PlayerPoint) => void = (_target: PlayerPoint): void => {};
+  onArtworkTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
+  onCenteredArtworkTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
   onPlaybackButtonTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
   @State private queueSelectionStore: FullPlayerQueueSelectionStore =
     new FullPlayerQueueSelectionStore();
@@ -247,8 +252,10 @@ export struct FullPlayerContent {
       pagePosition: this.pagePosition,
       paneCount: this.paneCount,
       primaryContentColor: this.contentColor(),
-      previousArtworkTarget: this.previousArtworkTarget,
-      previousCenteredArtworkTarget: this.previousCenteredArtworkTarget,
+      artworkSourceWidth: this.artworkSourceWidth,
+      artworkSourceHeight: this.artworkSourceHeight,
+      previousArtworkFrame: this.previousArtworkFrame,
+      previousCenteredArtworkFrame: this.previousCenteredArtworkFrame,
       onClose: this.onClose,
       onNavigatePage: this.onNavigatePage,
       onSeek: this.onSeek,
@@ -292,8 +299,10 @@ export struct FullPlayerContent {
       pagePosition: this.pagePosition,
       paneCount: this.paneCount,
       primaryContentColor: this.contentColor(),
-      previousArtworkTarget: this.previousArtworkTarget,
-      previousCenteredArtworkTarget: this.previousCenteredArtworkTarget,
+      artworkSourceWidth: this.artworkSourceWidth,
+      artworkSourceHeight: this.artworkSourceHeight,
+      previousArtworkFrame: this.previousArtworkFrame,
+      previousCenteredArtworkFrame: this.previousCenteredArtworkFrame,
       onClose: this.onClose,
       onNavigatePage: this.onNavigatePage,
       onSeek: this.onSeek,
@@ -406,17 +415,26 @@ export struct FullPlayerContent {
     if (this.isUltraCompact()) {
       this.PlayerPages()
     } else if (this.measuresArtworkTarget) {
-      Column() {
-        Stack().height(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE)
+      if (this.paneCount > 1) {
         Stack({ alignContent: Alignment.TopStart }) {
           this.CoverPage()
         }
-        .layoutWeight(1)
         .width('100%')
+        .height('100%')
+        .padding({ top: this.topInset })
+      } else {
+        Column() {
+          Stack().height(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE)
+          Stack({ alignContent: Alignment.TopStart }) {
+            this.CoverPage()
+          }
+          .layoutWeight(1)
+          .width('100%')
+        }
+        .width('100%')
+        .height('100%')
+        .padding({ top: this.topInset })
       }
-      .width('100%')
-      .height('100%')
-      .padding({ top: this.topInset + PlayerLayoutSpec.FULL_PLAYER_TOP_INSET })
     } else if (this.paneCount > 1) {
       Stack({ alignContent: Alignment.TopStart }) {
         this.PlayerPages()
@@ -424,7 +442,7 @@ export struct FullPlayerContent {
       }
       .width('100%')
       .height('100%')
-      .padding({ top: this.topInset + PlayerLayoutSpec.FULL_PLAYER_TOP_INSET })
+      .padding({ top: this.topInset })
     } else {
       Column() {
         this.Header()
@@ -436,7 +454,7 @@ export struct FullPlayerContent {
       }
       .width('100%')
       .height('100%')
-      .padding({ top: this.topInset + PlayerLayoutSpec.FULL_PLAYER_TOP_INSET })
+      .padding({ top: this.topInset })
     }
   }
 }

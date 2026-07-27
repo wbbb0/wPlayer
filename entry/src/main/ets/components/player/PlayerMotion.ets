@@ -368,11 +368,10 @@ export class PlayerLayoutSpec {
   static readonly FULL_PLAYER_NON_ARTWORK_HEIGHT: number =
     PlayerLayoutSpec.FULL_PLAYER_NON_ARTWORK_BASE_HEIGHT +
       PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE;
-  static readonly FULL_PLAYER_TOP_INSET: number = 18;
-  static readonly FULL_PLAYER_BOTTOM_INSET: number = 10;
   static readonly FULL_PLAYER_PAGE_HORIZONTAL_INSET: number = 20;
   static readonly FULL_PLAYER_LYRICS_HORIZONTAL_INSET: number = 28;
   static readonly FULL_PLAYER_PAGE_TOP_INSET: number = 12;
+  static readonly FULL_PLAYER_ARTWORK_METADATA_GAP: number = 20;
   static readonly FULL_PLAYER_CLOSE_BUTTON_SIZE: number = 52;
   static readonly FULL_PLAYER_CLOSE_ICON_SIZE: number =
     PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE * 0.45;

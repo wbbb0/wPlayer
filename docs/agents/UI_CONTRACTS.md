@@ -116,6 +116,13 @@ suppressing another.
   visually dominant cover artwork; narrower or short windows retain the single-pane pager.
 - Full-player cover layouts keep artwork visually dominant by sizing playback-button containers independently from
   their enlarged visible icons. Visible glyphs and metadata must remain clear of the cover.
+- Full-player artwork preserves its source aspect ratio and expands within the remaining rectangular cover region;
+  artwork with unknown dimensions uses a square fallback. List, grid and mini-player artwork retain their stable
+  square geometry.
+- In regular full-player layouts, keep the collapse button at the leading top position. The cover region reserves
+  only through the button's lower edge and adds no player-specific top offset beyond the system avoid area.
+- Full-player lyrics and queue scroll viewports extend to the physical bottom edge. Apply the system bottom avoid
+  inset as scroll-content end spacing so the final item remains reachable above system UI.
 - Freeze source and destination geometry when a transition begins.
 - Use one overlay artwork instance.
 - Drive position, scale, corner radius and shadow from one progress value.

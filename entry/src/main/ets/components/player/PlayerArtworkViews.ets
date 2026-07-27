@@ -1,7 +1,6 @@
 import { image } from '@kit.ImageKit';
 import { curves } from '@kit.ArkUI';
 import { ArtworkFitMode, ArtworkView } from '../artwork/ArtworkView';
-import { ArtworkLayout } from '../artwork/ArtworkLayout';
 import { BundledArtworkCatalog } from '../../library/artwork/BundledArtworkCatalog';
 import { PlayerLayoutSpec, PlayerMotionSpec } from './PlayerMotion';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
@@ -28,26 +27,13 @@ export struct PlayerMiniArtwork {
 @Component
 export struct PlayerHeroArtwork {
   @ObjectLink playerStore: PlayerStore;
-  @Prop slotSize: number = PlayerLayoutSpec.FULL_ARTWORK_SIZE;
+  @Prop artworkWidth: number = PlayerLayoutSpec.FULL_ARTWORK_SIZE;
+  @Prop artworkHeight: number = PlayerLayoutSpec.FULL_ARTWORK_SIZE;
   @Prop cornerRadius: number = PlayerLayoutSpec.FULL_ARTWORK_RADIUS;
   @Prop interpolation: ImageInterpolation = ImageInterpolation.High;
 
-  private artworkWidth(): number {
-    return ArtworkLayout.containedSize(
-      this.playerStore.currentTrack?.artworkWidth ?? 0,
-      this.playerStore.currentTrack?.artworkHeight ?? 0,
-      this.slotSize,
-      this.slotSize
-    ).width;
-  }
-
-  private artworkHeight(): number {
-    return ArtworkLayout.containedSize(
-      this.playerStore.currentTrack?.artworkWidth ?? 0,
-      this.playerStore.currentTrack?.artworkHeight ?? 0,
-      this.slotSize,
-      this.slotSize
-    ).height;
+  private artworkAspectRatio(): number {
+    return this.artworkHeight > 0 ? this.artworkWidth / this.artworkHeight : 1;
   }
 
   private artworkSource(): image.PixelMap | ResourceStr {
@@ -66,9 +52,13 @@ export struct PlayerHeroArtwork {
       sourceRevision: this.playerStore.heroArtworkRevision,
       sourceWidth: this.playerStore.currentTrack?.artworkWidth ?? 0,
       sourceHeight: this.playerStore.currentTrack?.artworkHeight ?? 0,
-      slotWidth: this.slotSize,
+      slotWidth: this.artworkWidth,
+      slotAspectRatio: this.artworkAspectRatio(),
       fitMode: ArtworkFitMode.CONTAIN,
-      cornerRadius: Math.min(this.cornerRadius, Math.min(this.artworkWidth(), this.artworkHeight()) / 2),
+      cornerRadius: Math.min(
+        this.cornerRadius,
+        Math.min(this.artworkWidth, this.artworkHeight) / 2
+      ),
       shadowEnabled: true,
       shadowRadius: this.playerStore.keepsActivePlaybackVisual() ?
         PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS :

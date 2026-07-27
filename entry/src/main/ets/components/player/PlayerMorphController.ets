@@ -21,8 +21,7 @@ import {
   PlayerMorphInteractionSpec,
   PlayerMorphPhase,
   PlayerMorphVisualSpec,
-  PlayerMotionSpec,
-  PlayerPoint
+  PlayerMotionSpec
 } from './PlayerMotion';
 import { MiniPlayerBinding, PlayerDynamicBackgroundBinding } from './MiniPlayerBinding';
 import { PlayerMorphGeometry } from './PlayerMorphGeometry';
@@ -67,17 +66,23 @@ export class PlayerMorphController {
     height: PlayerLayoutSpec.DEFAULT_MINI_PLAYER_SIZE
   };
   frozenRootFrame: PlayerFrame = { x: 0, y: 0, width: 0, height: 0 };
-  artworkTarget: PlayerPoint = {
+  artworkTarget: PlayerFrame = {
     x: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_X,
-    y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y
+    y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y,
+    width: PlayerLayoutSpec.FULL_ARTWORK_SIZE,
+    height: PlayerLayoutSpec.FULL_ARTWORK_SIZE
   };
-  centeredArtworkTarget: PlayerPoint = {
+  centeredArtworkTarget: PlayerFrame = {
     x: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_X,
-    y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y
+    y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y,
+    width: PlayerLayoutSpec.FULL_ARTWORK_SIZE,
+    height: PlayerLayoutSpec.FULL_ARTWORK_SIZE
   };
-  frozenArtworkTarget: PlayerPoint = {
+  frozenArtworkTarget: PlayerFrame = {
     x: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_X,
-    y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y
+    y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y,
+    width: PlayerLayoutSpec.FULL_ARTWORK_SIZE,
+    height: PlayerLayoutSpec.FULL_ARTWORK_SIZE
   };
   playbackButtonTarget: PlayerFrame = {
     x: 0,
@@ -321,7 +326,9 @@ export class PlayerMorphController {
         paneCount,
         FullPlayerPagerSpec.pageSpan(this.frozenRootFrame.width, paneCount)
       ),
-      y: this.centeredArtworkTarget.y
+      y: this.centeredArtworkTarget.y,
+      width: this.centeredArtworkTarget.width,
+      height: this.centeredArtworkTarget.height
     };
   }
 
@@ -411,7 +418,7 @@ export class PlayerMorphController {
     return PlayerMorphGeometry.paneCount(this.fullPlayerFrame());
   }
 
-  fullPlayerArtworkTarget(): PlayerPoint {
+  fullPlayerArtworkTarget(): PlayerFrame {
     return this.playerMorphPhase === PlayerMorphPhase.OPEN ?
       this.currentPagerArtworkTarget() : this.frozenArtworkTarget;
   }
@@ -469,7 +476,7 @@ export class PlayerMorphController {
     );
   }
 
-  private currentPagerArtworkTarget(): PlayerPoint {
+  private currentPagerArtworkTarget(): PlayerFrame {
     return {
       x: FullPlayerPagerSpec.pagerPageTargetX(
         this.centeredArtworkTarget.x,
@@ -477,7 +484,9 @@ export class PlayerMorphController {
         this.fullPlayerPagePosition,
         this.fullPlayerPageSpan()
       ),
-      y: this.centeredArtworkTarget.y
+      y: this.centeredArtworkTarget.y,
+      width: this.centeredArtworkTarget.width,
+      height: this.centeredArtworkTarget.height
     };
   }
 

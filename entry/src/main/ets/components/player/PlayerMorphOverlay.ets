@@ -92,8 +92,8 @@ export struct PlayerMorphOverlay {
             activePage: this.controller.fullPlayerPage,
             sideContentReady: this.controller.shouldRenderFullPlayerSideContent(),
             primaryContentColor: this.primaryContentColor,
-            previousArtworkTarget: this.controller.artworkTarget,
-            previousCenteredArtworkTarget: this.controller.centeredArtworkTarget,
+            previousArtworkFrame: this.controller.artworkTarget,
+            previousCenteredArtworkFrame: this.controller.centeredArtworkTarget,
             onClose: (): void => this.controller.hideFullPlayer(),
             onNavigatePage: (page: FullPlayerPage): void =>
               this.controller.navigateFullPlayerPage(page),

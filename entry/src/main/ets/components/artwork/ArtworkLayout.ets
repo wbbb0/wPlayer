@@ -15,4 +15,13 @@ export class ArtworkLayout {
       height: sourceHeight * scale
     };
   }
+
+  static containedSizeWithSquareFallback(sourceWidth: number, sourceHeight: number,
+    slotWidth: number, slotHeight: number): ArtworkSize {
+    if (sourceWidth <= 0 || sourceHeight <= 0) {
+      const side = Math.max(0, Math.min(slotWidth, slotHeight));
+      return { width: side, height: side };
+    }
+    return ArtworkLayout.containedSize(sourceWidth, sourceHeight, slotWidth, slotHeight);
+  }
 }

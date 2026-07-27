@@ -288,6 +288,7 @@ export struct FullPlayerQueuePage {
           .justifyContent(FlexAlign.Center)
           .layoutWeight(1)
           .width('100%')
+          .padding({ bottom: this.bottomInset })
         } else {
           List({ space: 0, scroller: this.queueScroller }) {
             LazyForEach(this.playerStore.queueDataSource, (entry: QueueEntry, index: number) => {
@@ -361,6 +362,7 @@ export struct FullPlayerQueuePage {
           .edgeEffect(EdgeEffect.Spring)
           .cachedCount(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT, true)
           .scrollBar(BarState.Auto)
+          .contentEndOffset(this.bottomInset)
           .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) =>
             this.blockVerticalPlayerGesture(recognizers))
         }
@@ -371,8 +373,7 @@ export struct FullPlayerQueuePage {
         this.blockVerticalPlayerGesture(recognizers))
       .padding({
         top: PlayerLayoutSpec.FULL_PLAYER_PAGE_TOP_INSET +
-          (this.paneCount > 1 ? PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE : 0),
-        bottom: this.bottomInset + PlayerLayoutSpec.FULL_PLAYER_BOTTOM_INSET
+          (this.paneCount > 1 ? PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE : 0)
       })
     }
     .width(this.pageWidth)

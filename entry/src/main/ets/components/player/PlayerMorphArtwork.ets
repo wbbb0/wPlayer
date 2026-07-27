@@ -2,7 +2,6 @@ import { curves } from '@kit.ArkUI';
 import { image } from '@kit.ImageKit';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { BundledArtworkCatalog } from '../../library/artwork/BundledArtworkCatalog';
-import { ArtworkLayout } from '../artwork/ArtworkLayout';
 import { ArtworkFitMode, ArtworkView } from '../artwork/ArtworkView';
 import { ContextPreviewGeometry } from '../library/ContextPreviewGeometry';
 import { LibraryContextInteraction } from '../library/LibraryContextInteraction';
@@ -16,8 +15,7 @@ import {
   PlayerLayoutSpec,
   PlayerMorphPhase,
   PlayerMorphVisualSpec,
-  PlayerMotionSpec,
-  PlayerPoint
+  PlayerMotionSpec
 } from './PlayerMotion';
 
 @Component
@@ -44,9 +42,11 @@ export struct PlayerMorphArtwork {
     height: PlayerLayoutSpec.DEFAULT_MINI_PLAYER_SIZE
   };
   @Prop fullPlayerFrame: PlayerFrame = { x: 0, y: 0, width: 0, height: 0 };
-  @Prop fullPlayerArtworkTarget: PlayerPoint = {
+  @Prop fullPlayerArtworkTarget: PlayerFrame = {
     x: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_X,
-    y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y
+    y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y,
+    width: PlayerLayoutSpec.FULL_ARTWORK_SIZE,
+    height: PlayerLayoutSpec.FULL_ARTWORK_SIZE
   };
   @Prop sourceWidth: number = 0;
   @Prop sourceHeight: number = 0;
@@ -108,34 +108,12 @@ export struct PlayerMorphArtwork {
     return this.sourceProvider();
   }
 
-  private fullArtworkSlotSize(): number {
-    return PlayerLayoutSpec.fullArtworkSize(
-      this.fullPlayerFrame.width,
-      this.fullPlayerFrame.height,
-      this.topInset,
-      this.bottomInset,
-      this.renderedPaneCount
-    );
-  }
-
   private targetArtworkWidth(): number {
-    const slotSize = this.fullArtworkSlotSize();
-    return ArtworkLayout.containedSize(
-      this.sourceWidth,
-      this.sourceHeight,
-      slotSize,
-      slotSize
-    ).width;
+    return this.fullPlayerArtworkTarget.width;
   }
 
   private targetArtworkHeight(): number {
-    const slotSize = this.fullArtworkSlotSize();
-    return ArtworkLayout.containedSize(
-      this.sourceWidth,
-      this.sourceHeight,
-      slotSize,
-      slotSize
-    ).height;
+    return this.fullPlayerArtworkTarget.height;
   }
 
   private artworkWidth(): number {
@@ -195,14 +173,14 @@ export struct PlayerMorphArtwork {
   private artworkX(): number {
     return this.morphValue(
       this.frozenMiniPlayerFrame.x + PlayerLayoutSpec.MINI_ARTWORK_INSET,
-      this.fullPlayerArtworkTarget.x + (this.fullArtworkSlotSize() - this.targetArtworkWidth()) / 2
+      this.fullPlayerArtworkTarget.x
     );
   }
 
   private artworkY(): number {
     return this.morphValue(
       this.frozenMiniPlayerFrame.y + PlayerLayoutSpec.MINI_ARTWORK_INSET,
-      this.fullPlayerArtworkTarget.y + (this.fullArtworkSlotSize() - this.targetArtworkHeight()) / 2
+      this.fullPlayerArtworkTarget.y
     );
   }
 

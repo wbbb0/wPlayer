@@ -75,8 +75,12 @@ export struct FullPlayerLyricsPage {
     }
   }
 
-  private lyricEndOffset(): number {
-    return Math.max(0, (this.rootHeight - this.topInset - this.bottomInset) * 0.62);
+  private lyricContentEndOffset(): number {
+    const focusTail = Math.max(
+      0,
+      (this.rootHeight - this.topInset - this.bottomInset) * 0.62
+    );
+    return focusTail + this.bottomInset;
   }
 
   private blockVerticalPlayerGesture(recognizers: Array<GestureRecognizer>): void {
@@ -109,13 +113,14 @@ export struct FullPlayerLyricsPage {
         .edgeEffect(EdgeEffect.Spring)
         .cachedCount(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT, true)
         .scrollBar(BarState.Off)
-        .contentEndOffset(this.lyricEndOffset())
+        .contentEndOffset(this.lyricContentEndOffset())
         .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) =>
           this.blockVerticalPlayerGesture(recognizers))
       } else if (this.playerStore.lyrics.length > 0) {
         Scroll() {
           Text(this.playerStore.lyrics)
             .width('100%')
+            .padding({ bottom: this.bottomInset })
             .fontSize(20)
             .lineHeight(34)
             .fontWeight(FontWeight.Medium)
@@ -144,6 +149,7 @@ export struct FullPlayerLyricsPage {
         .justifyContent(FlexAlign.Center)
         .layoutWeight(1)
         .width('100%')
+        .padding({ bottom: this.bottomInset })
       }
     }
     .width(this.pageWidth)
@@ -156,8 +162,7 @@ export struct FullPlayerLyricsPage {
     .padding({
       left: PlayerLayoutSpec.FULL_PLAYER_LYRICS_HORIZONTAL_INSET,
       right: PlayerLayoutSpec.FULL_PLAYER_LYRICS_HORIZONTAL_INSET,
-      top: this.paneCount > 1 ? 0 : PlayerLayoutSpec.FULL_PLAYER_PAGE_TOP_INSET,
-      bottom: this.bottomInset + PlayerLayoutSpec.FULL_PLAYER_BOTTOM_INSET
+      top: this.paneCount > 1 ? 0 : PlayerLayoutSpec.FULL_PLAYER_PAGE_TOP_INSET
     })
   }
 }

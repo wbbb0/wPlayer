@@ -154,13 +154,25 @@ export default function riskRegressionTest() {
       expect(chrome.activeContentColor()).assertUndefined();
     });
 
-    it('contains landscape and portrait artwork without changing the slot', 0, () => {
+    it('contains artwork in rectangular slots and keeps unknown artwork square', 0, () => {
       const landscape = ArtworkLayout.containedSize(768, 432, 286, 286);
       const portrait = ArtworkLayout.containedSize(540, 768, 286, 286);
+      const tallSlot = ArtworkLayout.containedSizeWithSquareFallback(540, 768, 300, 480);
+      const wideSlot = ArtworkLayout.containedSizeWithSquareFallback(768, 432, 480, 240);
+      const square = ArtworkLayout.containedSizeWithSquareFallback(600, 600, 480, 300);
+      const unknown = ArtworkLayout.containedSizeWithSquareFallback(0, 0, 480, 300);
       expect(landscape.width).assertEqual(286);
       expect(Math.round(landscape.height)).assertEqual(161);
       expect(Math.round(portrait.width)).assertEqual(201);
       expect(portrait.height).assertEqual(286);
+      expect(Math.round(tallSlot.width)).assertEqual(300);
+      expect(Math.round(tallSlot.height)).assertEqual(427);
+      expect(Math.round(wideSlot.width)).assertEqual(427);
+      expect(Math.round(wideSlot.height)).assertEqual(240);
+      expect(square.width).assertEqual(300);
+      expect(square.height).assertEqual(300);
+      expect(unknown.width).assertEqual(300);
+      expect(unknown.height).assertEqual(300);
     });
 
     it('fades full-player controls between 20 and 80 percent collapse', 0, () => {

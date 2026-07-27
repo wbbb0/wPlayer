@@ -5,8 +5,7 @@ import { common } from '@kit.AbilityKit';
 import {
   PlayerFrame,
   PlayerMorphPhase,
-  PlayerMotionSpec,
-  PlayerPoint
+  PlayerMotionSpec
 } from '../components/player/PlayerMotion';
 import { LibraryStore } from '../library/store/LibraryStore';
 import {
@@ -522,12 +521,14 @@ struct Index {
       rootFrame: this.playerMorphController.rootFrame,
       paneCount: this.fullPlayerPaneCount(),
       primaryContentColor: PlayerMotionSpec.FULL_PLAYER_CONTENT_COLOR,
-      previousArtworkTarget: this.playerMorphController.artworkTarget,
-      previousCenteredArtworkTarget: this.playerMorphController.centeredArtworkTarget,
-      onArtworkTarget: (target: PlayerPoint): void => {
+      artworkSourceWidth: this.playerStore.currentTrack?.artworkWidth ?? 0,
+      artworkSourceHeight: this.playerStore.currentTrack?.artworkHeight ?? 0,
+      previousArtworkFrame: this.playerMorphController.artworkTarget,
+      previousCenteredArtworkFrame: this.playerMorphController.centeredArtworkTarget,
+      onArtworkTarget: (target: PlayerFrame): void => {
         this.playerMorphController.artworkTarget = target;
       },
-      onCenteredArtworkTarget: (target: PlayerPoint): void => {
+      onCenteredArtworkTarget: (target: PlayerFrame): void => {
         this.playerMorphController.centeredArtworkTarget = target;
       },
       onPlaybackButtonTarget: (target: PlayerFrame): void => {

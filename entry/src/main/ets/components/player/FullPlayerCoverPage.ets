@@ -2,8 +2,7 @@ import {
   FullPlayerPage,
   FullPlayerPagerSpec,
   PlayerFrame,
-  PlayerLayoutSpec,
-  PlayerPoint
+  PlayerLayoutSpec
 } from './PlayerMotion';
 import {
   PlayerImageIcon,
@@ -19,6 +18,7 @@ import {
   CurrentTrackActionMenuParams
 } from './PlayerActionMenus';
 import { LayoutLength } from '../layout/LayoutLength';
+import { ArtworkLayout, ArtworkSize } from '../artwork/ArtworkLayout';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import { DynamicColor, ForegroundEmphasis } from '../../appearance/DynamicColor';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
@@ -41,14 +41,8 @@ export struct FullPlayerCoverPage {
   @Prop pagePosition: number = FullPlayerPage.COVER;
   @Prop paneCount: number = 1;
   @Prop primaryContentColor: string = '#FFFFFFFF';
-  @Prop previousArtworkTarget: PlayerPoint = {
-    x: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_X,
-    y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y
-  };
-  @Prop previousCenteredArtworkTarget: PlayerPoint = {
-    x: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_X,
-    y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y
-  };
+  @Prop artworkSourceWidth: number = 0;
+  @Prop artworkSourceHeight: number = 0;
   onNavigatePage: (page: FullPlayerPage) => void = (_page: FullPlayerPage): void => {};
   onClose: () => void = (): void => {};
   onSeek: (positionMs: number) => void = (_positionMs: number): void => {};
@@ -60,8 +54,22 @@ export struct FullPlayerCoverPage {
     (_trackIds: Array<number>): void => {};
   onCompletedCollectionChange: (enabled: boolean) => void =
     (_enabled: boolean): void => {};
-  onArtworkTarget: (target: PlayerPoint) => void = (_target: PlayerPoint): void => {};
-  onCenteredArtworkTarget: (target: PlayerPoint) => void = (_target: PlayerPoint): void => {};
+  @Prop previousArtworkFrame: PlayerFrame = {
+    x: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_X,
+    y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y,
+    width: PlayerLayoutSpec.FULL_ARTWORK_SIZE,
+    height: PlayerLayoutSpec.FULL_ARTWORK_SIZE
+  };
+  @Prop previousCenteredArtworkFrame: PlayerFrame = {
+    x: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_X,
+    y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y,
+    width: PlayerLayoutSpec.FULL_ARTWORK_SIZE,
+    height: PlayerLayoutSpec.FULL_ARTWORK_SIZE
+  };
+  @State private artworkAvailableWidth: number = 0;
+  @State private artworkAvailableHeight: number = 0;
+  onArtworkTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
+  onCenteredArtworkTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
   onPlaybackButtonTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
 
   @Builder
@@ -89,7 +97,7 @@ export struct FullPlayerCoverPage {
     return FullPlayerPagerSpec.pageSpan(this.rootFrame.width, this.paneCount);
   }
 
-  private artworkSlotSize(): number {
+  private fallbackArtworkSlotSize(): number {
     return PlayerLayoutSpec.fullArtworkSize(
       this.rootFrame.width,
       this.rootFrame.height,
@@ -99,26 +107,62 @@ export struct FullPlayerCoverPage {
     );
   }
 
+  private artworkSize(): ArtworkSize {
+    const fallback = this.fallbackArtworkSlotSize();
+    return ArtworkLayout.containedSizeWithSquareFallback(
+      this.artworkSourceWidth > 0 ?
+        this.artworkSourceWidth : this.playerStore.currentTrack?.artworkWidth ?? 0,
+      this.artworkSourceHeight > 0 ?
+        this.artworkSourceHeight : this.playerStore.currentTrack?.artworkHeight ?? 0,
+      this.artworkAvailableWidth > 0 ? this.artworkAvailableWidth : fallback,
+      this.artworkAvailableHeight > 0 ? this.artworkAvailableHeight : fallback
+    );
+  }
+
+  private artworkWidth(): number {
+    return this.artworkSize().width;
+  }
+
+  private artworkHeight(): number {
+    return this.artworkSize().height;
+  }
+
+  private recordArtworkAvailableArea(newValue: Area): void {
+    const width = LayoutLength.toNumber(newValue.width, this.artworkAvailableWidth);
+    const height = LayoutLength.toNumber(newValue.height, this.artworkAvailableHeight);
+    if (width > 0 && Math.abs(width - this.artworkAvailableWidth) >= 0.5) {
+      this.artworkAvailableWidth = width;
+    }
+    if (height > 0 && Math.abs(height - this.artworkAvailableHeight) >= 0.5) {
+      this.artworkAvailableHeight = height;
+    }
+  }
+
   private recordArtworkTarget(newValue: Area): void {
     if (!this.measuresArtworkTarget) {
       return;
     }
     const pageWidth = this.pageWidth();
-    const layoutTarget: PlayerPoint = {
+    const size = this.artworkSize();
+    const layoutTarget: PlayerFrame = {
       x: LayoutLength.toNumber(
         newValue.globalPosition.x,
-        this.previousCenteredArtworkTarget.x + this.rootFrame.x
+        this.previousCenteredArtworkFrame.x + this.rootFrame.x
       ) - this.rootFrame.x,
       y: LayoutLength.toNumber(
         newValue.globalPosition.y,
-        this.previousArtworkTarget.y + this.rootFrame.y
-      ) - this.rootFrame.y
+        this.previousArtworkFrame.y + this.rootFrame.y
+      ) - this.rootFrame.y,
+      width: LayoutLength.toNumber(newValue.width, size.width),
+      height: LayoutLength.toNumber(newValue.height, size.height)
     };
-    const centeredTarget: PlayerPoint = {
+    const centeredTarget: PlayerFrame = {
       x: this.ultraCompact ?
         FullPlayerPagerSpec.centeredArtworkTargetX(layoutTarget.x, pageWidth) :
         layoutTarget.x,
-      y: layoutTarget.y
+      y: layoutTarget.y,
+      width: layoutTarget.width,
+      height: layoutTarget.height
     };
     this.onCenteredArtworkTarget(centeredTarget);
     this.onArtworkTarget({
@@ -129,7 +173,9 @@ export struct FullPlayerCoverPage {
           this.pagePosition,
           pageWidth
         ),
-      y: centeredTarget.y
+      y: centeredTarget.y,
+      width: centeredTarget.width,
+      height: centeredTarget.height
     });
   }
 
@@ -238,27 +284,38 @@ export struct FullPlayerCoverPage {
       if (this.showArtwork) {
         PlayerHeroArtwork({
           playerStore: this.playerStore,
-          slotSize: this.artworkSlotSize(),
+          artworkWidth: this.artworkWidth(),
+          artworkHeight: this.artworkHeight(),
           cornerRadius: PlayerLayoutSpec.FULL_ARTWORK_RADIUS,
           interpolation: ImageInterpolation.Medium
         })
       }
     }
-    .width(this.artworkSlotSize())
-    .height(this.artworkSlotSize())
-    .borderRadius(this.artworkSlotSize() / 2)
+    .width(this.artworkWidth())
+    .height(this.artworkHeight())
+    .borderRadius(Math.min(this.artworkWidth(), this.artworkHeight()) / 2)
     .accessibilityText('歌曲封面，长按打开更多操作')
     .onAreaChange((_oldValue: Area, newValue: Area) => this.recordArtworkTarget(newValue))
   }
 
   @Builder
+  private PlayerArtworkSlot(alignContent: Alignment) {
+    Stack({ alignContent: alignContent }) {
+      this.PlayerArtwork()
+    }
+    .width('100%')
+    .layoutWeight(1)
+    .onAreaChange((_oldValue: Area, newValue: Area) =>
+      this.recordArtworkAvailableArea(newValue))
+  }
+
+  @Builder
   private StandardPage() {
     Column() {
-      Blank().layoutWeight(1)
-
-      this.PlayerArtwork()
-
-      Blank().layoutWeight(1)
+      if (this.paneCount > 1) {
+        Stack().height(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE)
+      }
+      this.PlayerArtworkSlot(Alignment.Bottom)
 
       Column({ space: 5 }) {
         Row({ space: 8 }) {
@@ -326,6 +383,7 @@ export struct FullPlayerCoverPage {
       }
       .alignItems(HorizontalAlign.Start)
       .width('100%')
+      .margin({ top: PlayerLayoutSpec.FULL_PLAYER_ARTWORK_METADATA_GAP })
 
       PlayerProgressControl({
         playerStore: this.playerStore,
@@ -383,7 +441,7 @@ export struct FullPlayerCoverPage {
     .padding({
       left: PlayerLayoutSpec.FULL_PLAYER_PAGE_HORIZONTAL_INSET,
       right: PlayerLayoutSpec.FULL_PLAYER_PAGE_HORIZONTAL_INSET,
-      bottom: this.bottomInset + PlayerLayoutSpec.FULL_PLAYER_BOTTOM_INSET
+      bottom: this.bottomInset
     })
   }
 
@@ -477,9 +535,8 @@ export struct FullPlayerCoverPage {
   @Builder
   private UltraCompactPage() {
     Row({ space: PlayerLayoutSpec.ULTRA_COMPACT_COLUMN_GAP }) {
-      Column() {
-        this.PlayerArtwork()
-        Blank().layoutWeight(1)
+      Column({ space: PlayerLayoutSpec.ULTRA_COMPACT_TEXT_GAP }) {
+        this.PlayerArtworkSlot(Alignment.Bottom)
         this.UltraCompactMetadata()
       }
       .layoutWeight(1)

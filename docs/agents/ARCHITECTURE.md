@@ -12,10 +12,10 @@ The current application is composed through these boundaries:
 
 - `entryability/EntryAbility.ets` owns HarmonyOS ability and window lifecycle.
 - `pages/Index.ets` is the root ArkUI shell and the current UI composition boundary.
-- `playback/PlaybackRuntime.ets` is the application playback coordinator and singleton command facade.
-- PlaybackRuntime owns the single PlaybackEngine, PlaybackSession, PlaybackQueue and PlayerStore.
-- PlaybackRuntime owns PlaybackPictureInPicture, which adapts system PiP lifecycle and controls to the existing
-  playback command facade without becoming a second playback-state owner.
+- `playback/PlaybackRuntime.ets` is the singleton playback command facade. It owns the single PlaybackEngine,
+  PlaybackSession, PlaybackQueue and PlayerStore and commits queue/Store projections atomically.
+- Playback coordinators delegate persistence and restore planning, track media work, PiP lifecycle synchronization
+  and audio recovery decisions. They do not create another engine, session, queue, Store or repository.
 - PlaybackRuntime exposes the shared MusicRepository used by the root shell to construct LibraryStore and
   PlaylistStore.
 - SettingsRepository owns persisted preferences; AppSettingsStore exposes observable settings state.
@@ -69,8 +69,13 @@ internals. Do not perform a repository-wide dependency-injection rewrite solely 
 ## Playback ownership
 
 - PlaybackEngine exclusively owns AVPlayer creation, raw state transitions and source preparation.
-- PlaybackRuntime coordinates commands, queue behavior, progress, recovery, metadata synchronization and Store
-  projection.
+- PlaybackRuntime coordinates commands, queue behavior, engine/session integration and atomic Store projection.
+- PlaybackPersistenceCoordinator owns restore planning and preference writes. It uses the Runtime-owned queue-build
+  epoch for stale-result checks and never projects queue state itself.
+- PlaybackMediaCoordinator owns the single track request epoch and playback-time lyrics/artwork/palette work.
+- PlaybackPictureInPictureCoordinator delegates snapshots and lifecycle to the existing
+  PlaybackPictureInPicture implementation.
+- PlaybackAudioRecoveryCoordinator owns focus/output recovery intent and consumes each automatic resume once.
 - PlaybackSession owns AVSession and background-control integration.
 - PlaybackPictureInPicture owns system PiP nodes, lifecycle callbacks and control-event adaptation.
 - PlayerStore is observable UI state, not a command service and not an AVPlayer state machine.

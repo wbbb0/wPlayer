@@ -31,6 +31,7 @@ import playbackSourceCleanupTest from './PlaybackSourceCleanup.test';
 import playbackSourcePreparationTest from './PlaybackSourcePreparation.test';
 import mediaImportOperationTest from './MediaImportOperation.test';
 import mediaDuplicateProofTest from './MediaDuplicateProof.test';
+import playbackCoordinatorTest from './PlaybackCoordinator.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -66,4 +67,5 @@ export default function testsuite() {
   playbackSourcePreparationTest();
   mediaImportOperationTest();
   mediaDuplicateProofTest();
+  playbackCoordinatorTest();
 }

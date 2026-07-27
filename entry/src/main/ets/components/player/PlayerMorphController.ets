@@ -492,6 +492,10 @@ export class PlayerMorphController {
     return this.playerMorphPhase !== PlayerMorphPhase.IDLE;
   }
 
+  shouldSuspendBackgroundRendering(): boolean {
+    return PlayerMorphVisualSpec.shouldSuspendBackgroundRendering(this.playerMorphPhase);
+  }
+
   shouldRenderFullPlayerSideContent(): boolean {
     return this.fullPlayerSideContentReady;
   }

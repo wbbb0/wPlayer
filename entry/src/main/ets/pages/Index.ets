@@ -451,6 +451,17 @@ struct Index {
     })
   }
 
+  @Builder
+  private NavigationRenderLayer() {
+    Stack() {
+      this.NavigationShell()
+    }
+    .width('100%')
+    .height('100%')
+    .visibility(this.playerMorphController.shouldSuspendBackgroundRendering() ?
+      Visibility.Hidden : Visibility.Visible)
+  }
+
   private async setDemoLibraryEnabled(enabled: boolean): Promise<void> {
     if (this.settingsStore.demoLibraryEnabled === enabled) {
       return;
@@ -543,7 +554,7 @@ struct Index {
 
       this.FullPlayerGeometryProbe()
 
-      this.NavigationShell()
+      this.NavigationRenderLayer()
 
       this.SheetHosts()
 

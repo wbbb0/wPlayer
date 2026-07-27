@@ -320,6 +320,10 @@ export class PlayerMotionSpec {
 }
 
 export class PlayerMorphVisualSpec {
+  static shouldSuspendBackgroundRendering(morphPhase: PlayerMorphPhase): boolean {
+    return morphPhase === PlayerMorphPhase.OPEN;
+  }
+
   static coverElementOpacity(morphPhase: PlayerMorphPhase, selectedPage: FullPlayerPage,
     pagePosition: number, paneCount: number, expandProgress: number): number {
     if (paneCount > 1) {

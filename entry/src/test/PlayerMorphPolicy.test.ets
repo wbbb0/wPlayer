@@ -15,7 +15,8 @@ import {
   PlayerMotionSpec,
   PlayerFrame,
   PlayerGestureAxis,
-  PlayerMorphPhase
+  PlayerMorphPhase,
+  PlayerMorphVisualSpec
 } from '../main/ets/components/player/PlayerMotion';
 
 export default function playerMorphPolicyTest() {
@@ -75,6 +76,30 @@ export default function playerMorphPolicyTest() {
       expect(openFrame.x).assertEqual(0);
       expect(openFrame.y).assertEqual(0);
       expect(PlayerMorphGeometry.morphValue(10, 20, 1.5)).assertEqual(20);
+    });
+
+    it('suspends background rendering only while the full player is stably open', 0, () => {
+      expect(PlayerMorphVisualSpec.shouldSuspendBackgroundRendering(
+        PlayerMorphPhase.IDLE
+      )).assertFalse();
+      expect(PlayerMorphVisualSpec.shouldSuspendBackgroundRendering(
+        PlayerMorphPhase.OPENING
+      )).assertFalse();
+      expect(PlayerMorphVisualSpec.shouldSuspendBackgroundRendering(
+        PlayerMorphPhase.OPEN_DRAGGING
+      )).assertFalse();
+      expect(PlayerMorphVisualSpec.shouldSuspendBackgroundRendering(
+        PlayerMorphPhase.OPEN
+      )).assertTrue();
+      expect(PlayerMorphVisualSpec.shouldSuspendBackgroundRendering(
+        PlayerMorphPhase.CLOSE_DRAGGING
+      )).assertFalse();
+      expect(PlayerMorphVisualSpec.shouldSuspendBackgroundRendering(
+        PlayerMorphPhase.CLOSING
+      )).assertFalse();
+      expect(PlayerMorphVisualSpec.shouldSuspendBackgroundRendering(
+        PlayerMorphPhase.BACKGROUND_HANDOFF
+      )).assertFalse();
     });
 
     it('keeps a paused artwork preview at its visual rest size', 0, () => {

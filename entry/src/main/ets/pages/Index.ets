@@ -402,6 +402,7 @@ struct Index {
       appearancePalette: this.appearancePalette,
       themePageBackground: this.animatedPageBackground(),
       playbackChromeBackground: this.playbackChromeBackground(),
+      onDestinationBackPressed: (): boolean => this.playerMorphController.handleBackPress(),
       onShowFullPlayer: (): void => this.playerMorphController.showFullPlayer(),
       onMiniPlayerGestureStart: (): void => this.playerMorphController.beginMiniPlayerGesture(),
       onMiniPlayerGestureUpdate: (event: GestureEvent): void =>

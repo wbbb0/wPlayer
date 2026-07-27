@@ -343,6 +343,12 @@ export class PlayerMorphVisualSpec {
   }
 }
 
+export class PlayerMorphInteractionSpec {
+  static shouldConsumeBackPress(morphPhase: PlayerMorphPhase): boolean {
+    return morphPhase !== PlayerMorphPhase.IDLE;
+  }
+}
+
 export class PlayerLayoutSpec {
   static readonly DEFAULT_MINI_PLAYER_SIZE: number = 56;
   static readonly DEFAULT_ARTWORK_TARGET_X: number = 127;

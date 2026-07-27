@@ -196,6 +196,7 @@ export struct ResponsiveNavigationShell {
   @Prop appearancePalette: AppAppearancePalette = AppAppearancePalette.fallback();
   @Prop themePageBackground: string = '#FF000000';
   @Prop playbackChromeBackground: string = '';
+  onDestinationBackPressed: () => boolean = (): boolean => false;
   onShowFullPlayer: () => void = (): void => {};
   onMiniPlayerGestureStart: () => void = (): void => {};
   onMiniPlayerGestureUpdate: (event: GestureEvent) => void = (_event: GestureEvent): void => {};
@@ -1258,6 +1259,7 @@ export struct ResponsiveNavigationShell {
         this.playbackChromeBackgroundColor()
       ))
       .bindToScrollable([(_param as PlaylistDetailRouteParams).scroller])
+      .onBackPressed(this.onDestinationBackPressed)
     } else if (name === LibraryDetailRoute.ALBUM) {
       HdsNavDestination() {
         Stack({ alignContent: Alignment.Bottom }) {
@@ -1311,6 +1313,7 @@ export struct ResponsiveNavigationShell {
       .onShown((): void => this.activateAlbumChrome(_param as AlbumDetailRouteParams))
       .onHidden((): void => this.deactivateAlbumChrome(_param as AlbumDetailRouteParams))
       .bindToScrollable([(_param as AlbumDetailRouteParams).scroller])
+      .onBackPressed(this.onDestinationBackPressed)
     } else if (name === LibraryDetailRoute.ARTIST) {
       HdsNavDestination() {
         Stack({ alignContent: Alignment.Bottom }) {
@@ -1354,6 +1357,7 @@ export struct ResponsiveNavigationShell {
         this.playbackChromeBackgroundColor()
       ))
       .bindToScrollable([(_param as ArtistDetailRouteParams).scroller])
+      .onBackPressed(this.onDestinationBackPressed)
     } else if (name === NavigationRoute.NAVIGATION_CUSTOMIZATION) {
       HdsNavDestination() {
         Stack({ alignContent: Alignment.Bottom }) {
@@ -1380,6 +1384,7 @@ export struct ResponsiveNavigationShell {
         this.playbackChromeBackgroundColor()
       ))
       .bindToScrollable([this.customizationScroller])
+      .onBackPressed(this.onDestinationBackPressed)
     } else if (name === NavigationRoute.FLOATING_WINDOW_SETTINGS) {
       HdsNavDestination() {
         Stack({ alignContent: Alignment.Bottom }) {
@@ -1406,6 +1411,7 @@ export struct ResponsiveNavigationShell {
         this.playbackChromeBackgroundColor()
       ))
       .bindToScrollable([this.floatingWindowSettingsScroller])
+      .onBackPressed(this.onDestinationBackPressed)
     } else if (name === NavigationRoute.DYNAMIC_BACKGROUND_DEBUG) {
       HdsNavDestination() {
         DynamicBackgroundDebugPage({
@@ -1436,6 +1442,7 @@ export struct ResponsiveNavigationShell {
       .onHidden((): void => {
         systemBarStyleController.removeContentColor(NavigationRoute.DYNAMIC_BACKGROUND_DEBUG);
       })
+      .onBackPressed(this.onDestinationBackPressed)
     } else if (name === NavigationRoute.DYNAMIC_BACKGROUND_V2_DEBUG) {
       HdsNavDestination() {
         DynamicBackgroundV2DebugPage({
@@ -1466,6 +1473,7 @@ export struct ResponsiveNavigationShell {
       .onHidden((): void => {
         systemBarStyleController.removeContentColor(NavigationRoute.DYNAMIC_BACKGROUND_V2_DEBUG);
       })
+      .onBackPressed(this.onDestinationBackPressed)
     } else if (name === NavigationRoute.DYNAMIC_BACKGROUND_V3_DEBUG) {
       HdsNavDestination() {
         DynamicBackgroundV3DebugPage({
@@ -1483,6 +1491,7 @@ export struct ResponsiveNavigationShell {
         undefined,
         this.playbackChromeBackgroundColor()
       ))
+      .onBackPressed(this.onDestinationBackPressed)
     } else if (name === NavigationRoute.ABOUT) {
       HdsNavDestination() {
         Stack({ alignContent: Alignment.Bottom }) {
@@ -1507,6 +1516,7 @@ export struct ResponsiveNavigationShell {
         this.playbackChromeBackgroundColor()
       ))
       .bindToScrollable([this.aboutScroller])
+      .onBackPressed(this.onDestinationBackPressed)
     } else if (name === NavigationRoute.PRIVACY_POLICY) {
       HdsNavDestination() {
         Stack({ alignContent: Alignment.Bottom }) {
@@ -1531,6 +1541,7 @@ export struct ResponsiveNavigationShell {
         this.playbackChromeBackgroundColor()
       ))
       .bindToScrollable([this.privacyPolicyScroller])
+      .onBackPressed(this.onDestinationBackPressed)
     } else if (name === NavigationRoute.DATA_AND_PERMISSIONS) {
       HdsNavDestination() {
         Stack({ alignContent: Alignment.Bottom }) {
@@ -1555,6 +1566,7 @@ export struct ResponsiveNavigationShell {
         this.playbackChromeBackgroundColor()
       ))
       .bindToScrollable([this.dataAndPermissionsScroller])
+      .onBackPressed(this.onDestinationBackPressed)
     } else if (name === NavigationRoute.OPEN_SOURCE_LICENSES) {
       HdsNavDestination() {
         Stack({ alignContent: Alignment.Bottom }) {
@@ -1579,6 +1591,7 @@ export struct ResponsiveNavigationShell {
         this.playbackChromeBackgroundColor()
       ))
       .bindToScrollable([this.openSourceLicensesScroller])
+      .onBackPressed(this.onDestinationBackPressed)
     } else {
       HdsNavDestination() {
         Stack({ alignContent: Alignment.Bottom }) {
@@ -1599,6 +1612,7 @@ export struct ResponsiveNavigationShell {
         this.playbackChromeBackgroundColor()
       ))
       .bindToScrollable([this.routeScroller(name)])
+      .onBackPressed(this.onDestinationBackPressed)
     }
   }
 

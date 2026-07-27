@@ -18,6 +18,7 @@ import {
   PlayerFrame,
   PlayerGestureAxis,
   PlayerLayoutSpec,
+  PlayerMorphInteractionSpec,
   PlayerMorphPhase,
   PlayerMorphVisualSpec,
   PlayerMotionSpec,
@@ -481,7 +482,7 @@ export class PlayerMorphController {
   }
 
   handleBackPress(): boolean {
-    if (!this.isMorphActive()) {
+    if (!PlayerMorphInteractionSpec.shouldConsumeBackPress(this.playerMorphPhase)) {
       return false;
     }
     this.hideFullPlayer();

@@ -299,8 +299,8 @@ export struct FullPlayerCoverPage {
   }
 
   @Builder
-  private PlayerArtworkSlot(alignContent: Alignment) {
-    Stack({ alignContent: alignContent }) {
+  private PlayerArtworkSlot() {
+    Stack({ alignContent: Alignment.Center }) {
       this.PlayerArtwork()
     }
     .width('100%')
@@ -315,7 +315,7 @@ export struct FullPlayerCoverPage {
       if (this.paneCount > 1) {
         Stack().height(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE)
       }
-      this.PlayerArtworkSlot(Alignment.Bottom)
+      this.PlayerArtworkSlot()
 
       Column({ space: 5 }) {
         Row({ space: 8 }) {
@@ -536,7 +536,7 @@ export struct FullPlayerCoverPage {
   private UltraCompactPage() {
     Row({ space: PlayerLayoutSpec.ULTRA_COMPACT_COLUMN_GAP }) {
       Column({ space: PlayerLayoutSpec.ULTRA_COMPACT_TEXT_GAP }) {
-        this.PlayerArtworkSlot(Alignment.Bottom)
+        this.PlayerArtworkSlot()
         this.UltraCompactMetadata()
       }
       .layoutWeight(1)

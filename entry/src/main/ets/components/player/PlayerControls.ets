@@ -149,6 +149,7 @@ export struct PlayerModeButton {
   @ObjectLink playerStore: PlayerStore;
   @Prop action: PlayerModeAction = PlayerModeAction.SHUFFLE;
   @Prop buttonSize: number = 44;
+  @Prop iconSize: number = 0;
   @Prop contentColor: string = '#FFFFFFFF';
 
   private symbol(): Resource {
@@ -175,17 +176,21 @@ export struct PlayerModeButton {
     return this.contentColor;
   }
 
+  private resolvedIconSize(): number {
+    return this.iconSize > 0 ? this.iconSize : this.buttonSize * 0.5;
+  }
+
   build() {
     Stack() {
       PlayerSymbolIcon({
         symbol: this.symbol(),
-        iconSize: this.buttonSize * 0.5,
+        iconSize: this.resolvedIconSize(),
         contentColor: this.modeForegroundColor()
       })
 
       if (!this.active()) {
         Row()
-          .width(this.buttonSize * 0.57)
+          .width(this.resolvedIconSize() * 1.14)
           .height(2)
           .borderRadius(1)
           .backgroundColor(this.modeForegroundColor())

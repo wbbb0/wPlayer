@@ -8,8 +8,10 @@ import {
   FULL_PLAYER_HORIZONTAL_GESTURE_HOST_ID,
   FULL_PLAYER_VERTICAL_GESTURE_HOST_ID,
   PlayerLayoutSpec,
+  PlayerLyricFocusPolicy,
   PlayerMotionSpec
 } from './PlayerMotion';
+import { curves } from '@kit.ArkUI';
 
 @Reusable
 @Component
@@ -17,6 +19,7 @@ export struct TimedLyricRow {
   @ObjectLink playerStore: PlayerStore;
   @Prop line: TimedLyricLine;
   @Prop index: number = -1;
+  @Prop blurEnabled: boolean = true;
   @Prop primaryContentColor: string = '#FFFFFFFF';
   @Prop secondaryContentColor: string = '#B8FFFFFF';
 
@@ -28,8 +31,22 @@ export struct TimedLyricRow {
       .fontWeight(FontWeight.Bold)
       .fontColor(this.index === this.playerStore.activeLyricIndex ?
         this.primaryContentColor : this.secondaryContentColor)
-      .animation({ duration: PlayerMotionSpec.LYRIC_FOCUS_DURATION, curve: Curve.EaseInOut })
       .opacity(this.index === this.playerStore.activeLyricIndex ? 1 : 0.72)
+      .blur(PlayerLyricFocusPolicy.blurRadius(
+        this.index,
+        this.playerStore.activeLyricIndex,
+        this.blurEnabled
+      ))
+      .padding({
+        left: PlayerLayoutSpec.FULL_PLAYER_LYRIC_HORIZONTAL_PADDING,
+        right: PlayerLayoutSpec.FULL_PLAYER_LYRIC_HORIZONTAL_PADDING,
+        top: PlayerLayoutSpec.FULL_PLAYER_LYRIC_VERTICAL_PADDING +
+          (this.index === this.playerStore.activeLyricIndex ?
+            PlayerLayoutSpec.FULL_PLAYER_ACTIVE_LYRIC_EXTRA_VERTICAL_PADDING : 0),
+        bottom: PlayerLayoutSpec.FULL_PLAYER_LYRIC_VERTICAL_PADDING +
+          (this.index === this.playerStore.activeLyricIndex ?
+            PlayerLayoutSpec.FULL_PLAYER_ACTIVE_LYRIC_EXTRA_VERTICAL_PADDING : 0)
+      })
       .textAlign(TextAlign.Start)
       .scale({
         x: this.index === this.playerStore.activeLyricIndex ? 1 : 0.88,
@@ -37,7 +54,7 @@ export struct TimedLyricRow {
         centerX: '0%',
         centerY: '50%'
       })
-      .animation({ duration: PlayerMotionSpec.LYRIC_FOCUS_DURATION, curve: Curve.EaseInOut })
+      .animation({ duration: PlayerMotionSpec.LYRIC_FOCUS_DURATION, curve: curves.springMotion(0.42, 0.88) })
   }
 }
 

@@ -123,7 +123,7 @@ export struct FullPlayerQueueHeader {
   }
 
   build() {
-    Row({ space: 8 }) {
+    Row({ space: 0 }) {
       Text('当前播放队列')
         .fontSize(24)
         .fontWeight(FontWeight.Bold)
@@ -152,13 +152,15 @@ export struct FullPlayerQueueHeader {
         PlayerModeButton({
           playerStore: this.playerStore,
           action: PlayerModeAction.SHUFFLE,
-          buttonSize: 44,
+          buttonSize: PlayerLayoutSpec.FULL_PLAYER_QUEUE_HEADER_BUTTON_SIZE,
+          iconSize: PlayerLayoutSpec.FULL_PLAYER_QUEUE_HEADER_ICON_SIZE,
           contentColor: this.primaryContentColor
         })
         PlayerModeButton({
           playerStore: this.playerStore,
           action: PlayerModeAction.REPEAT,
-          buttonSize: 44,
+          buttonSize: PlayerLayoutSpec.FULL_PLAYER_QUEUE_HEADER_BUTTON_SIZE,
+          iconSize: PlayerLayoutSpec.FULL_PLAYER_QUEUE_HEADER_ICON_SIZE,
           contentColor: this.primaryContentColor
         })
         Button() {
@@ -168,9 +170,9 @@ export struct FullPlayerQueueHeader {
             contentColor: this.primaryContentColor
           })
         }
-        .width(44)
-        .height(44)
-        .borderRadius(22)
+        .width(PlayerLayoutSpec.FULL_PLAYER_QUEUE_HEADER_BUTTON_SIZE)
+        .height(PlayerLayoutSpec.FULL_PLAYER_QUEUE_HEADER_BUTTON_SIZE)
+        .borderRadius(PlayerLayoutSpec.FULL_PLAYER_QUEUE_HEADER_BUTTON_SIZE / 2)
         .backgroundColor(Color.Transparent)
         .accessibilityText('多选')
         .onClick(() => this.selectionStore.begin())
@@ -264,6 +266,31 @@ export struct FullPlayerQueuePage {
     });
   }
 
+  @Builder
+  private ActiveQueueRowBackground() {
+    if (this.paneCount > 1) {
+      Row()
+        .width('100%')
+        .height('100%')
+        .linearGradient({
+          direction: GradientDirection.Right,
+          colors: [
+            [$r('app.color.glass_surface_strong'), 0],
+            [
+              $r('app.color.glass_surface_strong'),
+              PlayerLayoutSpec.FULL_PLAYER_QUEUE_ACTIVE_FADE_START
+            ],
+            [Color.Transparent, 1]
+          ]
+        })
+    } else {
+      Row()
+        .width('100%')
+        .height('100%')
+        .backgroundColor($r('app.color.glass_surface_strong'))
+    }
+  }
+
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
       Column() {
@@ -306,51 +333,52 @@ export struct FullPlayerQueuePage {
                         right: PlayerLayoutSpec.FULL_PLAYER_QUEUE_CONTENT_HORIZONTAL_INSET
                       })
                   }
-                  Row() {
-                    QueueTrackRow({
-                      track: queueTrackListItem(entry.track),
-                      store: this.libraryStore,
-                      artworkPath: this.onResolveQueueArtwork(entry.track.smallArtworkPath),
-                      queueIndex: index,
-                      currentQueueIndex: this.playerStore.queueCurrentIndex,
-                      primaryColor: this.primaryContentColor,
-                      secondaryColor: this.secondaryContentColor,
-                      tertiaryColor: this.secondaryContentColor,
-                      animateColors: true,
-                      active: entry.track.id === this.playerStore.currentTrack?.id,
-                      activeBackgroundColor: $r('app.color.glass_surface_strong'),
-                      activeShadowColor: $r('app.color.artwork_shadow'),
-                      activeShadowRadius: PlayerLayoutSpec.FULL_PLAYER_QUEUE_SHADOW_RADIUS,
-                      activeShadowOffsetY: PlayerLayoutSpec.FULL_PLAYER_QUEUE_SHADOW_OFFSET_Y,
-                      horizontalInset: PlayerLayoutSpec.FULL_PLAYER_QUEUE_CONTENT_HORIZONTAL_INSET,
-                      verticalInset: PlayerLayoutSpec.FULL_PLAYER_QUEUE_ROW_VERTICAL_INSET,
-                      rowCornerRadius: 14,
-                      artworkSize: PlayerLayoutSpec.FULL_PLAYER_QUEUE_ARTWORK_SIZE,
-                      artworkCornerRadius: PlayerLayoutSpec.FULL_ARTWORK_RADIUS,
-                      queueIndexWidth: PlayerLayoutSpec.FULL_PLAYER_QUEUE_INDEX_WIDTH,
-                      queueGestureDistance: PlayerMotionSpec.GESTURE_AXIS_LOCK_DISTANCE,
-                      menuPlacement: Placement.BottomLeft,
-                      onNavigateAction: this.onNavigateLibrary,
-                      onRequestAddToPlaylist: (items: Array<TrackListItem>): void =>
-                        this.onRequestAddToPlaylist(
-                          items.map((item: TrackListItem): number => item.id)
-                        ),
-                      onOpenDetails: this.onOpenTrackDetails,
-                      selectionMode: this.selectionStore.selectionActive,
-                      selected: this.selectionStore.isSelected(entry.queueEntryId),
-                      onActivate: (track: TrackListItem): void =>
-                        this.onPlayQueueTrack(track.id),
-                      onToggleSelection: (_track: TrackListItem): void =>
-                        this.selectionStore.toggle(entry)
+                  Stack() {
+                    if (index === this.playerStore.queueCurrentIndex) {
+                      this.ActiveQueueRowBackground()
+                    }
+                    Row() {
+                      QueueTrackRow({
+                        track: queueTrackListItem(entry.track),
+                        store: this.libraryStore,
+                        artworkPath: this.onResolveQueueArtwork(entry.track.smallArtworkPath),
+                        queueIndex: index,
+                        currentQueueIndex: this.playerStore.queueCurrentIndex,
+                        primaryColor: this.primaryContentColor,
+                        secondaryColor: this.secondaryContentColor,
+                        tertiaryColor: this.secondaryContentColor,
+                        animateColors: true,
+                        active: entry.track.id === this.playerStore.currentTrack?.id,
+                        horizontalInset: PlayerLayoutSpec.FULL_PLAYER_QUEUE_CONTENT_HORIZONTAL_INSET,
+                        verticalInset: PlayerLayoutSpec.FULL_PLAYER_QUEUE_ROW_VERTICAL_INSET,
+                        artworkSize: PlayerLayoutSpec.FULL_PLAYER_QUEUE_ARTWORK_SIZE,
+                        artworkCornerRadius: PlayerLayoutSpec.FULL_ARTWORK_RADIUS,
+                        queueIndexWidth: PlayerLayoutSpec.FULL_PLAYER_QUEUE_INDEX_WIDTH,
+                        queueGestureDistance: PlayerMotionSpec.GESTURE_AXIS_LOCK_DISTANCE,
+                        menuPlacement: Placement.BottomLeft,
+                        onNavigateAction: this.onNavigateLibrary,
+                        onRequestAddToPlaylist: (items: Array<TrackListItem>): void =>
+                          this.onRequestAddToPlaylist(
+                            items.map((item: TrackListItem): number => item.id)
+                          ),
+                        onOpenDetails: this.onOpenTrackDetails,
+                        selectionMode: this.selectionStore.selectionActive,
+                        selected: this.selectionStore.isSelected(entry.queueEntryId),
+                        onActivate: (track: TrackListItem): void =>
+                          this.onPlayQueueTrack(track.id),
+                        onToggleSelection: (_track: TrackListItem): void =>
+                          this.selectionStore.toggle(entry)
+                      })
+                        .reuseId(this.selectionStore.selectionActive ?
+                          'player_queue_selection' : 'player_queue_track')
+                    }
+                    .width('100%')
+                    .padding({
+                      left: PlayerLayoutSpec.FULL_PLAYER_QUEUE_CONTENT_EDGE_INSET,
+                      right: PlayerLayoutSpec.FULL_PLAYER_QUEUE_CONTENT_EDGE_INSET
                     })
-                      .reuseId(this.selectionStore.selectionActive ?
-                        'player_queue_selection' : 'player_queue_track')
                   }
                   .width('100%')
-                  .padding({
-                    left: PlayerLayoutSpec.FULL_PLAYER_QUEUE_SHADOW_CLEARANCE,
-                    right: PlayerLayoutSpec.FULL_PLAYER_QUEUE_SHADOW_CLEARANCE
-                  })
                 }
                 .width('100%')
               }

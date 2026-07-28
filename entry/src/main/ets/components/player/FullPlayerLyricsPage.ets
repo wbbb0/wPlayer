@@ -22,6 +22,7 @@ export struct FullPlayerLyricsPage {
   @Prop @Watch('onListenerActiveChanged') listenerActive: boolean = true;
   @Prop primaryContentColor: string = '#FFFFFFFF';
   @Prop secondaryContentColor: string = '#B8FFFFFF';
+  @State private lyricBlurEnabled: boolean = true;
   private readonly lyricScroller: Scroller = new Scroller();
   private lastFocusedLyricIndex: number = -1;
   private listenerRegistered: boolean = false;
@@ -29,6 +30,7 @@ export struct FullPlayerLyricsPage {
     if (!this.listenerActive || index < 0 || this.playerStore.timedLyrics.length === 0) {
       return;
     }
+    this.lyricBlurEnabled = true;
     this.lastFocusedLyricIndex = index;
     this.lyricScroller.scrollToIndex(Math.max(0, index - 2), true, ScrollAlign.START);
   };
@@ -47,6 +49,7 @@ export struct FullPlayerLyricsPage {
 
   private syncListenerRegistration(): void {
     if (this.listenerActive && !this.listenerRegistered) {
+      this.lyricBlurEnabled = true;
       this.playerStore.addLyricIndexListener(this.lyricIndexListener);
       this.listenerRegistered = true;
     } else if (!this.listenerActive) {
@@ -94,13 +97,14 @@ export struct FullPlayerLyricsPage {
   build() {
     Column() {
       if (this.playerStore.timedLyrics.length > 0) {
-        List({ space: 14, scroller: this.lyricScroller }) {
+        List({ space: PlayerLayoutSpec.FULL_PLAYER_LYRIC_LIST_SPACE, scroller: this.lyricScroller }) {
           LazyForEach(this.playerStore.lyricDataSource, (line: TimedLyricLine, index: number) => {
             ListItem() {
               TimedLyricRow({
                 playerStore: this.playerStore,
                 line: line,
                 index: index,
+                blurEnabled: this.lyricBlurEnabled,
                 primaryContentColor: this.primaryContentColor,
                 secondaryContentColor: this.secondaryContentColor
               })
@@ -114,6 +118,9 @@ export struct FullPlayerLyricsPage {
         .cachedCount(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT, true)
         .scrollBar(BarState.Off)
         .contentEndOffset(this.lyricContentEndOffset())
+        .onWillStartDragging(() => {
+          this.lyricBlurEnabled = false;
+        })
         .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) =>
           this.blockVerticalPlayerGesture(recognizers))
       } else if (this.playerStore.lyrics.length > 0) {
@@ -160,8 +167,8 @@ export struct FullPlayerLyricsPage {
       }
     })
     .padding({
-      left: PlayerLayoutSpec.FULL_PLAYER_LYRICS_HORIZONTAL_INSET,
-      right: PlayerLayoutSpec.FULL_PLAYER_LYRICS_HORIZONTAL_INSET,
+      left: PlayerLayoutSpec.FULL_PLAYER_LYRICS_CONTAINER_HORIZONTAL_INSET,
+      right: PlayerLayoutSpec.FULL_PLAYER_LYRICS_CONTAINER_HORIZONTAL_INSET,
       top: this.paneCount > 1 ? 0 : PlayerLayoutSpec.FULL_PLAYER_PAGE_TOP_INSET
     })
   }

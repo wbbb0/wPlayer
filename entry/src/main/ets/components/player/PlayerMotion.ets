@@ -374,6 +374,10 @@ export class PlayerLayoutSpec {
       PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE;
   static readonly FULL_PLAYER_PAGE_HORIZONTAL_INSET: number = 20;
   static readonly FULL_PLAYER_LYRICS_HORIZONTAL_INSET: number = 28;
+  static readonly FULL_PLAYER_LYRIC_HORIZONTAL_PADDING: number = 12;
+  static readonly FULL_PLAYER_LYRICS_CONTAINER_HORIZONTAL_INSET: number =
+    PlayerLayoutSpec.FULL_PLAYER_LYRICS_HORIZONTAL_INSET -
+      PlayerLayoutSpec.FULL_PLAYER_LYRIC_HORIZONTAL_PADDING;
   static readonly FULL_PLAYER_PAGE_TOP_INSET: number = 12;
   static readonly FULL_PLAYER_ARTWORK_METADATA_GAP: number = 20;
   static readonly FULL_PLAYER_CLOSE_BUTTON_SIZE: number = 52;
@@ -382,20 +386,27 @@ export class PlayerLayoutSpec {
   static readonly FULL_PLAYER_HEADER_TEXT_GAP: number = 12;
   static readonly FULL_PLAYER_QUEUE_INDEX_WIDTH: number = 28;
   static readonly FULL_PLAYER_QUEUE_ARTWORK_SIZE: number = 52;
+  static readonly FULL_PLAYER_QUEUE_HEADER_BUTTON_SIZE: number = 36;
+  static readonly FULL_PLAYER_QUEUE_HEADER_ICON_SIZE: number = 22;
   static readonly FULL_PLAYER_QUEUE_ROW_VERTICAL_INSET: number = 8;
   static readonly FULL_PLAYER_QUEUE_DIVIDER_HEIGHT: number = 1;
   static readonly FULL_PLAYER_QUEUE_ITEM_HEIGHT: number =
     PlayerLayoutSpec.FULL_PLAYER_QUEUE_ARTWORK_SIZE +
       PlayerLayoutSpec.FULL_PLAYER_QUEUE_ROW_VERTICAL_INSET * 2 +
       PlayerLayoutSpec.FULL_PLAYER_QUEUE_DIVIDER_HEIGHT;
-  static readonly FULL_PLAYER_QUEUE_SHADOW_CLEARANCE: number = 14;
+  static readonly FULL_PLAYER_QUEUE_CONTENT_EDGE_INSET: number = 14;
   static readonly FULL_PLAYER_QUEUE_CONTENT_HORIZONTAL_INSET: number = 6;
   static readonly FULL_PLAYER_QUEUE_DIVIDER_OPACITY: number = 0.3;
-  static readonly FULL_PLAYER_QUEUE_SHADOW_RADIUS: number = 14;
-  static readonly FULL_PLAYER_QUEUE_SHADOW_OFFSET_Y: number = 4;
+  static readonly FULL_PLAYER_QUEUE_ACTIVE_FADE_START: number = 0.25;
   static readonly FULL_PLAYER_TITLE_SIZE: number = 23;
   static readonly FULL_PLAYER_ARTIST_SIZE: number = 14;
   static readonly FULL_PLAYER_PROGRESS_TRACK_THICKNESS: number = 3;
+  static readonly FULL_PLAYER_LYRIC_LIST_SPACE: number = 0;
+  static readonly FULL_PLAYER_LYRIC_VERTICAL_PADDING: number = 2;
+  static readonly FULL_PLAYER_ACTIVE_LYRIC_EXTRA_VERTICAL_PADDING: number = 10;
+  static readonly FULL_PLAYER_LYRIC_NEAR_BLUR_RADIUS: number = 5;
+  static readonly FULL_PLAYER_LYRIC_FAR_BLUR_RADIUS: number = 12;
+  static readonly FULL_PLAYER_LYRIC_MAX_TRANSITION_DISTANCE: number = 8;
   static readonly ULTRA_COMPACT_MIN_REGULAR_ARTWORK_SIZE: number = 192;
   static readonly ULTRA_COMPACT_HORIZONTAL_INSET: number = 14;
   static readonly ULTRA_COMPACT_VERTICAL_INSET: number = 14;
@@ -476,5 +487,26 @@ export class PlayerLayoutSpec {
     const heightLimit = rootHeight - topInset - bottomInset -
       PlayerLayoutSpec.FULL_PLAYER_NON_ARTWORK_HEIGHT;
     return Math.max(1, Math.min(widthLimit, heightLimit));
+  }
+}
+
+export class PlayerLyricFocusPolicy {
+  static blurRadius(index: number, activeIndex: number, blurEnabled: boolean): number {
+    if (!blurEnabled || activeIndex < 0) {
+      return 0;
+    }
+    const distance = Math.abs(index - activeIndex);
+    if (distance === 0) {
+      return 0;
+    }
+    const clampedDistance = Math.min(
+      distance,
+      PlayerLayoutSpec.FULL_PLAYER_LYRIC_MAX_TRANSITION_DISTANCE
+    );
+    const transitionRange = PlayerLayoutSpec.FULL_PLAYER_LYRIC_MAX_TRANSITION_DISTANCE - 1;
+    const progress = (clampedDistance - 1) / transitionRange;
+    return PlayerLayoutSpec.FULL_PLAYER_LYRIC_NEAR_BLUR_RADIUS +
+      (PlayerLayoutSpec.FULL_PLAYER_LYRIC_FAR_BLUR_RADIUS -
+        PlayerLayoutSpec.FULL_PLAYER_LYRIC_NEAR_BLUR_RADIUS) * progress;
   }
 }

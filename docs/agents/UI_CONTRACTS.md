@@ -119,6 +119,17 @@ suppressing another.
 - Full-player artwork preserves its source aspect ratio and expands within the remaining rectangular cover region;
   artwork with unknown dimensions uses a square fallback. List, grid and mini-player artwork retain their stable
   square geometry.
+- Keep the full-player queue header actions visually compact with adjacent button containers and no inter-button
+  gap while preserving the visible icon sizes.
+- Render the current queue item with a flat, shadowless background that reaches both horizontal page edges. In
+  two-pane layouts, fade the final 10% of that background to transparent at the trailing edge.
+- Keep the active timed lyric crisp. During automatic follow, increase non-active blur symmetrically and linearly
+  from the configured near-line radius to the configured far-line radius, then hold at the far radius. Suspend blur
+  as soon as the user starts dragging the lyric list, then restore it when the lyric page becomes active again or
+  when the next lyric-index update resumes automatic scrolling. Use compact spacing between regular lyric lines and
+  preserve extra vertical breathing room around the active line. Put the blur clearance and line spacing inside each
+  lyric text's padding, subtracting the same horizontal clearance from the lyrics container so the visible text inset
+  remains stable.
 - In regular full-player layouts, keep the collapse button at the leading top position. The cover region reserves
   only through the button's lower edge and adds no player-specific top offset beyond the system avoid area.
 - Full-player lyrics and queue scroll viewports extend to the physical bottom edge. Apply the system bottom avoid

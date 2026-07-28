@@ -12,6 +12,7 @@ import {
   FullPlayerPagerSpec,
   MiniPlayerGestureRegion,
   PlayerLayoutSpec,
+  PlayerLyricFocusPolicy,
   PlayerMotionSpec,
   PlayerFrame,
   PlayerGestureAxis,
@@ -208,6 +209,31 @@ export default function playerMorphPolicyTest() {
         .assertEqual(282);
       expect(PlayerLayoutSpec.targetPlaybackIconSize(64)).assertEqual(40);
       expect(PlayerLayoutSpec.targetPlaybackIconSize(72)).assertEqual(50);
+    });
+
+    it('grades lyric blur symmetrically and suspends it during manual scrolling', 0, () => {
+      const nearBlur = PlayerLayoutSpec.FULL_PLAYER_LYRIC_NEAR_BLUR_RADIUS;
+      const farBlur = PlayerLayoutSpec.FULL_PLAYER_LYRIC_FAR_BLUR_RADIUS;
+      const farDistance = PlayerLayoutSpec.FULL_PLAYER_LYRIC_MAX_TRANSITION_DISTANCE;
+      expect(PlayerLyricFocusPolicy.blurRadius(10, 10, true)).assertEqual(0);
+      expect(PlayerLyricFocusPolicy.blurRadius(9, 10, true)).assertEqual(nearBlur);
+      expect(PlayerLyricFocusPolicy.blurRadius(11, 10, true)).assertEqual(nearBlur);
+      expect(PlayerLyricFocusPolicy.blurRadius(12, 10, true) > nearBlur).assertTrue();
+      expect(PlayerLyricFocusPolicy.blurRadius(12, 10, true) < farBlur).assertTrue();
+      expect(PlayerLyricFocusPolicy.blurRadius(
+        10 + farDistance, 10, true
+      )).assertEqual(farBlur);
+      expect(PlayerLyricFocusPolicy.blurRadius(
+        10 + farDistance + 5, 10, true
+      )).assertEqual(farBlur);
+      expect(PlayerLyricFocusPolicy.blurRadius(11, 10, false)).assertEqual(0);
+      expect(PlayerLyricFocusPolicy.blurRadius(11, -1, true)).assertEqual(0);
+      expect(PlayerLayoutSpec.FULL_PLAYER_LYRIC_HORIZONTAL_PADDING >=
+        PlayerLayoutSpec.FULL_PLAYER_LYRIC_FAR_BLUR_RADIUS).assertTrue();
+      expect(PlayerLayoutSpec.FULL_PLAYER_LYRICS_CONTAINER_HORIZONTAL_INSET +
+        PlayerLayoutSpec.FULL_PLAYER_LYRIC_HORIZONTAL_PADDING)
+        .assertEqual(PlayerLayoutSpec.FULL_PLAYER_LYRICS_HORIZONTAL_INSET);
+      expect(PlayerLayoutSpec.FULL_PLAYER_LYRIC_LIST_SPACE).assertEqual(0);
     });
   });
 }

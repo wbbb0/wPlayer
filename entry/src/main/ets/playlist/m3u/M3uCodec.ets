@@ -30,98 +30,140 @@ interface ParsedTimestamp {
   valid: boolean;
 }
 
+interface M3uParseState {
+  entries: Array<M3uEntry>;
+  issues: Array<M3uParseIssue>;
+  firstEntryByResource: Map<string, number>;
+  pending: PendingMetadata;
+  hadHeader: boolean;
+  duplicateCount: number;
+  ignoredCommentCount: number;
+}
+
+const PARSE_BATCH_SIZE: number = 128;
+
 export class M3uCodec {
   static parse(source: string): M3uParseResult {
-    const entries: Array<M3uEntry> = [];
-    const issues: Array<M3uParseIssue> = [];
-    const firstEntryByResource: Map<string, number> = new Map<string, number>();
+    const state = M3uCodec.createParseState();
     const rows = M3uCodec.normalizeSource(source).split('\n');
-    let pending = M3uCodec.emptyPendingMetadata();
-    let hadHeader = false;
-    let duplicateCount = 0;
-    let ignoredCommentCount = 0;
-
     for (let index = 0; index < rows.length; index += 1) {
-      const lineNumber = index + 1;
-      const line = rows[index].trim();
-      if (line.length === 0) {
-        continue;
-      }
-      if (line.startsWith('#')) {
-        const upper = line.toUpperCase();
-        if (upper === '#EXTM3U') {
-          hadHeader = true;
-          continue;
-        }
-        if (upper.startsWith('#EXTINF')) {
-          const parsed = M3uCodec.parseExtInf(line);
-          pending.durationSeconds = parsed.durationSeconds;
-          pending.displayTitle = parsed.displayTitle;
-          pending.artist = parsed.artist;
-          pending.title = parsed.title;
-          if (!parsed.valid) {
-            issues.push({ line: lineNumber, kind: M3uIssueKind.INVALID_EXTINF });
-          }
-          continue;
-        }
-        if (upper.startsWith('#WPLAYER-FIRST-COMPLETED-AT')) {
-          const parsed = M3uCodec.parseTimestampDirective(line);
-          pending.firstCompletedAt = parsed.value;
-          if (!parsed.valid) {
-            issues.push({ line: lineNumber, kind: M3uIssueKind.INVALID_TIMESTAMP });
-          }
-          continue;
-        }
-        if (upper.startsWith('#WPLAYER-LAST-COMPLETED-AT')) {
-          const parsed = M3uCodec.parseTimestampDirective(line);
-          pending.lastCompletedAt = parsed.value;
-          if (!parsed.valid) {
-            issues.push({ line: lineNumber, kind: M3uIssueKind.INVALID_TIMESTAMP });
-          }
-          continue;
-        }
-        if (upper.startsWith('#WPLAYER-ALBUM') || upper.startsWith('#EXTALB')) {
-          pending.album = M3uCodec.parseTextDirective(line);
-          continue;
-        }
-        ignoredCommentCount += 1;
-        continue;
-      }
-
-      const resource = M3uCodec.parseResource(line);
-      if (resource.length === 0 || M3uCodec.hasInvalidResourceCharacter(resource)) {
-        issues.push({ line: lineNumber, kind: M3uIssueKind.INVALID_RESOURCE });
-        pending = M3uCodec.emptyPendingMetadata();
-        continue;
-      }
-      const duplicateOf = firstEntryByResource.has(resource) ?
-        firstEntryByResource.get(resource) as number : null;
-      if (duplicateOf === null) {
-        firstEntryByResource.set(resource, entries.length);
-      } else {
-        duplicateCount += 1;
-      }
-      entries.push({
-        resource: resource,
-        durationSeconds: pending.durationSeconds,
-        displayTitle: pending.displayTitle,
-        artist: pending.artist,
-        title: pending.title,
-        album: pending.album,
-        firstCompletedAt: pending.firstCompletedAt,
-        lastCompletedAt: pending.lastCompletedAt,
-        duplicateOfIndex: duplicateOf,
-        sourceLine: lineNumber
-      });
-      pending = M3uCodec.emptyPendingMetadata();
+      M3uCodec.parseRow(state, rows[index], index + 1);
     }
+    return M3uCodec.parseResult(state);
+  }
+
+  static async parseResponsive(source: string): Promise<M3uParseResult> {
+    const state = M3uCodec.createParseState();
+    const rows = M3uCodec.normalizeSource(source).split('\n');
+    for (let index = 0; index < rows.length; index += 1) {
+      M3uCodec.parseRow(state, rows[index], index + 1);
+      if ((index + 1) % PARSE_BATCH_SIZE === 0) {
+        await M3uCodec.yieldToUi();
+      }
+    }
+    return M3uCodec.parseResult(state);
+  }
+
+  private static createParseState(): M3uParseState {
     return {
-      entries: entries,
-      issues: issues,
-      hadHeader: hadHeader,
-      duplicateCount: duplicateCount,
-      ignoredCommentCount: ignoredCommentCount
+      entries: [],
+      issues: [],
+      firstEntryByResource: new Map<string, number>(),
+      pending: M3uCodec.emptyPendingMetadata(),
+      hadHeader: false,
+      duplicateCount: 0,
+      ignoredCommentCount: 0
     };
+  }
+
+  private static parseRow(state: M3uParseState, rawLine: string, lineNumber: number): void {
+    const line = rawLine.trim();
+    if (line.length === 0) {
+      return;
+    }
+    if (line.startsWith('#')) {
+      const upper = line.toUpperCase();
+      if (upper === '#EXTM3U') {
+        state.hadHeader = true;
+        return;
+      }
+      if (upper.startsWith('#EXTINF')) {
+        const parsed = M3uCodec.parseExtInf(line);
+        state.pending.durationSeconds = parsed.durationSeconds;
+        state.pending.displayTitle = parsed.displayTitle;
+        state.pending.artist = parsed.artist;
+        state.pending.title = parsed.title;
+        if (!parsed.valid) {
+          state.issues.push({ line: lineNumber, kind: M3uIssueKind.INVALID_EXTINF });
+        }
+        return;
+      }
+      if (upper.startsWith('#WPLAYER-FIRST-COMPLETED-AT')) {
+        const parsed = M3uCodec.parseTimestampDirective(line);
+        state.pending.firstCompletedAt = parsed.value;
+        if (!parsed.valid) {
+          state.issues.push({ line: lineNumber, kind: M3uIssueKind.INVALID_TIMESTAMP });
+        }
+        return;
+      }
+      if (upper.startsWith('#WPLAYER-LAST-COMPLETED-AT')) {
+        const parsed = M3uCodec.parseTimestampDirective(line);
+        state.pending.lastCompletedAt = parsed.value;
+        if (!parsed.valid) {
+          state.issues.push({ line: lineNumber, kind: M3uIssueKind.INVALID_TIMESTAMP });
+        }
+        return;
+      }
+      if (upper.startsWith('#WPLAYER-ALBUM') || upper.startsWith('#EXTALB')) {
+        state.pending.album = M3uCodec.parseTextDirective(line);
+        return;
+      }
+      state.ignoredCommentCount += 1;
+      return;
+    }
+
+    const resource = M3uCodec.parseResource(line);
+    if (resource.length === 0 || M3uCodec.hasInvalidResourceCharacter(resource)) {
+      state.issues.push({ line: lineNumber, kind: M3uIssueKind.INVALID_RESOURCE });
+      state.pending = M3uCodec.emptyPendingMetadata();
+      return;
+    }
+    const duplicateOf = state.firstEntryByResource.has(resource) ?
+      state.firstEntryByResource.get(resource) as number : null;
+    if (duplicateOf === null) {
+      state.firstEntryByResource.set(resource, state.entries.length);
+    } else {
+      state.duplicateCount += 1;
+    }
+    state.entries.push({
+      resource: resource,
+      durationSeconds: state.pending.durationSeconds,
+      displayTitle: state.pending.displayTitle,
+      artist: state.pending.artist,
+      title: state.pending.title,
+      album: state.pending.album,
+      firstCompletedAt: state.pending.firstCompletedAt,
+      lastCompletedAt: state.pending.lastCompletedAt,
+      duplicateOfIndex: duplicateOf,
+      sourceLine: lineNumber
+    });
+    state.pending = M3uCodec.emptyPendingMetadata();
+  }
+
+  private static parseResult(state: M3uParseState): M3uParseResult {
+    return {
+      entries: state.entries,
+      issues: state.issues,
+      hadHeader: state.hadHeader,
+      duplicateCount: state.duplicateCount,
+      ignoredCommentCount: state.ignoredCommentCount
+    };
+  }
+
+  private static yieldToUi(): Promise<void> {
+    return new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 0);
+    });
   }
 
   static serialize(entries: Array<M3uExportEntry>, options: M3uSerializeOptions = {}): string {

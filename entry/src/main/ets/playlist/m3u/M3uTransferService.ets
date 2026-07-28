@@ -4,6 +4,7 @@ import { util } from '@kit.ArkTS';
 import {
   PlaylistItemInput,
   PlaylistItemSource,
+  PlaylistMutationResult,
   PlaylistSortField,
   PlaylistSummary,
   SortDirection
@@ -12,10 +13,15 @@ import { MusicRepository } from '../../library/data/MusicRepository';
 import { M3uCodec } from './M3uCodec';
 import { M3uEncoding } from './M3uEncoding';
 import { M3uEncodingDecision, M3uExportEntry, M3uIssueKind, M3uParseIssue } from './M3uModels';
+import { M3uImportPolicy } from './M3uImportPolicy';
+import { MAX_M3U_REPORT_DETAILS_PER_SECTION } from './M3uImportReportPolicy';
 import { M3uImportMatcher } from './M3uImportMatcher';
+import { M3uTextValidation } from './M3uTextValidation';
 import { FileIoSafety } from './FileIoSafety';
 
-const MAX_M3U_BYTES: number = 32 * 1024 * 1024;
+const MAX_M3U_BYTES: number = 4 * 1024 * 1024;
+const MATCH_BATCH_SIZE: number = 128;
+const CATALOG_PAGE_SIZE: number = 128;
 
 export enum M3uImportMode {
   MERGE = 0,
@@ -59,20 +65,48 @@ export class M3uImportReport {
   unmatched: number = 0;
   inserted: number = 0;
   alreadyPresent: number = 0;
+  unavailable: number = 0;
   issues: number = 0;
+  failed: boolean = false;
+  errorMessage: string = '';
   matchedDetails: Array<M3uImportDetail> = [];
   unmatchedDetails: Array<M3uImportDetail> = [];
   issueDetails: Array<M3uImportDetail> = [];
+  failureDetails: Array<M3uImportDetail> = [];
+  detailsTruncated: boolean = false;
 }
 
 export type M3uImportProgressListener = (stage: M3uImportStage) => void;
 
 export class M3uImportContext {
-  readonly matcher: M3uImportMatcher;
+  private matcher?: M3uImportMatcher;
+  private matcherPromise?: Promise<M3uImportMatcher>;
 
-  constructor(matcher: M3uImportMatcher) {
-    this.matcher = matcher;
+  getMatcher(factory: () => Promise<M3uImportMatcher>): Promise<M3uImportMatcher> {
+    if (this.matcher !== undefined) {
+      return Promise.resolve(this.matcher);
+    }
+    if (this.matcherPromise === undefined) {
+      this.matcherPromise = factory().then((matcher: M3uImportMatcher): M3uImportMatcher => {
+        this.matcher = matcher;
+        return matcher;
+      }).catch((error: Object): M3uImportMatcher => {
+        this.matcherPromise = undefined;
+        throw error instanceof Error ? error : new Error(`${error}`);
+      });
+    }
+    return this.matcherPromise;
   }
+}
+
+class M3uPreparedImport {
+  entryCount: number = 0;
+  inputs: Array<PlaylistItemInput> = [];
+  matchedDetails: Array<M3uImportDetail> = [];
+  unmatchedDetails: Array<M3uImportDetail> = [];
+  issues: Array<M3uParseIssue> = [];
+  issueDetails: Array<M3uImportDetail> = [];
+  detailsTruncated: boolean = false;
 }
 
 export class M3uTransferService {
@@ -119,27 +153,32 @@ export class M3uTransferService {
 
   async importSourceAsNew(source: M3uImportSource,
     onProgress?: M3uImportProgressListener, importContext?: M3uImportContext): Promise<M3uImportReport> {
-    const playlists = await this.repository.getPlaylists(PlaylistSortField.NAME, SortDirection.ASCENDING);
-    const baseName = source.suggestedName;
-    const uniqueName = this.uniquePlaylistName(baseName, playlists);
-    const playlist = await this.repository.createPlaylist(uniqueName);
-    try {
-      return await this.importSource(source, playlist.id, M3uImportMode.MERGE, onProgress, importContext);
-    } catch (error) {
-      try {
-        await this.repository.deletePlaylist(playlist.id);
-      } catch (cleanupError) {
-        console.warn(`Unable to remove failed imported playlist: ` +
-          `${cleanupError instanceof Error ? cleanupError.message : `${cleanupError}`}`);
-      }
-      const message = error instanceof Error ? error.message : `${error}`;
-      throw new Error(message);
-    }
+    const prepared = await this.prepareImport(source.uri, onProgress, importContext);
+    this.requireImportAllowed(prepared, M3uImportMode.MERGE, true);
+    onProgress?.(M3uImportStage.WRITING);
+    const creation = await this.repository.createImportedPlaylistWithItems(
+      source.suggestedName,
+      prepared.inputs
+    );
+    const report = this.importReport(
+      prepared,
+      creation.playlist.id,
+      M3uImportMode.MERGE,
+      creation.mutation
+    );
+    report.playlistName = creation.playlist.name;
+    return report;
   }
 
   async importSource(source: M3uImportSource, playlistId: number, mode: M3uImportMode,
     onProgress?: M3uImportProgressListener, importContext?: M3uImportContext): Promise<M3uImportReport> {
-    const report = await this.importUri(source.uri, playlistId, mode, onProgress, importContext);
+    const prepared = await this.prepareImport(source.uri, onProgress, importContext);
+    this.requireImportAllowed(prepared, mode, false);
+    onProgress?.(M3uImportStage.WRITING);
+    const mutation = mode === M3uImportMode.REPLACE ?
+      await this.repository.replaceImportedPlaylistItems(playlistId, prepared.inputs) :
+      await this.repository.mergeImportedPlaylistItems(playlistId, prepared.inputs);
+    const report = this.importReport(prepared, playlistId, mode, mutation);
     const playlists = await this.repository.getPlaylists(PlaylistSortField.NAME, SortDirection.ASCENDING);
     for (let index = 0; index < playlists.length; index += 1) {
       if (playlists[index].id === playlistId) {
@@ -150,9 +189,25 @@ export class M3uTransferService {
     return report;
   }
 
-  async createImportContext(): Promise<M3uImportContext> {
-    const catalog = await this.repository.getPlaylistTransferCatalog();
-    return new M3uImportContext(new M3uImportMatcher(catalog));
+  failedImportReport(source: M3uImportSource, error: Object): M3uImportReport {
+    const message = error instanceof Error ? error.message : `${error}`;
+    const detail = new M3uImportDetail();
+    detail.key = 'import_failed';
+    detail.status = '导入失败';
+    detail.title = source.suggestedName;
+    detail.reason = message;
+    detail.uri = source.uri;
+    detail.failed = true;
+    const report = new M3uImportReport();
+    report.playlistName = source.suggestedName;
+    report.failed = true;
+    report.errorMessage = message;
+    report.failureDetails = [detail];
+    return report;
+  }
+
+  createImportContext(): M3uImportContext {
+    return new M3uImportContext();
   }
 
   findNameConflict(source: M3uImportSource, playlists: Array<PlaylistSummary>): PlaylistSummary | undefined {
@@ -210,48 +265,115 @@ export class M3uTransferService {
     return true;
   }
 
-  private async importUri(uri: string, playlistId: number, mode: M3uImportMode,
-    onProgress?: M3uImportProgressListener, importContext?: M3uImportContext): Promise<M3uImportReport> {
+  private async prepareImport(uri: string,
+    onProgress?: M3uImportProgressListener, importContext?: M3uImportContext): Promise<M3uPreparedImport> {
     onProgress?.(M3uImportStage.READING);
-    const parsed = M3uCodec.parse(await this.readText(uri));
+    const parsed = await M3uCodec.parseResponsive(await this.readText(uri));
+    const prepared = new M3uPreparedImport();
+    prepared.entryCount = parsed.entries.length;
+    prepared.issues = parsed.issues;
+    prepared.issueDetails = this.issueDetails(parsed.issues, uri);
+    if (prepared.issueDetails.length < parsed.issues.length) {
+      prepared.detailsTruncated = true;
+    }
+    if (parsed.entries.length === 0) {
+      return prepared;
+    }
     onProgress?.(M3uImportStage.MATCHING);
-    const matcher = importContext?.matcher ?? (await this.createImportContext()).matcher;
-    const inputs: Array<PlaylistItemInput> = [];
-    const matchedDetails: Array<M3uImportDetail> = [];
-    const unmatchedDetails: Array<M3uImportDetail> = [];
+    await this.yieldToUi();
+    const sharedContext = importContext ?? this.createImportContext();
+    const matcher = await sharedContext.getMatcher((): Promise<M3uImportMatcher> => this.createResponsiveMatcher());
     for (let index = 0; index < parsed.entries.length; index += 1) {
       const entry = parsed.entries[index];
-      const track = matcher.match(entry);
+      const track = await matcher.matchResponsive(entry);
       if (track !== undefined) {
-        inputs.push({
+        prepared.inputs.push({
           trackId: track.trackId,
           source: PlaylistItemSource.IMPORT,
           qualifiedAt: entry.lastCompletedAt ?? entry.firstCompletedAt ?? 0
         });
-        matchedDetails.push(this.matchedDetail(index, entry.resource, track.title, track.artistDisplay, track.uri));
+        if (prepared.matchedDetails.length < MAX_M3U_REPORT_DETAILS_PER_SECTION) {
+          prepared.matchedDetails.push(
+            this.matchedDetail(index, entry.resource, track.title, track.artistDisplay, track.uri)
+          );
+        } else {
+          prepared.detailsTruncated = true;
+        }
       } else {
-        unmatchedDetails.push(this.unmatchedDetail(index, entry.resource, entry.sourceLine));
+        if (prepared.unmatchedDetails.length < MAX_M3U_REPORT_DETAILS_PER_SECTION) {
+          prepared.unmatchedDetails.push(this.unmatchedDetail(index, entry.resource, entry.sourceLine));
+        } else {
+          prepared.detailsTruncated = true;
+        }
+      }
+      if ((index + 1) % MATCH_BATCH_SIZE === 0) {
+        await this.yieldToUi();
       }
     }
-    if (mode === M3uImportMode.REPLACE && parsed.entries.length > 0 && inputs.length === 0) {
-      throw new Error('文件中的歌曲均未在音乐库中匹配，已保留原播放列表');
+    return prepared;
+  }
+
+  private async createResponsiveMatcher(): Promise<M3uImportMatcher> {
+    const matcher = new M3uImportMatcher([]);
+    let afterTrackId = 0;
+    while (true) {
+      const page = await this.repository.getPlaylistTransferCatalogPage(afterTrackId, CATALOG_PAGE_SIZE);
+      if (page.length === 0) {
+        return matcher;
+      }
+      await matcher.addTracksResponsive(page);
+      afterTrackId = page[page.length - 1].trackId;
+      if (page.length < CATALOG_PAGE_SIZE) {
+        return matcher;
+      }
     }
-    onProgress?.(M3uImportStage.WRITING);
-    const mutation = mode === M3uImportMode.REPLACE ?
-      await this.repository.replacePlaylistItems(playlistId, inputs) :
-      await this.repository.mergePlaylistItems(playlistId, inputs);
+  }
+
+  private yieldToUi(): Promise<void> {
+    return new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 0);
+    });
+  }
+
+  private requireImportAllowed(prepared: M3uPreparedImport,
+    mode: M3uImportMode, creatingPlaylist: boolean): void {
+    const message = M3uImportPolicy.errorMessage(
+      prepared.entryCount,
+      prepared.inputs.length,
+      mode === M3uImportMode.REPLACE,
+      creatingPlaylist
+    );
+    if (message.length > 0) {
+      throw new Error(message);
+    }
+  }
+
+  private importReport(prepared: M3uPreparedImport, playlistId: number,
+    mode: M3uImportMode, mutation: PlaylistMutationResult): M3uImportReport {
     const report = new M3uImportReport();
     report.playlistId = playlistId;
     report.mode = mode;
-    report.parsed = parsed.entries.length;
-    report.matched = inputs.length;
-    report.unmatched = parsed.entries.length - inputs.length;
+    report.parsed = prepared.entryCount;
+    report.matched = prepared.inputs.length;
+    report.unmatched = prepared.entryCount - prepared.inputs.length;
     report.inserted = mutation.inserted;
     report.alreadyPresent = mutation.alreadyPresent;
-    report.issues = parsed.issues.length;
-    report.matchedDetails = matchedDetails;
-    report.unmatchedDetails = unmatchedDetails;
-    report.issueDetails = this.issueDetails(parsed.issues, uri);
+    report.unavailable = mutation.unavailable;
+    report.issues = prepared.issues.length;
+    report.matchedDetails = prepared.matchedDetails;
+    report.unmatchedDetails = prepared.unmatchedDetails;
+    report.issueDetails = prepared.issueDetails;
+    if (mutation.unavailable > 0) {
+      const detail = new M3uImportDetail();
+      detail.key = 'commit_unavailable';
+      detail.status = '写入跳过';
+      detail.title = `${mutation.unavailable} 首歌曲已不可用`;
+      detail.reason = '导入期间歌曲已从音乐库移除或变为不可用，未写入播放列表';
+      detail.uri = '';
+      detail.failed = true;
+      report.failureDetails = [detail];
+    }
+    report.detailsTruncated = prepared.detailsTruncated;
     return report;
   }
 
@@ -280,7 +402,8 @@ export class M3uTransferService {
 
   private issueDetails(issues: Array<M3uParseIssue>, uri: string): Array<M3uImportDetail> {
     const details: Array<M3uImportDetail> = [];
-    for (let index = 0; index < issues.length; index += 1) {
+    const detailCount = Math.min(issues.length, MAX_M3U_REPORT_DETAILS_PER_SECTION);
+    for (let index = 0; index < detailCount; index += 1) {
       const detail = new M3uImportDetail();
       detail.key = `issue_${index}`;
       detail.status = '解析问题';
@@ -321,7 +444,7 @@ export class M3uTransferService {
       file = await fileIo.open(uri, fileIo.OpenMode.READ_ONLY);
       const stat = await fileIo.stat(file.fd);
       if (stat.size > MAX_M3U_BYTES) {
-        throw new Error('M3U 文件超过 32 MB，已拒绝导入');
+        throw new Error('M3U 文件超过 4 MB，已拒绝导入');
       }
       const output = new Uint8Array(stat.size);
       let bytesRead = 0;
@@ -336,10 +459,20 @@ export class M3uTransferService {
       }
       const bytes = output.subarray(0, bytesRead);
       const decision = M3uEncoding.detect(bytes);
+      let text = '';
       if (decision.canDecodeDirectly) {
-        return M3uEncoding.decode(bytes, decision);
+        if (M3uEncoding.hasDecodingErrors(bytes, decision)) {
+          throw new Error('M3U 文件编码损坏，无法完整解码');
+        }
+        text = M3uEncoding.decode(bytes, decision);
+      } else {
+        text = this.decodeLegacy(bytes, decision);
       }
-      return this.decodeLegacy(bytes, decision);
+      const validationError = M3uTextValidation.errorMessage(text);
+      if (validationError.length > 0) {
+        throw new Error(validationError);
+      }
+      return text;
     } catch (error) {
       throw FileIoSafety.operationError('无法读取 M3U 文件', error);
     } finally {
@@ -348,18 +481,33 @@ export class M3uTransferService {
   }
 
   private decodeLegacy(bytes: Uint8Array, decision: M3uEncodingDecision): string {
+    if (decision.legacyHint.length > 0) {
+      try {
+        return util.TextDecoder.create(
+          decision.legacyHint,
+          { fatal: true, ignoreBOM: true }
+        ).decodeToString(bytes);
+      } catch (_) {
+        throw new Error(`无法按文件声明的 ${decision.legacyHint} 编码读取 M3U`);
+      }
+    }
     let best = '';
     let bestPenalty = Number.MAX_SAFE_INTEGER;
+    const equallyLikely = new Set<string>();
     for (let index = 0; index < decision.fallbackLabels.length; index += 1) {
       try {
         const text = util.TextDecoder.create(
           decision.fallbackLabels[index],
-          { fatal: false, ignoreBOM: true }
+          { fatal: true, ignoreBOM: true }
         ).decodeToString(bytes);
         const penalty = this.decodePenalty(text);
         if (penalty < bestPenalty) {
           best = text;
           bestPenalty = penalty;
+          equallyLikely.clear();
+          equallyLikely.add(text);
+        } else if (penalty === bestPenalty) {
+          equallyLikely.add(text);
         }
       } catch (_) {
         // The device's ICU build may not include every legacy codec.
@@ -367,6 +515,9 @@ export class M3uTransferService {
     }
     if (best.length === 0 && bytes.length > 0) {
       throw new Error('无法识别 M3U 文件编码');
+    }
+    if (equallyLikely.size > 1) {
+      throw new Error('无法可靠识别 M3U 文件编码，请转换为 UTF-8 或在文件中添加 #EXTENC');
     }
     return best;
   }
@@ -377,7 +528,8 @@ export class M3uTransferService {
       const code = value.charCodeAt(index);
       if (code === 0xFFFD) {
         penalty += 20;
-      } else if (code < 0x20 && code !== 0x09 && code !== 0x0A && code !== 0x0D) {
+      } else if ((code < 0x20 && code !== 0x09 && code !== 0x0A && code !== 0x0D) ||
+        (code >= 0x7F && code <= 0x9F)) {
         penalty += 5;
       }
     }
@@ -403,17 +555,6 @@ export class M3uTransferService {
     }
     const withoutExtension = fileName.replace(/\.m3u8?$/i, '').trim();
     return withoutExtension.length > 0 ? withoutExtension : '导入的播放列表';
-  }
-
-  private uniquePlaylistName(base: string, playlists: Array<PlaylistSummary>): string {
-    let candidate = base;
-    let suffix = 2;
-    while (playlists.some((playlist: PlaylistSummary): boolean =>
-      this.normalized(playlist.name) === this.normalized(candidate))) {
-      candidate = `${base} (${suffix})`;
-      suffix += 1;
-    }
-    return candidate;
   }
 
   private safeFileName(value: string): string {

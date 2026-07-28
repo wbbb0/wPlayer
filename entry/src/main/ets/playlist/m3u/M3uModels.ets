@@ -9,6 +9,7 @@ export interface M3uEncodingDecision {
   bomLength: number;
   confidence: M3uEncodingConfidence;
   canDecodeDirectly: boolean;
+  legacyHint: string;
   fallbackLabels: Array<string>;
 }
 

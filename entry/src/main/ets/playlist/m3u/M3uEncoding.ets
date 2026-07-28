@@ -22,12 +22,14 @@ export class M3uEncoding {
     if (M3uEncoding.isValidUtf8(bytes)) {
       return M3uEncoding.decision('utf-8', 0, M3uEncodingConfidence.LIKELY, true);
     }
+    const legacyHint = M3uEncoding.legacyHint(bytes);
     return {
       label: '',
       bomLength: 0,
       confidence: M3uEncodingConfidence.UNDETERMINED,
       canDecodeDirectly: false,
-      fallbackLabels: M3uEncoding.legacyFallbacks(bytes)
+      legacyHint: legacyHint,
+      fallbackLabels: M3uEncoding.legacyFallbacks(legacyHint)
     };
   }
 
@@ -107,6 +109,43 @@ export class M3uEncoding {
     return output;
   }
 
+  static hasDecodingErrors(
+    bytes: Uint8Array,
+    decision: M3uEncodingDecision = M3uEncoding.detect(bytes)
+  ): boolean {
+    if (!decision.canDecodeDirectly) {
+      return false;
+    }
+    const start = Math.min(Math.max(0, decision.bomLength), bytes.length);
+    if (decision.label === 'utf-8') {
+      return !M3uEncoding.isValidUtf8(bytes.subarray(start));
+    }
+    if (decision.label !== 'utf-16le' && decision.label !== 'utf-16be') {
+      return true;
+    }
+    if ((bytes.length - start) % 2 !== 0) {
+      return true;
+    }
+    const littleEndian = decision.label === 'utf-16le';
+    let pendingHighSurrogate = false;
+    for (let index = start; index < bytes.length; index += 2) {
+      const codeUnit = littleEndian ?
+        bytes[index] | (bytes[index + 1] << 8) :
+        (bytes[index] << 8) | bytes[index + 1];
+      if (pendingHighSurrogate) {
+        if (codeUnit < 0xDC00 || codeUnit > 0xDFFF) {
+          return true;
+        }
+        pendingHighSurrogate = false;
+      } else if (codeUnit >= 0xD800 && codeUnit <= 0xDBFF) {
+        pendingHighSurrogate = true;
+      } else if (codeUnit >= 0xDC00 && codeUnit <= 0xDFFF) {
+        return true;
+      }
+    }
+    return pendingHighSurrogate;
+  }
+
   private static decision(label: string, bomLength: number, confidence: M3uEncodingConfidence,
     canDecodeDirectly: boolean): M3uEncodingDecision {
     return {
@@ -114,6 +153,7 @@ export class M3uEncoding {
       bomLength: bomLength,
       confidence: confidence,
       canDecodeDirectly: canDecodeDirectly,
+      legacyHint: '',
       fallbackLabels: M3uEncoding.LEGACY_FALLBACKS.slice()
     };
   }
@@ -130,7 +170,7 @@ export class M3uEncoding {
     return true;
   }
 
-  private static legacyFallbacks(bytes: Uint8Array): Array<string> {
+  private static legacyHint(bytes: Uint8Array): string {
     const sampleLength = Math.min(bytes.length, 4096);
     let ascii = '';
     for (let index = 0; index < sampleLength; index += 1) {
@@ -139,9 +179,12 @@ export class M3uEncoding {
     }
     const match = /#EXTENC\s*:\s*([A-Za-z0-9_-]+)/i.exec(ascii);
     if (match === null) {
-      return M3uEncoding.LEGACY_FALLBACKS.slice();
+      return '';
     }
-    const hint = M3uEncoding.normalizeLegacyLabel(match[1]);
+    return M3uEncoding.normalizeLegacyLabel(match[1]);
+  }
+
+  private static legacyFallbacks(hint: string): Array<string> {
     const fallbacks: Array<string> = [];
     if (hint.length > 0) {
       fallbacks.push(hint);
@@ -175,7 +218,16 @@ export class M3uEncoding {
 
   private static detectBomlessUtf16(bytes: Uint8Array): string {
     const sampleLength = Math.min(bytes.length - (bytes.length % 2), 4096);
-    if (sampleLength < 8) {
+    if (sampleLength < 2) {
+      return '';
+    }
+    if (sampleLength === 2) {
+      if (bytes[0] !== 0 && bytes[1] === 0) {
+        return 'utf-16le';
+      }
+      if (bytes[0] === 0 && bytes[1] !== 0) {
+        return 'utf-16be';
+      }
       return '';
     }
     let evenZeroCount = 0;
@@ -249,12 +301,13 @@ export class M3uEncoding {
   }
 
   private static decodeUtf8(bytes: Uint8Array, start: number): string {
-    const codeUnits: Array<number> = [];
+    const chunks: Array<string> = [];
+    let codeUnits: Array<number> = [];
     let index = start;
     while (index < bytes.length) {
       const first = bytes[index];
       if (first <= 0x7F) {
-        codeUnits.push(first);
+        codeUnits = M3uEncoding.appendCodeUnit(chunks, codeUnits, first);
         index += 1;
         continue;
       }
@@ -270,12 +323,12 @@ export class M3uEncoding {
         continuationCount = 3;
         codePoint = first & 0x07;
       } else {
-        codeUnits.push(0xFFFD);
+        codeUnits = M3uEncoding.appendCodeUnit(chunks, codeUnits, 0xFFFD);
         index += 1;
         continue;
       }
       if (index + continuationCount >= bytes.length) {
-        codeUnits.push(0xFFFD);
+        codeUnits = M3uEncoding.appendCodeUnit(chunks, codeUnits, 0xFFFD);
         break;
       }
       let valid = true;
@@ -291,46 +344,78 @@ export class M3uEncoding {
         continuationCount === 2 ? 0x800 : 0x10000;
       if (!valid || codePoint < minimumCodePoint || codePoint > 0x10FFFF ||
         (codePoint >= 0xD800 && codePoint <= 0xDFFF)) {
-        codeUnits.push(0xFFFD);
+        codeUnits = M3uEncoding.appendCodeUnit(chunks, codeUnits, 0xFFFD);
         index += 1;
         continue;
       }
       if (codePoint <= 0xFFFF) {
-        codeUnits.push(codePoint);
+        codeUnits = M3uEncoding.appendCodeUnit(chunks, codeUnits, codePoint);
       } else {
         const adjusted = codePoint - 0x10000;
-        codeUnits.push(0xD800 + (adjusted >> 10), 0xDC00 + (adjusted & 0x3FF));
+        codeUnits = M3uEncoding.appendCodeUnit(chunks, codeUnits, 0xD800 + (adjusted >> 10));
+        codeUnits = M3uEncoding.appendCodeUnit(chunks, codeUnits, 0xDC00 + (adjusted & 0x3FF));
       }
       index += continuationCount + 1;
     }
-    return M3uEncoding.fromCodeUnits(codeUnits);
+    return M3uEncoding.finishCodeUnits(chunks, codeUnits);
   }
 
   private static decodeUtf16(bytes: Uint8Array, start: number, littleEndian: boolean): string {
-    const codeUnits: Array<number> = [];
+    const chunks: Array<string> = [];
+    let codeUnits: Array<number> = [];
+    let pendingHighSurrogate = -1;
     for (let index = start; index + 1 < bytes.length; index += 2) {
       const codeUnit = littleEndian ?
         bytes[index] | (bytes[index + 1] << 8) :
         (bytes[index] << 8) | bytes[index + 1];
-      codeUnits.push(codeUnit);
+      if (pendingHighSurrogate >= 0) {
+        if (codeUnit >= 0xDC00 && codeUnit <= 0xDFFF) {
+          codeUnits = M3uEncoding.appendCodeUnit(chunks, codeUnits, pendingHighSurrogate);
+          codeUnits = M3uEncoding.appendCodeUnit(chunks, codeUnits, codeUnit);
+          pendingHighSurrogate = -1;
+          continue;
+        }
+        codeUnits = M3uEncoding.appendCodeUnit(chunks, codeUnits, 0xFFFD);
+        pendingHighSurrogate = -1;
+      }
+      if (codeUnit >= 0xD800 && codeUnit <= 0xDBFF) {
+        pendingHighSurrogate = codeUnit;
+      } else if (codeUnit >= 0xDC00 && codeUnit <= 0xDFFF) {
+        codeUnits = M3uEncoding.appendCodeUnit(chunks, codeUnits, 0xFFFD);
+      } else {
+        codeUnits = M3uEncoding.appendCodeUnit(chunks, codeUnits, codeUnit);
+      }
+    }
+    if (pendingHighSurrogate >= 0) {
+      codeUnits = M3uEncoding.appendCodeUnit(chunks, codeUnits, 0xFFFD);
     }
     if ((bytes.length - start) % 2 !== 0) {
-      codeUnits.push(0xFFFD);
+      codeUnits = M3uEncoding.appendCodeUnit(chunks, codeUnits, 0xFFFD);
     }
-    return M3uEncoding.fromCodeUnits(codeUnits);
+    return M3uEncoding.finishCodeUnits(chunks, codeUnits);
   }
 
-  private static fromCodeUnits(codeUnits: Array<number>): string {
-    const chunkSize = 1024;
-    let output = '';
-    for (let start = 0; start < codeUnits.length; start += chunkSize) {
-      const end = Math.min(start + chunkSize, codeUnits.length);
-      let chunk = '';
-      for (let index = start; index < end; index += 1) {
-        chunk += String.fromCharCode(codeUnits[index]);
-      }
-      output += chunk;
+  private static appendCodeUnit(chunks: Array<string>, codeUnits: Array<number>, value: number): Array<number> {
+    codeUnits.push(value);
+    if (codeUnits.length < 1024) {
+      return codeUnits;
     }
-    return output;
+    chunks.push(M3uEncoding.codeUnitsToString(codeUnits));
+    return [];
+  }
+
+  private static finishCodeUnits(chunks: Array<string>, codeUnits: Array<number>): string {
+    if (codeUnits.length > 0) {
+      chunks.push(M3uEncoding.codeUnitsToString(codeUnits));
+    }
+    return chunks.join('');
+  }
+
+  private static codeUnitsToString(codeUnits: Array<number>): string {
+    let chunk = '';
+    for (let index = 0; index < codeUnits.length; index += 1) {
+      chunk += String.fromCharCode(codeUnits[index]);
+    }
+    return chunk;
   }
 }

@@ -3,6 +3,7 @@ import { M3uEntry } from './M3uModels';
 
 const DURATION_TOLERANCE_SECONDS: number = 2;
 const MAX_WEAK_TITLE_CANDIDATES: number = 20;
+const INDEX_BUILD_BATCH_SIZE: number = 128;
 
 class M3uIndexedTrack {
   readonly track: PlaylistTransferTrack;
@@ -57,23 +58,42 @@ export class M3uImportMatcher {
 
   constructor(catalog: Array<PlaylistTransferTrack>) {
     for (let cursor = 0; cursor < catalog.length; cursor += 1) {
-      const indexed = new M3uIndexedTrack(catalog[cursor]);
-      this.index.byUri.set(indexed.track.uri, indexed);
-      M3uImportMatcher.addIndexed(this.index.byFileName, indexed.fileName, indexed);
-      M3uImportMatcher.addIndexed(this.index.byTitle, indexed.title, indexed);
-      if (indexed.title.length > 0 && indexed.artist.length > 0) {
-        M3uImportMatcher.addIndexed(this.index.byTitleArtist, `${indexed.title}\n${indexed.artist}`, indexed);
+      this.indexTrack(catalog[cursor]);
+    }
+  }
+
+  static async createResponsive(catalog: Array<PlaylistTransferTrack>): Promise<M3uImportMatcher> {
+    const matcher = new M3uImportMatcher([]);
+    await matcher.addTracksResponsive(catalog);
+    return matcher;
+  }
+
+  async addTracksResponsive(catalog: Array<PlaylistTransferTrack>): Promise<void> {
+    for (let cursor = 0; cursor < catalog.length; cursor += 1) {
+      this.indexTrack(catalog[cursor]);
+      if ((cursor + 1) % INDEX_BUILD_BATCH_SIZE === 0) {
+        await M3uImportMatcher.yieldToUi();
       }
-      if (indexed.title.length > 0 && indexed.album.length > 0) {
-        M3uImportMatcher.addIndexed(this.index.byTitleAlbum, `${indexed.title}\n${indexed.album}`, indexed);
-      }
-      if (indexed.title.length > 0 && indexed.artist.length > 0 && indexed.album.length > 0) {
-        M3uImportMatcher.addIndexed(
-          this.index.byTitleArtistAlbum,
-          `${indexed.title}\n${indexed.artist}\n${indexed.album}`,
-          indexed
-        );
-      }
+    }
+  }
+
+  private indexTrack(track: PlaylistTransferTrack): void {
+    const indexed = new M3uIndexedTrack(track);
+    this.index.byUri.set(indexed.track.uri, indexed);
+    M3uImportMatcher.addIndexed(this.index.byFileName, indexed.fileName, indexed);
+    M3uImportMatcher.addIndexed(this.index.byTitle, indexed.title, indexed);
+    if (indexed.title.length > 0 && indexed.artist.length > 0) {
+      M3uImportMatcher.addIndexed(this.index.byTitleArtist, `${indexed.title}\n${indexed.artist}`, indexed);
+    }
+    if (indexed.title.length > 0 && indexed.album.length > 0) {
+      M3uImportMatcher.addIndexed(this.index.byTitleAlbum, `${indexed.title}\n${indexed.album}`, indexed);
+    }
+    if (indexed.title.length > 0 && indexed.artist.length > 0 && indexed.album.length > 0) {
+      M3uImportMatcher.addIndexed(
+        this.index.byTitleArtistAlbum,
+        `${indexed.title}\n${indexed.artist}\n${indexed.album}`,
+        indexed
+      );
     }
   }
 
@@ -90,6 +110,19 @@ export class M3uImportMatcher {
     return this.matchMetadata(normalized)?.track;
   }
 
+  async matchResponsive(entry: M3uEntry): Promise<PlaylistTransferTrack | undefined> {
+    const exact = this.index.byUri.get(entry.resource);
+    if (exact !== undefined) {
+      return exact.track;
+    }
+    const normalized = new NormalizedM3uEntry(entry);
+    const pathMatch = await this.matchFileNameResponsive(normalized);
+    if (pathMatch !== undefined) {
+      return pathMatch.track;
+    }
+    return (await this.matchMetadataResponsive(normalized))?.track;
+  }
+
   private matchFileName(entry: NormalizedM3uEntry): M3uIndexedTrack | undefined {
     const candidates = this.index.byFileName.get(entry.fileName) ?? [];
     if (this.hasAmbiguousTitleArtistAlbumWithoutDuration(entry)) {
@@ -99,6 +132,17 @@ export class M3uImportMatcher {
       return this.fileNameCandidateMatches(candidates[0], entry) ? candidates[0] : undefined;
     }
     return this.uniqueBest(candidates, entry, entry.durationSeconds !== null, true);
+  }
+
+  private async matchFileNameResponsive(entry: NormalizedM3uEntry): Promise<M3uIndexedTrack | undefined> {
+    const candidates = this.index.byFileName.get(entry.fileName) ?? [];
+    if (this.hasAmbiguousTitleArtistAlbumWithoutDuration(entry)) {
+      return undefined;
+    }
+    if (candidates.length === 1) {
+      return this.fileNameCandidateMatches(candidates[0], entry) ? candidates[0] : undefined;
+    }
+    return this.uniqueBestResponsive(candidates, entry, entry.durationSeconds !== null, true);
   }
 
   private matchMetadata(entry: NormalizedM3uEntry): M3uIndexedTrack | undefined {
@@ -130,6 +174,35 @@ export class M3uImportMatcher {
     return undefined;
   }
 
+  private async matchMetadataResponsive(entry: NormalizedM3uEntry): Promise<M3uIndexedTrack | undefined> {
+    if (entry.title.length === 0) {
+      return undefined;
+    }
+    if (entry.artist.length > 0 && entry.album.length > 0) {
+      const candidates = this.index.byTitleArtistAlbum.get(`${entry.title}\n${entry.artist}\n${entry.album}`) ?? [];
+      if (entry.durationSeconds !== null) {
+        return this.uniqueDurationMatchResponsive(candidates, entry.durationSeconds);
+      }
+      return candidates.length === 1 ? candidates[0] : undefined;
+    }
+    if (entry.artist.length > 0 && entry.durationSeconds !== null) {
+      const candidates = this.index.byTitleArtist.get(`${entry.title}\n${entry.artist}`) ?? [];
+      return this.uniqueDurationMatchResponsive(candidates, entry.durationSeconds);
+    }
+    if (entry.album.length > 0 && entry.durationSeconds !== null) {
+      const candidates = this.index.byTitleAlbum.get(`${entry.title}\n${entry.album}`) ?? [];
+      return this.uniqueDurationMatchResponsive(candidates, entry.durationSeconds);
+    }
+    if (entry.durationSeconds !== null) {
+      const candidates = this.index.byTitle.get(entry.title) ?? [];
+      if (candidates.length > MAX_WEAK_TITLE_CANDIDATES) {
+        return undefined;
+      }
+      return this.uniqueDurationMatchResponsive(candidates, entry.durationSeconds);
+    }
+    return undefined;
+  }
+
   private uniqueBest(
     candidates: Array<M3uIndexedTrack>,
     entry: NormalizedM3uEntry,
@@ -150,6 +223,33 @@ export class M3uImportMatcher {
         tied = false;
       } else if (score > 0 && score === selectedScore) {
         tied = true;
+      }
+    }
+    return tied ? undefined : selected;
+  }
+
+  private async uniqueBestResponsive(
+    candidates: Array<M3uIndexedTrack>,
+    entry: NormalizedM3uEntry,
+    requireDuration: boolean,
+    requireTextualMatch: boolean
+  ): Promise<M3uIndexedTrack | undefined> {
+    let selected: M3uIndexedTrack | undefined;
+    let selectedScore = 0;
+    let tied = false;
+    for (let index = 0; index < candidates.length; index += 1) {
+      if (this.fileNameCandidateMatches(candidates[index], entry)) {
+        const score = this.metadataScore(candidates[index], entry, requireDuration, requireTextualMatch);
+        if (score > selectedScore) {
+          selected = candidates[index];
+          selectedScore = score;
+          tied = false;
+        } else if (score > 0 && score === selectedScore) {
+          tied = true;
+        }
+      }
+      if ((index + 1) % INDEX_BUILD_BATCH_SIZE === 0) {
+        await M3uImportMatcher.yieldToUi();
       }
     }
     return tied ? undefined : selected;
@@ -227,6 +327,25 @@ export class M3uImportMatcher {
     return selected;
   }
 
+  private async uniqueDurationMatchResponsive(
+    candidates: Array<M3uIndexedTrack>,
+    durationSeconds: number
+  ): Promise<M3uIndexedTrack | undefined> {
+    let selected: M3uIndexedTrack | undefined;
+    for (let index = 0; index < candidates.length; index += 1) {
+      if (M3uImportMatcher.durationClose(candidates[index], durationSeconds)) {
+        if (selected !== undefined) {
+          return undefined;
+        }
+        selected = candidates[index];
+      }
+      if ((index + 1) % INDEX_BUILD_BATCH_SIZE === 0) {
+        await M3uImportMatcher.yieldToUi();
+      }
+    }
+    return selected;
+  }
+
   private static durationClose(track: M3uIndexedTrack, durationSeconds: number): boolean {
     return Math.abs(track.durationSeconds - durationSeconds) <= DURATION_TOLERANCE_SECONDS;
   }
@@ -259,6 +378,12 @@ export class M3uImportMatcher {
   }
 
   static normalized(value: string): string {
-    return value.trim().toLocaleLowerCase().replace(/\s+/g, ' ');
+    return value.trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  private static yieldToUi(): Promise<void> {
+    return new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 0);
+    });
   }
 }

@@ -5,6 +5,8 @@ import {
 
 export const COMPLETED_HISTORY_FIXED_KEY = 'completed_history';
 export const COMPLETED_HISTORY_NAME = '完整听过';
+export const IMPORT_NO_AVAILABLE_TRACKS: string =
+  '导入期间匹配到的歌曲已不可用，未修改播放列表';
 
 export interface PlaylistContentPlan {
   items: Array<PlaylistItemInput>;
@@ -94,6 +96,12 @@ export class PlaylistPolicy {
       alreadyPresent: 0,
       duplicateInput: duplicateInput
     };
+  }
+
+  static requireAvailableImportedItems(available: number): void {
+    if (available <= 0) {
+      throw new Error(IMPORT_NO_AVAILABLE_TRACKS);
+    }
   }
 
   static isCompleteReorder(currentTrackIds: Array<number>, reorderedTrackIds: Array<number>): boolean {

@@ -76,6 +76,17 @@ export default function playlistPolicyTest() {
       expect(plan.duplicateInput).assertEqual(0);
     });
 
+    it('requires an available track only for guarded import commits', 0, () => {
+      let rejected = false;
+      try {
+        PlaylistPolicy.requireAvailableImportedItems(0);
+      } catch (_) {
+        rejected = true;
+      }
+      expect(rejected).assertTrue();
+      PlaylistPolicy.requireAvailableImportedItems(1);
+    });
+
     it('accepts only complete duplicate-free reorders', 0, () => {
       expect(PlaylistPolicy.isCompleteReorder([1, 2, 3], [3, 1, 2])).assertTrue();
       expect(PlaylistPolicy.isCompleteReorder([1, 2, 3], [1, 2])).assertFalse();

@@ -7,6 +7,14 @@ import { TrackDetail } from '../../library/model/LibraryModels';
 import { TrackDetailPage } from '../../pages/library/TrackDetailPage';
 import { TrackArtworkViewer } from '../../pages/library/TrackArtworkViewer';
 import { AppShellLayoutSpec } from '../layout/AppShellLayoutSpec';
+import {
+  PlaylistImportSheetContent,
+  PlaylistImportSheetKind
+} from '../library/PlaylistImportSheetContent';
+import {
+  M3uImportReport,
+  M3uImportStage
+} from '../../playlist/m3u/M3uTransferService';
 
 const TRACK_DETAIL_SHEET_MAX_WIDTH: number = 840;
 const TRACK_DETAIL_SHEET_MIN_MARGIN: number = 96;
@@ -42,14 +50,17 @@ export struct ResponsiveNavigationModalHost {
   @Prop bottomInset: number = 0;
   @Prop rootWidth: number = 0;
   @Prop themePageBackground: string = '#FF000000';
-  @Prop playlistImportSheetHeight: SheetSize = SheetSize.FIT_CONTENT;
-  @Prop playlistImportShowClose: boolean = true;
+  @Prop playlistImportBusy: boolean = false;
+  @Prop playlistImportKind: PlaylistImportSheetKind = PlaylistImportSheetKind.PROGRESS;
+  @Prop playlistImportStage: M3uImportStage = M3uImportStage.READING;
+  @Prop playlistImportSourceName: string = '';
+  @Prop playlistImportReports: Array<M3uImportReport> = [];
   onOpenArtwork: (detail: TrackDetail, index: number) => void =
     (_detail: TrackDetail, _index: number): void => {};
   onCloseArtwork: () => void = (): void => {};
   onArtworkViewerDisappear: () => void = (): void => {};
   onTrackDetailDisappear: () => void = (): void => {};
-  @BuilderParam playlistImportContent: () => void = this.EmptyContent;
+  onPlaylistImportDisappear: () => void = (): void => {};
 
   private usesWideLayout(): boolean {
     return this.rootWidth >= AppShellLayoutSpec.SIDE_NAVIGATION_BREAKPOINT;
@@ -69,9 +80,22 @@ export struct ResponsiveNavigationModalHost {
     return this.usesWideLayout() ? SheetType.SIDE : SheetType.BOTTOM;
   }
 
+  private playlistImportSheetHeight(): SheetSize {
+    return this.playlistImportKind === PlaylistImportSheetKind.REPORT ?
+      SheetSize.LARGE : SheetSize.FIT_CONTENT;
+  }
+
   @Builder
-  private EmptyContent() {
-    Stack()
+  private PlaylistImportSheet() {
+    PlaylistImportSheetContent({
+      kind: this.playlistImportKind,
+      stage: this.playlistImportStage,
+      sourceName: this.playlistImportSourceName,
+      reports: this.playlistImportReports,
+      onClose: (): void => {
+        this.playlistImportVisible = false;
+      }
+    })
   }
 
   @Builder
@@ -141,10 +165,16 @@ export struct ResponsiveNavigationModalHost {
         .height(1)
         .opacity(0)
         .hitTestBehavior(HitTestMode.None)
-        .bindSheet($$this.playlistImportVisible, this.playlistImportContent(), {
-          height: this.playlistImportSheetHeight,
-          dragBar: true,
-          showClose: this.playlistImportShowClose
+        .bindSheet($$this.playlistImportVisible, this.PlaylistImportSheet(), {
+          height: this.playlistImportSheetHeight(),
+          dragBar: !this.playlistImportBusy,
+          showClose: !this.playlistImportBusy,
+          shouldDismiss: (sheetDismiss: SheetDismiss): void => {
+            if (!this.playlistImportBusy) {
+              sheetDismiss.dismiss();
+            }
+          },
+          onDisappear: this.onPlaylistImportDisappear
         })
     }
     .width(1)

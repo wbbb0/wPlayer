@@ -18,12 +18,23 @@ import { RelationalStoreSafety } from '../../library/data/RelationalStoreSafety'
 import {
   COMPLETED_HISTORY_FIXED_KEY,
   COMPLETED_HISTORY_NAME,
+  IMPORT_NO_AVAILABLE_TRACKS,
   PlaylistContentPlan,
   PlaylistPolicy
 } from './PlaylistPolicy';
 
 const INPUT_BATCH_SIZE = 400;
 const MAX_PAGE_SIZE = 500;
+
+export class PlaylistCreationResult {
+  playlist: PlaylistSummary;
+  mutation: PlaylistMutationResult;
+
+  constructor(playlist: PlaylistSummary, mutation: PlaylistMutationResult) {
+    this.playlist = playlist;
+    this.mutation = mutation;
+  }
+}
 
 /**
  * Transactional playlist persistence.
@@ -112,6 +123,74 @@ export class PlaylistRepository {
         throw new Error('Created playlist is missing');
       }
       return playlist;
+    });
+  }
+
+  createPlaylistWithItems(name: string, items: Array<PlaylistItemInput>): Promise<PlaylistCreationResult> {
+    const displayName = PlaylistPolicy.requireName(name);
+    const normalizedName = PlaylistPolicy.normalizeName(displayName);
+    return this.database.enqueueWrite(async (transaction: relationalStore.Transaction) => {
+      await this.requireNameAvailable(transaction, normalizedName);
+      const now = Date.now();
+      const id = await transaction.insert('playlist', {
+        kind: PlaylistKind.USER,
+        fixed_key: '',
+        name: displayName,
+        normalized_name: normalizedName,
+        item_sort_field: PlaylistTrackSortField.MANUAL,
+        item_sort_direction: SortDirection.ASCENDING,
+        created_at: now,
+        updated_at: now,
+        last_played_at: 0
+      });
+      const mutation = await this.insertPlan(
+        transaction,
+        id,
+        items.length,
+        PlaylistPolicy.planReplace(items),
+        true
+      );
+      const playlist = await this.queryPlaylist(transaction, id);
+      if (playlist === undefined) {
+        throw new Error('Created playlist is missing');
+      }
+      return new PlaylistCreationResult(playlist, mutation);
+    });
+  }
+
+  createImportedPlaylistWithItems(
+    name: string,
+    items: Array<PlaylistItemInput>
+  ): Promise<PlaylistCreationResult> {
+    const baseName = PlaylistPolicy.requireName(name);
+    return this.database.enqueueWrite(async (transaction: relationalStore.Transaction) => {
+      const displayName = await this.availablePlaylistName(transaction, baseName);
+      const now = Date.now();
+      const id = await transaction.insert('playlist', {
+        kind: PlaylistKind.USER,
+        fixed_key: '',
+        name: displayName,
+        normalized_name: PlaylistPolicy.normalizeName(displayName),
+        item_sort_field: PlaylistTrackSortField.MANUAL,
+        item_sort_direction: SortDirection.ASCENDING,
+        created_at: now,
+        updated_at: now,
+        last_played_at: 0
+      });
+      const mutation = await this.insertPlan(
+        transaction,
+        id,
+        items.length,
+        PlaylistPolicy.planReplace(items),
+        true,
+        true,
+        true
+      );
+      const playlist = await this.queryPlaylist(transaction, id);
+      if (playlist === undefined) {
+        throw new Error('Created playlist is missing');
+      }
+      return new PlaylistCreationResult(playlist, mutation);
     });
   }
 
@@ -318,6 +397,31 @@ export class PlaylistRepository {
     }
   }
 
+  async getTransferCatalogPage(afterTrackId: number, limit: number): Promise<Array<PlaylistTransferTrack>> {
+    const safeAfterTrackId = Math.max(0, Math.round(afterTrackId));
+    const safeLimit = Math.max(1, Math.min(512, Math.round(limit)));
+    let resultSet: relationalStore.ResultSet | undefined;
+    try {
+      resultSet = await this.database.getStore().querySql(
+        `SELECT t.id, f.uri, f.display_name, t.title, t.artist_display, t.album_display, t.duration_ms,
+        0, COALESCE(ps.last_completed_at, 0)
+       FROM track t
+       JOIN media_file f ON f.id = t.media_file_id
+       LEFT JOIN track_playback_stats ps ON ps.track_id = t.id
+       WHERE f.availability_state = 0
+         AND t.id > ?
+       ORDER BY t.id
+       LIMIT ?`,
+        [safeAfterTrackId, safeLimit]
+      );
+      return this.readTransferTracks(resultSet);
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to query playlist transfer catalog page', error);
+    } finally {
+      RelationalStoreSafety.closeResultSet(resultSet, 'playlist transfer catalog page');
+    }
+  }
+
   async getPlaylistTransferTracks(playlistId: number): Promise<Array<PlaylistTransferTrack>> {
     const playlist = await this.getPlaylist(playlistId);
     if (playlist === undefined) {
@@ -376,6 +480,18 @@ export class PlaylistRepository {
     });
   }
 
+  mergeImportedItems(
+    playlistId: number,
+    items: Array<PlaylistItemInput>
+  ): Promise<PlaylistMutationResult> {
+    return this.database.enqueueWrite(async (transaction: relationalStore.Transaction) => {
+      await this.requireEditableItems(transaction, playlistId);
+      const existingTrackIds = await this.getMemberTrackIds(transaction, playlistId);
+      const plan = PlaylistPolicy.planMerge(existingTrackIds, items);
+      return this.insertPlan(transaction, playlistId, items.length, plan, false, false, true);
+    });
+  }
+
   addItems(playlistId: number, items: Array<PlaylistItemInput>): Promise<PlaylistMutationResult> {
     return this.mergeItems(playlistId, items);
   }
@@ -385,6 +501,17 @@ export class PlaylistRepository {
       await this.requireEditableItems(transaction, playlistId);
       const plan = PlaylistPolicy.planReplace(items);
       return this.insertPlan(transaction, playlistId, items.length, plan, true);
+    });
+  }
+
+  replaceImportedItems(
+    playlistId: number,
+    items: Array<PlaylistItemInput>
+  ): Promise<PlaylistMutationResult> {
+    return this.database.enqueueWrite(async (transaction: relationalStore.Transaction) => {
+      await this.requireEditableItems(transaction, playlistId);
+      const plan = PlaylistPolicy.planReplace(items);
+      return this.insertPlan(transaction, playlistId, items.length, plan, true, true, true);
     });
   }
 
@@ -511,7 +638,9 @@ export class PlaylistRepository {
     playlistId: number,
     requested: number,
     plan: PlaylistContentPlan,
-    replace: boolean
+    replace: boolean,
+    requireAvailable: boolean = false,
+    availableMediaOnly: boolean = false
   ): Promise<PlaylistMutationResult> {
     try {
       const before = replace ? 0 : await this.countMembers(transaction, playlistId);
@@ -524,12 +653,17 @@ export class PlaylistRepository {
         };
       }
       await this.stageItems(transaction, plan.items);
-      const available = await this.countStagedAvailable(transaction);
+      const available = await this.countStagedAvailable(transaction, availableMediaOnly);
+      if (requireAvailable) {
+        PlaylistPolicy.requireAvailableImportedItems(available);
+      }
       if (replace) {
         await transaction.execute('DELETE FROM playlist_item WHERE playlist_id = ?', [playlistId]);
       }
       const startPosition = replace ? 0 : await this.nextPosition(transaction, playlistId);
       const now = Date.now();
+      const mediaAvailabilityClause = availableMediaOnly ?
+        'JOIN media_file m ON m.id = t.media_file_id WHERE m.availability_state = ?' : '';
       await transaction.execute(
         `INSERT OR IGNORE INTO playlist_item(
           playlist_id, track_id, manual_position, added_at, add_source,
@@ -539,8 +673,11 @@ export class PlaylistRepository {
           s.add_source, s.qualified_at, s.qualified_at
         FROM temp_playlist_input s
         JOIN track t ON t.id = s.track_id
+        ${mediaAvailabilityClause}
         ORDER BY s.ordinal`,
-        [playlistId, startPosition, now]
+        availableMediaOnly ?
+          [playlistId, startPosition, now, AvailabilityState.AVAILABLE] :
+          [playlistId, startPosition, now]
       );
       const after = await this.countMembers(transaction, playlistId);
       await transaction.execute('DROP TABLE temp_playlist_input');
@@ -555,6 +692,9 @@ export class PlaylistRepository {
         unavailable: plan.items.length - available
       };
     } catch (error) {
+      if (error instanceof Error && error.message === IMPORT_NO_AVAILABLE_TRACKS) {
+        throw error;
+      }
       throw RelationalStoreSafety.operationError(`Unable to update playlist ${playlistId}`, error);
     }
   }
@@ -747,6 +887,32 @@ export class PlaylistRepository {
     }
   }
 
+  private async availablePlaylistName(
+    source: relationalStore.RdbStore | relationalStore.Transaction,
+    baseName: string
+  ): Promise<string> {
+    let candidate = baseName;
+    let suffix = 2;
+    while (true) {
+      let resultSet: relationalStore.ResultSet | undefined;
+      try {
+        resultSet = await source.querySql(
+          'SELECT id FROM playlist WHERE normalized_name = ? LIMIT 1',
+          [PlaylistPolicy.normalizeName(candidate)]
+        );
+        if (!resultSet.goToNextRow()) {
+          return candidate;
+        }
+      } catch (error) {
+        throw RelationalStoreSafety.operationError('Unable to allocate imported playlist name', error);
+      } finally {
+        RelationalStoreSafety.closeResultSet(resultSet, 'imported playlist name lookup');
+      }
+      candidate = `${baseName} (${suffix})`;
+      suffix += 1;
+    }
+  }
+
   private async ensureCompletedPlaylistInTransaction(
     transaction: relationalStore.Transaction,
     now: number
@@ -822,11 +988,19 @@ export class PlaylistRepository {
     }
   }
 
-  private async countStagedAvailable(transaction: relationalStore.Transaction): Promise<number> {
+  private async countStagedAvailable(
+    transaction: relationalStore.Transaction,
+    availableMediaOnly: boolean
+  ): Promise<number> {
     let resultSet: relationalStore.ResultSet | undefined;
     try {
+      const mediaAvailabilityClause = availableMediaOnly ?
+        'JOIN media_file m ON m.id = t.media_file_id WHERE m.availability_state = ?' : '';
       resultSet = await transaction.querySql(
-        'SELECT COUNT(*) FROM temp_playlist_input s JOIN track t ON t.id = s.track_id'
+        `SELECT COUNT(*) FROM temp_playlist_input s
+         JOIN track t ON t.id = s.track_id
+         ${mediaAvailabilityClause}`,
+        availableMediaOnly ? [AvailabilityState.AVAILABLE] : []
       );
       return resultSet.goToNextRow() ? resultSet.getLong(0) : 0;
     } catch (error) {

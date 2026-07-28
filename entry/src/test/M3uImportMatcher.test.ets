@@ -132,5 +132,67 @@ export default function m3uImportMatcherTest() {
       expect(matcher.match(entry('/missing/a.m4a', 'Title', 'Artist', 'Album', 201))?.trackId).assertEqual(13);
       expect(matcher.match(entry('/missing/b.m4a', 'Title', 'Artist', 'Album', 220))).assertUndefined();
     });
+
+    it('builds the responsive index with the same matching behavior', 0, async () => {
+      const catalog: Array<PlaylistTransferTrack> = [];
+      for (let index = 0; index < 128; index += 1) {
+        catalog.push(track(
+          100 + index,
+          `file://library/filler-${index}`,
+          `filler-${index}.mp3`,
+          `Filler ${index}`,
+          'Artist',
+          'Album',
+          240000
+        ));
+      }
+      catalog.push(track(
+        30,
+        'file://library/upper',
+        'UPPER.MP3',
+        'UPPER TITLE',
+        'UPPER ARTIST',
+        'UPPER ALBUM',
+        200000
+      ));
+      const matcher = await M3uImportMatcher.createResponsive(catalog);
+      expect(matcher.match(entry(
+        '/backup/upper.mp3',
+        'upper title',
+        'upper artist',
+        'upper album',
+        201
+      ))?.trackId).assertEqual(30);
+    });
+
+    it('keeps responsive matching equivalent across a large candidate group', 0, async () => {
+      const catalog: Array<PlaylistTransferTrack> = [];
+      for (let index = 0; index < 128; index += 1) {
+        catalog.push(track(
+          300 + index,
+          `file://library/duplicate-${index}`,
+          'same.mp3',
+          `Other ${index}`,
+          'Artist',
+          'Album',
+          200000
+        ));
+      }
+      catalog.push(track(
+        500,
+        'file://library/target',
+        'same.mp3',
+        'Target',
+        'Artist',
+        'Album',
+        200000
+      ));
+      const matcher = await M3uImportMatcher.createResponsive(catalog);
+      const targetEntry = entry('/backup/same.mp3', 'Target', 'Artist', 'Album', 201);
+      expect((await matcher.matchResponsive(targetEntry))?.trackId).assertEqual(
+        matcher.match(targetEntry)?.trackId
+      );
+      expect((await matcher.matchResponsive(targetEntry))?.trackId).assertEqual(500);
+    });
   });
 }

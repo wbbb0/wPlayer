@@ -1,7 +1,13 @@
 import { describe, it, expect } from '@ohos/hypium';
 import { M3uCodec } from '../main/ets/playlist/m3u/M3uCodec';
 import { M3uEncoding } from '../main/ets/playlist/m3u/M3uEncoding';
+import { M3uImportPolicy } from '../main/ets/playlist/m3u/M3uImportPolicy';
+import {
+  M3uImportReportBudget,
+  M3uImportReportPolicy
+} from '../main/ets/playlist/m3u/M3uImportReportPolicy';
 import { M3uEncodingConfidence, M3uIssueKind } from '../main/ets/playlist/m3u/M3uModels';
+import { M3uTextValidation } from '../main/ets/playlist/m3u/M3uTextValidation';
 
 function utf16Bytes(text: string, littleEndian: boolean, includeBom: boolean): Uint8Array {
   const offset = includeBom ? 2 : 0;
@@ -104,6 +110,23 @@ export default function m3uCodecTest() {
       expect(parsed.issues[0].kind).assertEqual(M3uIssueKind.INVALID_RESOURCE);
       expect(parsed.entries[2].resource).assertEqual('other.mp3');
     });
+
+    it('keeps responsive parsing equivalent across a batch boundary', 0, async () => {
+      const lines: Array<string> = ['#EXTM3U'];
+      for (let index = 0; index < 129; index += 1) {
+        lines.push(`#EXTINF:${index},Artist - Song ${index}`);
+        lines.push(`song-${index}.mp3`);
+      }
+      lines.push('song-0.mp3');
+      const source = lines.join('\r\n');
+      const synchronous = M3uCodec.parse(source);
+      const responsive = await M3uCodec.parseResponsive(source);
+      expect(responsive.entries.length).assertEqual(synchronous.entries.length);
+      expect(responsive.duplicateCount).assertEqual(synchronous.duplicateCount);
+      expect(responsive.issues.length).assertEqual(synchronous.issues.length);
+      expect(responsive.entries[128].title).assertEqual(synchronous.entries[128].title);
+      expect(responsive.entries[129].duplicateOfIndex).assertEqual(synchronous.entries[129].duplicateOfIndex);
+    });
   });
 
   describe('M3uEncoding', () => {
@@ -147,6 +170,86 @@ export default function m3uCodecTest() {
         0x23, 0x45, 0x58, 0x54, 0x45, 0x4E, 0x43, 0x3A, 0x42, 0x49, 0x47, 0x35, 0x0A, 0xFF
       ]));
       expect(big5Hint.fallbackLabels[0]).assertEqual('big5');
+      expect(big5Hint.legacyHint).assertEqual('big5');
+    });
+
+    it('detects short BOM-less UTF-16 playlists', 0, () => {
+      const little = utf16Bytes('a\n', true, false);
+      const big = utf16Bytes('a\n', false, false);
+      const oneLittle = utf16Bytes('a', true, false);
+      const oneBig = utf16Bytes('a', false, false);
+      expect(M3uEncoding.detect(little).label).assertEqual('utf-16le');
+      expect(M3uEncoding.detect(big).label).assertEqual('utf-16be');
+      expect(M3uEncoding.detect(oneLittle).label).assertEqual('utf-16le');
+      expect(M3uEncoding.detect(oneBig).label).assertEqual('utf-16be');
+      expect(M3uEncoding.decode(little)).assertEqual('a\n');
+      expect(M3uEncoding.decode(big)).assertEqual('a\n');
+    });
+
+    it('reports malformed direct Unicode separately from literal replacement characters', 0, () => {
+      const malformed = new Uint8Array([
+        0xFF, 0xFE,
+        0x00, 0xD8,
+        0x41, 0x00,
+        0x00, 0xDC
+      ]);
+      const literalReplacement = M3uEncoding.encodeUtf8('song\uFFFD.mp3');
+      expect(M3uEncoding.hasDecodingErrors(malformed)).assertTrue();
+      expect(M3uEncoding.hasDecodingErrors(literalReplacement)).assertFalse();
+      expect(M3uEncoding.decode(malformed)).assertEqual('\uFFFDA\uFFFD');
+    });
+  });
+
+  describe('M3uTextValidation', () => {
+    it('accepts ordinary M3U text and rejects decoded binary/control content', 0, () => {
+      expect(M3uTextValidation.errorMessage('#EXTM3U\nMusic/song.mp3')).assertEqual('');
+      expect(M3uTextValidation.errorMessage('song\u0000.mp3').length > 0).assertTrue();
+      expect(M3uTextValidation.errorMessage('\u0001\u0002\u0003PNG').length > 0).assertTrue();
+      expect(M3uTextValidation.errorMessage('song\u007F.mp3').length > 0).assertTrue();
+      expect(M3uTextValidation.errorMessage('song\u0085.mp3').length > 0).assertTrue();
+      expect(M3uTextValidation.errorMessage('song\uFFFD.mp3')).assertEqual('');
+    });
+
+    it('rejects pathological line and entry counts before parsing', 0, () => {
+      expect(M3uTextValidation.errorMessage('a'.repeat(16 * 1024))).assertEqual('');
+      expect(M3uTextValidation.errorMessage('a'.repeat(16 * 1024 + 1)).length > 0).assertTrue();
+      expect(M3uTextValidation.errorMessage('a\n'.repeat(50000))).assertEqual('');
+      expect(M3uTextValidation.errorMessage('a\n'.repeat(50001)).length > 0).assertTrue();
+      const oneHundredThousandCommentLines = '#\r\n'.repeat(99999) + '#';
+      expect(M3uTextValidation.errorMessage(oneHundredThousandCommentLines)).assertEqual('');
+      expect(M3uTextValidation.errorMessage(`${oneHundredThousandCommentLines}\r#`).length > 0).assertTrue();
+    });
+  });
+
+  describe('M3uImportPolicy', () => {
+    it('prevents empty destructive imports and empty imported playlists', 0, () => {
+      expect(M3uImportPolicy.errorMessage(0, 0, false, false)).assertEqual('');
+      expect(M3uImportPolicy.errorMessage(0, 0, false, true).length > 0).assertTrue();
+      expect(M3uImportPolicy.errorMessage(1, 0, false, true).length > 0).assertTrue();
+      expect(M3uImportPolicy.errorMessage(1, 0, true, false).length > 0).assertTrue();
+      expect(M3uImportPolicy.errorMessage(1, 0, false, false)).assertEqual('');
+      expect(M3uImportPolicy.errorMessage(1, 1, false, true)).assertEqual('');
+    });
+
+    it('caps aggregated report details per section', 0, () => {
+      expect(M3uImportReportPolicy.displayCount(0)).assertEqual(0);
+      expect(M3uImportReportPolicy.displayCount(500)).assertEqual(500);
+      expect(M3uImportReportPolicy.displayCount(25000)).assertEqual(500);
+      expect(M3uImportReportPolicy.detailsTruncated(500)).assertFalse();
+      expect(M3uImportReportPolicy.detailsTruncated(501)).assertTrue();
+    });
+
+    it('shares independent detail budgets across batch reports', 0, () => {
+      const budget = new M3uImportReportBudget();
+      expect(budget.retainMatched(400)).assertEqual(400);
+      expect(budget.retainMatched(400)).assertEqual(100);
+      expect(budget.retainMatched(1)).assertEqual(0);
+      expect(budget.retainUnmatched(501)).assertEqual(500);
+      expect(budget.retainIssues(25)).assertEqual(25);
+      expect(budget.retainFailures(50)).assertEqual(50);
+      expect(budget.retainIssues(500)).assertEqual(475);
+      expect(budget.retainFailures(450)).assertEqual(450);
+      expect(budget.retainFailures(1)).assertEqual(0);
     });
   });
 }

@@ -44,7 +44,10 @@ import { ArtworkPaletteUpdate, PaletteRefreshAsset } from './MusicRepositoryType
 import { LibraryMaintenanceStatus } from './MusicRepositoryTypes';
 import { ARTWORK_PALETTE_VERSION } from '../artwork/ArtworkPaletteExtractor';
 import { ArtworkCache } from '../artwork/ArtworkCache';
-import { PlaylistRepository } from '../../playlist/data/PlaylistRepository';
+import {
+  PlaylistCreationResult,
+  PlaylistRepository
+} from '../../playlist/data/PlaylistRepository';
 import { DemoLibraryMode } from '../../demo/DemoLibraryMode';
 import { DemoMusicLibrary } from '../../demo/DemoMusicLibrary';
 import {
@@ -490,6 +493,26 @@ export class MusicRepository implements LibraryRemovalRepository {
     return playlist;
   }
 
+  async createPlaylistWithItems(name: string,
+    items: Array<PlaylistItemInput>): Promise<PlaylistCreationResult> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.reject(new Error('演示音乐库为只读模式'));
+    }
+    const result = await this.playlists.createPlaylistWithItems(name, items);
+    this.publishPlaylistChanged(RepositoryInvalidationReason.PLAYLIST_CREATED, result.playlist.id);
+    return result;
+  }
+
+  async createImportedPlaylistWithItems(name: string,
+    items: Array<PlaylistItemInput>): Promise<PlaylistCreationResult> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.reject(new Error('演示音乐库为只读模式'));
+    }
+    const result = await this.playlists.createImportedPlaylistWithItems(name, items);
+    this.publishPlaylistChanged(RepositoryInvalidationReason.PLAYLIST_CREATED, result.playlist.id);
+    return result;
+  }
+
   async renamePlaylist(playlistId: number, name: string): Promise<PlaylistSummary> {
     if (DemoLibraryMode.isEnabled()) {
       return Promise.reject(new Error('演示音乐库为只读模式'));
@@ -561,6 +584,16 @@ export class MusicRepository implements LibraryRemovalRepository {
     return this.playlists.getTransferCatalog();
   }
 
+  getPlaylistTransferCatalogPage(
+    afterTrackId: number,
+    limit: number
+  ): Promise<Array<PlaylistTransferTrack>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve([]);
+    }
+    return this.playlists.getTransferCatalogPage(afterTrackId, limit);
+  }
+
   getPlaylistTransferTracks(playlistId: number): Promise<Array<PlaylistTransferTrack>> {
     if (DemoLibraryMode.isEnabled()) {
       return Promise.resolve([]);
@@ -600,6 +633,22 @@ export class MusicRepository implements LibraryRemovalRepository {
     return result;
   }
 
+  async mergeImportedPlaylistItems(
+    playlistId: number,
+    items: Array<PlaylistItemInput>
+  ): Promise<PlaylistMutationResult> {
+    if (DemoLibraryMode.isEnabled()) {
+      const result: PlaylistMutationResult =
+        { requested: items.length, inserted: 0, alreadyPresent: 0, unavailable: 0 };
+      return result;
+    }
+    const result = await this.playlists.mergeImportedItems(playlistId, items);
+    if (result.inserted > 0) {
+      this.publishPlaylistChanged(RepositoryInvalidationReason.PLAYLIST_ITEMS_CHANGED, playlistId);
+    }
+    return result;
+  }
+
   async replacePlaylistItems(
     playlistId: number,
     items: Array<PlaylistItemInput>
@@ -610,6 +659,20 @@ export class MusicRepository implements LibraryRemovalRepository {
       return result;
     }
     const result = await this.playlists.replaceItems(playlistId, items);
+    this.publishPlaylistChanged(RepositoryInvalidationReason.PLAYLIST_ITEMS_CHANGED, playlistId);
+    return result;
+  }
+
+  async replaceImportedPlaylistItems(
+    playlistId: number,
+    items: Array<PlaylistItemInput>
+  ): Promise<PlaylistMutationResult> {
+    if (DemoLibraryMode.isEnabled()) {
+      const result: PlaylistMutationResult =
+        { requested: items.length, inserted: 0, alreadyPresent: 0, unavailable: 0 };
+      return result;
+    }
+    const result = await this.playlists.replaceImportedItems(playlistId, items);
     this.publishPlaylistChanged(RepositoryInvalidationReason.PLAYLIST_ITEMS_CHANGED, playlistId);
     return result;
   }

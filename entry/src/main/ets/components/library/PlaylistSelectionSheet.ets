@@ -128,7 +128,7 @@ export struct PlaylistSelectionSheet {
               ListItem() {
                 this.PlaylistRow(playlist)
               }
-            }, (playlist: PlaylistSummary) => `recent_${playlist.id}`)
+            }, (playlist: PlaylistSummary) => this.recentDataSource.keyFor(playlist.id))
           }
           if (this.otherPlaylists().length > 0) {
             ListItem() {
@@ -138,7 +138,7 @@ export struct PlaylistSelectionSheet {
               ListItem() {
                 this.PlaylistRow(playlist)
               }
-            }, (playlist: PlaylistSummary) => `other_${playlist.id}`)
+            }, (playlist: PlaylistSummary) => this.otherDataSource.keyFor(playlist.id))
           }
         }
         .width('100%')

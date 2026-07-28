@@ -39,12 +39,16 @@ export default function libraryListDataSourceTest() {
       source.registerDataChangeListener(listener);
 
       source.replace([item(1, '49')]);
+      const initialKey = source.keyFor(1);
       expect(listener.operations.length).assertEqual(1);
       expect(listener.operations[0].type).assertEqual(DataOperationType.RELOAD);
+      expect(source.keyFor(1)).assertEqual(initialKey);
+      expect(source.keyFor(2) === initialKey).assertFalse();
 
       source.replace([item(1, '19')]);
       expect(listener.operations.length).assertEqual(1);
       expect(listener.operations[0].type).assertEqual(DataOperationType.RELOAD);
+      expect(source.keyFor(1) === initialKey).assertFalse();
       expect(source.getData(0).label).assertEqual('19');
     });
 

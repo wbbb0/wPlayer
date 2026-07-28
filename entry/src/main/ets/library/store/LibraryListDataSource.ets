@@ -1,6 +1,7 @@
 export class LibraryListDataSource<T> implements IDataSource {
   private items: Array<T> = [];
   private readonly listeners: Array<DataChangeListener> = [];
+  private revision: number = 0;
 
   totalCount(): number {
     return this.items.length;
@@ -12,6 +13,10 @@ export class LibraryListDataSource<T> implements IDataSource {
 
   snapshot(): Array<T> {
     return this.items.slice();
+  }
+
+  keyFor(stableId: number): string {
+    return `${this.revision}:${stableId}`;
   }
 
   registerDataChangeListener(listener: DataChangeListener): void {
@@ -28,6 +33,7 @@ export class LibraryListDataSource<T> implements IDataSource {
   }
 
   replace(items: Array<T>): void {
+    this.revision += 1;
     this.items = items.slice();
     this.listeners.forEach((listener: DataChangeListener) => listener.onDatasetChange([
       { type: DataOperationType.RELOAD }

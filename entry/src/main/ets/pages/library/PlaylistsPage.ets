@@ -79,21 +79,6 @@ export struct PlaylistsPage {
     });
   }
 
-  private showSuccessDialog(message: string): void {
-    if (message.length === 0) {
-      return;
-    }
-    this.getUIContext().getPromptAction().showDialog({
-      title: '操作完成',
-      message: message,
-      buttons: [
-        { text: '确定', color: $r('app.color.text_primary') }
-      ]
-    }).catch((_error: Object): void => {
-      // The message is informational; dismissing it needs no recovery.
-    });
-  }
-
   private isRemovingPlaylist(playlistId: number): boolean {
     return this.removingPlaylistIds.includes(playlistId);
   }
@@ -159,7 +144,6 @@ export struct PlaylistsPage {
       onFinish: (): void => {
         this.store.delete(playlistId).then((deleted: boolean): void => {
           if (deleted) {
-            this.showSuccessDialog(this.store.lastMessage);
             this.removingPlaylistIds =
               this.removingPlaylistIds.filter((id: number): boolean => id !== playlistId);
             return;
@@ -235,7 +219,7 @@ export struct PlaylistsPage {
         .clip(true)
         .opacity(this.isRemovingPlaylist(playlist.id) ? 0 : 1)
         .translate({ x: this.isRemovingPlaylist(playlist.id) ? -28 : 0 })
-      }, (playlist: PlaylistSummary) => `${playlist.id}`)
+      }, (playlist: PlaylistSummary) => this.store.playlistDataSource.keyFor(playlist.id))
 
       if (this.store.loading) {
         ListItem() {

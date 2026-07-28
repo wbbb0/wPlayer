@@ -362,7 +362,6 @@ export class PlaylistStore {
         this.detail = undefined;
       }
       await this.synchronizeCommittedChanges();
-      this.lastMessage = '播放列表已删除';
       return true;
     });
     return result ?? false;
@@ -408,9 +407,6 @@ export class PlaylistStore {
     const removed = await this.runMutation(async (): Promise<number> => {
       const count = await this.repository.removePlaylistItems(playlistId, trackIds);
       await this.refreshAfterItemMutation();
-      if (count > 0) {
-        this.lastMessage = count === 1 ? '已从播放列表移除' : `已从播放列表移除 ${count} 首`;
-      }
       return count;
     });
     return (removed ?? 0) > 0;

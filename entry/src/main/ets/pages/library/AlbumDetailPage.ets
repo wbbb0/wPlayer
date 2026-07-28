@@ -469,7 +469,7 @@ export struct AlbumDetailPage {
                 .reuseId('album_detail_track')
             }
           }
-        }, (track: TrackListItem) => `${track.id}`)
+        }, (track: TrackListItem) => this.state.trackDataSource.keyFor(track.id))
         if (this.state.detail.relatedAlbums.length > 0) {
           ListItem() {
             this.RelatedAlbums(this.state.detail)

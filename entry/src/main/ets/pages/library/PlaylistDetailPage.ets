@@ -155,7 +155,6 @@ export struct PlaylistDetailPage {
         if (removed) {
           this.selectedItems = [];
           this.selection.cancel();
-          this.showSuccessDialog(this.store.lastMessage);
         }
       });
     }).catch((_error: Object): void => {});
@@ -266,21 +265,6 @@ export struct PlaylistDetailPage {
     });
   }
 
-  private showSuccessDialog(message: string): void {
-    if (message.length === 0) {
-      return;
-    }
-    this.getUIContext().getPromptAction().showDialog({
-      title: '操作完成',
-      message: message,
-      buttons: [
-        { text: '确定', color: $r('app.color.text_primary') }
-      ]
-    }).catch((_error: Object): void => {
-      // The message is informational; dismissing it needs no recovery.
-    });
-  }
-
   private animateTrackRemoval(trackId: number): void {
     if (this.isRemovingTrack(trackId)) {
       return;
@@ -291,7 +275,6 @@ export struct PlaylistDetailPage {
       onFinish: (): void => {
         this.store.removeTrack(this.playlistId, trackId).then((removed: boolean): void => {
           if (removed) {
-            this.showSuccessDialog(this.store.lastMessage);
             this.removingTrackIds = this.removingTrackIds.filter((id: number): boolean => id !== trackId);
             return;
           }
@@ -336,15 +319,17 @@ export struct PlaylistDetailPage {
   }
 
   @Builder
-  private Header(playlist: PlaylistSummary) {
+  private Header() {
     Column({ space: 14 }) {
-      Text(`${playlist.trackCount} 首 · ${this.durationLabel(playlist.totalDurationMs)}`)
-        .fontSize(13)
-        .fontColor($r('app.color.text_secondary'))
-        .width('100%')
+      if (this.store.detail?.playlist.id === this.playlistId) {
+        Text(this.durationLabel(this.store.detail.playlist.totalDurationMs))
+          .fontSize(13)
+          .fontColor($r('app.color.text_secondary'))
+          .width('100%')
 
-      if (playlist.trackCount > 0) {
-        this.PlaybackActions()
+        if (this.store.detail.playlist.trackCount > 0) {
+          this.PlaybackActions()
+        }
       }
     }
     .width('100%')
@@ -367,7 +352,7 @@ export struct PlaylistDetailPage {
         List({ space: 0, scroller: this.scroller }) {
           if (this.playlist() !== undefined) {
             ListItem() {
-              this.Header(this.playlist()!)
+              this.Header()
             }
           }
           if (this.store.detail?.playlist.id === this.playlistId) {
@@ -386,7 +371,7 @@ export struct PlaylistDetailPage {
                 .clip(true)
                 .opacity(this.isRemovingTrack(item.id) ? 0 : 1)
                 .translate({ x: this.isRemovingTrack(item.id) ? -28 : 0 })
-            }, (item: PlaylistTrackItem) => `${item.id}`)
+            }, (item: PlaylistTrackItem) => this.store.detailItemDataSource.keyFor(item.id))
           }
           if (this.store.detailLoading) {
             ListItem() {

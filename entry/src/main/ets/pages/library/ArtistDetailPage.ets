@@ -235,7 +235,7 @@ export struct ArtistDetailPage {
               })
                 .reuseId('artist_detail_track')
             }
-          }, (track: TrackListItem) => `${track.id}`)
+          }, (track: TrackListItem) => this.state.trackDataSource.keyFor(track.id))
         }
       } else if (this.state.loading) {
         ListItem() {

@@ -956,7 +956,6 @@ export struct ResponsiveNavigationShell {
       }
       this.playlistStore.delete(playlistId).then((deleted: boolean): void => {
         if (deleted) {
-          this.showPlaylistSuccessDialog(this.playlistStore.lastMessage);
           this.routePathStack(NavigationRoute.PLAYLISTS).pop(true);
         }
       });
@@ -985,10 +984,12 @@ export struct ResponsiveNavigationShell {
       });
   }
 
-  private playlistDetailTitleMenu(params: PlaylistDetailRouteParams): HdsNavigationMenuContentOptions {
+  private playlistDetailTitleMenu(
+    params: PlaylistDetailRouteParams,
+    playlist?: PlaylistSummary
+  ): HdsNavigationMenuContentOptions {
     const sortTargetId = `playlist_detail_sort_${params.instanceId}`;
     const moreTargetId = `playlist_detail_more_${params.instanceId}`;
-    const playlist = this.playlistSummary(params.playlistId);
     const values: Array<HdsNavigationMenuItemOptions> = [{
       content: {
         label: `${playlist?.trackCount ?? 0} 首`,
@@ -1143,10 +1144,11 @@ export struct ResponsiveNavigationShell {
           name: NavigationRoute.DYNAMIC_BACKGROUND_V3_DEBUG
         }),
       onDemoLibraryChange: this.onDemoLibraryChange,
-      playlistSummary: (playlistId: number): PlaylistSummary | undefined =>
-        this.playlistSummary(playlistId),
-      playlistDetailTitleMenu: (params: PlaylistDetailRouteParams): HdsNavigationMenuContentOptions =>
-        this.playlistDetailTitleMenu(params),
+      playlistDetailTitleMenu: (
+        params: PlaylistDetailRouteParams,
+        playlist?: PlaylistSummary
+      ): HdsNavigationMenuContentOptions =>
+        this.playlistDetailTitleMenu(params, playlist),
       albumDetailTitleMenu: (params: AlbumDetailRouteParams): HdsNavigationMenuContentOptions =>
         this.albumDetailTitleMenu(params),
       artistDetailTitleMenu: (params: ArtistDetailRouteParams): HdsNavigationMenuContentOptions =>

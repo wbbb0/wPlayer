@@ -237,10 +237,12 @@ export struct ResponsiveNavigationDestinationContent {
   onOpenDynamicBackgroundV2: () => void = (): void => {};
   onOpenDynamicBackgroundV3: () => void = (): void => {};
   onDemoLibraryChange: (value: boolean) => void = (_value: boolean): void => {};
-  playlistSummary: (playlistId: number) => PlaylistSummary | undefined =
-    (_playlistId: number): PlaylistSummary | undefined => undefined;
-  playlistDetailTitleMenu: (params: PlaylistDetailRouteParams) => HdsNavigationMenuContentOptions =
-    (_params: PlaylistDetailRouteParams): HdsNavigationMenuContentOptions => ({ maxCount: 0, value: [] });
+  playlistDetailTitleMenu: (
+    params: PlaylistDetailRouteParams,
+    playlist?: PlaylistSummary
+  ) => HdsNavigationMenuContentOptions =
+    (_params: PlaylistDetailRouteParams, _playlist?: PlaylistSummary): HdsNavigationMenuContentOptions =>
+      ({ maxCount: 0, value: [] });
   albumDetailTitleMenu: (params: AlbumDetailRouteParams) => HdsNavigationMenuContentOptions =
     (_params: AlbumDetailRouteParams): HdsNavigationMenuContentOptions => ({ maxCount: 0, value: [] });
   artistDetailTitleMenu: (params: ArtistDetailRouteParams) => HdsNavigationMenuContentOptions =
@@ -270,6 +272,19 @@ export struct ResponsiveNavigationDestinationContent {
   onOpenTrackDetails: (item: TrackListItem) => void = (_item: TrackListItem): void => {};
   onAlbumAction: (albumId: number, action: AlbumAction) => void =
     (_albumId: number, _action: AlbumAction): void => {};
+
+  private currentPlaylistSummary(playlistId: number): PlaylistSummary | undefined {
+    const detail = this.playlistStore.detail;
+    if (detail !== undefined && detail.playlist.id === playlistId) {
+      return detail.playlist;
+    }
+    for (let index = 0; index < this.playlistStore.playlists.length; index += 1) {
+      if (this.playlistStore.playlists[index].id === playlistId) {
+        return this.playlistStore.playlists[index];
+      }
+    }
+    return undefined;
+  }
 
   private activateAlbumChrome(params: AlbumDetailRouteParams): void {
     params.setPaletteChangeListener((primary: string): void => {
@@ -321,9 +336,12 @@ export struct ResponsiveNavigationDestinationContent {
       .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryTitleBar(
-        this.playlistSummary((this.param as PlaylistDetailRouteParams).playlistId)?.name ??
+        this.currentPlaylistSummary((this.param as PlaylistDetailRouteParams).playlistId)?.name ??
           (this.param as PlaylistDetailRouteParams).initialTitle,
-        this.playlistDetailTitleMenu(this.param as PlaylistDetailRouteParams),
+        this.playlistDetailTitleMenu(
+          this.param as PlaylistDetailRouteParams,
+          this.currentPlaylistSummary((this.param as PlaylistDetailRouteParams).playlistId)
+        ),
         this.playbackChromeBackgroundColor()
       ))
       .bindToScrollable([(this.param as PlaylistDetailRouteParams).scroller])

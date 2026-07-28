@@ -32,7 +32,10 @@ import { LibraryManagementPage } from '../../pages/library/LibraryManagementPage
 import { SettingsPage } from '../../pages/settings/SettingsPage';
 import { DebugPage } from '../../pages/settings/DebugPage';
 import { PlaylistDetailPage } from '../../pages/library/PlaylistDetailPage';
-import { AlbumDetailPage } from '../../pages/library/AlbumDetailPage';
+import {
+  AlbumDetailColorPolicy,
+  AlbumDetailPage
+} from '../../pages/library/AlbumDetailPage';
 import { ArtistDetailPage } from '../../pages/library/ArtistDetailPage';
 import { FloatingWindowSettingsPage } from '../../pages/settings/FloatingWindowSettingsPage';
 import { DynamicBackgroundDebugPage } from '../../pages/settings/DynamicBackgroundDebugPage';
@@ -291,7 +294,10 @@ export struct ResponsiveNavigationDestinationContent {
       this.navigationChromeController.updateAlbum(
         params.ownerRouteId,
         params.instanceId,
-        DynamicColor.foreground(primary, DynamicContainerRole.PRIMARY)
+        DynamicColor.foreground(
+          AlbumDetailColorPolicy.background(primary),
+          DynamicContainerRole.PRIMARY
+        )
       );
     });
     this.navigationChromeController.registerAlbum(

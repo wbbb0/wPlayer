@@ -174,5 +174,18 @@ export default function artworkPaletteExtractorTest() {
       expect(palette.primary === palette.secondary).assertFalse();
       expect(palette.secondary === palette.accent).assertFalse();
     });
+
+    it('preserves the original primary color in neutral mode', 0, () => {
+      const blackPixels: Array<number> = [];
+      const lightPixels: Array<number> = [];
+      appendPixels(blackPixels, { red: 0, green: 0, blue: 0 }, 1000);
+      appendPixels(lightPixels, { red: 235, green: 235, blue: 235 }, 1000);
+
+      const blackPalette = ArtworkPaletteExtractor.fromPixels(new Uint8Array(blackPixels));
+      const lightPalette = ArtworkPaletteExtractor.fromPixels(new Uint8Array(lightPixels));
+
+      expect(blackPalette.primary).assertEqual('#FF000000');
+      expect(lightPalette.primary).assertEqual('#FFEBEBEB');
+    });
   });
 }

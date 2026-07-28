@@ -6,12 +6,9 @@ const ITERATION_COUNT = 10;
 const DEFAULT_PRIMARY = '#FF7C4DFF';
 const DEFAULT_SECONDARY = '#FFFF4D8D';
 const DEFAULT_ACCENT = '#FFFFB347';
-export const ARTWORK_PALETTE_VERSION: number = 12;
+export const ARTWORK_PALETTE_VERSION: number = 13;
 const DARK_PRIMARY_MIN_POPULATION = 0.50;
 const DARK_PRIMARY_MAX_SOURCE_LIGHTNESS = 0.34;
-const DARK_PRIMARY_MIN_LIGHTNESS = 0.12;
-const DARK_PRIMARY_MAX_LIGHTNESS = 0.32;
-const DARK_PRIMARY_MAX_CHROMA = 0.12;
 const PRIMARY_MIN_POPULATION = 0.08;
 const PRIMARY_MIN_SOURCE_LIGHTNESS = 0.20;
 const PRIMARY_MAX_SOURCE_LIGHTNESS = 0.88;
@@ -44,9 +41,6 @@ const ACCENT_MIN_LIGHTNESS = 0.58;
 const ACCENT_MAX_LIGHTNESS = 0.76;
 const ACCENT_MIN_CHROMA = 0.14;
 const ACCENT_MAX_CHROMA = 0.24;
-const NEUTRAL_MAX_CHROMA = 0.025;
-const NEUTRAL_PRIMARY_MIN_LIGHTNESS = 0.30;
-const NEUTRAL_PRIMARY_MAX_LIGHTNESS = 0.72;
 const NEUTRAL_ROLE_THRESHOLD = 0.55;
 const NEUTRAL_LIGHT_SECONDARY = 0.72;
 const NEUTRAL_LIGHT_ACCENT = 0.82;
@@ -165,13 +159,7 @@ export class ArtworkPaletteExtractor {
 
   private static darkPalette(clusters: Array<ColorCluster>,
     dominantDark: ColorCluster): ArtworkPalette {
-    const primary = ArtworkPaletteExtractor.normalizeColor(
-      dominantDark,
-      DARK_PRIMARY_MIN_LIGHTNESS,
-      DARK_PRIMARY_MAX_LIGHTNESS,
-      0,
-      DARK_PRIMARY_MAX_CHROMA
-    );
+    const primary = dominantDark;
     const extractedNeutral = ArtworkPaletteExtractor.neutralCenter(clusters);
     const neutral: ColorCluster = {
       l: extractedNeutral.l,
@@ -181,25 +169,18 @@ export class ArtworkPaletteExtractor {
     };
     const roles = ArtworkPaletteExtractor.secondaryAccentRoles(clusters, primary, neutral);
     return {
-      primary: ArtworkPaletteExtractor.toColor(primary, DARK_PRIMARY_MIN_LIGHTNESS),
+      primary: ArtworkPaletteExtractor.toSourceColor(primary),
       secondary: ArtworkPaletteExtractor.toColor(roles.secondary),
       accent: ArtworkPaletteExtractor.toColor(roles.accent)
     };
   }
 
   private static neutralPalette(clusters: Array<ColorCluster>): ArtworkPalette {
-    const neutral = ArtworkPaletteExtractor.neutralCenter(clusters);
-    const primary = ArtworkPaletteExtractor.withLightness(
-      neutral,
-      ArtworkPaletteExtractor.clamp(
-        neutral.l,
-        NEUTRAL_PRIMARY_MIN_LIGHTNESS,
-        NEUTRAL_PRIMARY_MAX_LIGHTNESS
-      )
-    );
+    const primary = ArtworkPaletteExtractor.neutralCenter(clusters);
+    const neutral = primary;
     const roles = ArtworkPaletteExtractor.secondaryAccentRoles(clusters, primary, neutral);
     return {
-      primary: ArtworkPaletteExtractor.toColor(primary),
+      primary: ArtworkPaletteExtractor.toSourceColor(primary),
       secondary: ArtworkPaletteExtractor.toColor(roles.secondary),
       accent: ArtworkPaletteExtractor.toColor(roles.accent)
     };
@@ -272,10 +253,7 @@ export class ArtworkPaletteExtractor {
       b: 0,
       population: 1
     };
-    return ArtworkPaletteExtractor.withChroma(
-      center,
-      Math.min(NEUTRAL_MAX_CHROMA, ArtworkPaletteExtractor.chroma(center))
-    );
+    return center;
   }
 
   private static cluster(samples: Array<ColorSample>): Array<ColorCluster> {
@@ -588,6 +566,25 @@ export class ArtworkPaletteExtractor {
     }
     const rgb = ArtworkPaletteExtractor.oklabToRgb(
       lightness, color.a * scale, color.b * scale
+    );
+    return `#FF${ArtworkPaletteExtractor.hex(rgb[0])}${ArtworkPaletteExtractor.hex(rgb[1])}` +
+      `${ArtworkPaletteExtractor.hex(rgb[2])}`;
+  }
+
+  private static toSourceColor(color: LabColor): string {
+    const chroma = ArtworkPaletteExtractor.chroma(color);
+    let scale = chroma === 0 ? 1 : Math.min(1, 0.30 / chroma);
+    let linear = ArtworkPaletteExtractor.oklabToLinearRgb(
+      color.l, color.a * scale, color.b * scale
+    );
+    while (!ArtworkPaletteExtractor.inGamut(linear) && scale > 0.02) {
+      scale *= 0.92;
+      linear = ArtworkPaletteExtractor.oklabToLinearRgb(
+        color.l, color.a * scale, color.b * scale
+      );
+    }
+    const rgb = ArtworkPaletteExtractor.oklabToRgb(
+      color.l, color.a * scale, color.b * scale
     );
     return `#FF${ArtworkPaletteExtractor.hex(rgb[0])}${ArtworkPaletteExtractor.hex(rgb[1])}` +
       `${ArtworkPaletteExtractor.hex(rgb[2])}`;

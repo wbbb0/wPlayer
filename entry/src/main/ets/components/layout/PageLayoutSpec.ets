@@ -1,3 +1,5 @@
+import { ArtworkLayout, ArtworkSize } from '../artwork/ArtworkLayout';
+
 export class PageLayoutSpec {
   static readonly HORIZONTAL_INSET: number = 20;
   static readonly PRIMARY_CONTENT_GAP: number = 8;
@@ -9,6 +11,10 @@ export class PageLayoutSpec {
   static readonly ALBUM_ROW_GAP: number = 20;
   static readonly DETAIL_PRIMARY_PLAY_MIN_WIDTH: number = 112;
   static readonly DETAIL_PRIMARY_PLAY_MAX_WIDTH: number = 180;
+  static readonly DETAIL_COMPACT_ARTWORK_MAX_HEIGHT: number = 220;
+  static readonly DETAIL_WIDE_ARTWORK_MAX_HEIGHT: number = 184;
+  static readonly DETAIL_WIDE_HEADER_GAP: number = 28;
+  static readonly DETAIL_WIDE_TEXT_MIN_WIDTH: number = 280;
 
   static primaryContentStart(_topInset: number): number {
     // HdsNavigation owns the title bar safe area and its layout height.
@@ -22,6 +28,27 @@ export class PageLayoutSpec {
 
   static contentEnd(bottomInset: number): number {
     return Math.max(0, bottomInset) + PageLayoutSpec.FLOATING_CONTROLS_CLEARANCE;
+  }
+
+  static albumDetailArtworkSize(sourceWidth: number, sourceHeight: number,
+    containerWidth: number, wideHeader: boolean): ArtworkSize {
+    const maximumHeight = wideHeader ?
+      PageLayoutSpec.DETAIL_WIDE_ARTWORK_MAX_HEIGHT :
+      PageLayoutSpec.DETAIL_COMPACT_ARTWORK_MAX_HEIGHT;
+    const maximumWidth = wideHeader ?
+      Math.max(
+        maximumHeight,
+        containerWidth - PageLayoutSpec.HORIZONTAL_INSET * 2 -
+          PageLayoutSpec.DETAIL_WIDE_HEADER_GAP -
+          PageLayoutSpec.DETAIL_WIDE_TEXT_MIN_WIDTH
+      ) :
+      Math.max(0, containerWidth);
+    return ArtworkLayout.containedSizeWithSquareFallback(
+      sourceWidth,
+      sourceHeight,
+      maximumWidth,
+      maximumHeight
+    );
   }
 
   static albumColumnsTemplate(containerWidth: number, horizontalInset: number = 0): string {

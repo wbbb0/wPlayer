@@ -25,6 +25,67 @@ import {
 } from '../../appearance/DynamicColor';
 import { AlbumAction, AlbumGridSection } from '../../components/library/AlbumGridItem';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
+import { ArtworkSize } from '../../components/artwork/ArtworkLayout';
+
+export class AlbumDetailColorPolicy {
+  private static readonly BACKGROUND_TONE_ADJUSTMENT: number = 0.33;
+  private static readonly BACKGROUND_SATURATION_ADJUSTMENT: number = 1.33;
+
+  static background(primary: string): string {
+    const foreground = DynamicColor.foreground(primary, DynamicContainerRole.PRIMARY);
+    const target = foreground.toUpperCase() === '#FF000000' ? '#FFFFFFFF' : '#FF000000';
+    return AlbumDetailColorPolicy.adjustSaturation(
+      DynamicColor.blendOpaque(
+        primary,
+        target,
+        AlbumDetailColorPolicy.BACKGROUND_TONE_ADJUSTMENT
+      )
+    );
+  }
+
+  private static adjustSaturation(color: string): string {
+    if (color.length !== 9 || !color.startsWith('#')) {
+      return color;
+    }
+    const red = Number.parseInt(color.substring(3, 5), 16);
+    const green = Number.parseInt(color.substring(5, 7), 16);
+    const blue = Number.parseInt(color.substring(7, 9), 16);
+    if (Number.isNaN(red) || Number.isNaN(green) || Number.isNaN(blue)) {
+      return color;
+    }
+    const lightness = (Math.max(red, green, blue) + Math.min(red, green, blue)) / 2;
+    const scale = Math.min(
+      AlbumDetailColorPolicy.BACKGROUND_SATURATION_ADJUSTMENT,
+      AlbumDetailColorPolicy.maximumChannelScale(red, lightness),
+      AlbumDetailColorPolicy.maximumChannelScale(green, lightness),
+      AlbumDetailColorPolicy.maximumChannelScale(blue, lightness)
+    );
+    return `#FF${AlbumDetailColorPolicy.hex(
+      lightness + (red - lightness) * scale
+    )}${AlbumDetailColorPolicy.hex(
+      lightness + (green - lightness) * scale
+    )}${AlbumDetailColorPolicy.hex(
+      lightness + (blue - lightness) * scale
+    )}`;
+  }
+
+  private static maximumChannelScale(channel: number, lightness: number): number {
+    if (channel > lightness) {
+      return (255 - lightness) / (channel - lightness);
+    }
+    if (channel < lightness) {
+      return lightness / (lightness - channel);
+    }
+    return Number.MAX_VALUE;
+  }
+
+  private static hex(value: number): string {
+    return Math.round(Math.max(0, Math.min(255, value)))
+      .toString(16)
+      .padStart(2, '0')
+      .toUpperCase();
+  }
+}
 
 @Component
 export struct AlbumDetailPage {
@@ -180,7 +241,9 @@ export struct AlbumDetailPage {
   }
 
   private currentThemeBackground(): string {
-    return this.state.detail?.album.palettePrimary ?? this.themeBackground;
+    return this.state.detail === undefined ?
+      this.themeBackground :
+      AlbumDetailColorPolicy.background(this.state.detail.album.palettePrimary);
   }
 
   private secondaryContentColor(): string {
@@ -266,21 +329,40 @@ export struct AlbumDetailPage {
     return values.join(' · ');
   }
 
+  private headerArtworkSize(detail: AlbumDetail): ArtworkSize {
+    return PageLayoutSpec.albumDetailArtworkSize(
+      detail.album.artworkWidth,
+      detail.album.artworkHeight,
+      this.rootWidth,
+      this.usesWideHeader()
+    );
+  }
+
+  private headerArtworkAspectRatio(detail: AlbumDetail): number {
+    const size = this.headerArtworkSize(detail);
+    return size.height > 0 ? size.width / size.height : 1;
+  }
+
   @Builder
-  private HeaderArtwork(detail: AlbumDetail, size: number) {
+  private HeaderArtwork(detail: AlbumDetail) {
     if (this.showArtwork) {
       ArtworkView({
         sourcePath: detail.album.artworkPath.length > 0 ?
           this.store.resolveArtworkPath(detail.album.artworkPath) : '',
         sourceWidth: detail.album.artworkWidth,
         sourceHeight: detail.album.artworkHeight,
-        slotWidth: size,
+        slotWidth: this.headerArtworkSize(detail).width,
+        slotAspectRatio: this.headerArtworkAspectRatio(detail),
         fitMode: ArtworkFitMode.CONTAIN,
+        shadowRadius: 36,
+        shadowOffsetY: 12,
         cornerRadius: 20,
         shadowEnabled: detail.album.artworkPath.length > 0
       })
     } else {
-      Blank().width(size).height(size)
+      Blank()
+        .width(this.headerArtworkSize(detail).width)
+        .height(this.headerArtworkSize(detail).height)
     }
   }
 
@@ -346,8 +428,8 @@ export struct AlbumDetailPage {
   private Header(detail: AlbumDetail) {
     Column({ space: 18 }) {
       if (this.usesWideHeader()) {
-        Row({ space: 28 }) {
-          this.HeaderArtwork(detail, 184)
+        Row({ space: PageLayoutSpec.DETAIL_WIDE_HEADER_GAP }) {
+          this.HeaderArtwork(detail)
           Column({ space: 20 }) {
             this.AlbumText(detail, false)
             this.PlaybackActions(detail)
@@ -360,7 +442,7 @@ export struct AlbumDetailPage {
         .alignItems(VerticalAlign.Center)
       } else {
         Column({ space: 16 }) {
-          this.HeaderArtwork(detail, Math.min(220, Math.max(156, this.rootWidth - 112)))
+          this.HeaderArtwork(detail)
           this.AlbumText(detail, true)
         }
         .width('100%')

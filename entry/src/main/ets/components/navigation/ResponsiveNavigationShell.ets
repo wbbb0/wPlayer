@@ -65,6 +65,7 @@ import { PlaylistStore } from '../../playlist/store/PlaylistStore';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { MorePage } from '../../pages/library/MorePage';
+import { AlbumDetailColorPolicy } from '../../pages/library/AlbumDetailPage';
 import { AppSettingsStore } from '../../settings/AppSettingsStore';
 import {
   AlbumDetailRouteParams,
@@ -686,7 +687,9 @@ export struct ResponsiveNavigationShell {
   }
 
   private albumDetailBackground(params: AlbumDetailRouteParams): string {
-    return params.state.detail?.album.palettePrimary ?? params.palettePrimary;
+    return AlbumDetailColorPolicy.background(
+      params.state.detail?.album.palettePrimary ?? params.palettePrimary
+    );
   }
 
   private albumDetailContentColor(params: AlbumDetailRouteParams): string {

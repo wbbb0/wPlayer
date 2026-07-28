@@ -1,6 +1,6 @@
-# 构建 w播放器
+# 构建 wPlayer
 
-本文说明如何在新的 Windows 开发环境中构建 w播放器。项目主要模块为 `entry`。当前
+本文说明如何在新的 Windows 开发环境中构建 wPlayer。项目主要模块为 `entry`。当前
 `build-profile.json5` 配置的最低兼容及目标 SDK 均为 HarmonyOS 6.1.0/API 23；构建工具模型版本为
 6.1.1。修改 SDK 版本前应以项目配置和已安装 SDK 为准。
 

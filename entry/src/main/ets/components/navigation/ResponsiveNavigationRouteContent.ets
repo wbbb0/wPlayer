@@ -576,7 +576,7 @@ export struct ResponsiveNavigationDestinationContent {
       .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryTitleBar(
-        '关于 w播放器',
+        '关于 wPlayer',
         undefined,
         this.playbackChromeBackgroundColor()
       ))

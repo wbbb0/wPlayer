@@ -160,7 +160,7 @@ export struct SettingsPage {
           Column() {
             SettingsLinkItem({
               symbol: $r('sys.symbol.music_fill'),
-              title: '关于 w播放器',
+              title: '关于 wPlayer',
               description: '应用信息、开发者与联系方式',
               onActivate: this.openAbout
             })

@@ -8,7 +8,7 @@ import {
   window
 } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
-import { BusinessError } from '@kit.BasicServicesKit';
+import { BusinessError, deviceInfo } from '@kit.BasicServicesKit';
 import { BundledArtworkCatalog } from '../../library/artwork/BundledArtworkCatalog';
 import {
   PlaybackPictureInPicturePolicy,
@@ -396,9 +396,16 @@ export class PlaybackPictureInPicture {
       if (epoch !== undefined && controller !== undefined) {
         this.ensureOwnedController(epoch, controller);
       }
-      await context.moveAbilityToBackground();
-      if (epoch !== undefined && controller !== undefined) {
-        this.ensureOwnedController(epoch, controller);
+      if (deviceInfo.deviceType === deviceInfo.DeviceTypes.TYPE_2IN1) {
+        throw new Error('当前设备不支持将应用退至后台');
+      }
+      if (canIUse('SystemCapability.Ability.AbilityRuntime.Core')) {
+        await context.moveAbilityToBackground();
+        if (epoch !== undefined && controller !== undefined) {
+          this.ensureOwnedController(epoch, controller);
+        }
+      } else {
+        throw new Error('当前设备不支持将应用退至后台');
       }
     } catch (error) {
       if (error === PIP_OPERATION_CANCELLED) {

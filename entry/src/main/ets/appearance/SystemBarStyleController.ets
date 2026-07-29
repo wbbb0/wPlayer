@@ -1,5 +1,5 @@
 import { FrameCallback, window } from '@kit.ArkUI';
-import { BusinessError } from '@kit.BasicServicesKit';
+import { BusinessError, deviceInfo } from '@kit.BasicServicesKit';
 
 const SOFT_BLACK = '#FF202020';
 const SOFT_WHITE = '#FFF5F5F5';
@@ -62,7 +62,13 @@ export class HarmonySystemBarWindow extends SystemBarWindow {
 
   setSystemBarEnable(names: Array<'status' | 'navigation'>): Promise<void> {
     try {
-      return this.targetWindow.setWindowSystemBarEnable(names);
+      if (deviceInfo.deviceType === deviceInfo.DeviceTypes.TYPE_2IN1) {
+        return Promise.resolve();
+      }
+      if (canIUse('SystemCapability.WindowManager.WindowManager.Core')) {
+        return this.targetWindow.setWindowSystemBarEnable(names);
+      }
+      return Promise.resolve();
     } catch (error) {
       const businessError = error as BusinessError;
       return Promise.reject(new Error(
@@ -73,7 +79,13 @@ export class HarmonySystemBarWindow extends SystemBarWindow {
 
   setSystemBarProperties(systemBarProperties: window.SystemBarProperties): Promise<void> {
     try {
-      return this.targetWindow.setWindowSystemBarProperties(systemBarProperties);
+      if (deviceInfo.deviceType === deviceInfo.DeviceTypes.TYPE_2IN1) {
+        return Promise.resolve();
+      }
+      if (canIUse('SystemCapability.WindowManager.WindowManager.Core')) {
+        return this.targetWindow.setWindowSystemBarProperties(systemBarProperties);
+      }
+      return Promise.resolve();
     } catch (error) {
       const businessError = error as BusinessError;
       return Promise.reject(new Error(

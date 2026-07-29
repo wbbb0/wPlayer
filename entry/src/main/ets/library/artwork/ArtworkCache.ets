@@ -1,6 +1,7 @@
 import { fileIo as fs, hash } from '@kit.CoreFileKit';
 import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import { image } from '@kit.ImageKit';
+import { SuppressWarnings, SuppressWarningsType } from '@ohos.annotation';
 import { flattenArtworkPixels } from '../metadata/MediaFileTasks';
 import { ImportPerformanceTrace } from '../importer/ImportPerformanceTrace';
 import { ArtworkEncodingPolicy } from './ArtworkEncodingPolicy';
@@ -345,6 +346,7 @@ export class ArtworkCache {
     });
   }
 
+  @SuppressWarnings({ rules: [SuppressWarningsType.SYSCAP] })
   private static async sha256(bytes: Uint8Array): Promise<string> {
     try {
       const digest = cryptoFramework.createMd('SHA256');

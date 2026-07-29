@@ -1,5 +1,6 @@
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { media } from '@kit.MediaKit';
+import { SuppressWarnings, SuppressWarningsType } from '@ohos.annotation';
 import {
   MediaFormat,
   MetadataReadResult,
@@ -56,6 +57,7 @@ export class MetadataReader {
       metadata.channelCount <= 0 || metadata.mimeType.length === 0;
   }
 
+  @SuppressWarnings({ rules: [SuppressWarningsType.SYSCAP] })
   private static async mergeSystemMetadata(uri: string, fileSize: number,
     parsed: ParsedMetadata): Promise<ParsedMetadata> {
     let file: fs.File | undefined;

@@ -32,6 +32,7 @@ import playbackSourcePreparationTest from './PlaybackSourcePreparation.test';
 import mediaImportOperationTest from './MediaImportOperation.test';
 import mediaDuplicateProofTest from './MediaDuplicateProof.test';
 import playbackCoordinatorTest from './PlaybackCoordinator.test';
+import tabReselectionTest from './TabReselection.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -68,4 +69,5 @@ export default function testsuite() {
   mediaImportOperationTest();
   mediaDuplicateProofTest();
   playbackCoordinatorTest();
+  tabReselectionTest();
 }

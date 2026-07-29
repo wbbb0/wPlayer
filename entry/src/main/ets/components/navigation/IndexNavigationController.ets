@@ -27,6 +27,7 @@ import {
   normalizeNavigationOrder,
   orderedNavigationItems
 } from './MoreNavigation';
+import { TabReselectionPolicy } from './TabReselectionPolicy';
 
 const MORE_TAB_INDEX: number = PRIMARY_NAVIGATION_COUNT;
 
@@ -42,8 +43,6 @@ export class IndexNavigationController {
   readonly morePathStack: NavPathStack = new NavPathStack();
   readonly moreScroller: Scroller = new Scroller();
   readonly customizationScroller: Scroller = new Scroller();
-  private compactTabIndexBeforeSelection: number = 0;
-  private expandedTabIndexBeforeSelection: number = 0;
   private settingsRepository?: SettingsRepository;
   private settingsStore?: AppSettingsStore;
   private chromeController?: NavigationChromeController;
@@ -144,7 +143,6 @@ export class IndexNavigationController {
   }
 
   handleCompactTabChange(index: number): void {
-    this.compactTabIndexBeforeSelection = this.compactTabIndex();
     const normalizedIndex = this.normalizeTabIndex(index);
     if (normalizedIndex < PRIMARY_NAVIGATION_COUNT) {
       this.selectRoute(this.primaryItems()[normalizedIndex].routeId);
@@ -156,7 +154,8 @@ export class IndexNavigationController {
   }
 
   handleCompactTabBarClick(index: number): void {
-    if (index !== this.compactTabIndexBeforeSelection || index !== this.compactTabIndex()) {
+    // HdsTabs reports the bar click before onSelected commits a different route.
+    if (!TabReselectionPolicy.isReselection(index, this.compactTabIndex())) {
       return;
     }
     if (index < PRIMARY_NAVIGATION_COUNT) {
@@ -179,7 +178,6 @@ export class IndexNavigationController {
   }
 
   handleExpandedTabChange(index: number): void {
-    this.expandedTabIndexBeforeSelection = this.expandedTabIndex();
     const items = this.expandedItems();
     if (index < 0 || index >= items.length) {
       return;
@@ -189,7 +187,7 @@ export class IndexNavigationController {
   }
 
   handleExpandedTabBarClick(index: number): void {
-    if (index !== this.expandedTabIndexBeforeSelection || index !== this.expandedTabIndex()) {
+    if (!TabReselectionPolicy.isReselection(index, this.expandedTabIndex())) {
       return;
     }
     this.chromeController?.clearRoute(this.selectedRouteId);

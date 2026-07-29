@@ -14,6 +14,7 @@ import {
   LibraryTrackRow,
   LibraryTrackRowVariant
 } from '../../components/library/LibraryTrackRow';
+import { LibraryTrackRowPlaceholder } from '../../components/library/LibraryTrackRowPlaceholder';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 
@@ -120,36 +121,14 @@ export struct SongsPage {
                     .height(68)
                     .reuseId(this.selection.active ? 'songs_library_selection' : 'songs_library_actions')
                 } else {
-                  Row({ space: 12 }) {
-                    Row()
-                      .width(52)
-                      .height(52)
-                      .borderRadius(10)
-                      .backgroundColor($r('app.color.text_tertiary'))
-                      .opacity(0.12)
-                    Column({ space: 8 }) {
-                      Row()
-                        .width('58%')
-                        .height(12)
-                        .borderRadius(6)
-                        .backgroundColor($r('app.color.text_tertiary'))
-                        .opacity(0.14)
-                      Row()
-                        .width('38%')
-                        .height(10)
-                        .borderRadius(5)
-                        .backgroundColor($r('app.color.text_tertiary'))
-                        .opacity(0.1)
-                    }
-                    .alignItems(HorizontalAlign.Start)
-                    .layoutWeight(1)
-                    Row()
-                      .width(38)
-                      .height(38)
-                  }
-                  .height(68)
-                  .width('100%')
-                  .padding({ left: 16, right: 16 })
+                  LibraryTrackRowPlaceholder({
+                    horizontalInset: 16,
+                    verticalInset: 8,
+                    artworkSize: 52,
+                    artworkCornerRadius: 10,
+                    selectionMode: this.selection.active
+                  })
+                    .height(68)
                 }
               }
               .width('100%')

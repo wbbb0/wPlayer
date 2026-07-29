@@ -4,6 +4,7 @@ import {
   AlbumReference,
   AlbumSortField,
   ArtistDetail,
+  ArtistDetailOverview,
   ArtistReference,
   AvailabilityState,
   LibraryCatalog,
@@ -453,7 +454,7 @@ export class DemoMusicLibrary {
     return [];
   }
 
-  static artistDetail(artistId: number): ArtistDetail | undefined {
+  static artistOverview(artistId: number): ArtistDetailOverview | undefined {
     const albumId = artistId === -2001 ? -1101 : artistId === -2002 ? -1102 : artistId === -2003 ? -1103 : 0;
     if (albumId === 0) {
       return undefined;
@@ -467,9 +468,40 @@ export class DemoMusicLibrary {
       albumCount: 1,
       trackCount: tracks.length,
       totalDurationMs: album.totalDurationMs,
-      albums: [cloneAlbum(album)],
-      tracks: tracks
+      albums: [cloneAlbum(album)]
     };
+  }
+
+  static artistDetail(artistId: number): ArtistDetail | undefined {
+    const overview = DemoMusicLibrary.artistOverview(artistId);
+    if (overview === undefined) {
+      return undefined;
+    }
+    return {
+      artist: overview.artist,
+      albumCount: overview.albumCount,
+      trackCount: overview.trackCount,
+      totalDurationMs: overview.totalDurationMs,
+      albums: overview.albums,
+      tracks: DemoMusicLibrary.artistTracks(artistId)
+    };
+  }
+
+  static artistTracks(artistId: number): Array<TrackListItem> {
+    const overview = DemoMusicLibrary.artistOverview(artistId);
+    if (overview === undefined || overview.albums.length === 0) {
+      return [];
+    }
+    const albumId = overview.albums[0].id;
+    return DEMO_TRACKS.filter((track: TrackListItem): boolean =>
+      DemoMusicLibrary.albumIdForTrack(track.id) === albumId).map(cloneTrack);
+  }
+
+  static artistTrackPage(artistId: number, offset: number,
+    limit: number): Array<TrackListItem> {
+    const safeOffset = LibraryQueryPagingPolicy.offset(offset);
+    const safeLimit = LibraryQueryPagingPolicy.limit(limit);
+    return DemoMusicLibrary.artistTracks(artistId).slice(safeOffset, safeOffset + safeLimit);
   }
 
   static navigationTargets(trackId: number): TrackNavigationTargets | undefined {

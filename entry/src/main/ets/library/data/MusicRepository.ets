@@ -5,6 +5,7 @@ import {
   AlbumDetail,
   ArtistReference,
   ArtistDetail,
+  ArtistDetailOverview,
   AvailabilityState,
   AlbumListItem,
   PlaylistDetail,
@@ -444,6 +445,28 @@ export class MusicRepository implements LibraryRemovalRepository {
       return Promise.resolve(DemoMusicLibrary.artistDetail(artistId));
     }
     return this.queries.getArtistDetail(artistId);
+  }
+
+  getArtistOverview(artistId: number): Promise<ArtistDetailOverview | undefined> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.artistOverview(artistId));
+    }
+    return this.queries.getArtistOverview(artistId);
+  }
+
+  getArtistTrackPage(artistId: number, offset: number,
+    limit: number): Promise<Array<TrackListItem>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.artistTrackPage(artistId, offset, limit));
+    }
+    return this.queries.getArtistTrackPage(artistId, offset, limit);
+  }
+
+  getArtistTracks(artistId: number): Promise<Array<TrackListItem>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.artistTracks(artistId));
+    }
+    return this.queries.getArtistTracks(artistId);
   }
 
   getTrackNavigationTargets(trackId: number): Promise<TrackNavigationTargets | undefined> {

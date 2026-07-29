@@ -4,6 +4,7 @@ import {
   AlbumListItem,
   AlbumReference,
   ArtistDetail,
+  ArtistDetailOverview,
   ArtistReference,
   AvailabilityState,
   ArtworkPictureType,
@@ -23,6 +24,12 @@ import {
   trackListItemFromCurrentRow
 } from './MusicLibraryQueryRows';
 import { RelationalStoreSafety } from './RelationalStoreSafety';
+import { LibraryQueryPagingPolicy } from './LibraryQueryPagingPolicy';
+
+interface ArtistTrackStatistics {
+  trackCount: number;
+  totalDurationMs: number;
+}
 
 /**
  * Owns detail and navigation reads. MusicRepository remains responsible for invalidating observable projections.
@@ -347,7 +354,7 @@ export class MusicLibraryDetailQueries {
     }
   }
 
-  async getArtistDetail(artistId: number): Promise<ArtistDetail | undefined> {
+  async getArtistOverview(artistId: number): Promise<ArtistDetailOverview | undefined> {
     let artistResult: relationalStore.ResultSet | undefined;
     let artist: ArtistReference | undefined;
     try {
@@ -370,19 +377,61 @@ export class MusicLibraryDetailQueries {
       return undefined;
     }
     const albums = await this.getArtistAlbums(artistId);
-    const tracks = await this.getArtistTracks(artistId);
-    let totalDurationMs = 0;
-    for (let index = 0; index < tracks.length; index += 1) {
-      totalDurationMs += tracks[index].durationMs;
-    }
+    const statistics = await this.getArtistTrackStatistics(artistId);
     return {
       artist: artist,
       albumCount: albums.length,
-      trackCount: tracks.length,
-      totalDurationMs: totalDurationMs,
-      albums: albums,
-      tracks: tracks
+      trackCount: statistics.trackCount,
+      totalDurationMs: statistics.totalDurationMs,
+      albums: albums
     };
+  }
+
+  async getArtistDetail(artistId: number): Promise<ArtistDetail | undefined> {
+    const overview = await this.getArtistOverview(artistId);
+    if (overview === undefined) {
+      return undefined;
+    }
+    return {
+      artist: overview.artist,
+      albumCount: overview.albumCount,
+      trackCount: overview.trackCount,
+      totalDurationMs: overview.totalDurationMs,
+      albums: overview.albums,
+      tracks: await this.getArtistTracks(artistId)
+    };
+  }
+
+  private async getArtistTrackStatistics(artistId: number): Promise<ArtistTrackStatistics> {
+    let resultSet: relationalStore.ResultSet | undefined;
+    try {
+      resultSet = await this.database.getStore().querySql(
+        `SELECT COUNT(*), COALESCE(SUM(t.duration_ms), 0)
+         FROM track t
+         WHERE EXISTS (
+           SELECT 1 FROM track_credit tc
+           WHERE tc.track_id = t.id AND tc.person_id = ? AND tc.role = ?
+         ) OR EXISTS (
+           SELECT 1 FROM album_credit ac
+           WHERE ac.album_id = t.album_id AND ac.person_id = ?
+         )`,
+        [artistId, CreditRole.TRACK_ARTIST, artistId]
+      );
+      if (!resultSet.goToNextRow()) {
+        return { trackCount: 0, totalDurationMs: 0 };
+      }
+      return {
+        trackCount: resultSet.getLong(0),
+        totalDurationMs: resultSet.getLong(1)
+      };
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(
+        `Unable to read track statistics for artist ${artistId}`,
+        error
+      );
+    } finally {
+      RelationalStoreSafety.closeResultSet(resultSet, 'artist track statistics');
+    }
   }
 
   private async getTrackArtists(trackId: number): Promise<Array<ArtistReference>> {
@@ -504,10 +553,29 @@ export class MusicLibraryDetailQueries {
     }
   }
 
-  private async getArtistTracks(artistId: number): Promise<Array<TrackListItem>> {
+  getArtistTrackPage(artistId: number, offset: number,
+    limit: number): Promise<Array<TrackListItem>> {
+    return this.queryArtistTracks(
+      artistId,
+      LibraryQueryPagingPolicy.offset(offset),
+      LibraryQueryPagingPolicy.limit(limit)
+    );
+  }
+
+  getArtistTracks(artistId: number): Promise<Array<TrackListItem>> {
+    return this.queryArtistTracks(artistId);
+  }
+
+  private async queryArtistTracks(artistId: number, offset?: number,
+    limit?: number): Promise<Array<TrackListItem>> {
     let resultSet: relationalStore.ResultSet | undefined;
     const tracks: Array<TrackListItem> = [];
     try {
+      const pageClause = offset === undefined || limit === undefined ? '' : ' LIMIT ? OFFSET ?';
+      const bindings: Array<number> = [artistId, CreditRole.TRACK_ARTIST, artistId];
+      if (offset !== undefined && limit !== undefined) {
+        bindings.push(limit, offset);
+      }
       resultSet = await this.database.getStore().querySql(
         `SELECT t.id, t.title, t.artist_display, t.album_display, t.duration_ms,
           COALESCE(t.track_number, 0), COALESCE(t.disc_number, 0),
@@ -530,8 +598,8 @@ export class MusicLibraryDetailQueries {
           CASE WHEN t.disc_number IS NULL OR t.disc_number <= 0 THEN 1 ELSE 0 END,
           t.disc_number,
           CASE WHEN t.track_number IS NULL OR t.track_number <= 0 THEN 1 ELSE 0 END,
-          t.track_number, t.title_natural_key, t.id`,
-        [artistId, CreditRole.TRACK_ARTIST, artistId]
+          t.track_number, t.title_natural_key, t.id${pageClause}`,
+        bindings
       );
       while (resultSet.goToNextRow()) {
         tracks.push(trackListItemFromCurrentRow(resultSet));

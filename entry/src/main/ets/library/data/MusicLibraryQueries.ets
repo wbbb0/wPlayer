@@ -3,6 +3,7 @@ import {
   AlbumListItem,
   AlbumSortField,
   ArtistDetail,
+  ArtistDetailOverview,
   ArtistReference,
   AvailabilityState,
   LibraryCatalog,
@@ -117,6 +118,19 @@ export class MusicLibraryQueries {
 
   getArtistDetail(artistId: number): Promise<ArtistDetail | undefined> {
     return this.detail.getArtistDetail(artistId);
+  }
+
+  getArtistOverview(artistId: number): Promise<ArtistDetailOverview | undefined> {
+    return this.detail.getArtistOverview(artistId);
+  }
+
+  getArtistTrackPage(artistId: number, offset: number,
+    limit: number): Promise<Array<TrackListItem>> {
+    return this.detail.getArtistTrackPage(artistId, offset, limit);
+  }
+
+  getArtistTracks(artistId: number): Promise<Array<TrackListItem>> {
+    return this.detail.getArtistTracks(artistId);
   }
 
   getTrackNavigationTargets(trackId: number): Promise<TrackNavigationTargets | undefined> {

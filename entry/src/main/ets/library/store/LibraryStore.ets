@@ -9,6 +9,7 @@ import {
   AlbumSortField,
   ArtistReference,
   ArtistDetail,
+  ArtistDetailOverview,
   FileCheckProgress,
   FileCheckResult,
   FileCheckItemResult,
@@ -109,6 +110,7 @@ interface PaletteRefreshResult {
 }
 
 export type ArtworkChangeListener = () => void;
+export type LibraryContentChangeListener = () => void;
 
 @Observed
 export class LibraryStore {
@@ -191,6 +193,7 @@ export class LibraryStore {
   fileCheckResult: string = '';
   lastMessage: string = '';
   errorMessage: string = '';
+  libraryContentRevision: number = 0;
   lastImportResult?: ImportResult;
   importDetailCount: number = 0;
   uriDuplicateCount: number = 0;
@@ -226,6 +229,7 @@ export class LibraryStore {
   private readonly trackNavigationCache: Map<number, TrackNavigationTargets> =
     new Map<number, TrackNavigationTargets>();
   private readonly artworkChangeListeners: Array<ArtworkChangeListener> = [];
+  private readonly contentChangeListeners: Array<LibraryContentChangeListener> = [];
 
   constructor(repository?: MusicRepository, playbackBridge?: LibraryPlaybackBridge) {
     this.repository = repository === undefined ? new MusicRepository() : repository;
@@ -243,6 +247,19 @@ export class LibraryStore {
     const index = this.artworkChangeListeners.indexOf(listener);
     if (index >= 0) {
       this.artworkChangeListeners.splice(index, 1);
+    }
+  }
+
+  addContentChangeListener(listener: LibraryContentChangeListener): void {
+    if (!this.contentChangeListeners.includes(listener)) {
+      this.contentChangeListeners.push(listener);
+    }
+  }
+
+  removeContentChangeListener(listener: LibraryContentChangeListener): void {
+    const index = this.contentChangeListeners.indexOf(listener);
+    if (index >= 0) {
+      this.contentChangeListeners.splice(index, 1);
     }
   }
 
@@ -341,6 +358,9 @@ export class LibraryStore {
         LibraryPagingPolicy.initialPrefetchLastIndex(LibraryPagingPolicy.ALBUM_QUERY_PAGE_SIZE)
       )
     ]);
+    this.libraryContentRevision += 1;
+    const listeners = this.contentChangeListeners.slice();
+    listeners.forEach((listener: LibraryContentChangeListener): void => listener());
   }
 
   async setTrackSort(field: TrackSortField, direction: SortDirection): Promise<void> {
@@ -922,6 +942,32 @@ export class LibraryStore {
 
   getArtistDetail(artistId: number): Promise<ArtistDetail | undefined> {
     return this.repository.getArtistDetail(artistId);
+  }
+
+  getArtistOverview(artistId: number): Promise<ArtistDetailOverview | undefined> {
+    return this.repository.getArtistOverview(artistId);
+  }
+
+  getArtistTrackPage(artistId: number, offset: number,
+    limit: number): Promise<Array<TrackListItem>> {
+    return this.repository.getArtistTrackPage(artistId, offset, limit);
+  }
+
+  getArtistTracks(artistId: number): Promise<Array<TrackListItem>> {
+    return this.repository.getArtistTracks(artistId);
+  }
+
+  async loadArtistTrackPlaybackOrder(artistId: number,
+    expectedCount: number): Promise<Array<TrackListItem>> {
+    for (let attempt = 0; attempt < PLAYBACK_ORDER_STABILITY_ATTEMPTS; attempt += 1) {
+      const revision = this.repository.currentInvalidationRevision();
+      const tracks = await this.repository.getArtistTracks(artistId);
+      if (this.repository.currentInvalidationRevision() === revision &&
+        tracks.length === expectedCount) {
+        return tracks;
+      }
+    }
+    throw new Error('艺术家歌曲正在变化，请稍后重试播放');
   }
 
   getTrackDetail(trackId: number): Promise<TrackDetail | undefined> {

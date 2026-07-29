@@ -803,7 +803,7 @@ export struct ResponsiveNavigationShell {
   }
 
   private playlistSummary(playlistId: number): PlaylistSummary | undefined {
-    const detail = this.playlistStore.detail;
+    const detail = this.playlistStore.detailOverview;
     if (detail !== undefined && detail.playlist.id === playlistId) {
       return detail.playlist;
     }

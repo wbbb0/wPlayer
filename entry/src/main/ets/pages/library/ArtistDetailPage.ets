@@ -7,7 +7,7 @@ import {
 } from '../../components/library/LibraryTrackRow';
 import {
   AlbumListItem,
-  ArtistDetail,
+  ArtistDetailOverview,
   LibraryEntityIdentity,
   LibraryNavigationTarget,
   TrackListItem
@@ -17,6 +17,14 @@ import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
+import {
+  LibrarySlot
+} from '../../library/store/PagedLibraryDataSource';
+import { LibraryTrackRowPlaceholder } from '../../components/library/LibraryTrackRowPlaceholder';
+import {
+  DetailTrackListPagingPolicy,
+  DetailTrackVisibleRange
+} from '../../library/store/DetailTrackListPagingPolicy';
 
 @Component
 export struct ArtistDetailPage {
@@ -29,6 +37,7 @@ export struct ArtistDetailPage {
   @Prop actionAnchorPrefix: string = 'artist';
   @Prop currentIdentity: LibraryEntityIdentity | undefined = undefined;
   @State selectedItems: Array<TrackListItem> = [];
+  @State snapshotActionBusy: boolean = false;
   scroller: Scroller = new Scroller();
   onOpenAlbum: (album: AlbumListItem) => void = (_album: AlbumListItem): void => {};
   onOpenTrackActions: (track: TrackListItem, anchorId: string) => void =
@@ -43,7 +52,7 @@ export struct ArtistDetailPage {
     new PageListBehavior(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT);
 
   aboutToAppear(): void {
-    this.state.load(this.store);
+    this.state.activate(this.store);
     this.selection.deleteEnabled = false;
     this.selection.onPlay = (): void => this.playSelection();
     this.selection.onAddToPlaylist = (): void =>
@@ -53,6 +62,10 @@ export struct ArtistDetailPage {
       playbackRuntime.appendToQueue(this.currentSelection());
   }
 
+  aboutToDisappear(): void {
+    this.state.deactivate(this.store);
+  }
+
   private durationLabel(durationMs: number): string {
     const totalMinutes = Math.max(0, Math.floor(durationMs / 60000));
     const hours = Math.floor(totalMinutes / 60);
@@ -60,10 +73,29 @@ export struct ArtistDetailPage {
     return hours > 0 ? `${hours} 小时 ${minutes} 分钟` : `${minutes} 分钟`;
   }
 
-  private playFirst(detail: ArtistDetail): void {
-    if (detail.tracks.length > 0) {
-      playbackRuntime.playInOrder(detail.tracks[0], detail.tracks);
+  private runSnapshotAction(action: (tracks: Array<TrackListItem>) => void): void {
+    if (this.snapshotActionBusy) {
+      return;
     }
+    this.snapshotActionBusy = true;
+    this.state.loadTrackSnapshot(this.store).then((tracks: Array<TrackListItem>): void => {
+      if (this.state.detail !== undefined && tracks.length > 0) {
+        action(tracks);
+      }
+      this.snapshotActionBusy = false;
+    }).catch((error: Object): void => {
+      console.warn(`Unable to load artist playback order: ${error}`);
+      this.snapshotActionBusy = false;
+    });
+  }
+
+  private playTrack(track: TrackListItem): void {
+    this.runSnapshotAction((tracks: Array<TrackListItem>): void => {
+      const current = tracks.find((item: TrackListItem): boolean => item.id === track.id);
+      if (current !== undefined) {
+        playbackRuntime.playInOrder(current, tracks);
+      }
+    });
   }
 
   private currentSelection(): Array<TrackListItem> {
@@ -93,7 +125,7 @@ export struct ArtistDetailPage {
   }
 
   @Builder
-  private Header(detail: ArtistDetail) {
+  private Header(detail: ArtistDetailOverview) {
     Column({ space: 18 }) {
       Stack({ alignContent: Alignment.Center }) {
         SymbolGlyph($r('sys.symbol.person_2_fill'))
@@ -129,9 +161,11 @@ export struct ArtistDetailPage {
         .height(44)
         .borderRadius(22)
         .backgroundColor($r('app.color.glass_surface_subtle'))
-        .enabled(detail.tracks.length > 0)
+        .enabled(detail.trackCount > 0 && !this.snapshotActionBusy)
         .accessibilityText('随机播放此艺术家的歌曲')
-        .onClick(() => playbackRuntime.shuffleAll(detail.tracks))
+        .onClick(() => this.runSnapshotAction(
+          (tracks: Array<TrackListItem>): void => playbackRuntime.shuffleAll(tracks)
+        ))
 
         Button() {
           Row({ space: 7 }) {
@@ -148,8 +182,9 @@ export struct ArtistDetailPage {
         .height(44)
         .borderRadius(22)
         .backgroundColor($r('app.color.glass_surface_strong'))
-        .enabled(detail.tracks.length > 0)
-        .onClick(() => this.playFirst(detail))
+        .enabled(detail.trackCount > 0 && !this.snapshotActionBusy)
+        .onClick(() => this.runSnapshotAction((tracks: Array<TrackListItem>): void =>
+          playbackRuntime.playInOrder(tracks[0], tracks)))
       }
     }
     .width('100%')
@@ -202,40 +237,49 @@ export struct ArtistDetailPage {
             })
           }
         }
-        if (this.state.detail.tracks.length > 0) {
+        if (this.state.detail.trackCount > 0) {
           ListItem() {
             this.SectionTitle('歌曲', this.state.detail.trackCount)
           }
-          LazyForEach(this.state.trackDataSource, (track: TrackListItem) => {
-            ListItem() {
-              LibraryTrackRow({
-                track: track,
-                store: this.store,
-                currentIdentity: this.currentIdentity,
-                variant: LibraryTrackRowVariant.LIBRARY,
-                artworkPath: track.smallArtworkPath.length > 0 ?
-                  this.store.resolveArtworkPath(track.smallArtworkPath) : '',
-                actionAnchorPrefix: this.actionAnchorPrefix,
-                horizontalInset: PageLayoutSpec.HORIZONTAL_INSET,
-                verticalInset: 6,
-                artworkSize: 48,
-                artworkCornerRadius: 9,
-                onActivate: (item: TrackListItem): void => {
-                  if (this.state.detail !== undefined) {
-                    playbackRuntime.playInOrder(item, this.state.detail.tracks);
-                  }
-                },
-                onOpenActions: this.onOpenTrackActions,
-                onOpenDetails: this.onOpenTrackDetails,
-                onNavigateAction: this.onNavigateTrackAction,
-                onRequestAddToPlaylist: this.onRequestAddToPlaylist,
-                selectionMode: this.selection.active,
-                selected: this.selection.isSelected(track.id),
-                onToggleSelection: (item: TrackListItem): void => this.toggleSelection(item)
-              })
-                .reuseId('artist_detail_track')
+          LazyForEach(this.state.trackDataSource, (slot: LibrarySlot<TrackListItem>) => {
+            if (slot.value !== undefined) {
+              ListItem() {
+                LibraryTrackRow({
+                  track: slot.value,
+                  store: this.store,
+                  currentIdentity: this.currentIdentity,
+                  variant: LibraryTrackRowVariant.LIBRARY,
+                  artworkPath: slot.value.smallArtworkPath.length > 0 ?
+                    this.store.resolveArtworkPath(slot.value.smallArtworkPath) : '',
+                  actionAnchorPrefix: this.actionAnchorPrefix,
+                  horizontalInset: PageLayoutSpec.HORIZONTAL_INSET,
+                  verticalInset: 6,
+                  artworkSize: 48,
+                  artworkCornerRadius: 9,
+                  onActivate: (item: TrackListItem): void => this.playTrack(item),
+                  onOpenActions: this.onOpenTrackActions,
+                  onOpenDetails: this.onOpenTrackDetails,
+                  onNavigateAction: this.onNavigateTrackAction,
+                  onRequestAddToPlaylist: this.onRequestAddToPlaylist,
+                  selectionMode: this.selection.active,
+                  selected: this.selection.isSelected(slot.value.id),
+                  onToggleSelection: (item: TrackListItem): void => this.toggleSelection(item)
+                })
+                  .reuseId('artist_detail_track')
+              }
+            } else {
+              ListItem() {
+                LibraryTrackRowPlaceholder({
+                  horizontalInset: PageLayoutSpec.HORIZONTAL_INSET,
+                  verticalInset: 6,
+                  minimumHeight: 60,
+                  artworkSize: 48,
+                  artworkCornerRadius: 9,
+                  selectionMode: this.selection.active
+                })
+              }
             }
-          }, (track: TrackListItem) => this.state.trackDataSource.keyFor(track.id))
+          }, (slot: LibrarySlot<TrackListItem>) => slot.key)
         }
       } else if (this.state.loading) {
         ListItem() {
@@ -260,6 +304,24 @@ export struct ArtistDetailPage {
     .contentStartOffset(PageLayoutSpec.primaryContentStart(this.topInset))
     .contentEndOffset(PageLayoutSpec.contentEnd(this.bottomInset))
     .attributeModifier(this.scrollBehavior)
+    .onScrollIndex((firstIndex: number, lastIndex: number, _centerIndex: number): void => {
+      const detail = this.state.detail;
+      if (detail === undefined || detail.trackCount === 0) {
+        return;
+      }
+      const range: DetailTrackVisibleRange | undefined =
+        DetailTrackListPagingPolicy.visibleDataRange(
+          firstIndex,
+          lastIndex,
+          DetailTrackListPagingPolicy.artistTrackDataStartIndex(detail.albums.length > 0),
+          detail.trackCount
+        );
+      if (range !== undefined) {
+        this.state.ensureTrackRange(range.firstIndex, range.lastIndex)
+          .catch((error: Object): void =>
+            console.warn(`Unable to prefetch artist tracks: ${error}`));
+      }
+    })
     }
     .width('100%')
     .height('100%')

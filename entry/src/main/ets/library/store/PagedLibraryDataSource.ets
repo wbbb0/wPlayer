@@ -147,6 +147,44 @@ export class PagedLibraryDataSource<T> implements IDataSource {
     ]));
   }
 
+  clear(): void {
+    this.generation += 1;
+    this.itemCount = 0;
+    this.loader = undefined;
+    this.pages.clear();
+    this.pageAccess.clear();
+    this.resolveQueuedRequests();
+    this.inflight.clear();
+    this.failedPages.clear();
+    this.latestDemandPages.clear();
+    this.demandSerial += 1;
+    this.protectedStart = 0;
+    this.protectedEnd = -1;
+    this.listeners.forEach((listener: DataChangeListener) => listener.onDatasetChange([
+      { type: DataOperationType.RELOAD }
+    ]));
+  }
+
+  invalidatePages(): void {
+    if (this.loader === undefined) {
+      this.clear();
+      return;
+    }
+    this.generation += 1;
+    this.pages.clear();
+    this.pageAccess.clear();
+    this.resolveQueuedRequests();
+    this.inflight.clear();
+    this.failedPages.clear();
+    this.latestDemandPages.clear();
+    this.demandSerial += 1;
+    this.protectedStart = 0;
+    this.protectedEnd = -1;
+    this.listeners.forEach((listener: DataChangeListener) => listener.onDatasetChange([
+      { type: DataOperationType.RELOAD }
+    ]));
+  }
+
   async ensureRange(firstIndex: number, lastIndex: number,
     preferredIndex: number = firstIndex): Promise<void> {
     if (this.itemCount === 0 || this.loader === undefined) {

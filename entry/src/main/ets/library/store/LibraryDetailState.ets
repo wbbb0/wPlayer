@@ -1,6 +1,6 @@
 import {
   AlbumDetail,
-  ArtistDetail,
+  ArtistDetailOverview,
   EmbeddedArtwork,
   TrackDetail
 } from '../model/LibraryModels';
@@ -9,6 +9,22 @@ import { EmbeddedArtworkService } from '../artwork/EmbeddedArtworkService';
 import { LibraryStore } from './LibraryStore';
 import { TrackListItem } from '../model/LibraryModels';
 import { LibraryListDataSource } from './LibraryListDataSource';
+import { LibraryPageLoader, PagedLibraryDataSource } from './PagedLibraryDataSource';
+import { LibraryPagingPolicy } from './LibraryPagingPolicy';
+
+class ArtistTrackPageLoader implements LibraryPageLoader<TrackListItem> {
+  private readonly store: LibraryStore;
+  private readonly artistId: number;
+
+  constructor(store: LibraryStore, artistId: number) {
+    this.store = store;
+    this.artistId = artistId;
+  }
+
+  load(offset: number, limit: number): Promise<Array<TrackListItem>> {
+    return this.store.getArtistTrackPage(this.artistId, offset, limit);
+  }
+}
 
 @Observed
 export class AlbumDetailState {
@@ -75,43 +91,139 @@ export class AlbumDetailState {
 @Observed
 export class ArtistDetailState {
   readonly artistId: number;
-  detail?: ArtistDetail;
+  detail?: ArtistDetailOverview;
   loading: boolean = false;
   error: string = '';
-  readonly trackDataSource: LibraryListDataSource<TrackListItem> =
-    new LibraryListDataSource<TrackListItem>();
+  readonly trackDataSource: PagedLibraryDataSource<TrackListItem> =
+    new PagedLibraryDataSource<TrackListItem>(
+      LibraryPagingPolicy.TRACK_QUERY_PAGE_SIZE,
+      LibraryPagingPolicy.MAX_CACHED_PAGES,
+      (item: TrackListItem): string => `${item.id}`
+    );
   private loadEpoch: number = 0;
   private loaded: boolean = false;
+  private loadedContentRevision: number = -1;
+  private loadingContentRevision: number = -1;
+  private refreshPending: boolean = false;
+  private activeStore?: LibraryStore;
+  private readonly contentChangeListener: () => void = (): void => {
+    const store = this.activeStore;
+    if (store !== undefined) {
+      if (this.loading) {
+        this.refreshPending = true;
+        return;
+      }
+      this.refresh(store).catch((error: Object): void => {
+        console.warn(`Unable to refresh artist ${this.artistId}: ${ArtistDetailState.messageOf(error)}`);
+      });
+    }
+  };
 
   constructor(artistId: number) {
     this.artistId = artistId;
   }
 
   async load(store: LibraryStore): Promise<void> {
-    if (this.loaded || this.loading) {
+    await this.activate(store);
+  }
+
+  async activate(store: LibraryStore): Promise<void> {
+    if (this.activeStore !== store) {
+      this.activeStore?.removeContentChangeListener(this.contentChangeListener);
+      this.activeStore = store;
+      store.addContentChangeListener(this.contentChangeListener);
+    }
+    if (this.loaded && this.loadedContentRevision === store.libraryContentRevision) {
+      return;
+    }
+    if (this.loading) {
+      if (this.loadingContentRevision !== store.libraryContentRevision) {
+        this.refreshPending = true;
+      }
+      return;
+    }
+    await this.loadInternal(store, this.loaded);
+  }
+
+  deactivate(store: LibraryStore): void {
+    if (this.activeStore === store) {
+      store.removeContentChangeListener(this.contentChangeListener);
+      this.activeStore = undefined;
+      this.refreshPending = false;
+    }
+  }
+
+  refresh(store: LibraryStore): Promise<void> {
+    return this.loadInternal(store, true);
+  }
+
+  ensureTrackRange(firstIndex: number, lastIndex: number): Promise<void> {
+    const start = LibraryPagingPolicy.prefetchStartForVisibleRange(
+      firstIndex,
+      LibraryPagingPolicy.TRACK_QUERY_PAGE_SIZE
+    );
+    const end = LibraryPagingPolicy.prefetchEndForVisibleRange(
+      lastIndex,
+      LibraryPagingPolicy.TRACK_QUERY_PAGE_SIZE
+    );
+    return this.trackDataSource.ensureRange(start, end, firstIndex);
+  }
+
+  async loadTrackSnapshot(store: LibraryStore): Promise<Array<TrackListItem>> {
+    const epoch = this.loadEpoch;
+    const expectedCount = this.detail?.trackCount ?? 0;
+    const tracks = await store.loadArtistTrackPlaybackOrder(this.artistId, expectedCount);
+    if (epoch !== this.loadEpoch || this.detail === undefined) {
+      throw new Error('艺术家内容已更新，请重试');
+    }
+    return tracks;
+  }
+
+  private async loadInternal(store: LibraryStore, force: boolean): Promise<void> {
+    if ((!force && this.loaded) || this.loading) {
       return;
     }
     const epoch = ++this.loadEpoch;
+    const contentRevision = store.libraryContentRevision;
+    this.loadingContentRevision = contentRevision;
     this.loading = true;
     this.error = '';
     try {
-      const detail = await store.getArtistDetail(this.artistId);
+      const detail = await store.getArtistOverview(this.artistId);
       if (epoch !== this.loadEpoch) {
         return;
       }
-      this.trackDataSource.replace(detail?.tracks ?? []);
       this.detail = detail;
       this.loaded = detail !== undefined;
+      this.loadedContentRevision = contentRevision;
       if (detail === undefined) {
+        this.trackDataSource.clear();
         this.error = '艺术家不存在或已从音乐库移除';
+        return;
       }
+      this.trackDataSource.reset(
+        detail.trackCount,
+        new ArtistTrackPageLoader(store, this.artistId)
+      );
+      await this.trackDataSource.ensureRange(
+        0,
+        LibraryPagingPolicy.initialPrefetchLastIndex(LibraryPagingPolicy.TRACK_QUERY_PAGE_SIZE)
+      );
     } catch (error) {
       if (epoch === this.loadEpoch) {
+        this.loaded = false;
         this.error = ArtistDetailState.messageOf(error);
       }
     } finally {
       if (epoch === this.loadEpoch) {
         this.loading = false;
+        this.loadingContentRevision = -1;
+        if (this.refreshPending && this.activeStore === store) {
+          this.refreshPending = false;
+          this.refresh(store).catch((error: Object): void => {
+            console.warn(`Unable to continue artist refresh: ${ArtistDetailState.messageOf(error)}`);
+          });
+        }
       }
     }
   }

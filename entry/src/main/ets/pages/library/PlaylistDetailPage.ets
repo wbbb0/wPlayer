@@ -21,6 +21,12 @@ import { LibraryEmptyState } from '../../components/library/LibraryEmptyState';
 import { TrackActionMenuPresenter } from '../../components/library/TrackActionMenu';
 import { promptAction } from '@kit.ArkUI';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
+import { LibrarySlot } from '../../library/store/PagedLibraryDataSource';
+import { LibraryTrackRowPlaceholder } from '../../components/library/LibraryTrackRowPlaceholder';
+import {
+  DetailTrackListPagingPolicy,
+  DetailTrackVisibleRange
+} from '../../library/store/DetailTrackListPagingPolicy';
 
 const REMOVE_ANIMATION_DURATION: number = 180;
 
@@ -35,6 +41,7 @@ export struct PlaylistDetailPage {
   @Prop bottomInset: number = 0;
   @State removingTrackIds: Array<number> = [];
   @State selectedItems: Array<PlaylistTrackItem> = [];
+  @State snapshotActionBusy: boolean = false;
   scroller: Scroller = new Scroller();
   onResolveArtwork: (relativePath: string) => string = (_relativePath: string): string => '';
   onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
@@ -59,7 +66,8 @@ export struct PlaylistDetailPage {
   }
 
   private playlist(): PlaylistSummary | undefined {
-    return this.store.detail?.playlist.id === this.playlistId ? this.store.detail.playlist : undefined;
+    return this.store.detailOverview?.playlist.id === this.playlistId ?
+      this.store.detailOverview.playlist : undefined;
   }
 
   private origin(): PlaybackOriginKind {
@@ -68,12 +76,13 @@ export struct PlaylistDetailPage {
   }
 
   private play(item: PlaylistTrackItem): void {
-    const detail = this.store.detail;
-    if (detail === undefined || detail.playlist.id !== this.playlistId) {
-      return;
-    }
-    playbackRuntime.playInOrder(item, detail.items, this.origin());
-    this.store.markPlayed(this.playlistId);
+    this.runSnapshotAction((items: Array<PlaylistTrackItem>): void => {
+      const current = items.find((candidate: PlaylistTrackItem): boolean => candidate.id === item.id);
+      if (current !== undefined) {
+        playbackRuntime.playInOrder(current, items, this.origin());
+        this.store.markPlayed(this.playlistId);
+      }
+    });
   }
 
   private durationLabel(durationMs: number): string {
@@ -81,14 +90,32 @@ export struct PlaylistDetailPage {
     return `${Math.floor(totalSeconds / 60)}:${`${totalSeconds % 60}`.padStart(2, '0')}`;
   }
 
-  private detailItems(): Array<PlaylistTrackItem> {
-    const detail = this.store.detail;
-    return detail !== undefined && detail.playlist.id === this.playlistId ? detail.items : [];
+  private detailTrackCount(): number {
+    const detail = this.store.detailOverview;
+    return detail !== undefined && detail.playlist.id === this.playlistId ? detail.totalCount : 0;
+  }
+
+  private runSnapshotAction(action: (items: Array<PlaylistTrackItem>) => void): void {
+    if (this.snapshotActionBusy) {
+      return;
+    }
+    const playlistId = this.playlistId;
+    this.snapshotActionBusy = true;
+    this.store.getAllTracks(playlistId).then((items: Array<PlaylistTrackItem>): void => {
+      if (this.playlistId === playlistId &&
+        this.store.detailOverview?.playlist.id === playlistId && items.length > 0) {
+        action(items);
+      }
+      this.snapshotActionBusy = false;
+    }).catch((error: Object): void => {
+      console.warn(`Unable to load playlist playback order: ${error}`);
+      this.snapshotActionBusy = false;
+    });
   }
 
   private detailEmpty(): boolean {
-    const detail = this.store.detail;
-    return detail !== undefined && detail.playlist.id === this.playlistId && detail.items.length === 0 &&
+    const detail = this.store.detailOverview;
+    return detail !== undefined && detail.playlist.id === this.playlistId && detail.totalCount === 0 &&
       !this.store.detailLoading && this.store.errorMessage.length === 0;
   }
 
@@ -177,11 +204,13 @@ export struct PlaylistDetailPage {
       .height(44)
       .borderRadius(22)
       .backgroundColor($r('app.color.glass_surface_strong'))
-      .enabled(this.detailItems().length > 0)
+      .enabled(this.detailTrackCount() > 0 && !this.snapshotActionBusy)
       .accessibilityText('随机播放此播放列表')
       .onClick(() => {
-        playbackRuntime.shuffleAll(this.detailItems(), this.origin());
-        this.markPlayed();
+        this.runSnapshotAction((items: Array<PlaylistTrackItem>): void => {
+          playbackRuntime.shuffleAll(items, this.origin());
+          this.markPlayed();
+        });
       })
 
       Button() {
@@ -202,12 +231,12 @@ export struct PlaylistDetailPage {
       .height(44)
       .borderRadius(22)
       .backgroundColor($r('app.color.theme_accent'))
-      .enabled(this.detailItems().length > 0)
+      .enabled(this.detailTrackCount() > 0 && !this.snapshotActionBusy)
       .onClick(() => {
-        const first = this.detailItems()[0];
-        if (first !== undefined) {
-          this.play(first);
-        }
+        this.runSnapshotAction((items: Array<PlaylistTrackItem>): void => {
+          playbackRuntime.playInOrder(items[0], items, this.origin());
+          this.markPlayed();
+        });
       })
 
       Button() {
@@ -217,9 +246,11 @@ export struct PlaylistDetailPage {
       .height(44)
       .borderRadius(22)
       .backgroundColor($r('app.color.glass_surface_strong'))
-      .enabled(this.detailItems().length > 0)
+      .enabled(this.detailTrackCount() > 0 && !this.snapshotActionBusy)
       .accessibilityText('添加到队列')
-      .onClick(() => playbackRuntime.appendToQueue(this.detailItems()))
+      .onClick(() => this.runSnapshotAction(
+        (items: Array<PlaylistTrackItem>): void => playbackRuntime.appendToQueue(items)
+      ))
     }
     .width('100%')
     .justifyContent(FlexAlign.Center)
@@ -319,15 +350,27 @@ export struct PlaylistDetailPage {
   }
 
   @Builder
+  private TrackPlaceholder() {
+    LibraryTrackRowPlaceholder({
+      horizontalInset: PageLayoutSpec.HORIZONTAL_INSET,
+      verticalInset: 7,
+      minimumHeight: 62,
+      artworkSize: 48,
+      artworkCornerRadius: 9,
+      selectionMode: this.selection.active
+    })
+  }
+
+  @Builder
   private Header() {
     Column({ space: 14 }) {
-      if (this.store.detail?.playlist.id === this.playlistId) {
-        Text(this.durationLabel(this.store.detail.playlist.totalDurationMs))
+      if (this.store.detailOverview?.playlist.id === this.playlistId) {
+        Text(this.durationLabel(this.store.detailOverview.playlist.totalDurationMs))
           .fontSize(13)
           .fontColor($r('app.color.text_secondary'))
           .width('100%')
 
-        if (this.store.detail.playlist.trackCount > 0) {
+        if (this.store.detailOverview.playlist.trackCount > 0) {
           this.PlaybackActions()
         }
       }
@@ -355,23 +398,32 @@ export struct PlaylistDetailPage {
               this.Header()
             }
           }
-          if (this.store.detail?.playlist.id === this.playlistId) {
-            LazyForEach(this.store.detailItemDataSource, (item: PlaylistTrackItem) => {
-              HdsListItem({
-                customItemBuilder: () => {
-                  this.TrackContent(item)
-                },
-                swipeActionOptions: {
-                  deleteIconOptions: {
-                    onAction: () => this.confirmRemoveTrack(item)
+          if (this.store.detailOverview?.playlist.id === this.playlistId) {
+            LazyForEach(this.store.detailItemDataSource, (slot: LibrarySlot<PlaylistTrackItem>) => {
+              if (slot.value !== undefined) {
+                HdsListItem({
+                  customItemBuilder: () => {
+                    this.TrackContent(slot.value!)
+                  },
+                  swipeActionOptions: {
+                    deleteIconOptions: {
+                      onAction: () => this.confirmRemoveTrack(slot.value!)
+                    }
                   }
-                }
-              })
-                .height(this.isRemovingTrack(item.id) ? 0 : 62)
-                .clip(true)
-                .opacity(this.isRemovingTrack(item.id) ? 0 : 1)
-                .translate({ x: this.isRemovingTrack(item.id) ? -28 : 0 })
-            }, (item: PlaylistTrackItem) => this.store.detailItemDataSource.keyFor(item.id))
+                })
+                  .height(this.isRemovingTrack(slot.value.id) ? 0 : 62)
+                  .clip(true)
+                  .opacity(this.isRemovingTrack(slot.value.id) ? 0 : 1)
+                  .translate({ x: this.isRemovingTrack(slot.value.id) ? -28 : 0 })
+              } else {
+                HdsListItem({
+                  customItemBuilder: () => {
+                    this.TrackPlaceholder()
+                  }
+                })
+                  .height(62)
+              }
+            }, (slot: LibrarySlot<PlaylistTrackItem>) => slot.key)
           }
           if (this.store.detailLoading) {
             ListItem() {
@@ -394,6 +446,20 @@ export struct PlaylistDetailPage {
         .contentStartOffset(PageLayoutSpec.primaryContentStart(this.topInset))
         .contentEndOffset(PageLayoutSpec.contentEnd(this.bottomInset))
         .attributeModifier(this.scrollBehavior)
+        .onScrollIndex((firstIndex: number, lastIndex: number, _centerIndex: number): void => {
+          const range: DetailTrackVisibleRange | undefined =
+            DetailTrackListPagingPolicy.visibleDataRange(
+              firstIndex,
+              lastIndex,
+              DetailTrackListPagingPolicy.playlistTrackDataStartIndex(),
+              this.detailTrackCount()
+            );
+          if (range !== undefined) {
+            this.store.ensureDetailRange(range.firstIndex, range.lastIndex)
+              .catch((error: Object): void =>
+                console.warn(`Unable to prefetch playlist tracks: ${error}`));
+          }
+        })
       }
       .width('100%')
       .height('100%')

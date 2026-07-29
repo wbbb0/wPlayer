@@ -1,5 +1,6 @@
 import {
   PlaylistDetail,
+  PlaylistDetailOverview,
   PlaylistItemInput,
   PlaylistItemSource,
   PlaylistMutationResult,
@@ -13,6 +14,11 @@ import {
 import { MusicRepository } from '../../library/data/MusicRepository';
 import { LibraryListDataSource } from '../../library/store/LibraryListDataSource';
 import {
+  LibraryPageLoader,
+  PagedLibraryDataSource
+} from '../../library/store/PagedLibraryDataSource';
+import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
+import {
   PlaylistDetailTarget,
   RepositoryInvalidation,
   RepositoryInvalidationListener,
@@ -20,11 +26,39 @@ import {
 } from '../../library/data/RepositoryInvalidation';
 
 const PLAYLIST_QUERY_BATCH_SIZE: number = 500;
+const PLAYLIST_SNAPSHOT_STABILITY_ATTEMPTS: number = 3;
+
+class PlaylistTrackPageLoader implements LibraryPageLoader<PlaylistTrackItem> {
+  private readonly repository: MusicRepository;
+  private readonly playlist: PlaylistSummary;
+
+  constructor(repository: MusicRepository, playlist: PlaylistSummary) {
+    this.repository = repository;
+    this.playlist = playlist;
+  }
+
+  async load(offset: number, limit: number): Promise<Array<PlaylistTrackItem>> {
+    const detail = await this.repository.getPlaylistDetail(
+      this.playlist.id,
+      offset,
+      limit,
+      this.playlist.itemSortField,
+      this.playlist.itemSortDirection
+    );
+    if (detail === undefined ||
+      detail.playlist.itemSortField !== this.playlist.itemSortField ||
+      detail.playlist.itemSortDirection !== this.playlist.itemSortDirection ||
+      detail.totalCount !== this.playlist.trackCount) {
+      throw new Error(`Playlist ${this.playlist.id} changed while loading a page`);
+    }
+    return detail.items;
+  }
+}
 
 @Observed
 export class PlaylistStore {
   playlists: Array<PlaylistSummary> = [];
-  detail?: PlaylistDetail;
+  detailOverview?: PlaylistDetailOverview;
   loading: boolean = false;
   detailLoading: boolean = false;
   mutating: boolean = false;
@@ -34,12 +68,17 @@ export class PlaylistStore {
   sortDirection: SortDirection = SortDirection.DESCENDING;
   readonly playlistDataSource: LibraryListDataSource<PlaylistSummary> =
     new LibraryListDataSource<PlaylistSummary>();
-  readonly detailItemDataSource: LibraryListDataSource<PlaylistTrackItem> =
-    new LibraryListDataSource<PlaylistTrackItem>();
+  readonly detailItemDataSource: PagedLibraryDataSource<PlaylistTrackItem> =
+    new PagedLibraryDataSource<PlaylistTrackItem>(
+      LibraryPagingPolicy.TRACK_QUERY_PAGE_SIZE,
+      LibraryPagingPolicy.MAX_CACHED_PAGES,
+      (item: PlaylistTrackItem): string => `${item.id}`
+    );
 
   private readonly repository: MusicRepository;
   private refreshGeneration: number = 0;
   private detailGeneration: number = 0;
+  private pendingDetailPlaylistId?: number;
   private initialized: boolean = false;
   private active: boolean = false;
   private needsActivationRefresh: boolean = false;
@@ -107,6 +146,9 @@ export class PlaylistStore {
     this.needsActivationRefresh = true;
     this.refreshGeneration++;
     this.detailGeneration++;
+    this.detailItemDataSource.clear();
+    this.pendingDetailPlaylistId = undefined;
+    this.detailLoading = false;
     this.pendingSummaryRefresh = false;
     this.pendingAllDetails = false;
     this.pendingPlaylistIds = [];
@@ -169,6 +211,15 @@ export class PlaylistStore {
     if (!this.active || !this.initialized) {
       return;
     }
+    const current = this.detailOverview;
+    const playbackOrderChanged = current !== undefined &&
+      invalidation.hasProjection(RepositoryProjection.PLAYLIST_PLAYBACK_ORDER) &&
+      (current.playlist.itemSortField === PlaylistTrackSortField.LAST_PLAYED ||
+        current.playlist.itemSortField === PlaylistTrackSortField.LAST_COMPLETED);
+    if (current !== undefined &&
+      (invalidation.affectsPlaylistDetail(current.playlist.id) || playbackOrderChanged)) {
+      this.detailItemDataSource.invalidatePages();
+    }
     if (invalidation.hasProjection(RepositoryProjection.PLAYLIST_SUMMARIES)) {
       this.pendingSummaryRefresh = true;
     }
@@ -185,7 +236,6 @@ export class PlaylistStore {
       }
     }
     if (invalidation.hasProjection(RepositoryProjection.PLAYLIST_PLAYBACK_ORDER)) {
-      const current = this.detail;
       if (current !== undefined &&
         (current.playlist.itemSortField === PlaylistTrackSortField.LAST_PLAYED ||
           current.playlist.itemSortField === PlaylistTrackSortField.LAST_COMPLETED) &&
@@ -240,7 +290,7 @@ export class PlaylistStore {
     if (this.needsActivationRefresh) {
       const baselineRevision = this.repository.currentInvalidationRevision();
       const summaryRefreshed = await this.refresh();
-      const currentPlaylistId = this.detail?.playlist.id;
+      const currentPlaylistId = this.detailOverview?.playlist.id;
       let detailRefreshed = true;
       if (currentPlaylistId !== undefined) {
         detailRefreshed = await this.loadDetail(currentPlaylistId);
@@ -275,7 +325,7 @@ export class PlaylistStore {
           throw new Error(this.errorMessage || 'Unable to refresh playlist summaries');
         }
       }
-      const currentPlaylistId = this.detail?.playlist.id;
+      const currentPlaylistId = this.detailOverview?.playlist.id;
       if (currentPlaylistId !== undefined &&
         (refreshAllDetails || refreshPlaylistIds.includes(currentPlaylistId))) {
         const refreshed = await this.loadDetail(currentPlaylistId);
@@ -315,14 +365,34 @@ export class PlaylistStore {
 
   async loadDetail(playlistId: number): Promise<boolean> {
     const generation = ++this.detailGeneration;
+    this.pendingDetailPlaylistId = playlistId;
+    if (this.detailOverview?.playlist.id !== playlistId) {
+      this.detailOverview = undefined;
+      this.detailItemDataSource.clear();
+    }
     this.detailLoading = true;
     this.errorMessage = '';
     try {
-      const detail = await this.getCompleteDetail(playlistId);
+      const playlist = await this.repository.getPlaylist(playlistId);
       if (generation === this.detailGeneration) {
-        this.detailItemDataSource.replace(detail?.items ?? []);
-        this.detail = detail;
-        return true;
+        if (playlist === undefined) {
+          this.detailItemDataSource.clear();
+          this.detailOverview = undefined;
+          return true;
+        }
+        this.detailOverview = {
+          playlist: playlist,
+          totalCount: playlist.trackCount
+        };
+        this.detailItemDataSource.reset(
+          playlist.trackCount,
+          new PlaylistTrackPageLoader(this.repository, playlist)
+        );
+        await this.detailItemDataSource.ensureRange(
+          0,
+          LibraryPagingPolicy.initialPrefetchLastIndex(LibraryPagingPolicy.TRACK_QUERY_PAGE_SIZE)
+        );
+        return generation === this.detailGeneration;
       }
     } catch (error) {
       if (generation === this.detailGeneration) {
@@ -331,6 +401,7 @@ export class PlaylistStore {
     } finally {
       if (generation === this.detailGeneration) {
         this.detailLoading = false;
+        this.pendingDetailPlaylistId = undefined;
       }
     }
     return false;
@@ -357,9 +428,15 @@ export class PlaylistStore {
   async delete(playlistId: number): Promise<boolean> {
     const result = await this.runMutation(async (): Promise<boolean> => {
       await this.repository.deletePlaylist(playlistId);
-      if (this.detail?.playlist.id === playlistId) {
+      if (this.detailOverview?.playlist.id === playlistId ||
+        this.pendingDetailPlaylistId === playlistId) {
+        ++this.detailGeneration;
+        this.pendingDetailPlaylistId = undefined;
+        this.detailLoading = false;
+      }
+      if (this.detailOverview?.playlist.id === playlistId) {
         this.detailItemDataSource.clear();
-        this.detail = undefined;
+        this.detailOverview = undefined;
       }
       await this.synchronizeCommittedChanges();
       return true;
@@ -447,36 +524,81 @@ export class PlaylistStore {
   }
 
   private async getCompleteDetail(playlistId: number): Promise<PlaylistDetail | undefined> {
-    const first = await this.repository.getPlaylistDetail(
-      playlistId,
-      0,
-      PLAYLIST_QUERY_BATCH_SIZE
-    );
-    if (first === undefined) {
-      return undefined;
-    }
-    const items = first.items.slice();
-    let latest = first;
-    while (items.length < latest.totalCount) {
-      const next = await this.repository.getPlaylistDetail(
+    for (let attempt = 0; attempt < PLAYLIST_SNAPSHOT_STABILITY_ATTEMPTS; attempt += 1) {
+      const revision = this.repository.currentInvalidationRevision();
+      const first = await this.repository.getPlaylistDetail(
         playlistId,
-        items.length,
-        PLAYLIST_QUERY_BATCH_SIZE,
-        first.playlist.itemSortField,
-        first.playlist.itemSortDirection
+        0,
+        PLAYLIST_QUERY_BATCH_SIZE
       );
-      if (next === undefined || next.items.length === 0) {
-        throw new Error(`Unable to load complete playlist ${playlistId}`);
+      if (first === undefined) {
+        return undefined;
       }
-      items.push(...next.items);
-      latest = next;
+      const frozenPlaylist = first.playlist;
+      const expectedCount = first.totalCount;
+      const items: Array<PlaylistTrackItem> = [];
+      const seenIds: Set<number> = new Set<number>();
+      let valid = this.appendUniquePlaylistItems(items, first.items, seenIds);
+      while (valid && items.length < expectedCount) {
+        const next = await this.repository.getPlaylistDetail(
+          playlistId,
+          items.length,
+          PLAYLIST_QUERY_BATCH_SIZE,
+          frozenPlaylist.itemSortField,
+          frozenPlaylist.itemSortDirection
+        );
+        if (next === undefined || next.offset !== items.length || next.items.length === 0 ||
+          next.totalCount !== expectedCount ||
+          next.playlist.itemSortField !== frozenPlaylist.itemSortField ||
+          next.playlist.itemSortDirection !== frozenPlaylist.itemSortDirection) {
+          valid = false;
+          break;
+        }
+        valid = this.appendUniquePlaylistItems(items, next.items, seenIds);
+      }
+      const latestPlaylist = await this.repository.getPlaylist(playlistId);
+      const stable = valid && items.length === expectedCount &&
+        this.repository.currentInvalidationRevision() === revision &&
+        latestPlaylist !== undefined &&
+        latestPlaylist.trackCount === frozenPlaylist.trackCount &&
+        latestPlaylist.itemSortField === frozenPlaylist.itemSortField &&
+        latestPlaylist.itemSortDirection === frozenPlaylist.itemSortDirection &&
+        latestPlaylist.updatedAt === frozenPlaylist.updatedAt;
+      if (stable) {
+        return {
+          playlist: frozenPlaylist,
+          items: items,
+          offset: 0,
+          totalCount: expectedCount
+        };
+      }
     }
-    return {
-      playlist: latest.playlist,
-      items: items,
-      offset: 0,
-      totalCount: latest.totalCount
-    };
+    throw new Error(`Playlist ${playlistId} kept changing while loading its playback order`);
+  }
+
+  private appendUniquePlaylistItems(target: Array<PlaylistTrackItem>,
+    source: Array<PlaylistTrackItem>, seenIds: Set<number>): boolean {
+    for (let index = 0; index < source.length; index += 1) {
+      const item = source[index];
+      if (seenIds.has(item.id)) {
+        return false;
+      }
+      seenIds.add(item.id);
+      target.push(item);
+    }
+    return true;
+  }
+
+  ensureDetailRange(firstIndex: number, lastIndex: number): Promise<void> {
+    const start = LibraryPagingPolicy.prefetchStartForVisibleRange(
+      firstIndex,
+      LibraryPagingPolicy.TRACK_QUERY_PAGE_SIZE
+    );
+    const end = LibraryPagingPolicy.prefetchEndForVisibleRange(
+      lastIndex,
+      LibraryPagingPolicy.TRACK_QUERY_PAGE_SIZE
+    );
+    return this.detailItemDataSource.ensureRange(start, end, firstIndex);
   }
 
   private async runItemMutation(playlistId: number,

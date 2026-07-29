@@ -23,6 +23,10 @@ import {
   LibraryTrackProjection,
   TrackProjectionSnapshot
 } from '../main/ets/library/store/LibraryTrackProjection';
+import {
+  DetailTrackListPagingPolicy,
+  DetailTrackVisibleRange
+} from '../main/ets/library/store/DetailTrackListPagingPolicy';
 
 class PagingTestItem {
   id: number = 0;
@@ -187,6 +191,27 @@ export default function libraryPagingTest() {
       expect(LibraryPagingPolicy.initialPrefetchLastIndex(pageSize)).assertEqual(63);
       expect(LibraryPagingPolicy.prefetchStartForVisibleRange(70, pageSize)).assertEqual(32);
       expect(LibraryPagingPolicy.prefetchEndForVisibleRange(75, pageSize)).assertEqual(127);
+    });
+
+    it('maps detail List indexes after structural header sections', 0, () => {
+      expect(DetailTrackListPagingPolicy.artistTrackDataStartIndex(false)).assertEqual(2);
+      expect(DetailTrackListPagingPolicy.artistTrackDataStartIndex(true)).assertEqual(4);
+      expect(DetailTrackListPagingPolicy.playlistTrackDataStartIndex()).assertEqual(1);
+
+      expect(DetailTrackListPagingPolicy.visibleDataRange(0, 3, 4, 20) === undefined).assertTrue();
+      const artistRange: DetailTrackVisibleRange =
+        DetailTrackListPagingPolicy.visibleDataRange(2, 7, 4, 20)!;
+      expect(artistRange.firstIndex).assertEqual(0);
+      expect(artistRange.lastIndex).assertEqual(3);
+      const tailRange: DetailTrackVisibleRange =
+        DetailTrackListPagingPolicy.visibleDataRange(20, 40, 4, 22)!;
+      expect(tailRange.firstIndex).assertEqual(16);
+      expect(tailRange.lastIndex).assertEqual(21);
+      const overscrollRange: DetailTrackVisibleRange =
+        DetailTrackListPagingPolicy.visibleDataRange(40, 50, 4, 22)!;
+      expect(overscrollRange.firstIndex).assertEqual(21);
+      expect(overscrollRange.lastIndex).assertEqual(21);
+      expect(DetailTrackListPagingPolicy.visibleDataRange(1, 5, 1, 0) === undefined).assertTrue();
     });
 
     it('bounds random-access query parameters', 0, () => {
@@ -437,6 +462,41 @@ export default function libraryPagingTest() {
       const slot = dataSource.getData(0);
       expect(slot.value === undefined).assertTrue();
       expect(dataSource.totalCount()).assertEqual(20);
+    });
+
+    it('clears the loader and discards page completion after detail disposal', 0, async () => {
+      const slowLoader = new PagingTestLoader();
+      slowLoader.delayMs = 10;
+      const dataSource = source();
+      const listener = new RecordingDataChangeListener();
+      dataSource.registerDataChangeListener(listener);
+      dataSource.reset(100, slowLoader);
+      const staleLoad = dataSource.ensureRange(0, 0);
+
+      dataSource.clear();
+      await staleLoad;
+
+      expect(dataSource.totalCount()).assertEqual(0);
+      expect(dataSource.cachedPageCount()).assertEqual(0);
+      expect(listener.notifications).assertEqual(2);
+      expect(listener.operations[0].type).assertEqual(DataOperationType.RELOAD);
+    });
+
+    it('invalidates cached detail pages immediately while retaining virtual slots', 0, async () => {
+      const staleLoader = new PagingTestLoader();
+      staleLoader.delayMs = 10;
+      const dataSource = source();
+      dataSource.reset(100, staleLoader);
+      const staleLoad = dataSource.ensureRange(0, 0);
+
+      dataSource.invalidatePages();
+      await staleLoad;
+
+      expect(dataSource.totalCount()).assertEqual(100);
+      expect(dataSource.cachedPageCount()).assertEqual(0);
+      expect(dataSource.getData(0).value === undefined).assertTrue();
+      await dataSource.ensureRange(0, 0);
+      expect(dataSource.getData(0).value !== undefined).assertTrue();
     });
 
     it('recovers a transient page failure without another scroll event', 0, async () => {

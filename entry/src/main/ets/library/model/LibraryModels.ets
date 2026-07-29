@@ -314,12 +314,15 @@ export interface AlbumDetail {
   tracks: Array<TrackListItem>;
 }
 
-export interface ArtistDetail {
+export interface ArtistDetailOverview {
   artist: ArtistReference;
   albumCount: number;
   trackCount: number;
   totalDurationMs: number;
   albums: Array<AlbumListItem>;
+}
+
+export interface ArtistDetail extends ArtistDetailOverview {
   tracks: Array<TrackListItem>;
 }
 
@@ -336,6 +339,11 @@ export interface PlaylistSummary {
   lastPlayedAt: number;
 }
 
+export interface PlaylistDetailOverview {
+  playlist: PlaylistSummary;
+  totalCount: number;
+}
+
 export interface PlaylistTrackItem extends TrackListItem {
   position: number;
   addedAt: number;
@@ -346,11 +354,9 @@ export interface PlaylistTrackItem extends TrackListItem {
   lastCompletedAt: number;
 }
 
-export interface PlaylistDetail {
-  playlist: PlaylistSummary;
+export interface PlaylistDetail extends PlaylistDetailOverview {
   items: Array<PlaylistTrackItem>;
   offset: number;
-  totalCount: number;
 }
 
 export interface PlaylistItemInput {

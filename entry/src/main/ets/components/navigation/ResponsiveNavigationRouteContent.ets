@@ -215,6 +215,7 @@ export struct ResponsiveNavigationDestinationContent {
   @Prop bottomInset: number = 0;
   @Prop rootWidth: number = 0;
   @Prop themePageBackground: string = '#FF000000';
+  @Prop detailSelectionRevision: number = 0;
   @Prop orderedItems: Array<NavigationPageItem> = [];
   customizationScroller: Scroller = new Scroller();
   floatingWindowSettingsScroller: Scroller = new Scroller();
@@ -242,14 +243,31 @@ export struct ResponsiveNavigationDestinationContent {
   onDemoLibraryChange: (value: boolean) => void = (_value: boolean): void => {};
   playlistDetailTitleMenu: (
     params: PlaylistDetailRouteParams,
+    revision: number,
     playlist?: PlaylistSummary
   ) => HdsNavigationMenuContentOptions =
-    (_params: PlaylistDetailRouteParams, _playlist?: PlaylistSummary): HdsNavigationMenuContentOptions =>
+    (
+      _params: PlaylistDetailRouteParams,
+      _revision: number,
+      _playlist?: PlaylistSummary
+    ): HdsNavigationMenuContentOptions =>
       ({ maxCount: 0, value: [] });
-  albumDetailTitleMenu: (params: AlbumDetailRouteParams) => HdsNavigationMenuContentOptions =
-    (_params: AlbumDetailRouteParams): HdsNavigationMenuContentOptions => ({ maxCount: 0, value: [] });
-  artistDetailTitleMenu: (params: ArtistDetailRouteParams) => HdsNavigationMenuContentOptions =
-    (_params: ArtistDetailRouteParams): HdsNavigationMenuContentOptions => ({ maxCount: 0, value: [] });
+  albumDetailTitleMenu: (
+    params: AlbumDetailRouteParams,
+    revision: number
+  ) => HdsNavigationMenuContentOptions =
+    (
+      _params: AlbumDetailRouteParams,
+      _revision: number
+    ): HdsNavigationMenuContentOptions => ({ maxCount: 0, value: [] });
+  artistDetailTitleMenu: (
+    params: ArtistDetailRouteParams,
+    revision: number
+  ) => HdsNavigationMenuContentOptions =
+    (
+      _params: ArtistDetailRouteParams,
+      _revision: number
+    ): HdsNavigationMenuContentOptions => ({ maxCount: 0, value: [] });
   albumDetailBackground: (params: AlbumDetailRouteParams) => string =
     (_params: AlbumDetailRouteParams): string => '#FF000000';
   albumDetailContentColor: (params: AlbumDetailRouteParams) => string =
@@ -346,6 +364,7 @@ export struct ResponsiveNavigationDestinationContent {
           (this.param as PlaylistDetailRouteParams).initialTitle,
         this.playlistDetailTitleMenu(
           this.param as PlaylistDetailRouteParams,
+          this.detailSelectionRevision,
           this.currentPlaylistSummary((this.param as PlaylistDetailRouteParams).playlistId)
         ),
         this.playbackChromeBackgroundColor()
@@ -392,7 +411,10 @@ export struct ResponsiveNavigationDestinationContent {
       .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryBackOnlyTitleBar(
-        this.albumDetailTitleMenu(this.param as AlbumDetailRouteParams),
+        this.albumDetailTitleMenu(
+          this.param as AlbumDetailRouteParams,
+          this.detailSelectionRevision
+        ),
         {
           backgroundColor: this.gradientMaskColor(
             this.albumDetailBackground(this.param as AlbumDetailRouteParams)
@@ -442,7 +464,10 @@ export struct ResponsiveNavigationDestinationContent {
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryTitleBar(
         (this.param as ArtistDetailRouteParams).name,
-        this.artistDetailTitleMenu(this.param as ArtistDetailRouteParams),
+        this.artistDetailTitleMenu(
+          this.param as ArtistDetailRouteParams,
+          this.detailSelectionRevision
+        ),
         this.playbackChromeBackgroundColor()
       ))
       .bindToScrollable([(this.param as ArtistDetailRouteParams).scroller])

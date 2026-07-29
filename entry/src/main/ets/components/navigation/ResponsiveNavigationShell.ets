@@ -719,7 +719,10 @@ export struct ResponsiveNavigationShell {
     return DynamicColor.withOpacity(color, ResponsiveNavigationShell.GRADIENT_MASK_OPACITY);
   }
 
-  private albumDetailTitleMenu(params: AlbumDetailRouteParams): HdsNavigationMenuContentOptions {
+  private albumDetailTitleMenu(
+    params: AlbumDetailRouteParams,
+    revision: number
+  ): HdsNavigationMenuContentOptions {
     const targetId = `album_detail_more_${params.instanceId}`;
     const values: Array<HdsNavigationMenuItemOptions> = [{
         content: {
@@ -749,7 +752,7 @@ export struct ResponsiveNavigationShell {
       this.getUIContext(),
       params.selection,
       `album_detail_selection_${params.instanceId}`,
-      this.detailSelectionRevision,
+      revision,
       this.onDetailSelectionChange,
       values
     );
@@ -1024,6 +1027,7 @@ export struct ResponsiveNavigationShell {
 
   private playlistDetailTitleMenu(
     params: PlaylistDetailRouteParams,
+    revision: number,
     playlist?: PlaylistSummary
   ): HdsNavigationMenuContentOptions {
     const sortTargetId = `playlist_detail_sort_${params.instanceId}`;
@@ -1048,7 +1052,7 @@ export struct ResponsiveNavigationShell {
       this.getUIContext(),
       params.selection,
       `playlist_detail_selection_${params.instanceId}`,
-      this.detailSelectionRevision,
+      revision,
       this.onDetailSelectionChange,
       values
     );
@@ -1134,6 +1138,7 @@ export struct ResponsiveNavigationShell {
       bottomInset: this.bottomInset,
       rootWidth: this.rootWidth,
       themePageBackground: this.themePageBackground,
+      detailSelectionRevision: this.detailSelectionRevision,
       orderedItems: this.orderedItems(),
       customizationScroller: this.customizationScroller,
       floatingWindowSettingsScroller: this.floatingWindowSettingsScroller,
@@ -1184,17 +1189,24 @@ export struct ResponsiveNavigationShell {
       onDemoLibraryChange: this.onDemoLibraryChange,
       playlistDetailTitleMenu: (
         params: PlaylistDetailRouteParams,
+        revision: number,
         playlist?: PlaylistSummary
       ): HdsNavigationMenuContentOptions =>
-        this.playlistDetailTitleMenu(params, playlist),
-      albumDetailTitleMenu: (params: AlbumDetailRouteParams): HdsNavigationMenuContentOptions =>
-        this.albumDetailTitleMenu(params),
-      artistDetailTitleMenu: (params: ArtistDetailRouteParams): HdsNavigationMenuContentOptions =>
+        this.playlistDetailTitleMenu(params, revision, playlist),
+      albumDetailTitleMenu: (
+        params: AlbumDetailRouteParams,
+        revision: number
+      ): HdsNavigationMenuContentOptions =>
+        this.albumDetailTitleMenu(params, revision),
+      artistDetailTitleMenu: (
+        params: ArtistDetailRouteParams,
+        revision: number
+      ): HdsNavigationMenuContentOptions =>
         SelectionNavigationTitleBar.menu(
           this.getUIContext(),
           params.selection,
           `artist_detail_selection_${params.instanceId}`,
-          this.detailSelectionRevision,
+          revision,
           this.onDetailSelectionChange
         ),
       albumDetailBackground: (params: AlbumDetailRouteParams): string =>

@@ -31,8 +31,14 @@ devecocli --version
 ## 获取源码
 
 ```powershell
-git clone https://github.com/wbbb0/wPlayer.git
+git clone --recurse-submodules https://github.com/wbbb0/wPlayer.git
 Set-Location wPlayer
+```
+
+已有检出在首次使用设备工具前执行：
+
+```powershell
+git submodule update --init --recursive
 ```
 
 ## 无签名构建

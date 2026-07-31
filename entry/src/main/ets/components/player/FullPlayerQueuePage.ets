@@ -1,4 +1,5 @@
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
+import { TitleBarMotionSpec } from '../navigation/TitleBarMotionSpec';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import {
   PlayerStore,
@@ -81,6 +82,13 @@ export class FullPlayerQueueSelectionStore {
     this.selectionActive = false;
     this.selectedEntries = [];
   }
+
+  toggleAll(entries: Array<QueueEntry>): void {
+    const allSelected = entries.length > 0 && this.selectedEntries.length === entries.length &&
+      entries.every((entry: QueueEntry): boolean => this.isSelected(entry.queueEntryId));
+    this.selectedEntries = allSelected ?
+      [] : entries.slice();
+  }
 }
 
 @Component
@@ -88,11 +96,28 @@ export struct FullPlayerQueueHeader {
   @ObjectLink playerStore: PlayerStore;
   @ObjectLink selectionStore: FullPlayerQueueSelectionStore;
   @Prop pageWidth: number = 0;
+  @Prop @Watch('onSelectionEnabledChanged') selectionEnabled: boolean = true;
   @Prop leadingInset: number = 0;
   @Prop primaryContentColor: string = '#FFFFFFFF';
   @Prop secondaryContentColor: string = '#B8FFFFFF';
   onRequestAddToPlaylist: (trackIds: Array<number>) => void =
     (_trackIds: Array<number>): void => {};
+
+  private onSelectionEnabledChanged(): void {
+    if (!this.selectionEnabled) {
+      this.selectionStore.cancel();
+    }
+  }
+
+  aboutToAppear(): void {
+    this.onSelectionEnabledChanged();
+  }
+
+  private animateSelection(change: () => void): void {
+    this.getUIContext().animateTo({
+      curve: TitleBarMotionSpec.transitionCurve()
+    }, change);
+  }
 
   @Builder
   private SelectionMenu() {
@@ -134,6 +159,14 @@ export struct FullPlayerQueueHeader {
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .layoutWeight(1)
       if (this.selectionStore.selectionActive) {
+        Button(this.selectionStore.selectedEntries.length === this.playerStore.queueSize ?
+          '清空' : '全选')
+          .height(40)
+          .fontColor(this.primaryContentColor)
+          .backgroundColor(Color.Transparent)
+          .onClick(() => this.animateSelection((): void => this.selectionStore.toggleAll(
+            this.playerStore.queueDataSource.snapshot()
+          )))
         Button(`操作 ${this.selectionStore.selectedEntries.length}`)
           .height(40)
           .enabled(this.selectionStore.selectedEntries.length > 0)
@@ -144,7 +177,7 @@ export struct FullPlayerQueueHeader {
           .height(40)
           .fontColor(this.primaryContentColor)
           .backgroundColor(Color.Transparent)
-          .onClick(() => this.selectionStore.cancel())
+          .onClick(() => this.animateSelection((): void => this.selectionStore.cancel()))
       } else {
         Text(`${this.playerStore.queueSize} 首`)
           .fontSize(13)
@@ -164,19 +197,21 @@ export struct FullPlayerQueueHeader {
           iconSize: PlayerLayoutSpec.FULL_PLAYER_QUEUE_HEADER_ICON_SIZE,
           contentColor: this.primaryContentColor
         })
-        Button() {
-          PlayerSymbolIcon({
-            symbol: $r('sys.symbol.checkmark_square_on_square'),
-            iconSize: 21,
-            contentColor: this.primaryContentColor
-          })
+        if (this.selectionEnabled) {
+          Button() {
+            PlayerSymbolIcon({
+              symbol: $r('sys.symbol.checkmark_square_on_square'),
+              iconSize: 21,
+              contentColor: this.primaryContentColor
+            })
+          }
+          .width(PlayerLayoutSpec.FULL_PLAYER_QUEUE_HEADER_BUTTON_SIZE)
+          .height(PlayerLayoutSpec.FULL_PLAYER_QUEUE_HEADER_BUTTON_SIZE)
+          .borderRadius(PlayerLayoutSpec.FULL_PLAYER_QUEUE_HEADER_BUTTON_SIZE / 2)
+          .backgroundColor(Color.Transparent)
+          .accessibilityText('多选')
+          .onClick(() => this.animateSelection((): void => this.selectionStore.begin()))
         }
-        .width(PlayerLayoutSpec.FULL_PLAYER_QUEUE_HEADER_BUTTON_SIZE)
-        .height(PlayerLayoutSpec.FULL_PLAYER_QUEUE_HEADER_BUTTON_SIZE)
-        .borderRadius(PlayerLayoutSpec.FULL_PLAYER_QUEUE_HEADER_BUTTON_SIZE / 2)
-        .backgroundColor(Color.Transparent)
-        .accessibilityText('多选')
-        .onClick(() => this.selectionStore.begin())
       }
     }
     .width(this.pageWidth)

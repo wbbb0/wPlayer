@@ -63,6 +63,27 @@ export struct PlaylistDetailPage {
     this.selection.onAppendToQueue = (): void =>
       playbackRuntime.appendToQueue(this.currentSelection());
     this.selection.onDelete = (): void => this.confirmRemoveSelection();
+    this.selection.onToggleAll = (): void => this.toggleAll();
+  }
+
+  private toggleAll(): void {
+    if (this.selection.allSelected()) {
+      this.selectedItems = [];
+      this.selection.replaceSelection([]);
+      return;
+    }
+    const playlistId = this.playlistId;
+    this.selection.setBusy(true);
+    this.store.getAllTracks(playlistId).then((items: Array<PlaylistTrackItem>): void => {
+      if (this.playlistId !== playlistId) {
+        return;
+      }
+      this.selectedItems = items;
+      this.selection.selectableCount = items.length;
+      this.selection.replaceSelection(items.map((item: PlaylistTrackItem): number => item.id));
+    }).catch((error: Object): void => {
+      console.warn(`Unable to select all playlist tracks: ${error}`);
+    }).finally((): void => this.selection.setBusy(false));
   }
 
   private playlist(): PlaylistSummary | undefined {

@@ -5,6 +5,7 @@ import {
 } from '@kit.UIDesignKit';
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import { PageBottomGradient } from '../layout/PageBottomGradient';
+import { AppShellLayoutSpec } from '../layout/AppShellLayoutSpec';
 import { AppNavigationStyle } from './AppNavigationStyle';
 import {
   NavigationPageItem,
@@ -213,7 +214,7 @@ export struct ResponsiveNavigationDestinationContent {
   param: Object = new EmptyRouteParam();
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
-  @Prop rootWidth: number = 0;
+  @Prop @Watch('onRootWidthChanged') rootWidth: number = 0;
   @Prop themePageBackground: string = '#FF000000';
   @Prop detailSelectionRevision: number = 0;
   @Prop orderedItems: Array<NavigationPageItem> = [];
@@ -306,6 +307,20 @@ export struct ResponsiveNavigationDestinationContent {
     }
     return undefined;
   }
+
+  private onRootWidthChanged(): void {
+    if (AppShellLayoutSpec.supportsTitleSearchAndSelection(this.rootWidth)) {
+      return;
+    }
+    if (this.name === PLAYLIST_DETAIL_ROUTE) {
+      (this.param as PlaylistDetailRouteParams).selection.cancel();
+    } else if (this.name === LibraryDetailRoute.ALBUM) {
+      (this.param as AlbumDetailRouteParams).selection.cancel();
+    } else if (this.name === LibraryDetailRoute.ARTIST) {
+      (this.param as ArtistDetailRouteParams).selection.cancel();
+    }
+  }
+
 
   private activateAlbumChrome(params: AlbumDetailRouteParams): void {
     params.setPaletteChangeListener((primary: string): void => {

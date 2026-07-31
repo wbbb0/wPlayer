@@ -21,7 +21,9 @@ export class MultiSelectController {
   onInsertNext: () => void = (): void => {};
   onAppendToQueue: () => void = (): void => {};
   onDelete: () => void = (): void => {};
+  onToggleAll: () => void = (): void => {};
   onStateChange: () => void = (): void => {};
+  selectableCount: number = 0;
 
   activate(): void {
     this.active = true;
@@ -50,6 +52,25 @@ export class MultiSelectController {
       this.selectedIds = this.selectedIds.concat([id]);
     }
     this.onStateChange();
+  }
+
+  replaceSelection(ids: Array<number>): void {
+    if (!this.active) {
+      return;
+    }
+    this.selectedIds = ids.slice();
+    this.onStateChange();
+  }
+
+  allSelected(): boolean {
+    return this.selectableCount > 0 && this.selectedIds.length === this.selectableCount;
+  }
+
+  toggleAll(): void {
+    if (!this.active || this.busy || this.selectableCount === 0) {
+      return;
+    }
+    this.onToggleAll();
   }
 
   setBusy(busy: boolean): void {

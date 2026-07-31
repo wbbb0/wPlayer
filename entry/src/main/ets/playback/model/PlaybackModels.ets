@@ -73,6 +73,10 @@ export class QueueTrackDataSource implements IDataSource {
     return this.items[index];
   }
 
+  snapshot(): Array<QueueEntry> {
+    return this.items.slice();
+  }
+
   registerDataChangeListener(listener: DataChangeListener): void {
     if (this.listeners.indexOf(listener) < 0) {
       this.listeners.push(listener);

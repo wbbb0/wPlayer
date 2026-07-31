@@ -113,6 +113,11 @@ export default function riskRegressionTest() {
       expect(AppShellLayoutSpec.usesCondensedCompactNavigation(360)).assertFalse();
       expect(AppShellLayoutSpec.compactTabsHostId(377))
         .assertEqual(AppShellLayoutSpec.COMPACT_TABS_HOST_ID);
+      expect(AppShellLayoutSpec.supportsTitleSearchAndSelection(326)).assertFalse();
+      expect(AppShellLayoutSpec.usesSortIconOnly(326)).assertTrue();
+      expect(AppShellLayoutSpec.supportsTitleSearchAndSelection(360)).assertTrue();
+      expect(AppShellLayoutSpec.usesSortIconOnly(360)).assertFalse();
+      expect(AppShellLayoutSpec.supportsTitleSearchAndSelection(720)).assertTrue();
     });
 
     it('containsLandscapeAndPortraitArtwork', 0, () => {

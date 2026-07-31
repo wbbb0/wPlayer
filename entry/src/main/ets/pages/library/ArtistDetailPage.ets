@@ -60,6 +60,23 @@ export struct ArtistDetailPage {
     this.selection.onInsertNext = (): void => playbackRuntime.insertNext(this.currentSelection());
     this.selection.onAppendToQueue = (): void =>
       playbackRuntime.appendToQueue(this.currentSelection());
+    this.selection.onToggleAll = (): void => this.toggleAll();
+  }
+
+  private toggleAll(): void {
+    if (this.selection.allSelected()) {
+      this.selectedItems = [];
+      this.selection.replaceSelection([]);
+      return;
+    }
+    this.selection.setBusy(true);
+    this.state.loadTrackSnapshot(this.store).then((tracks: Array<TrackListItem>): void => {
+      this.selectedItems = tracks;
+      this.selection.selectableCount = tracks.length;
+      this.selection.replaceSelection(tracks.map((track: TrackListItem): number => track.id));
+    }).catch((error: Object): void => {
+      console.warn(`Unable to select all artist tracks: ${error}`);
+    }).finally((): void => this.selection.setBusy(false));
   }
 
   aboutToDisappear(): void {

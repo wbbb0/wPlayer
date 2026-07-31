@@ -88,6 +88,7 @@ import {
 import { TrackDetailSheetBridge } from './TrackDetailSheetBridge';
 import { NavigationChromeController } from './NavigationChromeController';
 import { SelectionNavigationTitleBar } from './SelectionNavigationTitleBar';
+import { TitleBarMotionSpec } from './TitleBarMotionSpec';
 import {
   ResponsiveNavigationModalHost,
   TrackDetailSheetPresentationState
@@ -126,7 +127,7 @@ export struct ResponsiveNavigationShell {
   wideMiniPlayerContent?: ComponentContent<MiniPlayerHostParams>;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
-  @Prop rootWidth: number = 0;
+  @Prop @Watch('onRootWidthChanged') rootWidth: number = 0;
   @Prop rootHeight: number = 0;
   @Prop navigationOrder: Array<string> = [];
   @Prop selectedRouteId: string = NavigationRoute.PLAYLISTS;
@@ -144,6 +145,7 @@ export struct ResponsiveNavigationShell {
   condensedCompactTabsController: HdsTabsController = new HdsTabsController();
   expandedTabsController: HdsTabsController = new HdsTabsController();
   rootTitleContents: Array<ComponentContent<AppPrimaryTitleParams> | undefined> = [];
+  rootTitleParams: Array<AppPrimaryTitleParams | undefined> = [];
   @Prop moreTitleContent: ComponentContent<AppPrimaryTitleParams> | undefined = undefined;
   rootPathStacks: Array<NavPathStack> = [];
   rootScrollers: Array<Scroller> = [];
@@ -188,6 +190,7 @@ export struct ResponsiveNavigationShell {
   @State private albumsSelection: MultiSelectController = new MultiSelectController();
   @State private playlistsSelection: MultiSelectController = new MultiSelectController();
   @State private detailSelectionRevision: number = 0;
+  @State private rootSearchRouteId: string = '';
   @State private trackDetailSheetVisible: boolean = false;
   @State private artworkViewerVisible: boolean = false;
   @State private artworkViewerState: TrackArtworkViewerState | undefined = undefined;
@@ -197,14 +200,56 @@ export struct ResponsiveNavigationShell {
     (track: TrackListItem): void => this.openTrackDetails(track);
   private readonly onDetailSelectionChange: () => void = (): void => {
     this.detailSelectionRevision += 1;
+    this.syncRootTitleContents();
   };
 
   aboutToAppear(): void {
     this.trackDetailSheetBridge.attach(this.bridgedOpenTrackDetails);
+    this.syncRootTitleContents();
   }
 
   aboutToDisappear(): void {
     this.trackDetailSheetBridge.detach(this.bridgedOpenTrackDetails);
+  }
+
+  private onRootWidthChanged(): void {
+    if (this.supportsTitleSearchAndSelection()) {
+      return;
+    }
+    this.rootSearchRouteId = '';
+    this.songsSelection.cancel();
+    this.albumsSelection.cancel();
+    this.playlistsSelection.cancel();
+  }
+
+  private toggleRootSearch(routeId: string): void {
+    if (!this.supportsTitleSearchAndSelection()) {
+      return;
+    }
+    this.getUIContext().animateTo({
+      curve: TitleBarMotionSpec.transitionCurve()
+    }, (): void => {
+      this.rootSearchRouteId = this.rootSearchRouteId === routeId ? '' : routeId;
+      this.syncRootTitleContents();
+    });
+  }
+
+  private syncRootTitleContents(): void {
+    const routes: Array<string> = [
+      NavigationRoute.PLAYLISTS,
+      NavigationRoute.SONGS,
+      NavigationRoute.ALBUMS
+    ];
+    routes.forEach((routeId: string): void => {
+      const index = navigationItemIndex(routeId);
+      const params = this.rootTitleParams[index];
+      if (params === undefined) {
+        return;
+      }
+      params.searchExpanded = this.rootSearchRouteId === routeId;
+      params.onCancelSearch = (): void => this.toggleRootSearch(routeId);
+      this.rootTitleContents[index]?.update(params);
+    });
   }
 
   private rootSelection(routeId: string): MultiSelectController | undefined {
@@ -219,6 +264,11 @@ export struct ResponsiveNavigationShell {
     }
     return undefined;
   }
+
+  private supportsTitleSearchAndSelection(): boolean {
+    return AppShellLayoutSpec.supportsTitleSearchAndSelection(this.rootWidth);
+  }
+
 
   private orderedItems(): Array<NavigationPageItem> {
     return orderedNavigationItems(this.navigationOrder);
@@ -601,6 +651,21 @@ export struct ResponsiveNavigationShell {
   }
 
   private playlistRootTitleMenu(): HdsNavigationMenuContentOptions {
+    this.playlistsSelection.selectableCount = this.playlistStore.playlists.length;
+    const sortContent: HdsNavigationMenuItemOptions = {
+      content: AppShellLayoutSpec.usesSortIconOnly(this.rootWidth) ? {
+        icon: $r('sys.symbol.line_3_horizontal'),
+        label: '排序',
+        type: IconStyleMode.NORMAL,
+        componentId: PLAYLIST_SORT_MENU_ID,
+        action: (): void => this.openPlaylistSortMenu()
+      } : {
+        label: `${this.playlistStore.playlists.length} 个`,
+        type: TextStyleMode.NORMAL,
+        componentId: PLAYLIST_SORT_MENU_ID,
+        action: (): void => this.openPlaylistSortMenu()
+      }
+    };
     const values: Array<HdsNavigationMenuItemOptions> = [{
       content: {
         icon: $r('sys.symbol.plus'),
@@ -609,21 +674,15 @@ export struct ResponsiveNavigationShell {
         componentId: PLAYLIST_CREATE_MENU_ID,
         action: (): void => this.openPlaylistCreateMenu()
       }
-    }, {
-      content: {
-        label: `${this.playlistStore.playlists.length} 个`,
-        type: TextStyleMode.NORMAL,
-        componentId: PLAYLIST_SORT_MENU_ID,
-        action: (): void => this.openPlaylistSortMenu()
-      }
-    }];
+    }, sortContent];
     return SelectionNavigationTitleBar.menu(
       this.getUIContext(),
       this.playlistsSelection,
       'playlists_selection_actions',
       this.detailSelectionRevision,
       this.onDetailSelectionChange,
-      values
+      values,
+      this.supportsTitleSearchAndSelection()
     );
   }
 
@@ -646,10 +705,35 @@ export struct ResponsiveNavigationShell {
     if (routeId !== NavigationRoute.SONGS && routeId !== NavigationRoute.ALBUMS) {
       return undefined;
     }
+    if (this.rootSearchRouteId === routeId) {
+      return { maxCount: 0, value: [] };
+    }
     const isTracks = routeId === NavigationRoute.SONGS;
     const targetId = isTracks ? TRACK_SORT_MENU_ID : ALBUM_SORT_MENU_ID;
     const countLabel = isTracks ? `${this.libraryStore.statistics.trackCount} 首` :
       `${this.libraryStore.statistics.albumCount} 张`;
+    const sortItem: HdsNavigationMenuItemOptions = {
+      content: AppShellLayoutSpec.usesSortIconOnly(this.rootWidth) ? {
+        icon: $r('sys.symbol.line_3_horizontal'),
+        label: '排序',
+        type: IconStyleMode.NORMAL,
+        componentId: targetId,
+        action: () => this.openSortMenu(routeId, targetId)
+      } : {
+        label: countLabel,
+        type: TextStyleMode.NORMAL,
+        componentId: targetId,
+        action: () => this.openSortMenu(routeId, targetId)
+      }
+    };
+    const searchItem: HdsNavigationMenuItemOptions = {
+      content: {
+        icon: $r('sys.symbol.magnifyingglass'),
+        label: '搜索',
+        type: IconStyleMode.NORMAL,
+        action: (): void => this.toggleRootSearch(routeId)
+      }
+    };
     const values: Array<HdsNavigationMenuItemOptions> = isTracks ? [{
       content: {
         icon: $r('sys.symbol.shuffle'),
@@ -658,22 +742,16 @@ export struct ResponsiveNavigationShell {
         isEnabled: this.libraryStore.statistics.trackCount > 0,
         action: () => this.shuffleAllTracks()
       }
-    }, {
-      content: {
-        label: countLabel,
-        type: TextStyleMode.NORMAL,
-        componentId: targetId,
-        action: () => this.openSortMenu(routeId, targetId)
-      }
-    }] : [{
-      content: {
-        label: countLabel,
-        type: TextStyleMode.NORMAL,
-        componentId: targetId,
-        action: () => this.openSortMenu(routeId, targetId)
-      }
-    }];
+    }] : [];
+    if (this.supportsTitleSearchAndSelection()) {
+      values.push(searchItem);
+    }
+    values.push(sortItem);
     const selection = this.rootSelection(routeId);
+    if (selection !== undefined) {
+      selection.selectableCount = isTracks ?
+        this.libraryStore.statistics.trackCount : this.libraryStore.statistics.albumCount;
+    }
     return selection === undefined ?
       { maxCount: values.length, value: values } :
       SelectionNavigationTitleBar.menu(
@@ -682,7 +760,11 @@ export struct ResponsiveNavigationShell {
         `${routeId}_selection_actions`,
         this.detailSelectionRevision,
         this.onDetailSelectionChange,
-        values
+        values,
+        this.supportsTitleSearchAndSelection(),
+        (): void => {
+          this.rootSearchRouteId = '';
+        }
       );
   }
 
@@ -723,6 +805,7 @@ export struct ResponsiveNavigationShell {
     params: AlbumDetailRouteParams,
     revision: number
   ): HdsNavigationMenuContentOptions {
+    params.selection.selectableCount = params.state.detail?.tracks.length ?? 0;
     const targetId = `album_detail_more_${params.instanceId}`;
     const values: Array<HdsNavigationMenuItemOptions> = [{
         content: {
@@ -754,7 +837,24 @@ export struct ResponsiveNavigationShell {
       `album_detail_selection_${params.instanceId}`,
       revision,
       this.onDetailSelectionChange,
-      values
+      values,
+      this.supportsTitleSearchAndSelection()
+    );
+  }
+
+  private artistDetailTitleMenu(
+    params: ArtistDetailRouteParams,
+    revision: number
+  ): HdsNavigationMenuContentOptions {
+    params.selection.selectableCount = params.state.detail?.trackCount ?? 0;
+    return SelectionNavigationTitleBar.menu(
+      this.getUIContext(),
+      params.selection,
+      `artist_detail_selection_${params.instanceId}`,
+      revision,
+      this.onDetailSelectionChange,
+      [],
+      this.supportsTitleSearchAndSelection()
     );
   }
 
@@ -1030,10 +1130,17 @@ export struct ResponsiveNavigationShell {
     revision: number,
     playlist?: PlaylistSummary
   ): HdsNavigationMenuContentOptions {
+    params.selection.selectableCount = playlist?.trackCount ?? 0;
     const sortTargetId = `playlist_detail_sort_${params.instanceId}`;
     const moreTargetId = `playlist_detail_more_${params.instanceId}`;
     const values: Array<HdsNavigationMenuItemOptions> = [{
-      content: {
+      content: AppShellLayoutSpec.usesSortIconOnly(this.rootWidth) ? {
+        icon: $r('sys.symbol.line_3_horizontal'),
+        label: '排序',
+        type: IconStyleMode.NORMAL,
+        componentId: sortTargetId,
+        action: (): void => this.openPlaylistTrackSortMenu(params.playlistId, sortTargetId)
+      } : {
         label: `${playlist?.trackCount ?? 0} 首`,
         type: TextStyleMode.NORMAL,
         componentId: sortTargetId,
@@ -1054,7 +1161,8 @@ export struct ResponsiveNavigationShell {
       `playlist_detail_selection_${params.instanceId}`,
       revision,
       this.onDetailSelectionChange,
-      values
+      values,
+      this.supportsTitleSearchAndSelection()
     );
   }
 
@@ -1202,13 +1310,7 @@ export struct ResponsiveNavigationShell {
         params: ArtistDetailRouteParams,
         revision: number
       ): HdsNavigationMenuContentOptions =>
-        SelectionNavigationTitleBar.menu(
-          this.getUIContext(),
-          params.selection,
-          `artist_detail_selection_${params.instanceId}`,
-          revision,
-          this.onDetailSelectionChange
-        ),
+        this.artistDetailTitleMenu(params, revision),
       albumDetailBackground: (params: AlbumDetailRouteParams): string =>
         this.albumDetailBackground(params),
       albumDetailContentColor: (params: AlbumDetailRouteParams): string =>

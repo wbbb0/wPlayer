@@ -47,6 +47,24 @@ export struct SongsPage {
     this.selection.onInsertNext = (): void => playbackRuntime.insertNext(this.currentSelection());
     this.selection.onAppendToQueue = (): void =>
       playbackRuntime.appendToQueue(this.currentSelection());
+    this.selection.selectableCount = this.store.statistics.trackCount;
+    this.selection.onToggleAll = (): void => this.toggleAll();
+  }
+
+  private toggleAll(): void {
+    if (this.selection.allSelected()) {
+      this.selectedItems = [];
+      this.selection.replaceSelection([]);
+      return;
+    }
+    this.selection.setBusy(true);
+    this.store.loadTrackPlaybackOrder().then((items: Array<TrackListItem>): void => {
+      this.selectedItems = items;
+      this.selection.selectableCount = items.length;
+      this.selection.replaceSelection(items.map((item: TrackListItem): number => item.id));
+    }).catch((error: Object): void => {
+      console.warn(`Unable to select all tracks: ${error}`);
+    }).finally((): void => this.selection.setBusy(false));
   }
 
   private currentSelection(): Array<TrackListItem> {

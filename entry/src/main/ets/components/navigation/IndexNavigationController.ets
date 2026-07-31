@@ -37,6 +37,8 @@ export class IndexNavigationController {
   selectedRouteId: string = NavigationRoute.PLAYLISTS;
   readonly rootTitleContents: Array<ComponentContent<AppPrimaryTitleParams> | undefined> =
     new Array<ComponentContent<AppPrimaryTitleParams> | undefined>(ALL_ROOT_NAVIGATION_ITEMS.length);
+  readonly rootTitleParams: Array<AppPrimaryTitleParams | undefined> =
+    new Array<AppPrimaryTitleParams | undefined>(ALL_ROOT_NAVIGATION_ITEMS.length);
   moreTitleContent?: ComponentContent<AppPrimaryTitleParams>;
   readonly rootPathStacks: Array<NavPathStack> = ALL_ROOT_NAVIGATION_ITEMS.map(() => new NavPathStack());
   readonly rootScrollers: Array<Scroller> = ALL_ROOT_NAVIGATION_ITEMS.map(() => new Scroller());
@@ -55,10 +57,12 @@ export class IndexNavigationController {
   initializeTitleContents(uiContext: UIContext): void {
     for (let index = 0; index < ALL_ROOT_NAVIGATION_ITEMS.length; index += 1) {
       if (this.rootTitleContents[index] === undefined) {
+        const params = new AppPrimaryTitleParams(ALL_ROOT_NAVIGATION_ITEMS[index].label);
+        this.rootTitleParams[index] = params;
         this.rootTitleContents[index] = new ComponentContent(
           uiContext,
           wrapBuilder(AppPrimaryTitleContent),
-          new AppPrimaryTitleParams(ALL_ROOT_NAVIGATION_ITEMS[index].label)
+          params
         );
       }
     }
@@ -75,6 +79,7 @@ export class IndexNavigationController {
     for (let index = 0; index < this.rootTitleContents.length; index += 1) {
       this.rootTitleContents[index]?.dispose();
       this.rootTitleContents[index] = undefined;
+      this.rootTitleParams[index] = undefined;
     }
     this.moreTitleContent?.dispose();
     this.moreTitleContent = undefined;

@@ -11,8 +11,15 @@ import {
   MultiSelectActionMenuParams,
   MultiSelectController
 } from '../library/MultiSelectController';
+import { TitleBarMotionSpec } from './TitleBarMotionSpec';
 
 export class SelectionNavigationTitleBar {
+  private static animateState(uiContext: UIContext, change: () => void): void {
+    uiContext.animateTo({
+      curve: TitleBarMotionSpec.transitionCurve()
+    }, change);
+  }
+
   private static openActionMenu(
     uiContext: UIContext,
     controller: MultiSelectController,
@@ -38,12 +45,25 @@ export class SelectionNavigationTitleBar {
     targetId: string,
     revision: number,
     onStateChange: () => void,
-    normalItems: Array<HdsNavigationMenuItemOptions> = []
+    normalItems: Array<HdsNavigationMenuItemOptions> = [],
+    selectionEnabled: boolean = true,
+    onActivate: () => void = (): void => {}
   ): HdsNavigationMenuContentOptions {
     const effectiveTargetId = `${targetId}_${revision}`;
     controller.onStateChange = onStateChange;
+    if (!selectionEnabled) {
+      return { maxCount: normalItems.length, value: normalItems };
+    }
     if (controller.active) {
       const activeItems: Array<HdsNavigationMenuItemOptions> = [{
+        content: {
+          label: controller.allSelected() ? '清空' : '全选',
+          type: TextStyleMode.NORMAL,
+          isEnabled: controller.selectableCount > 0 && !controller.busy,
+          action: (): void =>
+            SelectionNavigationTitleBar.animateState(uiContext, (): void => controller.toggleAll())
+        }
+      }, {
         content: {
           label: controller.selectedCount() > 0 ? `操作 ${controller.selectedCount()}` : '操作',
           type: TextStyleMode.NORMAL,
@@ -56,7 +76,8 @@ export class SelectionNavigationTitleBar {
         content: {
           label: '取消',
           type: TextStyleMode.NORMAL,
-          action: (): void => controller.cancel()
+          action: (): void =>
+            SelectionNavigationTitleBar.animateState(uiContext, (): void => controller.cancel())
         }
       }];
       return { maxCount: activeItems.length, value: activeItems };
@@ -66,7 +87,11 @@ export class SelectionNavigationTitleBar {
         icon: $r('sys.symbol.checkmark_square_on_square'),
         label: '多选',
         type: IconStyleMode.NORMAL,
-        action: (): void => controller.activate()
+        action: (): void =>
+          SelectionNavigationTitleBar.animateState(uiContext, (): void => {
+            onActivate();
+            controller.activate();
+          })
       }
     }]);
     return { maxCount: items.length, value: items };

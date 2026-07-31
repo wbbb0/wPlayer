@@ -47,6 +47,14 @@ export class AppShellLayoutSpec {
     return hostWidth < requiredWidth;
   }
 
+  static supportsTitleSearchAndSelection(hostWidth: number): boolean {
+    return hostWidth > 0 && !AppShellLayoutSpec.usesCondensedCompactNavigation(hostWidth);
+  }
+
+  static usesSortIconOnly(hostWidth: number): boolean {
+    return hostWidth > 0 && AppShellLayoutSpec.usesCondensedCompactNavigation(hostWidth);
+  }
+
   static hasResolvedRootSize(hostWidth: number, hostHeight: number): boolean {
     return hostWidth > 0 && hostHeight > 0;
   }

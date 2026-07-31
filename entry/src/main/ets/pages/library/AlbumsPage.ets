@@ -51,6 +51,24 @@ export struct AlbumsPage {
     this.selection.onAppendToQueue = (): void => this.runSelection(
       (tracks: Array<TrackListItem>): void => playbackRuntime.appendToQueue(tracks)
     );
+    this.selection.selectableCount = this.store.statistics.albumCount;
+    this.selection.onToggleAll = (): void => this.toggleAll();
+  }
+
+  private toggleAll(): void {
+    if (this.selection.allSelected()) {
+      this.selectedAlbums = [];
+      this.selection.replaceSelection([]);
+      return;
+    }
+    this.selection.setBusy(true);
+    this.store.loadAlbumSelectionOrder().then((albums: Array<AlbumListItem>): void => {
+      this.selectedAlbums = albums;
+      this.selection.selectableCount = albums.length;
+      this.selection.replaceSelection(albums.map((album: AlbumListItem): number => album.id));
+    }).catch((error: Object): void => {
+      console.warn(`Unable to select all albums: ${error}`);
+    }).finally((): void => this.selection.setBusy(false));
   }
 
   private currentSelection(): Array<AlbumListItem> {

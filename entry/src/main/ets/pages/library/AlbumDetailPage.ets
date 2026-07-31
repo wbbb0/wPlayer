@@ -133,6 +133,19 @@ export struct AlbumDetailPage {
     this.selection.onInsertNext = (): void => playbackRuntime.insertNext(this.currentSelection());
     this.selection.onAppendToQueue = (): void =>
       playbackRuntime.appendToQueue(this.currentSelection());
+    this.selection.onToggleAll = (): void => {
+      const tracks = this.detail()?.tracks ?? [];
+      if (this.selection.allSelected()) {
+        this.selectedItems = [];
+        this.selection.replaceSelection([]);
+      } else {
+        this.selectedItems = tracks.slice();
+        this.selection.selectableCount = tracks.length;
+        this.selection.replaceSelection(
+          tracks.map((track: TrackListItem): number => track.id)
+        );
+      }
+    };
   }
 
   aboutToDisappear(): void {

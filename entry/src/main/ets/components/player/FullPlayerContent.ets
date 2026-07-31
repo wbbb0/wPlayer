@@ -22,6 +22,7 @@ import {
   FullPlayerQueuePage,
   FullPlayerQueueSelectionStore
 } from './FullPlayerQueuePage';
+import { AppShellLayoutSpec } from '../layout/AppShellLayoutSpec';
 
 @Component
 export struct FullPlayerContent {
@@ -183,6 +184,7 @@ export struct FullPlayerContent {
     FullPlayerQueueHeader({
       playerStore: this.playerStore,
       selectionStore: this.queueSelectionStore,
+      selectionEnabled: AppShellLayoutSpec.supportsTitleSearchAndSelection(this.rootFrame.width),
       pageWidth: this.pageWidth(),
       leadingInset: this.headerTextInset(FullPlayerPage.QUEUE),
       primaryContentColor: this.contentColor(),

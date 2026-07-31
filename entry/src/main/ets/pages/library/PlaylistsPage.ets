@@ -45,6 +45,19 @@ export struct PlaylistsPage {
     this.selection.onAppendToQueue = (): void => this.runSelection(
       (tracks: Array<TrackListItem>): void => playbackRuntime.appendToQueue(tracks)
     );
+    this.selection.selectableCount = this.store.playlists.length;
+    this.selection.onToggleAll = (): void => {
+      if (this.selection.allSelected()) {
+        this.selectedPlaylists = [];
+        this.selection.replaceSelection([]);
+      } else {
+        this.selectedPlaylists = this.store.playlists.slice();
+        this.selection.selectableCount = this.selectedPlaylists.length;
+        this.selection.replaceSelection(
+          this.selectedPlaylists.map((playlist: PlaylistSummary): number => playlist.id)
+        );
+      }
+    };
   }
 
   private durationLabel(durationMs: number): string {

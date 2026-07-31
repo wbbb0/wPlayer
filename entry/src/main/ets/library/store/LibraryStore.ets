@@ -928,6 +928,31 @@ export class LibraryStore {
     throw new Error('音乐库排序持续变化，请稍后重试播放');
   }
 
+  async loadAlbumSelectionOrder(): Promise<Array<AlbumListItem>> {
+    for (let attempt = 0; attempt < PLAYBACK_ORDER_STABILITY_ATTEMPTS; attempt += 1) {
+      const generation = this.albumSortGeneration;
+      const field = this.albumSortField;
+      const direction = this.albumSortDirection;
+      const catalog = await this.repository.getAlbumCatalog(field, direction);
+      const items: Array<AlbumListItem> = [];
+      for (let offset = 0; offset < catalog.totalCount;
+        offset += LibraryPagingPolicy.ALBUM_QUERY_PAGE_SIZE) {
+        const page = await this.repository.getAlbumPage(
+          field,
+          direction,
+          catalog,
+          offset,
+          LibraryPagingPolicy.ALBUM_QUERY_PAGE_SIZE
+        );
+        items.push(...page.items);
+      }
+      if (generation === this.albumSortGeneration && items.length === catalog.totalCount) {
+        return items;
+      }
+    }
+    throw new Error('专辑列表正在变化，请稍后重试');
+  }
+
   private publishTrackProjection(field: TrackSortField, direction: SortDirection): void {
     this.publishedTrackProjection.publish(field, direction);
   }

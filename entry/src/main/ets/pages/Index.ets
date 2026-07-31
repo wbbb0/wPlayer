@@ -411,6 +411,7 @@ struct Index {
       condensedCompactTabsController: this.condensedCompactTabsController,
       expandedTabsController: this.expandedTabsController,
       rootTitleContents: this.navigationController.rootTitleContents,
+      rootTitleParams: this.navigationController.rootTitleParams,
       moreTitleContent: this.navigationController.moreTitleContent,
       rootPathStacks: this.navigationController.rootPathStacks,
       rootScrollers: this.navigationController.rootScrollers,

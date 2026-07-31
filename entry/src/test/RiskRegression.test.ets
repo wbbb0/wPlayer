@@ -518,15 +518,18 @@ export default function riskRegressionTest() {
 
     it('keeps the lazy lyric data source synchronized with observable lyrics', 0, () => {
       const store = new PlayerStore();
+      const initialRevision = store.lyricDocumentRevision;
       const lines: Array<TimedLyricLine> = [
         { timeMs: 100, text: 'one' },
         { timeMs: 200, text: 'two' }
       ];
       store.setTimedLyrics(lines);
+      expect(store.lyricDocumentRevision).assertEqual(initialRevision + 1);
       expect(store.timedLyrics.length).assertEqual(2);
       expect(store.lyricDataSource.totalCount()).assertEqual(2);
       expect(store.lyricDataSource.getData(1).text).assertEqual('two');
       store.setTimedLyrics([]);
+      expect(store.lyricDocumentRevision).assertEqual(initialRevision + 2);
       expect(store.lyricDataSource.totalCount()).assertEqual(0);
     });
 

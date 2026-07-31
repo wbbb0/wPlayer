@@ -25,6 +25,7 @@ import {
 import { QueueTrackRow } from './QueueTrackRow';
 import {
   FULL_PLAYER_VERTICAL_GESTURE_HOST_ID,
+  FullPlayerListFocusState,
   PlayerLayoutSpec,
   PlayerMotionSpec
 } from './PlayerMotion';
@@ -197,6 +198,7 @@ export struct FullPlayerQueuePage {
   @Prop bottomInset: number = 0;
   @Prop @Watch('onListenerActiveChanged') listenerActive: boolean = true;
   @Prop pageScrollingEnabled: boolean = true;
+  @Prop focusAnimationEnabled: boolean = true;
   @Prop primaryContentColor: string = '#FFFFFFFF';
   @Prop secondaryContentColor: string = '#B8FFFFFF';
   onPlayQueueTrack: (trackId: number) => void = (_trackId: number): void => {};
@@ -209,13 +211,17 @@ export struct FullPlayerQueuePage {
   onRequestAddToPlaylist: (trackIds: Array<number>) => void =
     (_trackIds: Array<number>): void => {};
   private readonly queueScroller: Scroller = new Scroller();
+  private readonly focusState: FullPlayerListFocusState = new FullPlayerListFocusState();
   private lastFocusedQueueIndex: number = -1;
   private listenerRegistered: boolean = false;
   private readonly queueIndexListener: QueueIndexListener = (index: number): void => {
     if (!this.listenerActive || index < 0 || this.playerStore.queueSize === 0) {
       return;
     }
-    this.focusQueueIndex(index, true);
+    this.focusQueueIndex(
+      index,
+      this.focusState.consumeAnimated(this.focusAnimationEnabled)
+    );
   };
 
   aboutToAppear(): void {
@@ -232,6 +238,7 @@ export struct FullPlayerQueuePage {
 
   private syncListenerRegistration(): void {
     if (this.listenerActive && !this.listenerRegistered) {
+      this.focusState.reset();
       this.playerStore.addQueueIndexListener(this.queueIndexListener);
       this.listenerRegistered = true;
     } else if (!this.listenerActive) {
@@ -250,7 +257,10 @@ export struct FullPlayerQueuePage {
   onDidBuild(): void {
     if (this.listenerActive && this.playerStore.queueCurrentIndex >= 0 &&
       this.lastFocusedQueueIndex !== this.playerStore.queueCurrentIndex) {
-      this.focusQueueIndex(this.playerStore.queueCurrentIndex, false);
+      this.focusQueueIndex(
+        this.playerStore.queueCurrentIndex,
+        this.focusState.consumeAnimated(this.focusAnimationEnabled)
+      );
     }
   }
 

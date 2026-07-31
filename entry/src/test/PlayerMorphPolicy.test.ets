@@ -15,6 +15,7 @@ import {
 } from '../main/ets/components/player/PlayerMorphGesturePolicy';
 import {
   FullPlayerPage,
+  FullPlayerListFocusState,
   FullPlayerPagerMemory,
   FullPlayerPagerPhase,
   FullPlayerPagerSpec,
@@ -218,6 +219,17 @@ export default function playerMorphPolicyTest() {
       memory.commitSettled(0, 2);
       expect(memory.restore(1)).assertEqual(FullPlayerPage.LYRICS);
       expect(memory.restore(2)).assertEqual(0);
+    });
+
+    it('positions player lists immediately before animating follow-up focus', 0, () => {
+      const focusState = new FullPlayerListFocusState();
+      expect(focusState.consumeAnimated(true)).assertFalse();
+      expect(focusState.consumeAnimated(false)).assertFalse();
+      expect(focusState.consumeAnimated(false)).assertFalse();
+      expect(focusState.consumeAnimated(true)).assertTrue();
+      focusState.reset();
+      expect(focusState.consumeAnimated(true)).assertFalse();
+      expect(focusState.consumeAnimated(true)).assertTrue();
     });
 
     it('does not change pager memory until a settle is committed', 0, () => {

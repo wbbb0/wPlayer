@@ -180,6 +180,7 @@ export class PlayerStore {
   lyrics: string = '';
   timedLyrics: Array<TimedLyricLine> = [];
   readonly lyricDataSource: LyricLineDataSource = new LyricLineDataSource();
+  lyricDocumentRevision: number = 0;
   activeLyricIndex: number = -1;
   private readonly lyricIndexListeners: Array<LyricIndexListener> = [];
   shuffleEnabled: boolean = false;
@@ -239,6 +240,7 @@ export class PlayerStore {
   setTimedLyrics(lines: Array<TimedLyricLine>): void {
     this.timedLyrics = lines;
     this.lyricDataSource.replace(lines);
+    this.lyricDocumentRevision += 1;
   }
 
   addQueueIndexListener(listener: QueueIndexListener): void {

@@ -8,6 +8,7 @@ import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
 import { TimedLyricRow } from './FullPlayerSharedControls';
 import {
   FULL_PLAYER_VERTICAL_GESTURE_HOST_ID,
+  FullPlayerListFocusState,
   PlayerLayoutSpec
 } from './PlayerMotion';
 
@@ -21,22 +22,29 @@ export struct FullPlayerLyricsPage {
   @Prop bottomInset: number = 0;
   @Prop @Watch('onListenerActiveChanged') listenerActive: boolean = true;
   @Prop pageScrollingEnabled: boolean = true;
+  @Prop focusAnimationEnabled: boolean = true;
   @Prop primaryContentColor: string = '#FFFFFFFF';
   @Prop secondaryContentColor: string = '#B8FFFFFF';
+  onSeek: (positionMs: number) => void = (_positionMs: number): void => {};
   @State private lyricBlurEnabled: boolean = true;
   private readonly lyricScroller: Scroller = new Scroller();
+  private readonly focusState: FullPlayerListFocusState = new FullPlayerListFocusState();
   private lastFocusedLyricIndex: number = -1;
+  private observedLyricDocumentRevision: number = -1;
   private listenerRegistered: boolean = false;
   private readonly lyricIndexListener: LyricIndexListener = (index: number): void => {
+    this.syncLyricDocument();
     if (!this.listenerActive || index < 0 || this.playerStore.timedLyrics.length === 0) {
       return;
     }
-    this.lyricBlurEnabled = true;
-    this.lastFocusedLyricIndex = index;
-    this.lyricScroller.scrollToIndex(Math.max(0, index - 2), true, ScrollAlign.START);
+    this.focusLyricIndex(
+      index,
+      this.focusState.consumeAnimated(this.focusAnimationEnabled)
+    );
   };
 
   aboutToAppear(): void {
+    this.syncLyricDocument();
     this.syncListenerRegistration();
   }
 
@@ -48,9 +56,21 @@ export struct FullPlayerLyricsPage {
     this.syncListenerRegistration();
   }
 
+  private syncLyricDocument(): void {
+    const currentRevision = this.playerStore.lyricDocumentRevision;
+    if (currentRevision === this.observedLyricDocumentRevision) {
+      return;
+    }
+    this.observedLyricDocumentRevision = currentRevision;
+    this.lyricBlurEnabled = true;
+    this.lastFocusedLyricIndex = -1;
+    this.focusState.reset();
+  }
+
   private syncListenerRegistration(): void {
     if (this.listenerActive && !this.listenerRegistered) {
       this.lyricBlurEnabled = true;
+      this.focusState.reset();
       this.playerStore.addLyricIndexListener(this.lyricIndexListener);
       this.listenerRegistered = true;
     } else if (!this.listenerActive) {
@@ -67,6 +87,7 @@ export struct FullPlayerLyricsPage {
   }
 
   onDidBuild(): void {
+    this.syncLyricDocument();
     if (!this.listenerActive) {
       return;
     }
@@ -75,8 +96,25 @@ export struct FullPlayerLyricsPage {
       this.lastFocusedLyricIndex = -1;
     }
     if (lyricIndex >= 0 && lyricIndex !== this.lastFocusedLyricIndex) {
-      this.lyricIndexListener(lyricIndex);
+      this.focusLyricIndex(
+        lyricIndex,
+        this.focusState.consumeAnimated(this.focusAnimationEnabled)
+      );
     }
+  }
+
+  private focusLyricIndex(index: number, animated: boolean): void {
+    this.lyricBlurEnabled = true;
+    this.lastFocusedLyricIndex = index;
+    this.lyricScroller.scrollToIndex(Math.max(0, index - 2), animated, ScrollAlign.START);
+  }
+
+  private seekToLyric(line: TimedLyricLine): void {
+    if (!this.pageScrollingEnabled) {
+      return;
+    }
+    this.lyricBlurEnabled = true;
+    this.onSeek(line.timeMs);
   }
 
   private lyricContentEndOffset(): number {
@@ -114,6 +152,7 @@ export struct FullPlayerLyricsPage {
               })
                 .reuseId('timed_lyric')
             }
+            .onClick(() => this.seekToLyric(line))
           }, (line: TimedLyricLine, index: number) => `${line.timeMs}_${index}`)
         }
         .width('100%')

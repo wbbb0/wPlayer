@@ -228,6 +228,22 @@ export class FullPlayerPagerMemory {
   }
 }
 
+export class FullPlayerListFocusState {
+  private immediateFocusPending: boolean = true;
+
+  reset(): void {
+    this.immediateFocusPending = true;
+  }
+
+  consumeAnimated(animationAllowed: boolean): boolean {
+    if (this.immediateFocusPending) {
+      this.immediateFocusPending = false;
+      return false;
+    }
+    return animationAllowed;
+  }
+}
+
 export class PlayerMotionSpec {
   static readonly COLLAPSED_SURFACE_DARK: string = '#FF2B2B2B';
   static readonly COLLAPSED_SURFACE_LIGHT: string = '#FFFFFFFF';

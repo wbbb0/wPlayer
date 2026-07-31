@@ -229,6 +229,7 @@ export struct FullPlayerContent {
       bottomInset: this.bottomInset,
       listenerActive: !this.measuresArtworkTarget,
       pageScrollingEnabled: this.pageScrollingEnabled,
+      focusAnimationEnabled: this.pageScrollingEnabled,
       primaryContentColor: this.contentColor(),
       secondaryContentColor: this.secondaryContentColor(),
       onPlayQueueTrack: this.onPlayQueueTrack,
@@ -282,8 +283,10 @@ export struct FullPlayerContent {
       bottomInset: this.bottomInset,
       listenerActive: !this.measuresArtworkTarget,
       pageScrollingEnabled: this.pageScrollingEnabled,
+      focusAnimationEnabled: this.pageScrollingEnabled,
       primaryContentColor: this.contentColor(),
-      secondaryContentColor: this.secondaryContentColor()
+      secondaryContentColor: this.secondaryContentColor(),
+      onSeek: this.onSeek
     })
   }
 

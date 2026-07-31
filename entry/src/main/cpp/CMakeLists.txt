@@ -13,8 +13,15 @@ add_library(wplayerbackground SHARED
     napi_init.cpp
 )
 
+add_library(wplayermedia SHARED
+    media_parser.cpp
+    media_napi.cpp
+)
+
 target_include_directories(wplayerbackground PUBLIC ${RENDERER_ROOT})
 target_compile_features(wplayerbackground PUBLIC cxx_std_17)
+target_compile_features(wplayermedia PUBLIC cxx_std_17)
+target_compile_options(wplayermedia PRIVATE -Wall -Wextra)
 
 find_library(EGL_LIB EGL)
 find_library(GLES_LIB GLESv3)
@@ -29,4 +36,8 @@ target_link_libraries(wplayerbackground PUBLIC
     ${ACE_LIB}
     ${NAPI_LIB}
     libnative_window.so
+)
+
+target_link_libraries(wplayermedia PUBLIC
+    ${NAPI_LIB}
 )

@@ -1,14 +1,14 @@
 export class ImportConcurrencyPolicy {
-  static readonly FILE_PROBE_CONCURRENCY: number = 3;
+  static readonly FILE_PROBE_CONCURRENCY: number = 4;
   static readonly FILE_CHECK_BATCH_SIZE: number = 32;
-  static readonly FILE_CHECK_PIPELINE_CONCURRENCY: number = 2;
+  static readonly FILE_CHECK_PIPELINE_CONCURRENCY: number = 4;
   static readonly FILE_CHECK_CLASSIFY_CHUNK_SIZE: number = 128;
   static readonly FILE_PERMISSION_BATCH_SIZE: number = 16;
   static readonly IMPORT_PROGRESS_INTERVAL_MS: number = 100;
-  static readonly FULL_FINGERPRINT_CONCURRENCY: number = 2;
+  static readonly FULL_FINGERPRINT_CONCURRENCY: number = 4;
   static readonly URI_PREFLIGHT_BATCH_SIZE: number = 256;
   static readonly IMPORT_WORK_BATCH_SIZE: number = 16;
-  static readonly ARTWORK_PROCESS_CONCURRENCY: number = 3;
+  static readonly ARTWORK_PROCESS_CONCURRENCY: number = 6;
   static readonly ARTWORK_PROCESS_BATCH_SIZE: number = 12;
   static readonly FILE_CHECK_ARTWORK_QUEUE_CAPACITY: number = 12;
 

@@ -6,6 +6,7 @@
   "author": "韩旭龙",
   "license": "GPL-3.0-only",
   "dependencies": {
-    "libwplayerbackground.so": "file:./src/main/cpp/types/libwplayerbackground"
+    "libwplayerbackground.so": "file:./src/main/cpp/types/libwplayerbackground",
+    "libwplayermedia.so": "file:./src/main/cpp/types/libwplayermedia"
   }
 }

@@ -1,10 +1,14 @@
 import { taskpool } from '@kit.ArkTS';
 import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
+import {
+  flattenArtworkPixels as flattenArtworkPixelsNative,
+  parseMediaFile as parseMediaFileNative,
+  readArtworkBytes as readArtworkBytesNative
+} from 'libwplayermedia.so';
 import { MediaFormat, ParsedMetadata } from '../model/LibraryModels';
 import { BinaryFileReader } from './BinaryFileReader';
-import { FlacTagReader } from './FlacTagReader';
-import { Id3TagReader } from './Id3TagReader';
+import { NativeMediaMetadataAdapter } from './NativeMediaMetadataAdapter';
 
 export interface MediaProbeResult {
   metadata: ParsedMetadata;
@@ -105,18 +109,9 @@ function probeMediaFileTask(uri: string): MediaProbeResult {
       digestResult.data.forEach((value: number) => {
         quickHash += value.toString(16).padStart(2, '0');
       });
-      const signature = reader.read(0, Math.min(4, reader.size));
-      let metadata: ParsedMetadata;
-      if (signature.length >= 4 && signature[0] === 0x66 && signature[1] === 0x4C &&
-        signature[2] === 0x61 && signature[3] === 0x43) {
-        metadata = FlacTagReader.read(reader);
-      } else if ((signature.length >= 3 && signature[0] === 0x49 && signature[1] === 0x44 &&
-        signature[2] === 0x33) ||
-        (signature.length >= 2 && signature[0] === 0xFF && (signature[1] & 0xE0) === 0xE0)) {
-        metadata = Id3TagReader.read(reader);
-      } else {
-        throw new Error('Only MP3 and FLAC files are supported');
-      }
+      const metadata = NativeMediaMetadataAdapter.fromNative(
+        parseMediaFileNative(reader.fd, reader.size)
+      );
       return {
         metadata: metadata,
         fileName: reader.name,
@@ -178,13 +173,10 @@ function readEmbeddedLyricsTask(uri: string, format: MediaFormat): string {
   try {
     const reader = new BinaryFileReader(uri);
     try {
-      if (format === MediaFormat.MP3) {
-        return Id3TagReader.read(reader).lyrics;
-      }
-      if (format === MediaFormat.FLAC) {
-        return FlacTagReader.read(reader).lyrics;
-      }
-      return '';
+      const metadata = NativeMediaMetadataAdapter.fromNative(
+        parseMediaFileNative(reader.fd, reader.size)
+      );
+      return metadata.format === format ? metadata.lyrics : '';
     } finally {
       reader.close();
     }
@@ -197,44 +189,13 @@ function readEmbeddedLyricsTask(uri: string, format: MediaFormat): string {
 @Concurrent
 function readArtworkBytesTask(uri: string, byteOffset: number, byteLength: number,
   payloadOffset: number, unsynchronized: boolean): ArrayBuffer {
-  if (byteOffset < 0 || byteLength <= 0 || byteLength > 64 * 1024 * 1024) {
-    throw new Error(`Invalid artwork byte range: ${byteOffset}+${byteLength}`);
-  }
   let file: fs.File | undefined;
   try {
     file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
     const stat = fs.statSync(file.fd);
-    if (byteOffset + byteLength > stat.size) {
-      throw new Error(`Artwork byte range exceeds file: ${byteOffset}+${byteLength}/${stat.size}`);
-    }
-    const buffer = new ArrayBuffer(byteLength);
-    let totalRead = 0;
-    while (totalRead < byteLength) {
-      const bytesRead = fs.readSync(file.fd, buffer, {
-        offset: byteOffset + totalRead,
-        length: byteLength - totalRead
-      });
-      if (bytesRead <= 0) {
-        throw new Error(`Unexpected end of artwork at ${byteOffset + totalRead}`);
-      }
-      totalRead += bytesRead;
-    }
-    if (!unsynchronized) {
-      return buffer;
-    }
-    const source = new Uint8Array(buffer);
-    const output = new Uint8Array(source.length);
-    let outputLength = 0;
-    for (let index = 0; index < source.length; index += 1) {
-      output[outputLength++] = source[index];
-      if (source[index] === 0xFF && index + 1 < source.length && source[index + 1] === 0x00) {
-        index += 1;
-      }
-    }
-    if (payloadOffset < 0 || payloadOffset > outputLength) {
-      throw new Error(`Invalid artwork payload offset: ${payloadOffset}/${outputLength}`);
-    }
-    return output.buffer.slice(payloadOffset, outputLength);
+    return readArtworkBytesNative(
+      file.fd, stat.size, byteOffset, byteLength, payloadOffset, unsynchronized
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : `${error}`;
     throw new Error(`Unable to read embedded artwork: ${message}`);
@@ -253,42 +214,11 @@ function readArtworkBytesTask(uri: string, byteOffset: number, byteLength: numbe
 @Concurrent
 function readArtworkBytesFromFdTask(fd: number, byteOffset: number, byteLength: number,
   payloadOffset: number, unsynchronized: boolean): ArrayBuffer {
-  if (byteOffset < 0 || byteLength <= 0 || byteLength > 64 * 1024 * 1024) {
-    throw new Error(`Invalid artwork byte range: ${byteOffset}+${byteLength}`);
-  }
   try {
     const stat = fs.statSync(fd);
-    if (byteOffset + byteLength > stat.size) {
-      throw new Error(`Artwork byte range exceeds file: ${byteOffset}+${byteLength}/${stat.size}`);
-    }
-    const buffer = new ArrayBuffer(byteLength);
-    let totalRead = 0;
-    while (totalRead < byteLength) {
-      const bytesRead = fs.readSync(fd, buffer, {
-        offset: byteOffset + totalRead,
-        length: byteLength - totalRead
-      });
-      if (bytesRead <= 0) {
-        throw new Error(`Unexpected end of artwork at ${byteOffset + totalRead}`);
-      }
-      totalRead += bytesRead;
-    }
-    if (!unsynchronized) {
-      return buffer;
-    }
-    const source = new Uint8Array(buffer);
-    const output = new Uint8Array(source.length);
-    let outputLength = 0;
-    for (let index = 0; index < source.length; index += 1) {
-      output[outputLength++] = source[index];
-      if (source[index] === 0xFF && index + 1 < source.length && source[index + 1] === 0x00) {
-        index += 1;
-      }
-    }
-    if (payloadOffset < 0 || payloadOffset > outputLength) {
-      throw new Error(`Invalid artwork payload offset: ${payloadOffset}/${outputLength}`);
-    }
-    return output.buffer.slice(payloadOffset, outputLength);
+    return readArtworkBytesNative(
+      fd, stat.size, byteOffset, byteLength, payloadOffset, unsynchronized
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : `${error}`;
     throw new Error(`Unable to read embedded artwork from authorized file: ${message}`);
@@ -298,25 +228,7 @@ function readArtworkBytesFromFdTask(fd: number, byteOffset: number, byteLength: 
 @Concurrent
 function flattenArtworkPixelsTask(sourceBuffer: ArrayBuffer, width: number, height: number,
   premultiplied: boolean): ArrayBuffer {
-  const source = new Uint8Array(sourceBuffer);
-  const opaque = new Uint8Array(width * height * 4);
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const sourceOffset = (y * width + x) * 4;
-      const targetOffset = sourceOffset;
-      const alpha = source[sourceOffset + 3];
-      const white = 255 - alpha;
-      for (let channel = 0; channel < 3; channel += 1) {
-        // readPixels(PositionArea) returns BGRA; emit RGBA for ImagePacker.
-        const sourceChannel = channel === 0 ? 2 : channel === 2 ? 0 : 1;
-        const color = source[sourceOffset + sourceChannel];
-        opaque[targetOffset + channel] = premultiplied ?
-          Math.min(255, color + white) : Math.round((color * alpha) / 255 + white);
-      }
-      opaque[targetOffset + 3] = 255;
-    }
-  }
-  return opaque.buffer;
+  return flattenArtworkPixelsNative(sourceBuffer, width, height, premultiplied);
 }
 
 export function calculateFullFingerprint(uri: string): Promise<string> {

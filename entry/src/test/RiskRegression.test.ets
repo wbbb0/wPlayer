@@ -380,19 +380,47 @@ export default function riskRegressionTest() {
       expect(ImportConcurrencyPolicy.needsFullFingerprint(0, 1)).assertFalse();
       expect(ImportConcurrencyPolicy.needsFullFingerprint(1, 1)).assertTrue();
       expect(ImportConcurrencyPolicy.needsFullFingerprint(0, 2)).assertTrue();
-      expect(ImportConcurrencyPolicy.FILE_PROBE_CONCURRENCY).assertEqual(3);
+    });
+
+    it('keeps import concurrency and batching within operational bounds', 0, () => {
+      expect(ImportConcurrencyPolicy.FILE_PROBE_CONCURRENCY >= 1 &&
+        ImportConcurrencyPolicy.FILE_PROBE_CONCURRENCY <= 8).assertTrue();
+      expect(ImportConcurrencyPolicy.FILE_CHECK_PIPELINE_CONCURRENCY >= 1 &&
+        ImportConcurrencyPolicy.FILE_CHECK_PIPELINE_CONCURRENCY <= 8).assertTrue();
+      expect(ImportConcurrencyPolicy.FULL_FINGERPRINT_CONCURRENCY >= 1 &&
+        ImportConcurrencyPolicy.FULL_FINGERPRINT_CONCURRENCY <= 8).assertTrue();
+      expect(ImportConcurrencyPolicy.ARTWORK_PROCESS_CONCURRENCY >= 1 &&
+        ImportConcurrencyPolicy.ARTWORK_PROCESS_CONCURRENCY <= 8).assertTrue();
+
+      expect(ImportConcurrencyPolicy.FILE_CHECK_BATCH_SIZE >=
+        ImportConcurrencyPolicy.FILE_CHECK_PIPELINE_CONCURRENCY).assertTrue();
+      expect(ImportConcurrencyPolicy.FILE_CHECK_BATCH_SIZE <= 256).assertTrue();
+      expect(ImportConcurrencyPolicy.FILE_PERMISSION_BATCH_SIZE >
+        ImportConcurrencyPolicy.FILE_CHECK_PIPELINE_CONCURRENCY).assertTrue();
+      expect(ImportConcurrencyPolicy.FILE_PERMISSION_BATCH_SIZE <= 128).assertTrue();
+      expect(ImportConcurrencyPolicy.FILE_CHECK_CLASSIFY_CHUNK_SIZE >=
+        ImportConcurrencyPolicy.FILE_CHECK_BATCH_SIZE).assertTrue();
+      expect(ImportConcurrencyPolicy.FILE_CHECK_CLASSIFY_CHUNK_SIZE <= 512).assertTrue();
+      expect(ImportConcurrencyPolicy.IMPORT_PROGRESS_INTERVAL_MS >= 16 &&
+        ImportConcurrencyPolicy.IMPORT_PROGRESS_INTERVAL_MS <= 1000).assertTrue();
+
+      expect(ImportConcurrencyPolicy.IMPORT_WORK_BATCH_SIZE >=
+        ImportConcurrencyPolicy.FILE_PROBE_CONCURRENCY).assertTrue();
+      expect(ImportConcurrencyPolicy.IMPORT_WORK_BATCH_SIZE <= 128).assertTrue();
       expect(ImportConcurrencyPolicy.URI_PREFLIGHT_BATCH_SIZE)
         .assertLarger(ImportConcurrencyPolicy.IMPORT_WORK_BATCH_SIZE);
       expect(ImportConcurrencyPolicy.URI_PREFLIGHT_BATCH_SIZE)
         .assertLarger(ImportConcurrencyPolicy.FILE_PERMISSION_BATCH_SIZE);
-      expect(ImportConcurrencyPolicy.FILE_CHECK_CLASSIFY_CHUNK_SIZE)
-        .assertLess(512);
-      expect(ImportConcurrencyPolicy.FILE_CHECK_PIPELINE_CONCURRENCY)
-        .assertLarger(0);
-      expect(ImportConcurrencyPolicy.FILE_CHECK_PIPELINE_CONCURRENCY)
-        .assertLess(ImportConcurrencyPolicy.FILE_PERMISSION_BATCH_SIZE);
-      expect(ImportConcurrencyPolicy.FILE_CHECK_ARTWORK_QUEUE_CAPACITY)
-        .assertLarger(ImportConcurrencyPolicy.ARTWORK_PROCESS_CONCURRENCY);
+      expect(ImportConcurrencyPolicy.URI_PREFLIGHT_BATCH_SIZE <= 1024).assertTrue();
+
+      expect(ImportConcurrencyPolicy.ARTWORK_PROCESS_BATCH_SIZE >=
+        ImportConcurrencyPolicy.ARTWORK_PROCESS_CONCURRENCY).assertTrue();
+      expect(ImportConcurrencyPolicy.ARTWORK_PROCESS_BATCH_SIZE <= 64).assertTrue();
+      expect(ImportConcurrencyPolicy.FILE_CHECK_ARTWORK_QUEUE_CAPACITY >=
+        ImportConcurrencyPolicy.ARTWORK_PROCESS_CONCURRENCY).assertTrue();
+      expect(ImportConcurrencyPolicy.FILE_CHECK_ARTWORK_QUEUE_CAPACITY >=
+        ImportConcurrencyPolicy.ARTWORK_PROCESS_BATCH_SIZE).assertTrue();
+      expect(ImportConcurrencyPolicy.FILE_CHECK_ARTWORK_QUEUE_CAPACITY <= 128).assertTrue();
     });
 
     it('keeps explicit import detail categories and safely classifies legacy results', 0, () => {

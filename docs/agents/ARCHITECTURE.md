@@ -94,7 +94,10 @@ not publish state, release a resource now owned by newer work, or clear a curren
   artwork work and importer-scoped cleanup.
 - LibraryRemovalService coordinates committed library deletion with post-commit Picker authorization cleanup.
 - MetadataReader owns documented media metadata and artwork extraction.
-- Format-specific readers own explicitly supported fallback parsing.
+- `libwplayermedia.so` implements the MP3/FLAC fallback parser and bounded pixel conversion behind
+  MediaFileTasks. It synchronously borrows caller-owned file descriptors on taskpool workers, uses positioned reads
+  and never closes or retains those descriptors. NativeMediaMetadataAdapter keeps tag normalization in the library
+  domain; pages and other callers do not import the native module directly.
 - MusicRepository is the library facade used by stores and playback coordination.
 - LibraryDatabase owns schema creation, versioning and relational-store lifecycle.
 - MusicLibraryQueries is the stable repository-facing query facade. Track, album, detail/navigation and maintenance

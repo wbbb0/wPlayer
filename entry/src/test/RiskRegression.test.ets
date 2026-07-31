@@ -307,26 +307,21 @@ export default function riskRegressionTest() {
       expect(FullPlayerPagerSpec.coverVisibility(1, 2, 1)).assertEqual(1);
     });
 
-    it('shares cover morph visibility without changing artwork behavior', 0, () => {
+    it('shares cover morph visibility across artwork and playback controls', 0, () => {
       expect(PlayerMorphVisualSpec.coverElementOpacity(
-        PlayerMorphPhase.OPENING, FullPlayerPage.COVER,
-        FullPlayerPage.COVER, 1, 0.5
+        PlayerMorphPhase.OPENING, FullPlayerPage.COVER, 1, 0.5, true
       )).assertEqual(1);
       expect(PlayerMorphVisualSpec.coverElementOpacity(
-        PlayerMorphPhase.OPENING, FullPlayerPage.LYRICS,
-        FullPlayerPage.LYRICS, 1, 0.6
-      )).assertEqual(0);
+        PlayerMorphPhase.OPENING, FullPlayerPage.LYRICS, 1, 0.6, false
+      )).assertEqual(0.4);
       expect(PlayerMorphVisualSpec.coverElementOpacity(
-        PlayerMorphPhase.OPEN, FullPlayerPage.LYRICS,
-        FullPlayerPage.COVER, 1, 1
+        PlayerMorphPhase.OPEN, FullPlayerPage.COVER, 1, 1, false
       )).assertEqual(1);
       expect(PlayerMorphVisualSpec.coverElementOpacity(
-        PlayerMorphPhase.OPEN, FullPlayerPage.LYRICS,
-        FullPlayerPage.LYRICS, 1, 1
+        PlayerMorphPhase.OPEN, FullPlayerPage.LYRICS, 1, 1, false
       )).assertEqual(0);
       expect(PlayerMorphVisualSpec.coverElementOpacity(
-        PlayerMorphPhase.OPENING, FullPlayerPage.QUEUE,
-        FullPlayerPage.QUEUE, 2, 0.5
+        PlayerMorphPhase.OPENING, FullPlayerPage.QUEUE, 2, 0.5, true
       )).assertEqual(1);
     });
 

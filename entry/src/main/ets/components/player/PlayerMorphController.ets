@@ -14,6 +14,7 @@ import { AppShellLayoutSpec } from '../layout/AppShellLayoutSpec';
 import { LayoutLength } from '../layout/LayoutLength';
 import {
   FullPlayerPage,
+  FullPlayerPagerMemory,
   FullPlayerPagerPhase,
   FullPlayerPagerSpec,
   MiniPlayerGestureRegion,
@@ -106,6 +107,7 @@ export class PlayerMorphController {
   private fullPlayerGestureStartExpandProgress: number = 1;
   private fullPlayerGestureFallbackTarget: number = 1;
   private fullPlayerPagerEpoch: number = 0;
+  private morphUsesSharedGeometry: boolean = true;
   private miniPlayerGestureRegion: MiniPlayerGestureRegion = MiniPlayerGestureRegion.OTHER;
   private miniPlayerHorizontalGestureOffset: number = 0;
   private readonly transitionCoordinator: PlayerMorphTransitionCoordinator =
@@ -114,6 +116,8 @@ export class PlayerMorphController {
     new InterruptibleScalarMotion(0);
   private readonly fullPlayerPageMotion: InterruptibleScalarMotion =
     new InterruptibleScalarMotion(FullPlayerPage.COVER);
+  private readonly fullPlayerPagerMemory: FullPlayerPagerMemory =
+    new FullPlayerPagerMemory();
   private readonly playerStore: PlayerStore;
   private readonly compactTabsController: HdsTabsController;
   private readonly condensedCompactTabsController: HdsTabsController;
@@ -227,13 +231,18 @@ export class PlayerMorphController {
     if (previousPaneCount === nextPaneCount) {
       return;
     }
-    this.fullPlayerPagePosition = FullPlayerPagerSpec.positionForPage(
-      this.fullPlayerPage,
-      nextPaneCount
-    );
+    const rememberedPosition = this.fullPlayerPagerMemory.restore(nextPaneCount);
     this.fullPlayerPagerEpoch += 1;
-    this.fullPlayerPageMotion.cancel();
-    this.fullPlayerPageMotion.setValue(this.fullPlayerPagePosition);
+    this.fullPlayerPageMotion.complete(rememberedPosition);
+    this.context().animateToImmediately({
+      duration: 0
+    }, () => {
+      this.fullPlayerPagePosition = rememberedPosition;
+      this.fullPlayerPage = FullPlayerPagerSpec.nearestPage(
+        rememberedPosition,
+        nextPaneCount
+      );
+    });
     this.fullPlayerPagerPhase = FullPlayerPagerPhase.SETTLED;
   }
 
@@ -456,18 +465,38 @@ export class PlayerMorphController {
   }
 
   morphPlaybackButtonFrame(): PlayerFrame {
-    return PlayerMorphGeometry.interpolateFrame(
-      this.miniPlaybackButtonFrame(),
-      this.frozenPlaybackButtonTarget,
-      this.playerExpandProgress
-    );
+    const sourceFrame = this.miniPlaybackButtonFrame();
+    const geometryProgress = this.morphGeometryProgress();
+    const positionProgress = this.morphPositionProgress();
+    return {
+      x: PlayerMorphGeometry.morphValue(
+        sourceFrame.x,
+        this.frozenPlaybackButtonTarget.x,
+        positionProgress
+      ),
+      y: PlayerMorphGeometry.morphValue(
+        sourceFrame.y,
+        this.frozenPlaybackButtonTarget.y,
+        positionProgress
+      ),
+      width: PlayerMorphGeometry.morphValue(
+        sourceFrame.width,
+        this.frozenPlaybackButtonTarget.width,
+        geometryProgress
+      ),
+      height: PlayerMorphGeometry.morphValue(
+        sourceFrame.height,
+        this.frozenPlaybackButtonTarget.height,
+        geometryProgress
+      )
+    };
   }
 
   morphPlaybackButtonIconSize(): number {
     return PlayerMorphGeometry.morphValue(
       PlayerLayoutSpec.MINI_PLAYBACK_ICON_SIZE,
       PlayerLayoutSpec.targetPlaybackIconSize(this.frozenPlaybackButtonTarget.width),
-      this.playerExpandProgress
+      this.morphGeometryProgress()
     );
   }
 
@@ -482,12 +511,32 @@ export class PlayerMorphController {
   }
 
   morphPlaybackButtonOpacity(): number {
+    return this.morphElementOpacity();
+  }
+
+  morphGeometryProgress(): number {
+    return PlayerMorphVisualSpec.morphGeometryProgress(
+      this.playerMorphPhase,
+      this.playerExpandProgress,
+      this.morphUsesSharedGeometry
+    );
+  }
+
+  morphPositionProgress(): number {
+    return PlayerMorphVisualSpec.morphPositionProgress(
+      this.playerMorphPhase,
+      this.playerExpandProgress,
+      this.morphUsesSharedGeometry
+    );
+  }
+
+  morphElementOpacity(): number {
     return PlayerMorphVisualSpec.coverElementOpacity(
       this.playerMorphPhase,
-      this.fullPlayerPage,
       this.fullPlayerPagePosition,
       this.renderedFullPlayerPaneCount(),
-      this.playerExpandProgress
+      this.playerExpandProgress,
+      this.morphUsesSharedGeometry
     );
   }
 
@@ -569,6 +618,13 @@ export class PlayerMorphController {
     this.takeOverFullPlayerPagePresentation();
     this.freezeMiniPlayerGeometry(false);
     this.freezeMorphArtworkSource();
+  }
+
+  private captureMorphGeometryMode(): void {
+    this.morphUsesSharedGeometry = FullPlayerPagerSpec.usesSharedMorphGeometry(
+      this.fullPlayerPagePosition,
+      this.fullPlayerPaneCount()
+    );
   }
 
   private beginMorphPhase(phase: PlayerMorphPhase): number {
@@ -736,6 +792,7 @@ export class PlayerMorphController {
         this.freezeMiniPlayerGeometry();
         this.freezeMorphArtworkSource();
         this.fullPlayerSideContentReady = false;
+        this.captureMorphGeometryMode();
         this.beginMorphPhase(PlayerMorphPhase.OPEN_DRAGGING);
         this.playerMorphBackgroundOpacity = 1;
       }
@@ -845,6 +902,9 @@ export class PlayerMorphController {
   }
 
   showFullPlayer(): void {
+    if (this.playerMorphPhase !== PlayerMorphPhase.IDLE) {
+      return;
+    }
     if (!this.miniBarExpanded) {
       this.applyCompactMiniBarStyle(HdsBarStyle.EXPAND);
       return;
@@ -853,6 +913,7 @@ export class PlayerMorphController {
     this.freezeMorphArtworkSource();
     this.fullPlayerSideContentReady = false;
     this.playerMorphBackgroundOpacity = 1;
+    this.captureMorphGeometryMode();
     this.animateMorphProgress(
       1,
       PlayerMorphPhase.OPENING,
@@ -877,8 +938,12 @@ export class PlayerMorphController {
       this.playerMorphPhase === PlayerMorphPhase.BACKGROUND_HANDOFF) {
       return;
     }
+    const stableOpen = this.playerMorphPhase === PlayerMorphPhase.OPEN;
     this.restoreReturnMiniBarStyle();
     this.freezeFullPlayerCloseGeometry();
+    if (stableOpen) {
+      this.captureMorphGeometryMode();
+    }
     this.animateFullPlayerClose();
   }
 
@@ -950,6 +1015,7 @@ export class PlayerMorphController {
     this.takeOverMorphPresentation();
     if (stableOpen) {
       this.freezeFullPlayerCloseGeometry();
+      this.captureMorphGeometryMode();
     }
     this.beginMorphPhase(PlayerMorphPhase.CLOSE_DRAGGING);
     this.fullPlayerGestureStartExpandProgress = this.playerExpandProgress;
@@ -1039,6 +1105,7 @@ export class PlayerMorphController {
         this.fullPlayerPageMotion.complete(targetPosition);
         this.fullPlayerPagePosition = targetPosition;
         this.fullPlayerPage = targetPage;
+        this.fullPlayerPagerMemory.commitSettled(targetPosition, paneCount);
         this.fullPlayerPagerPhase = FullPlayerPagerPhase.SETTLED;
       }
     }, () => {

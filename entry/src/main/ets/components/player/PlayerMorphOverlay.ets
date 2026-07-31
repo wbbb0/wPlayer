@@ -171,11 +171,10 @@ export struct PlayerMorphOverlay {
   private MorphArtwork() {
     PlayerMorphArtwork({
       playerStore: this.playerStore,
-      expandProgress: this.controller.playerExpandProgress,
+      geometryProgress: this.controller.morphGeometryProgress(),
+      positionProgress: this.controller.morphPositionProgress(),
+      elementOpacity: this.controller.morphElementOpacity(),
       morphPhase: this.controller.playerMorphPhase,
-      fullPlayerPage: this.controller.fullPlayerPage,
-      fullPlayerPagePosition: this.controller.fullPlayerPagePosition,
-      renderedPaneCount: this.controller.renderedFullPlayerPaneCount(),
       topInset: this.topInset,
       bottomInset: this.bottomInset,
       frozenMiniPlayerFrame: this.controller.frozenMiniPlayerFrame,

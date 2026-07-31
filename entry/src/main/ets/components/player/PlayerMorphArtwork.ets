@@ -10,11 +10,9 @@ import {
   CurrentTrackActionMenuParams
 } from './PlayerActionMenus';
 import {
-  FullPlayerPage,
   PlayerFrame,
   PlayerLayoutSpec,
   PlayerMorphPhase,
-  PlayerMorphVisualSpec,
   PlayerMotionSpec
 } from './PlayerMotion';
 
@@ -28,11 +26,10 @@ export struct PlayerMorphArtwork {
   private contextPreviewRestScale: number = 1;
   private playbackVisualTarget: number = 1;
   private mounted: boolean = false;
-  @Prop expandProgress: number = 0;
+  @Prop geometryProgress: number = 0;
+  @Prop positionProgress: number = 0;
+  @Prop elementOpacity: number = 1;
   @Prop morphPhase: PlayerMorphPhase = PlayerMorphPhase.IDLE;
-  @Prop fullPlayerPage: FullPlayerPage = FullPlayerPage.COVER;
-  @Prop fullPlayerPagePosition: number = FullPlayerPage.COVER;
-  @Prop renderedPaneCount: number = 1;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @Prop frozenMiniPlayerFrame: PlayerFrame = {
@@ -100,7 +97,12 @@ export struct PlayerMorphArtwork {
   }
 
   private morphValue(start: number, end: number): number {
-    const progress = this.clamp(this.expandProgress, 0, 1);
+    const progress = this.clamp(this.geometryProgress, 0, 1);
+    return start + (end - start) * progress;
+  }
+
+  private morphPositionValue(start: number, end: number): number {
+    const progress = this.clamp(this.positionProgress, 0, 1);
     return start + (end - start) * progress;
   }
 
@@ -143,7 +145,7 @@ export struct PlayerMorphArtwork {
       1,
       this.playbackVisualProgress
     );
-    return 1 - (1 - fullPlayerScale) * this.clamp(this.expandProgress, 0, 1);
+    return 1 - (1 - fullPlayerScale) * this.clamp(this.geometryProgress, 0, 1);
   }
 
   private playbackRestScale(): number {
@@ -159,7 +161,7 @@ export struct PlayerMorphArtwork {
       PlayerMotionSpec.PAUSED_ARTWORK_SHADOW_RADIUS,
       PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS,
       this.playbackVisualProgress
-    ) * this.clamp(this.expandProgress, 0, 1);
+    ) * this.clamp(this.geometryProgress, 0, 1);
   }
 
   private playbackShadowOffsetY(): number {
@@ -167,31 +169,25 @@ export struct PlayerMorphArtwork {
       PlayerMotionSpec.PAUSED_ARTWORK_SHADOW_OFFSET_Y,
       PlayerMotionSpec.FULL_ARTWORK_SHADOW_OFFSET_Y,
       this.playbackVisualProgress
-    ) * this.clamp(this.expandProgress, 0, 1);
+    ) * this.clamp(this.geometryProgress, 0, 1);
   }
 
   private artworkX(): number {
-    return this.morphValue(
+    return this.morphPositionValue(
       this.frozenMiniPlayerFrame.x + PlayerLayoutSpec.MINI_ARTWORK_INSET,
       this.fullPlayerArtworkTarget.x
     );
   }
 
   private artworkY(): number {
-    return this.morphValue(
+    return this.morphPositionValue(
       this.frozenMiniPlayerFrame.y + PlayerLayoutSpec.MINI_ARTWORK_INSET,
       this.fullPlayerArtworkTarget.y
     );
   }
 
   private artworkOpacity(): number {
-    return PlayerMorphVisualSpec.coverElementOpacity(
-      this.morphPhase,
-      this.fullPlayerPage,
-      this.fullPlayerPagePosition,
-      this.renderedPaneCount,
-      this.expandProgress
-    );
+    return this.clamp(this.elementOpacity, 0, 1);
   }
 
   private showContextMenu(event: GestureEvent): void {

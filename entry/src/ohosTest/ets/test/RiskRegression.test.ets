@@ -73,17 +73,16 @@ export default function riskRegressionTest() {
       expect(PlayerMotionSpec.distanceFromRecognitionOrigin(-10)).assertEqual(-6);
     });
 
-    it('fadesSidePageArtworkBySixtyPercent', 0, () => {
-      expect(FullPlayerPagerSpec.sidePageArtworkOpacity(0)).assertEqual(1);
-      expect(FullPlayerPagerSpec.sidePageArtworkOpacity(0.6)).assertEqual(0);
-      expect(FullPlayerPagerSpec.sidePageArtworkOpacity(1)).assertEqual(0);
-    });
-
     it('sharesCoverMorphVisibilityAcrossArtworkAndPlaybackButton', 0, () => {
       expect(PlayerMorphVisualSpec.coverElementOpacity(
-        PlayerMorphPhase.OPENING, FullPlayerPage.LYRICS,
-        FullPlayerPage.LYRICS, 1, 0.6
+        PlayerMorphPhase.OPENING, FullPlayerPage.LYRICS, 1, 0.6, false
+      )).assertEqual(0.4);
+      expect(PlayerMorphVisualSpec.morphGeometryProgress(
+        PlayerMorphPhase.OPENING, 0.6, false
       )).assertEqual(0);
+      expect(PlayerMorphVisualSpec.morphPositionProgress(
+        PlayerMorphPhase.OPENING, 0.6, false
+      )).assertEqual(0.06);
       expect(FullPlayerPagerSpec.frozenMorphPageTargetX(
         80, FullPlayerPage.COVER, FullPlayerPage.QUEUE, 2, 360
       )).assertEqual(440);

@@ -70,6 +70,7 @@ export const FULL_PLAYER_HORIZONTAL_GESTURE_HOST_ID: string = 'full_player_horiz
 
 export class FullPlayerPagerSpec {
   static readonly PAGE_COUNT: number = 3;
+  static readonly DEFAULT_TWO_PANE_PAGE: FullPlayerPage = FullPlayerPage.LYRICS;
   static readonly MIN_TWO_PANE_WIDTH: number = 720;
   static readonly TWO_PANE_VERTICAL_AVOID_BUDGET: number = 48;
   static readonly MIN_TWO_PANE_HEIGHT: number = 560;
@@ -79,7 +80,6 @@ export class FullPlayerPagerSpec {
   static readonly PAGE_SETTLE_SPRING_RESPONSE: number = 0.42;
   static readonly PAGE_SETTLE_SPRING_DAMPING: number = 0.88;
   static readonly PAGE_SETTLE_DURATION: number = 420;
-  static readonly SIDE_PAGE_ARTWORK_FADE_END_PROGRESS: number = 0.6;
 
   static canBeginGesture(morphPhase: PlayerMorphPhase,
     pagerPhase: FullPlayerPagerPhase): boolean {
@@ -122,6 +122,21 @@ export class FullPlayerPagerSpec {
       return position < 0.5 ? FullPlayerPage.QUEUE : FullPlayerPage.LYRICS;
     }
     return Math.round(FullPlayerPagerSpec.clampPosition(position, paneCount)) as FullPlayerPage;
+  }
+
+  static rememberedPosition(singlePanePage: FullPlayerPage, dualPanePage: FullPlayerPage,
+    paneCount: number): number {
+    return paneCount > 1 ?
+      FullPlayerPagerSpec.positionForPage(dualPanePage, paneCount) :
+      FullPlayerPagerSpec.clampPosition(singlePanePage, paneCount);
+  }
+
+  static usesSharedMorphGeometry(pagePosition: number, paneCount: number): boolean {
+    return FullPlayerPagerSpec.pageViewportVisibility(
+      FullPlayerPage.COVER,
+      pagePosition,
+      paneCount
+    ) >= 0.5;
   }
 
   static coverVisibility(position: number, paneCount: number, expandProgress: number): number {
@@ -190,9 +205,26 @@ export class FullPlayerPagerSpec {
     );
   }
 
-  static sidePageArtworkOpacity(expandProgress: number): number {
-    return 1 - Math.max(0, Math.min(1,
-      expandProgress / FullPlayerPagerSpec.SIDE_PAGE_ARTWORK_FADE_END_PROGRESS));
+}
+
+export class FullPlayerPagerMemory {
+  private singlePanePage: FullPlayerPage = FullPlayerPage.COVER;
+  private dualPanePage: FullPlayerPage = FullPlayerPagerSpec.DEFAULT_TWO_PANE_PAGE;
+
+  restore(paneCount: number): number {
+    return FullPlayerPagerSpec.rememberedPosition(
+      this.singlePanePage,
+      this.dualPanePage,
+      paneCount
+    );
+  }
+
+  commitSettled(position: number, paneCount: number): void {
+    if (paneCount > 1) {
+      this.dualPanePage = FullPlayerPagerSpec.nearestPage(position, paneCount);
+      return;
+    }
+    this.singlePanePage = FullPlayerPagerSpec.nearestPage(position, paneCount);
   }
 }
 
@@ -330,6 +362,8 @@ export class PlayerMotionSpec {
 }
 
 export class PlayerMorphVisualSpec {
+  static readonly NON_SHARED_POSITION_FRACTION: number = 0.1;
+
   static shouldOwnSystemBarContentColor(morphPhase: PlayerMorphPhase): boolean {
     return morphPhase === PlayerMorphPhase.OPEN;
   }
@@ -338,8 +372,8 @@ export class PlayerMorphVisualSpec {
     return morphPhase === PlayerMorphPhase.OPEN;
   }
 
-  static coverElementOpacity(morphPhase: PlayerMorphPhase, selectedPage: FullPlayerPage,
-    pagePosition: number, paneCount: number, expandProgress: number): number {
+  static coverElementOpacity(morphPhase: PlayerMorphPhase, pagePosition: number,
+    paneCount: number, expandProgress: number, usesSharedGeometry: boolean): number {
     if (paneCount > 1) {
       return 1;
     }
@@ -350,10 +384,28 @@ export class PlayerMorphVisualSpec {
         paneCount
       );
     }
-    if (selectedPage === FullPlayerPage.COVER) {
+    if (usesSharedGeometry) {
       return 1;
     }
-    return FullPlayerPagerSpec.sidePageArtworkOpacity(expandProgress);
+    return 1 - Math.max(0, Math.min(1, expandProgress));
+  }
+
+  static morphGeometryProgress(morphPhase: PlayerMorphPhase, expandProgress: number,
+    usesSharedGeometry: boolean): number {
+    if (morphPhase === PlayerMorphPhase.OPEN) {
+      return 1;
+    }
+    return usesSharedGeometry ? Math.max(0, Math.min(1, expandProgress)) : 0;
+  }
+
+  static morphPositionProgress(morphPhase: PlayerMorphPhase, expandProgress: number,
+    usesSharedGeometry: boolean): number {
+    if (morphPhase === PlayerMorphPhase.OPEN) {
+      return 1;
+    }
+    const normalizedProgress = Math.max(0, Math.min(1, expandProgress));
+    return usesSharedGeometry ? normalizedProgress :
+      normalizedProgress * PlayerMorphVisualSpec.NON_SHARED_POSITION_FRACTION;
   }
 }
 

@@ -14,6 +14,8 @@ import {
   PlayerMorphGesturePolicy
 } from '../main/ets/components/player/PlayerMorphGesturePolicy';
 import {
+  FullPlayerPage,
+  FullPlayerPagerMemory,
   FullPlayerPagerPhase,
   FullPlayerPagerSpec,
   MiniPlayerGestureRegion,
@@ -197,6 +199,95 @@ export default function playerMorphPolicyTest() {
         PlayerMorphPhase.OPENING,
         FullPlayerPagerPhase.SETTLED
       )).assertFalse();
+    });
+
+    it('restores independent single-pane and dual-pane page memories', 0, () => {
+      const memory = new FullPlayerPagerMemory();
+      expect(memory.restore(1)).assertEqual(FullPlayerPage.COVER);
+      expect(FullPlayerPagerSpec.DEFAULT_TWO_PANE_PAGE).assertEqual(FullPlayerPage.LYRICS);
+      expect(memory.restore(2)).assertEqual(
+        FullPlayerPagerSpec.positionForPage(FullPlayerPage.LYRICS, 2)
+      );
+
+      memory.commitSettled(FullPlayerPage.LYRICS, 1);
+      expect(memory.restore(1)).assertEqual(FullPlayerPage.LYRICS);
+      expect(memory.restore(2)).assertEqual(
+        FullPlayerPagerSpec.positionForPage(FullPlayerPage.LYRICS, 2)
+      );
+
+      memory.commitSettled(0, 2);
+      expect(memory.restore(1)).assertEqual(FullPlayerPage.LYRICS);
+      expect(memory.restore(2)).assertEqual(0);
+    });
+
+    it('does not change pager memory until a settle is committed', 0, () => {
+      const memory = new FullPlayerPagerMemory();
+      memory.commitSettled(FullPlayerPage.QUEUE, 1);
+      const interruptedSinglePaneTarget = FullPlayerPage.LYRICS;
+      const interruptedDualPaneTarget = 0;
+      expect(interruptedSinglePaneTarget).assertEqual(FullPlayerPage.LYRICS);
+      expect(interruptedDualPaneTarget).assertEqual(0);
+      expect(memory.restore(1)).assertEqual(FullPlayerPage.QUEUE);
+      expect(memory.restore(2)).assertEqual(1);
+    });
+
+    it('uses shared morph geometry only while the cover owns the viewport', 0, () => {
+      expect(FullPlayerPagerSpec.usesSharedMorphGeometry(
+        FullPlayerPage.QUEUE, 1
+      )).assertFalse();
+      expect(FullPlayerPagerSpec.usesSharedMorphGeometry(
+        FullPlayerPage.COVER, 1
+      )).assertTrue();
+      expect(FullPlayerPagerSpec.usesSharedMorphGeometry(
+        FullPlayerPage.LYRICS, 1
+      )).assertFalse();
+      expect(FullPlayerPagerSpec.usesSharedMorphGeometry(0.49, 1)).assertFalse();
+      expect(FullPlayerPagerSpec.usesSharedMorphGeometry(0.5, 1)).assertTrue();
+      expect(FullPlayerPagerSpec.usesSharedMorphGeometry(0, 2)).assertTrue();
+      expect(FullPlayerPagerSpec.usesSharedMorphGeometry(1, 2)).assertTrue();
+    });
+
+    it('keeps non-shared morph geometry at its source with a short translated fade', 0, () => {
+      expect(PlayerMorphVisualSpec.morphGeometryProgress(
+        PlayerMorphPhase.OPENING, 0.4, false
+      )).assertEqual(0);
+      expect(PlayerMorphVisualSpec.morphGeometryProgress(
+        PlayerMorphPhase.CLOSING, 0.4, false
+      )).assertEqual(0);
+      expect(PlayerMorphVisualSpec.morphGeometryProgress(
+        PlayerMorphPhase.OPEN, 0.4, false
+      )).assertEqual(1);
+      expect(PlayerMorphVisualSpec.morphGeometryProgress(
+        PlayerMorphPhase.OPENING, 0.4, true
+      )).assertEqual(0.4);
+      expect(PlayerMorphVisualSpec.NON_SHARED_POSITION_FRACTION).assertEqual(0.1);
+      expect(PlayerMorphVisualSpec.morphPositionProgress(
+        PlayerMorphPhase.OPENING, 0.5, false
+      )).assertEqual(0.05);
+      expect(PlayerMorphVisualSpec.morphPositionProgress(
+        PlayerMorphPhase.CLOSING, 1, false
+      )).assertEqual(0.1);
+      expect(PlayerMorphVisualSpec.morphPositionProgress(
+        PlayerMorphPhase.OPENING, 0.4, true
+      )).assertEqual(0.4);
+      expect(PlayerMorphVisualSpec.morphPositionProgress(
+        PlayerMorphPhase.OPEN, 0.4, false
+      )).assertEqual(1);
+      expect(PlayerMorphVisualSpec.coverElementOpacity(
+        PlayerMorphPhase.OPENING, FullPlayerPage.LYRICS, 1, 0.4, false
+      )).assertEqual(0.6);
+      expect(PlayerMorphVisualSpec.coverElementOpacity(
+        PlayerMorphPhase.CLOSING, FullPlayerPage.QUEUE, 1, 0.4, false
+      )).assertEqual(0.6);
+      expect(PlayerMorphVisualSpec.coverElementOpacity(
+        PlayerMorphPhase.OPENING, FullPlayerPage.LYRICS, 1, 0.4, true
+      )).assertEqual(1);
+      expect(PlayerMorphVisualSpec.coverElementOpacity(
+        PlayerMorphPhase.OPEN, FullPlayerPage.LYRICS, 1, 1, false
+      )).assertEqual(0);
+      expect(PlayerMorphVisualSpec.coverElementOpacity(
+        PlayerMorphPhase.OPEN, FullPlayerPage.COVER, 1, 1, false
+      )).assertEqual(1);
     });
 
     it('keeps presentation tracking separate from observable render progress', 0, () => {

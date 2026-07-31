@@ -38,6 +38,7 @@ export struct FullPlayerContent {
   @Prop paneCount: number = 1;
   @Prop activePage: FullPlayerPage = FullPlayerPage.COVER;
   @Prop sideContentReady: boolean = true;
+  @Prop pageScrollingEnabled: boolean = true;
   @Prop primaryContentColor: string = '#FFFFFFFF';
   @Prop artworkSourceWidth: number = 0;
   @Prop artworkSourceHeight: number = 0;
@@ -227,6 +228,7 @@ export struct FullPlayerContent {
       paneCount: this.paneCount,
       bottomInset: this.bottomInset,
       listenerActive: !this.measuresArtworkTarget,
+      pageScrollingEnabled: this.pageScrollingEnabled,
       primaryContentColor: this.contentColor(),
       secondaryContentColor: this.secondaryContentColor(),
       onPlayQueueTrack: this.onPlayQueueTrack,
@@ -279,6 +281,7 @@ export struct FullPlayerContent {
       topInset: this.topInset,
       bottomInset: this.bottomInset,
       listenerActive: !this.measuresArtworkTarget,
+      pageScrollingEnabled: this.pageScrollingEnabled,
       primaryContentColor: this.contentColor(),
       secondaryContentColor: this.secondaryContentColor()
     })

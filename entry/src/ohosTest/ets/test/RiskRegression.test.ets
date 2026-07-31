@@ -92,7 +92,7 @@ export default function riskRegressionTest() {
     it('usesUltraCompactFullPlayerGeometryOnlyForConstrainedSinglePane', 0, () => {
       expect(PlayerLayoutSpec.fullPlayerLayoutMode(326, 326, 1))
         .assertEqual(FullPlayerLayoutMode.ULTRA_COMPACT);
-      expect(PlayerLayoutSpec.fullArtworkSize(326, 326, 0, 0, 1)).assertEqual(230);
+      expect(PlayerLayoutSpec.fullArtworkSize(326, 326, 0, 0, 1)).assertEqual(222);
       expect(PlayerLayoutSpec.fullPlayerLayoutMode(360, 460, 1, 80, 0))
         .assertEqual(FullPlayerLayoutMode.ULTRA_COMPACT);
       expect(PlayerLayoutSpec.fullPlayerLayoutMode(720, 360, 2))

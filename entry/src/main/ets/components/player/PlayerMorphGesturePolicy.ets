@@ -73,9 +73,18 @@ export class PlayerMorphGesturePolicy {
     const movement = currentPosition - startPosition;
     let targetPosition = Math.round(startPosition);
     if (Math.abs(movement) * safePageSpan >=
-      FullPlayerPagerSpec.swipeCompletionDistance(safePageSpan)) {
+      FullPlayerPagerSpec.swipeCompletionDistance()) {
       targetPosition += movement > 0 ? 1 : -1;
     }
     return FullPlayerPagerSpec.clampPosition(targetPosition, paneCount);
+  }
+
+  static morphTargetProgress(startProgress: number, currentProgress: number,
+    fallbackTarget: number, travelDistance: number): number {
+    const movement = (currentProgress - startProgress) * Math.max(1, travelDistance);
+    if (Math.abs(movement) < PlayerMotionSpec.MORPH_GESTURE_COMPLETION_DISTANCE) {
+      return fallbackTarget <= 0 ? 0 : 1;
+    }
+    return movement > 0 ? 1 : 0;
   }
 }

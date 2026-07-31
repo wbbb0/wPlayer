@@ -73,18 +73,19 @@ export class FullPlayerPagerSpec {
   static readonly MIN_TWO_PANE_WIDTH: number = 720;
   static readonly TWO_PANE_VERTICAL_AVOID_BUDGET: number = 48;
   static readonly MIN_TWO_PANE_HEIGHT: number = 560;
-  static readonly SWIPE_COMPLETION_FRACTION: number = 0.12;
-  static readonly SWIPE_COMPLETION_MAX_DISTANCE: number = 56;
+  static readonly SWIPE_COMPLETION_DISTANCE: number = 36;
   static readonly SIDE_PAGE_HANDOFF_FRACTION: number = 0.3;
   static readonly SIDE_PAGE_EXIT_DISTANCE_FRACTION: number = 0.06;
   static readonly PAGE_SETTLE_SPRING_RESPONSE: number = 0.42;
   static readonly PAGE_SETTLE_SPRING_DAMPING: number = 0.88;
+  static readonly PAGE_SETTLE_DURATION: number = 420;
   static readonly SIDE_PAGE_ARTWORK_FADE_END_PROGRESS: number = 0.6;
 
   static canBeginGesture(morphPhase: PlayerMorphPhase,
     pagerPhase: FullPlayerPagerPhase): boolean {
     return morphPhase === PlayerMorphPhase.OPEN &&
-      pagerPhase === FullPlayerPagerPhase.SETTLED;
+      (pagerPhase === FullPlayerPagerPhase.SETTLED ||
+        pagerPhase === FullPlayerPagerPhase.SETTLING);
   }
 
   static paneCount(width: number, height: number): number {
@@ -105,11 +106,8 @@ export class FullPlayerPagerSpec {
     return Math.max(0, Math.min(FullPlayerPagerSpec.maximumPosition(paneCount), position));
   }
 
-  static swipeCompletionDistance(pageSpan: number): number {
-    return Math.min(
-      Math.max(0, pageSpan) * FullPlayerPagerSpec.SWIPE_COMPLETION_FRACTION,
-      FullPlayerPagerSpec.SWIPE_COMPLETION_MAX_DISTANCE
-    );
+  static swipeCompletionDistance(): number {
+    return FullPlayerPagerSpec.SWIPE_COMPLETION_DISTANCE;
   }
 
   static positionForPage(page: FullPlayerPage, paneCount: number): number {
@@ -202,8 +200,7 @@ export class PlayerMotionSpec {
   static readonly COLLAPSED_SURFACE_DARK: string = '#FF2B2B2B';
   static readonly COLLAPSED_SURFACE_LIGHT: string = '#FFFFFFFF';
   static readonly FULL_PLAYER_CONTENT_COLOR: string = '#FFFFFFFF';
-  static readonly GESTURE_COMPLETION_FRACTION: number = 0.28;
-  static readonly GESTURE_COMPLETION_MAX_DISTANCE: number = 120;
+  static readonly MORPH_GESTURE_COMPLETION_DISTANCE: number = 56;
   static readonly OPEN_DURATION: number = 420;
   static readonly CLOSE_DURATION: number = 340;
   static readonly CANCEL_DURATION: number = 280;
@@ -246,6 +243,19 @@ export class PlayerMotionSpec {
   static readonly ARTWORK_STATE_SPRING_RESPONSE: number = 0.36;
   static readonly ARTWORK_STATE_SPRING_DAMPING: number = 0.72;
   static readonly LYRIC_FOCUS_DURATION: number = 100;
+
+  static interpolatingSpringEasing(response: number, dampingFraction: number): string {
+    const angularFrequency = 2 * Math.PI / Math.max(0.01, response);
+    const stiffness = angularFrequency * angularFrequency;
+    const damping = 2 * Math.max(0, dampingFraction) * angularFrequency;
+    return `interpolating-spring(0, 1, ${stiffness}, ${damping})`;
+  }
+
+  static closeEasing(): string {
+    return `cubic-bezier(${PlayerMotionSpec.CLOSE_CURVE_X1}, ` +
+      `${PlayerMotionSpec.CLOSE_CURVE_Y1}, ${PlayerMotionSpec.CLOSE_CURVE_X2}, ` +
+      `${PlayerMotionSpec.CLOSE_CURVE_Y2})`;
+  }
 
   static distanceFromRecognitionOrigin(offset: number): number {
     const magnitude = Math.max(0, Math.abs(offset) - PlayerMotionSpec.GESTURE_AXIS_LOCK_DISTANCE);
@@ -350,6 +360,12 @@ export class PlayerMorphVisualSpec {
 export class PlayerMorphInteractionSpec {
   static shouldConsumeBackPress(morphPhase: PlayerMorphPhase): boolean {
     return morphPhase !== PlayerMorphPhase.IDLE;
+  }
+
+  static canBeginFullPlayerVerticalGesture(morphPhase: PlayerMorphPhase): boolean {
+    return morphPhase === PlayerMorphPhase.OPEN ||
+      morphPhase === PlayerMorphPhase.OPENING ||
+      morphPhase === PlayerMorphPhase.CLOSING;
   }
 }
 

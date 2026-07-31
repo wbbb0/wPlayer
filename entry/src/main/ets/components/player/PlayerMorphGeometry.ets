@@ -3,8 +3,7 @@ import {
   FullPlayerPagerSpec,
   PlayerFrame,
   PlayerLayoutSpec,
-  PlayerMorphPhase,
-  PlayerMotionSpec
+  PlayerMorphPhase
 } from './PlayerMotion';
 
 export class PlayerMorphGeometry {
@@ -64,13 +63,5 @@ export class PlayerMorphGeometry {
 
   static verticalTravelDistance(miniPlayerFrame: PlayerFrame, rootFrame: PlayerFrame): number {
     return Math.max(1, miniPlayerFrame.y - rootFrame.y);
-  }
-
-  static gestureCompletionProgress(miniPlayerFrame: PlayerFrame, rootFrame: PlayerFrame): number {
-    return Math.min(
-      PlayerMotionSpec.GESTURE_COMPLETION_FRACTION,
-      PlayerMotionSpec.GESTURE_COMPLETION_MAX_DISTANCE /
-        PlayerMorphGeometry.verticalTravelDistance(miniPlayerFrame, rootFrame)
-    );
   }
 }

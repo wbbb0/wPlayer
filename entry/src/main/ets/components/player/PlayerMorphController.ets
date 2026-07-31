@@ -1,5 +1,4 @@
 import { HdsBarStyle, HdsTabsController } from '@kit.UIDesignKit';
-import { curves } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { image } from '@kit.ImageKit';
 import { vibrator } from '@kit.SensorServiceKit';
@@ -33,6 +32,7 @@ import {
   PlayerMorphGesturePolicy
 } from './PlayerMorphGesturePolicy';
 import { PlayerMorphTransitionCoordinator } from './PlayerMorphTransitionCoordinator';
+import { InterruptibleScalarMotion } from './InterruptibleScalarMotion';
 
 const PLAYER_SYSTEM_BAR_OWNER = 'full_player';
 
@@ -101,12 +101,19 @@ export class PlayerMorphController {
   };
   frozenMiniPlayerForeground: string = '#FFFFFFFF';
   private returnToExpandedMiniBar: boolean = false;
+  private miniPlayerGestureStartExpandProgress: number = 0;
   private fullPlayerGestureStartPosition: number = FullPlayerPage.COVER;
+  private fullPlayerGestureStartExpandProgress: number = 1;
+  private fullPlayerGestureFallbackTarget: number = 1;
   private fullPlayerPagerEpoch: number = 0;
   private miniPlayerGestureRegion: MiniPlayerGestureRegion = MiniPlayerGestureRegion.OTHER;
   private miniPlayerHorizontalGestureOffset: number = 0;
   private readonly transitionCoordinator: PlayerMorphTransitionCoordinator =
     new PlayerMorphTransitionCoordinator();
+  private readonly playerMorphMotion: InterruptibleScalarMotion =
+    new InterruptibleScalarMotion(0);
+  private readonly fullPlayerPageMotion: InterruptibleScalarMotion =
+    new InterruptibleScalarMotion(FullPlayerPage.COVER);
   private readonly playerStore: PlayerStore;
   private readonly compactTabsController: HdsTabsController;
   private readonly condensedCompactTabsController: HdsTabsController;
@@ -180,11 +187,14 @@ export class PlayerMorphController {
 
   dispose(): void {
     this.setPlayerMorphPhase(PlayerMorphPhase.IDLE);
+    this.playerMorphMotion.dispose();
+    this.fullPlayerPageMotion.dispose();
     this.transitionCoordinator.dispose();
     this.fullPlayerPagerEpoch += 1;
     this.fullPlayerPagerPhase = FullPlayerPagerPhase.SETTLED;
     this.fullPlayerSideContentReady = false;
     this.playerExpandProgress = 0;
+    this.playerMorphMotion.setValue(0);
     this.playerMorphBackgroundOpacity = 1;
     this.dynamicBackgroundBinding.active = false;
     this.miniPlayerBinding.sourceVisible = true;
@@ -222,6 +232,8 @@ export class PlayerMorphController {
       nextPaneCount
     );
     this.fullPlayerPagerEpoch += 1;
+    this.fullPlayerPageMotion.cancel();
+    this.fullPlayerPageMotion.setValue(this.fullPlayerPagePosition);
     this.fullPlayerPagerPhase = FullPlayerPagerPhase.SETTLED;
   }
 
@@ -521,19 +533,87 @@ export class PlayerMorphController {
     return this.fullPlayerSideContentReady;
   }
 
-  private beginMorphPhase(phase: PlayerMorphPhase): number {
+  private takeOverMorphPresentation(): void {
+    if (!this.playerMorphMotion.isActive()) {
+      this.playerMorphMotion.setValue(this.playerExpandProgress);
+      return;
+    }
+    const presentationProgress = this.clamp(this.playerMorphMotion.value(), 0, 1);
+    this.playerMorphMotion.cancel();
+    this.context().animateToImmediately({
+      duration: 0
+    }, () => {
+      this.playerExpandProgress = presentationProgress;
+    });
+  }
+
+  private takeOverFullPlayerPagePresentation(): void {
+    if (!this.fullPlayerPageMotion.isActive()) {
+      this.fullPlayerPageMotion.setValue(this.fullPlayerPagePosition);
+      return;
+    }
+    const presentationPosition = FullPlayerPagerSpec.clampPosition(
+      this.fullPlayerPageMotion.value(),
+      this.fullPlayerPaneCount()
+    );
+    this.fullPlayerPageMotion.cancel();
+    this.context().animateToImmediately({
+      duration: 0
+    }, () => {
+      this.fullPlayerPagePosition = presentationPosition;
+    });
+  }
+
+  private freezeFullPlayerCloseGeometry(): void {
     this.fullPlayerPagerEpoch += 1;
+    this.takeOverFullPlayerPagePresentation();
+    this.freezeMiniPlayerGeometry(false);
+    this.freezeMorphArtworkSource();
+  }
+
+  private beginMorphPhase(phase: PlayerMorphPhase): number {
+    const epoch = this.transitionCoordinator.beginTransition();
+    this.fullPlayerPagerEpoch += 1;
+    this.takeOverMorphPresentation();
+    this.takeOverFullPlayerPagePresentation();
     this.fullPlayerPagerPhase = FullPlayerPagerPhase.SETTLED;
     this.fullPlayerPage = FullPlayerPagerSpec.nearestPage(
       this.fullPlayerPagePosition,
       this.fullPlayerPaneCount()
     );
-    const epoch = this.transitionCoordinator.beginTransition();
     this.setPlayerMorphPhase(phase);
     this.dynamicBackgroundBinding.active = true;
     this.miniPlayerBinding.sourceVisible = false;
     this.miniPlayerBinding.sourceMarqueeActive = false;
     return epoch;
+  }
+
+  private animateMorphProgress(target: number, phase: PlayerMorphPhase, duration: number,
+    easing: string, sourceVisible: boolean,
+    onFinish: (epoch: number) => void): void {
+    const epoch = this.beginMorphPhase(phase);
+    this.miniPlayerBinding.sourceVisible = sourceVisible;
+    const startProgress = this.playerExpandProgress;
+    this.playerMorphMotion.animate(
+      this.context(),
+      startProgress,
+      target,
+      duration,
+      easing
+    );
+    this.context().animateToImmediately({
+      duration: duration,
+      curve: easing,
+      onFinish: (): void => {
+        if (this.isCurrentMorphTransition(epoch)) {
+          this.playerMorphMotion.complete(target);
+          this.playerExpandProgress = target;
+          onFinish(epoch);
+        }
+      }
+    }, () => {
+      this.playerExpandProgress = target;
+    });
   }
 
   private setPlayerMorphPhase(phase: PlayerMorphPhase): void {
@@ -556,13 +636,6 @@ export class PlayerMorphController {
 
   private morphVerticalTravelDistance(): number {
     return PlayerMorphGeometry.verticalTravelDistance(
-      this.frozenMiniPlayerFrame,
-      this.frozenRootFrame
-    );
-  }
-
-  private morphGestureCompletionProgress(): number {
-    return PlayerMorphGeometry.gestureCompletionProgress(
       this.frozenMiniPlayerFrame,
       this.frozenRootFrame
     );
@@ -628,6 +701,7 @@ export class PlayerMorphController {
   beginMiniPlayerGesture(): void {
     this.playerGestureAxis = PlayerGestureAxis.UNDECIDED;
     this.miniPlayerHorizontalGestureOffset = 0;
+    this.miniPlayerGestureStartExpandProgress = this.playerExpandProgress;
   }
 
   updateMiniPlayerGesture(event: GestureEvent): void {
@@ -666,12 +740,13 @@ export class PlayerMorphController {
         this.playerMorphBackgroundOpacity = 1;
       }
       const verticalOffset = PlayerMotionSpec.distanceFromRecognitionOrigin(event.offsetY);
-      const upwardDistance = Math.max(0, -verticalOffset);
       this.playerExpandProgress = this.clamp(
-        upwardDistance / this.morphVerticalTravelDistance(),
+        this.miniPlayerGestureStartExpandProgress -
+          verticalOffset / this.morphVerticalTravelDistance(),
         0,
         1
       );
+      this.playerMorphMotion.setValue(this.playerExpandProgress);
     }
   }
 
@@ -719,24 +794,23 @@ export class PlayerMorphController {
       this.miniPlayerHorizontalGestureOffset = 0;
       return;
     }
-    const shouldExpand = this.playerExpandProgress >= this.morphGestureCompletionProgress();
+    const shouldExpand = PlayerMorphGesturePolicy.morphTargetProgress(
+      this.miniPlayerGestureStartExpandProgress,
+      this.playerExpandProgress,
+      0,
+      this.morphVerticalTravelDistance()
+    ) === 1;
     const duration = shouldExpand ? PlayerMotionSpec.OPEN_DURATION : PlayerMotionSpec.CANCEL_DURATION;
-    const epoch = this.beginMorphPhase(
-      shouldExpand ? PlayerMorphPhase.OPENING : PlayerMorphPhase.CLOSING
-    );
-    if (!shouldExpand) {
-      this.miniPlayerBinding.sourceVisible = true;
-    }
-    this.context().animateTo({
+    this.animateMorphProgress(
+      shouldExpand ? 1 : 0,
+      shouldExpand ? PlayerMorphPhase.OPENING : PlayerMorphPhase.CLOSING,
       duration,
-      curve: shouldExpand ? curves.springMotion(
+      shouldExpand ? PlayerMotionSpec.interpolatingSpringEasing(
         PlayerMotionSpec.OPEN_SPRING_RESPONSE,
         PlayerMotionSpec.OPEN_SPRING_DAMPING
-      ) : Curve.EaseOut,
-      onFinish: () => {
-        if (!this.isCurrentMorphTransition(epoch)) {
-          return;
-        }
+      ) : 'ease-out',
+      !shouldExpand,
+      (epoch: number): void => {
         if (shouldExpand) {
           this.setPlayerMorphPhase(PlayerMorphPhase.OPEN);
           this.fullPlayerSideContentReady = true;
@@ -746,10 +820,8 @@ export class PlayerMorphController {
           this.beginMorphBackgroundHandoff(epoch);
         }
       }
-    }, () => {
-      this.miniPlayerOffsetX = 0;
-      this.playerExpandProgress = shouldExpand ? 1 : 0;
-    });
+    );
+    this.miniPlayerOffsetX = 0;
   }
 
   private isMiniBarResizeGesture(): boolean {
@@ -780,25 +852,23 @@ export class PlayerMorphController {
     this.freezeMiniPlayerGeometry();
     this.freezeMorphArtworkSource();
     this.fullPlayerSideContentReady = false;
-    const epoch = this.beginMorphPhase(PlayerMorphPhase.OPENING);
     this.playerMorphBackgroundOpacity = 1;
-    this.context().animateTo({
-      duration: PlayerMotionSpec.OPEN_DURATION,
-      curve: curves.springMotion(
+    this.animateMorphProgress(
+      1,
+      PlayerMorphPhase.OPENING,
+      PlayerMotionSpec.OPEN_DURATION,
+      PlayerMotionSpec.interpolatingSpringEasing(
         PlayerMotionSpec.OPEN_SPRING_RESPONSE,
         PlayerMotionSpec.OPEN_SPRING_DAMPING
       ),
-      onFinish: () => {
-        if (this.isCurrentMorphTransition(epoch)) {
-          this.setPlayerMorphPhase(PlayerMorphPhase.OPEN);
-          this.fullPlayerSideContentReady = true;
-          this.releaseMorphArtworkSource();
-          playbackRuntime.onFullPlayerOpened();
-        }
+      false,
+      (_epoch: number): void => {
+        this.setPlayerMorphPhase(PlayerMorphPhase.OPEN);
+        this.fullPlayerSideContentReady = true;
+        this.releaseMorphArtworkSource();
+        playbackRuntime.onFullPlayerOpened();
       }
-    }, () => {
-      this.playerExpandProgress = 1;
-    });
+    );
   }
 
   hideFullPlayer(): void {
@@ -808,8 +878,7 @@ export class PlayerMorphController {
       return;
     }
     this.restoreReturnMiniBarStyle();
-    this.freezeMiniPlayerGeometry(false);
-    this.freezeMorphArtworkSource();
+    this.freezeFullPlayerCloseGeometry();
     this.animateFullPlayerClose();
   }
 
@@ -823,22 +892,16 @@ export class PlayerMorphController {
   }
 
   private animateFullPlayerClose(): void {
-    const epoch = this.beginMorphPhase(PlayerMorphPhase.CLOSING);
-    this.miniPlayerBinding.sourceVisible = true;
-    this.context().animateTo({
-      duration: PlayerMotionSpec.CLOSE_DURATION,
-      curve: curves.cubicBezierCurve(
-        PlayerMotionSpec.CLOSE_CURVE_X1,
-        PlayerMotionSpec.CLOSE_CURVE_Y1,
-        PlayerMotionSpec.CLOSE_CURVE_X2,
-        PlayerMotionSpec.CLOSE_CURVE_Y2
-      ),
-      onFinish: () => {
+    this.animateMorphProgress(
+      0,
+      PlayerMorphPhase.CLOSING,
+      PlayerMotionSpec.CLOSE_DURATION,
+      PlayerMotionSpec.closeEasing(),
+      true,
+      (epoch: number): void => {
         this.beginMorphBackgroundHandoff(epoch);
       }
-    }, () => {
-      this.playerExpandProgress = 0;
-    });
+    );
   }
 
   beginFullPlayerHorizontalGesture(): void {
@@ -847,6 +910,7 @@ export class PlayerMorphController {
       this.fullPlayerPagerPhase
     )) {
       this.fullPlayerPagerEpoch += 1;
+      this.takeOverFullPlayerPagePresentation();
       this.fullPlayerPagerPhase = FullPlayerPagerPhase.DRAGGING;
       this.fullPlayerGestureStartPosition = this.fullPlayerPagePosition;
     }
@@ -863,6 +927,7 @@ export class PlayerMorphController {
       this.fullPlayerGestureStartPosition - horizontalOffset / pageSpan,
       this.fullPlayerPaneCount()
     );
+    this.fullPlayerPageMotion.setValue(this.fullPlayerPagePosition);
   }
 
   finishFullPlayerHorizontalGesture(): void {
@@ -873,12 +938,21 @@ export class PlayerMorphController {
   }
 
   beginFullPlayerVerticalGesture(): void {
-    if (this.playerMorphPhase !== PlayerMorphPhase.OPEN) {
+    if (!PlayerMorphInteractionSpec.canBeginFullPlayerVerticalGesture(
+      this.playerMorphPhase
+    )) {
       return;
     }
-    this.freezeMiniPlayerGeometry(false);
-    this.freezeMorphArtworkSource();
+    const previousPhase = this.playerMorphPhase;
+    const stableOpen = previousPhase === PlayerMorphPhase.OPEN;
+    this.fullPlayerGestureFallbackTarget =
+      previousPhase === PlayerMorphPhase.CLOSING ? 0 : 1;
+    this.takeOverMorphPresentation();
+    if (stableOpen) {
+      this.freezeFullPlayerCloseGeometry();
+    }
     this.beginMorphPhase(PlayerMorphPhase.CLOSE_DRAGGING);
+    this.fullPlayerGestureStartExpandProgress = this.playerExpandProgress;
     this.playerMorphBackgroundOpacity = 1;
   }
 
@@ -887,39 +961,43 @@ export class PlayerMorphController {
       return;
     }
     const verticalOffset = PlayerMotionSpec.distanceFromRecognitionOrigin(event.offsetY);
-    const downwardDistance = Math.max(0, verticalOffset);
-    this.playerExpandProgress = 1 - this.clamp(
-      downwardDistance / this.morphVerticalTravelDistance(),
+    this.playerExpandProgress = this.clamp(
+      this.fullPlayerGestureStartExpandProgress -
+        verticalOffset / this.morphVerticalTravelDistance(),
       0,
       1
     );
+    this.playerMorphMotion.setValue(this.playerExpandProgress);
   }
 
   finishFullPlayerVerticalGesture(): void {
     if (this.playerMorphPhase !== PlayerMorphPhase.CLOSE_DRAGGING) {
       return;
     }
-    const shouldClose = this.playerExpandProgress <= 1 - this.morphGestureCompletionProgress();
+    const targetProgress = PlayerMorphGesturePolicy.morphTargetProgress(
+      this.fullPlayerGestureStartExpandProgress,
+      this.playerExpandProgress,
+      this.fullPlayerGestureFallbackTarget,
+      this.morphVerticalTravelDistance()
+    );
+    const shouldClose = targetProgress === 0;
     if (shouldClose) {
       this.restoreReturnMiniBarStyle();
       this.animateFullPlayerClose();
       return;
     }
-    const epoch = this.beginMorphPhase(PlayerMorphPhase.OPENING);
-    this.context().animateTo({
-      duration: PlayerMotionSpec.CLOSE_CANCEL_DURATION,
-      curve: Curve.EaseOut,
-      onFinish: () => {
-        if (!this.isCurrentMorphTransition(epoch)) {
-          return;
-        }
+    this.animateMorphProgress(
+      1,
+      PlayerMorphPhase.OPENING,
+      PlayerMotionSpec.CLOSE_CANCEL_DURATION,
+      'ease-out',
+      false,
+      (_epoch: number): void => {
         this.setPlayerMorphPhase(PlayerMorphPhase.OPEN);
         this.fullPlayerSideContentReady = true;
         this.releaseMorphArtworkSource();
       }
-    }, () => {
-      this.playerExpandProgress = 1;
-    });
+    );
   }
 
   private finishFullPlayerPageGesture(): void {
@@ -935,18 +1013,31 @@ export class PlayerMorphController {
   }
 
   private settleFullPlayerPage(targetPosition: number, paneCount: number): void {
-    const targetPage = FullPlayerPagerSpec.nearestPage(targetPosition, paneCount);
     const epoch = ++this.fullPlayerPagerEpoch;
+    this.takeOverFullPlayerPagePresentation();
+    const targetPage = FullPlayerPagerSpec.nearestPage(targetPosition, paneCount);
     this.fullPlayerPagerPhase = FullPlayerPagerPhase.SETTLING;
-    this.context().animateTo({
-      curve: curves.springMotion(
-        FullPlayerPagerSpec.PAGE_SETTLE_SPRING_RESPONSE,
-        FullPlayerPagerSpec.PAGE_SETTLE_SPRING_DAMPING
-      ),
-      onFinish: () => {
+    const startPosition = this.fullPlayerPagePosition;
+    const easing = PlayerMotionSpec.interpolatingSpringEasing(
+      FullPlayerPagerSpec.PAGE_SETTLE_SPRING_RESPONSE,
+      FullPlayerPagerSpec.PAGE_SETTLE_SPRING_DAMPING
+    );
+    this.fullPlayerPageMotion.animate(
+      this.context(),
+      startPosition,
+      targetPosition,
+      FullPlayerPagerSpec.PAGE_SETTLE_DURATION,
+      easing
+    );
+    this.context().animateToImmediately({
+      duration: FullPlayerPagerSpec.PAGE_SETTLE_DURATION,
+      curve: easing,
+      onFinish: (): void => {
         if (epoch !== this.fullPlayerPagerEpoch) {
           return;
         }
+        this.fullPlayerPageMotion.complete(targetPosition);
+        this.fullPlayerPagePosition = targetPosition;
         this.fullPlayerPage = targetPage;
         this.fullPlayerPagerPhase = FullPlayerPagerPhase.SETTLED;
       }

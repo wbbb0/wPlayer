@@ -20,6 +20,7 @@ export struct FullPlayerLyricsPage {
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @Prop @Watch('onListenerActiveChanged') listenerActive: boolean = true;
+  @Prop pageScrollingEnabled: boolean = true;
   @Prop primaryContentColor: string = '#FFFFFFFF';
   @Prop secondaryContentColor: string = '#B8FFFFFF';
   @State private lyricBlurEnabled: boolean = true;
@@ -87,6 +88,9 @@ export struct FullPlayerLyricsPage {
   }
 
   private blockVerticalPlayerGesture(recognizers: Array<GestureRecognizer>): void {
+    if (!this.pageScrollingEnabled) {
+      return;
+    }
     recognizers.forEach((recognizer: GestureRecognizer) => {
       if (recognizer.getEventTargetInfo().getId() === FULL_PLAYER_VERTICAL_GESTURE_HOST_ID) {
         recognizer.preventBegin();
@@ -115,6 +119,7 @@ export struct FullPlayerLyricsPage {
         .width('100%')
         .layoutWeight(1)
         .edgeEffect(EdgeEffect.Spring)
+        .enableScrollInteraction(this.pageScrollingEnabled)
         .cachedCount(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT, true)
         .scrollBar(BarState.Off)
         .contentEndOffset(this.lyricContentEndOffset())
@@ -138,6 +143,7 @@ export struct FullPlayerLyricsPage {
         .width('100%')
         .layoutWeight(1)
         .edgeEffect(EdgeEffect.Spring)
+        .enableScrollInteraction(this.pageScrollingEnabled)
         .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) =>
           this.blockVerticalPlayerGesture(recognizers))
       } else {

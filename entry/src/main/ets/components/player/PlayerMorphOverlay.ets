@@ -91,6 +91,7 @@ export struct PlayerMorphOverlay {
             paneCount: this.controller.renderedFullPlayerPaneCount(),
             activePage: this.controller.fullPlayerPage,
             sideContentReady: this.controller.shouldRenderFullPlayerSideContent(),
+            pageScrollingEnabled: this.controller.playerMorphPhase === PlayerMorphPhase.OPEN,
             primaryContentColor: this.primaryContentColor,
             previousArtworkFrame: this.controller.artworkTarget,
             previousCenteredArtworkFrame: this.controller.centeredArtworkTarget,

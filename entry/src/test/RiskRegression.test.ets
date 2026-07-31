@@ -204,8 +204,7 @@ export default function riskRegressionTest() {
       expect(FullPlayerPagerSpec.pageSpan(1280, 2)).assertEqual(640);
       expect(FullPlayerPagerSpec.positionForPage(FullPlayerPage.QUEUE, 2)).assertEqual(0);
       expect(FullPlayerPagerSpec.positionForPage(FullPlayerPage.LYRICS, 2)).assertEqual(1);
-      expect(Math.round(FullPlayerPagerSpec.swipeCompletionDistance(360))).assertEqual(43);
-      expect(FullPlayerPagerSpec.swipeCompletionDistance(800)).assertEqual(56);
+      expect(FullPlayerPagerSpec.swipeCompletionDistance()).assertEqual(36);
     });
 
     it('uses a dedicated ultra-compact full-player geometry only when one pane cannot fit', 0, () => {

@@ -196,6 +196,7 @@ export struct FullPlayerQueuePage {
   @Prop paneCount: number = 1;
   @Prop bottomInset: number = 0;
   @Prop @Watch('onListenerActiveChanged') listenerActive: boolean = true;
+  @Prop pageScrollingEnabled: boolean = true;
   @Prop primaryContentColor: string = '#FFFFFFFF';
   @Prop secondaryContentColor: string = '#B8FFFFFF';
   onPlayQueueTrack: (trackId: number) => void = (_trackId: number): void => {};
@@ -259,6 +260,9 @@ export struct FullPlayerQueuePage {
   }
 
   private blockVerticalPlayerGesture(recognizers: Array<GestureRecognizer>): void {
+    if (!this.pageScrollingEnabled) {
+      return;
+    }
     recognizers.forEach((recognizer: GestureRecognizer) => {
       if (recognizer.getEventTargetInfo().getId() === FULL_PLAYER_VERTICAL_GESTURE_HOST_ID) {
         recognizer.preventBegin();
@@ -388,6 +392,7 @@ export struct FullPlayerQueuePage {
           .layoutWeight(1)
           .width('100%')
           .edgeEffect(EdgeEffect.Spring)
+          .enableScrollInteraction(this.pageScrollingEnabled)
           .cachedCount(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT, true)
           .scrollBar(BarState.Auto)
           .contentEndOffset(this.bottomInset)

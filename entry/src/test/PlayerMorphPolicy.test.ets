@@ -2,6 +2,12 @@ import { describe, expect, it } from '@ohos/hypium';
 import {
   DynamicBackgroundArtworkUploadState
 } from '../main/ets/components/player/DynamicBackgroundArtworkUploadState';
+import {
+  InterruptibleScalarMotion
+} from '../main/ets/components/player/InterruptibleScalarMotion';
+import {
+  PresentationMotionState
+} from '../main/ets/components/player/PresentationMotionState';
 import { PlayerMorphGeometry } from '../main/ets/components/player/PlayerMorphGeometry';
 import {
   MiniBarResizeAction,
@@ -178,7 +184,7 @@ export default function playerMorphPolicyTest() {
       )).assertEqual(PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS);
     });
 
-    it('does not restart a page drag while the previous settle is active', 0, () => {
+    it('allows a page drag to take over the previous settle', 0, () => {
       expect(FullPlayerPagerSpec.canBeginGesture(
         PlayerMorphPhase.OPEN,
         FullPlayerPagerPhase.SETTLED
@@ -186,11 +192,69 @@ export default function playerMorphPolicyTest() {
       expect(FullPlayerPagerSpec.canBeginGesture(
         PlayerMorphPhase.OPEN,
         FullPlayerPagerPhase.SETTLING
-      )).assertFalse();
+      )).assertTrue();
       expect(FullPlayerPagerSpec.canBeginGesture(
         PlayerMorphPhase.OPENING,
         FullPlayerPagerPhase.SETTLED
       )).assertFalse();
+    });
+
+    it('keeps presentation tracking separate from observable render progress', 0, () => {
+      const motion = new InterruptibleScalarMotion(0.4);
+      expect(motion.value()).assertEqual(0.4);
+      expect(motion.isActive()).assertFalse();
+      motion.setValue(0.65);
+      expect(motion.value()).assertEqual(0.65);
+    });
+
+    it('keeps takeover active until render settling completes', 0, () => {
+      const state = new PresentationMotionState(0.2);
+      state.begin(0.2);
+      state.sample(0.55);
+      expect(state.isRenderSettling()).assertTrue();
+      state.finishTracker();
+      expect(state.isRenderSettling()).assertTrue();
+      expect(state.takeOver()).assertEqual(0.55);
+      expect(state.isRenderSettling()).assertFalse();
+
+      state.begin(0.4);
+      state.completeRender(0);
+      expect(state.value()).assertEqual(0);
+      expect(state.isRenderSettling()).assertFalse();
+    });
+
+    it('allows full-player vertical drag to take over morph settling', 0, () => {
+      expect(PlayerMorphInteractionSpec.canBeginFullPlayerVerticalGesture(
+        PlayerMorphPhase.OPEN
+      )).assertTrue();
+      expect(PlayerMorphInteractionSpec.canBeginFullPlayerVerticalGesture(
+        PlayerMorphPhase.OPENING
+      )).assertTrue();
+      expect(PlayerMorphInteractionSpec.canBeginFullPlayerVerticalGesture(
+        PlayerMorphPhase.CLOSING
+      )).assertTrue();
+      expect(PlayerMorphInteractionSpec.canBeginFullPlayerVerticalGesture(
+        PlayerMorphPhase.IDLE
+      )).assertFalse();
+      expect(PlayerMorphInteractionSpec.canBeginFullPlayerVerticalGesture(
+        PlayerMorphPhase.BACKGROUND_HANDOFF
+      )).assertFalse();
+    });
+
+    it('measures the fixed morph threshold from each gesture takeover point', 0, () => {
+      expect(PlayerMotionSpec.MORPH_GESTURE_COMPLETION_DISTANCE).assertEqual(56);
+      expect(PlayerMorphGesturePolicy.morphTargetProgress(
+        0.45, 0.50, 1, 700
+      )).assertEqual(1);
+      expect(PlayerMorphGesturePolicy.morphTargetProgress(
+        0.45, 0.36, 1, 700
+      )).assertEqual(0);
+      expect(PlayerMorphGesturePolicy.morphTargetProgress(
+        0.45, 0.50, 0, 700
+      )).assertEqual(0);
+      expect(PlayerMorphGesturePolicy.morphTargetProgress(
+        0.45, 0.54, 0, 700
+      )).assertEqual(1);
     });
 
     it('uses enlarged playback targets in both full-player layouts', 0, () => {

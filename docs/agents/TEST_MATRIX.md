@@ -19,7 +19,7 @@
 | Library repository | initialization, queries, invalidation, paging, unavailable tracks and affected playlist projections |
 | Import | cancellation, duplicate proof, permission loss, corrupt input, partial failure and session report continuity |
 | Metadata/artwork | missing fields, extraction failure, embedded/large artwork, cache cleanup and stale work |
-| Database schema | fresh creation, version change, destructive development rebuild or production migration behavior |
+| Database schema | fresh creation, every supported incremental upgrade, rollback on migration failure and retained user data |
 | M3U | encodings, malformed rows, duplicate rows, matching ambiguity, Unicode and round trip |
 | Settings | corrupt/missing values, normalization, persistence and observable-store synchronization |
 | Navigation | root selection, per-tab stacks, detail back behavior and breakpoint promotion/demotion |
@@ -80,4 +80,3 @@ Additional playback scenarios:
 - Do not claim a gesture works based only on policy tests.
 - Distinguish “not run”, “unavailable”, “failed” and “passed”.
 - A build result is not a test result.
-

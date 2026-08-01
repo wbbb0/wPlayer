@@ -27,6 +27,7 @@ export struct FullPlayerLyricsPage {
   @Prop focusAnimationEnabled: boolean = true;
   @Prop primaryContentColor: string = '#FFFFFFFF';
   @Prop secondaryContentColor: string = '#B8FFFFFF';
+  @Prop lyricBlurEffectEnabled: boolean = true;
   onSeek: (positionMs: number) => void = (_positionMs: number): void => {};
   @State private lyricBlurEnabled: boolean = true;
   private readonly lyricScroller: Scroller = new Scroller();
@@ -174,7 +175,7 @@ export struct FullPlayerLyricsPage {
                 playerStore: this.playerStore,
                 line: line,
                 index: index,
-                blurEnabled: this.lyricBlurEnabled,
+                blurEnabled: this.lyricBlurEffectEnabled && this.lyricBlurEnabled,
                 primaryContentColor: this.primaryContentColor,
                 secondaryContentColor: this.secondaryContentColor
               })

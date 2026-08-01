@@ -39,6 +39,7 @@ import {
 } from '../../pages/library/AlbumDetailPage';
 import { ArtistDetailPage } from '../../pages/library/ArtistDetailPage';
 import { FloatingWindowSettingsPage } from '../../pages/settings/FloatingWindowSettingsPage';
+import { PlayerPageSettingsPage } from '../../pages/settings/PlayerPageSettingsPage';
 import { DynamicBackgroundDebugPage } from '../../pages/settings/DynamicBackgroundDebugPage';
 import { DynamicBackgroundV2DebugPage } from '../../pages/settings/DynamicBackgroundV2DebugPage';
 import { DynamicBackgroundV3DebugPage } from '../../pages/settings/DynamicBackgroundV3DebugPage';
@@ -109,6 +110,7 @@ export struct ResponsiveNavigationRouteContent {
     (_albumId: number, _action: AlbumAction): void => {};
   onOpenNavigationCustomization: () => void = (): void => {};
   onOpenFloatingWindowSettings: () => void = (): void => {};
+  onOpenPlayerPageSettings: () => void = (): void => {};
   onOpenAbout: () => void = (): void => {};
   onOpenPrivacyPolicy: () => void = (): void => {};
   onOpenDataAndPermissions: () => void = (): void => {};
@@ -178,6 +180,7 @@ export struct ResponsiveNavigationRouteContent {
         scroller: this.scroller,
         openNavigationCustomization: this.onOpenNavigationCustomization,
         openFloatingWindowSettings: this.onOpenFloatingWindowSettings,
+        openPlayerPageSettings: this.onOpenPlayerPageSettings,
         openAbout: this.onOpenAbout,
         openPrivacyPolicy: this.onOpenPrivacyPolicy,
         openDataAndPermissions: this.onOpenDataAndPermissions,
@@ -220,6 +223,7 @@ export struct ResponsiveNavigationDestinationContent {
   @Prop orderedItems: Array<NavigationPageItem> = [];
   customizationScroller: Scroller = new Scroller();
   floatingWindowSettingsScroller: Scroller = new Scroller();
+  playerPageSettingsScroller: Scroller = new Scroller();
   aboutScroller: Scroller = new Scroller();
   privacyPolicyScroller: Scroller = new Scroller();
   dataAndPermissionsScroller: Scroller = new Scroller();
@@ -232,6 +236,7 @@ export struct ResponsiveNavigationDestinationContent {
   onPlayTrack: (item: TrackListItem) => void = (_item: TrackListItem): void => {};
   onOpenNavigationCustomization: () => void = (): void => {};
   onOpenFloatingWindowSettings: () => void = (): void => {};
+  onOpenPlayerPageSettings: () => void = (): void => {};
   onOpenAbout: () => void = (): void => {};
   onOpenPrivacyPolicy: () => void = (): void => {};
   onOpenDataAndPermissions: () => void = (): void => {};
@@ -282,6 +287,7 @@ export struct ResponsiveNavigationDestinationContent {
   onNavigationItemMove: (from: number, to: number) => void =
     (_from: number, _to: number): void => {};
   onPictureInPictureSettingsChange: () => void = (): void => {};
+  onPlayerPageKeepScreenOnChange: () => void = (): void => {};
   onNavigateLibrary: (target: LibraryNavigationTarget) => void =
     (_target: LibraryNavigationTarget): void => {};
   onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
@@ -541,6 +547,33 @@ export struct ResponsiveNavigationDestinationContent {
       ))
       .bindToScrollable([this.floatingWindowSettingsScroller])
       .onBackPressed(this.onDestinationBackPressed)
+    } else if (this.name === NavigationRoute.PLAYER_PAGE_SETTINGS) {
+      HdsNavDestination() {
+        Stack({ alignContent: Alignment.Bottom }) {
+          PlayerPageSettingsPage({
+            settingsStore: this.settingsStore,
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            scroller: this.playerPageSettingsScroller,
+            onKeepScreenOnChange: this.onPlayerPageKeepScreenOnChange
+          })
+          PageBottomGradient({ maskColor: this.themePageBackground })
+        }
+        .width('100%')
+        .height('100%')
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(this.themePageBackground)
+      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        '播放页面',
+        undefined,
+        this.playbackChromeBackgroundColor()
+      ))
+      .bindToScrollable([this.playerPageSettingsScroller])
+      .onBackPressed(this.onDestinationBackPressed)
     } else if (this.name === NavigationRoute.DYNAMIC_BACKGROUND_DEBUG) {
       HdsNavDestination() {
         DynamicBackgroundDebugPage({
@@ -746,6 +779,7 @@ export struct ResponsiveNavigationDestinationContent {
             onAlbumAction: this.onAlbumAction,
             onOpenNavigationCustomization: this.onOpenNavigationCustomization,
             onOpenFloatingWindowSettings: this.onOpenFloatingWindowSettings,
+            onOpenPlayerPageSettings: this.onOpenPlayerPageSettings,
             onOpenAbout: this.onOpenAbout,
             onOpenPrivacyPolicy: this.onOpenPrivacyPolicy,
             onOpenDataAndPermissions: this.onOpenDataAndPermissions,

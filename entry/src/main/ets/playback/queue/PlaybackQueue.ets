@@ -41,6 +41,18 @@ export class PlaybackQueue {
     return QueueBuildPhase.READY;
   }
 
+  restore(items: Array<QueueTrack>, currentPosition: number): QueueBuildPhase {
+    if (items.length === 0 || currentPosition < 0 || currentPosition >= items.length) {
+      this.clear();
+      return items.length === 0 ? QueueBuildPhase.EMPTY : QueueBuildPhase.FAILED;
+    }
+    this.items = items.map((item: QueueTrack) => this.createEntry(item));
+    this.order = items.map((_item: QueueTrack, index: number): number => index);
+    this.cursor = currentPosition;
+    this.rebuildIndexes();
+    return QueueBuildPhase.READY;
+  }
+
   setShuffle(enabled: boolean, currentTrackId: number): void {
     if (this.items.length === 0) {
       return;

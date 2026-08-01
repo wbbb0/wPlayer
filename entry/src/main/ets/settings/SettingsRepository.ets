@@ -34,6 +34,10 @@ const FLOATING_WINDOW_LEGACY_AUTO_MINIMIZE_APP_KEY: string = 'floating_window.au
 const FLOATING_WINDOW_OPEN_BEHAVIOR_KEY: string = 'floating_window.open_behavior';
 const FLOATING_WINDOW_AUTO_START_ON_MINIMIZE_KEY: string = 'floating_window.auto_start_on_minimize';
 const FLOATING_WINDOW_AUTO_CLOSE_BEHAVIOR_KEY: string = 'floating_window.auto_close_behavior';
+const PLAYER_PAGE_KEEP_SCREEN_ON_KEY: string = 'player_page.keep_screen_on';
+const PLAYER_PAGE_SHOW_FLOATING_WINDOW_BUTTON_KEY: string =
+  'player_page.show_floating_window_button';
+const PLAYER_PAGE_LYRIC_BLUR_EFFECT_KEY: string = 'player_page.lyric_blur_effect';
 const COMPLETED_COLLECTION_MODE_KEY: string = 'playback.completed_collection.mode';
 const COMPLETED_COLLECTION_CURRENT_KEY: string = 'playback.completed_collection.current_enabled';
 const RECENT_PLAYLIST_TARGET_IDS_KEY: string = 'playlist.recent_target_ids';
@@ -292,6 +296,44 @@ export class SettingsRepository {
       FLOATING_WINDOW_AUTO_CLOSE_BEHAVIOR_KEY,
       FloatingWindowSettingsPolicy.normalizeAutoCloseBehavior(value)
     );
+  }
+
+  getPlayerPageKeepScreenOnEnabled(defaultValue: boolean = false): boolean {
+    return this.getBoolean(PLAYER_PAGE_KEEP_SCREEN_ON_KEY, defaultValue);
+  }
+
+  setPlayerPageKeepScreenOnEnabled(value: boolean): void {
+    this.setValue(PLAYER_PAGE_KEEP_SCREEN_ON_KEY, value);
+  }
+
+  getPlayerPageShowFloatingWindowButtonEnabled(defaultValue: boolean = true): boolean {
+    return this.getBoolean(PLAYER_PAGE_SHOW_FLOATING_WINDOW_BUTTON_KEY, defaultValue);
+  }
+
+  setPlayerPageShowFloatingWindowButtonEnabled(value: boolean): void {
+    this.setValue(PLAYER_PAGE_SHOW_FLOATING_WINDOW_BUTTON_KEY, value);
+  }
+
+  getPlayerPageLyricBlurEffectEnabled(defaultValue: boolean = true): boolean {
+    return this.getBoolean(PLAYER_PAGE_LYRIC_BLUR_EFFECT_KEY, defaultValue);
+  }
+
+  setPlayerPageLyricBlurEffectEnabled(value: boolean): void {
+    this.setValue(PLAYER_PAGE_LYRIC_BLUR_EFFECT_KEY, value);
+  }
+
+  clearLegacyPlaybackQueue(): void {
+    try {
+      this.store.deleteSync(PLAYBACK_QUEUE_TRACK_IDS_KEY);
+      this.store.deleteSync(PLAYBACK_QUEUE_CURRENT_TRACK_ID_KEY);
+      this.store.flush().catch((error: BusinessError) => {
+        console.warn(`Unable to remove legacy playback queue: ${error.code}, ${error.message}`);
+      });
+    } catch (error) {
+      const businessError = error as BusinessError;
+      console.warn(`Unable to remove legacy playback queue: ` +
+        `${businessError.code}, ${businessError.message}`);
+    }
   }
 
   getCompletedCollectionMode(defaultValue: number = 0): number {

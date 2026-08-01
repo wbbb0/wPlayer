@@ -41,6 +41,7 @@ export struct FullPlayerCoverPage {
   @Prop pagePosition: number = FullPlayerPage.COVER;
   @Prop paneCount: number = 1;
   @Prop primaryContentColor: string = '#FFFFFFFF';
+  @Prop showFloatingWindowButton: boolean = true;
   @Prop artworkSourceWidth: number = 0;
   @Prop artworkSourceHeight: number = 0;
   onNavigatePage: (page: FullPlayerPage) => void = (_page: FullPlayerPage): void => {};
@@ -54,6 +55,7 @@ export struct FullPlayerCoverPage {
     (_trackIds: Array<number>): void => {};
   onCompletedCollectionChange: (enabled: boolean) => void =
     (_enabled: boolean): void => {};
+  onOpenPlayerPageSettings: () => void = (): void => {};
   @Prop previousArtworkFrame: PlayerFrame = {
     x: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_X,
     y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y,
@@ -89,7 +91,8 @@ export struct FullPlayerCoverPage {
           this.onOpenTrackDetails(queueTrackListItem(this.playerStore.currentTrack));
         }
       },
-      this.onCompletedCollectionChange
+      this.onCompletedCollectionChange,
+      this.onOpenPlayerPageSettings
     ))
   }
 
@@ -338,7 +341,9 @@ export struct FullPlayerCoverPage {
               .layoutWeight(1)
           }
 
-          this.PictureInPictureButton()
+          if (this.showFloatingWindowButton) {
+            this.PictureInPictureButton()
+          }
 
           Stack() {
             PlayerImageIcon({
@@ -486,7 +491,7 @@ export struct FullPlayerCoverPage {
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
 
-      if (!this.measuresArtworkTarget) {
+      if (!this.measuresArtworkTarget && this.showFloatingWindowButton) {
         this.PictureInPictureButton()
       }
     }

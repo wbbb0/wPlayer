@@ -53,6 +53,8 @@ import {
   LibraryMaintenanceStatus
 } from '../library/data/MusicRepositoryTypes';
 import { NavigationRoute } from '../components/navigation/MoreNavigation';
+import { playerPageKeepScreenOnController } from
+  '../application/window/PlayerPageKeepScreenOnController';
 
 @Entry
 @Component
@@ -100,6 +102,9 @@ struct Index {
     this.navigationController.bindChromeController(this.navigationChromeController);
     this.navigationChromeController.attach();
     this.playerMorphController.attach(this.getUIContext());
+    this.playerMorphController.setFullPlayerVisibilityListener((visible: boolean): void => {
+      playerPageKeepScreenOnController.setPlayerPageVisible(visible);
+    });
     const miniPlayerParams = new MiniPlayerHostParams(
       this.playerStore,
       this.playerMorphController.miniPlayerBinding,
@@ -144,6 +149,9 @@ struct Index {
       try {
         this.settingsRepository = new SettingsRepository(abilityContext);
         this.settingsStore.initialize(this.settingsRepository);
+        playerPageKeepScreenOnController.setPreferenceEnabled(
+          this.settingsStore.playerPageKeepScreenOn
+        );
         playbackRuntime.bindPictureInPictureContext(this.getUIContext());
         this.playlistController.bindSettings(this.settingsRepository);
         this.navigationController.bindSettings(this.settingsRepository, this.settingsStore);
@@ -175,6 +183,7 @@ struct Index {
   }
 
   aboutToDisappear(): void {
+    playerPageKeepScreenOnController.setPlayerPageVisible(false);
     this.playerMorphController.dispose();
     this.compactMiniPlayerContent?.dispose();
     this.compactMiniPlayerContent = undefined;
@@ -418,6 +427,7 @@ struct Index {
       morePathStack: this.navigationController.morePathStack,
       moreScroller: this.navigationController.moreScroller,
       customizationScroller: this.navigationController.customizationScroller,
+      playerPageSettingsScroller: this.navigationController.playerPageSettingsScroller,
       trackDetailSheetBridge: this.trackDetailSheetBridge,
       onCompactTabChange: (index: number): void =>
         this.navigationController.handleCompactTabChange(index),
@@ -438,6 +448,10 @@ struct Index {
       onRememberSortChange: (value: boolean): void => this.libraryStore.setRememberSort(value),
       onPictureInPictureSettingsChange: (): void =>
         playbackRuntime.refreshPictureInPicturePreferences(),
+      onPlayerPageKeepScreenOnChange: (): void =>
+        playerPageKeepScreenOnController.setPreferenceEnabled(
+          this.settingsStore.playerPageKeepScreenOn
+        ),
       onDemoLibraryChange: (value: boolean): void => {
         this.setDemoLibraryEnabled(value);
       },
@@ -497,6 +511,7 @@ struct Index {
       controller: this.playerMorphController,
       playerStore: this.playerStore,
       libraryStore: this.libraryStore,
+      settingsStore: this.settingsStore,
       topInset: this.statusBarAvoidHeight,
       bottomInset: this.navigationAvoidHeight,
       primaryContentColor: PlayerMotionSpec.FULL_PLAYER_CONTENT_COLOR,
@@ -508,7 +523,11 @@ struct Index {
         this.playerMorphController.hideFullPlayer();
         this.trackDetailSheetBridge.open(track);
       },
-      onNavigateLibrary: (target: LibraryNavigationTarget): void => this.navigateLibrary(target)
+      onNavigateLibrary: (target: LibraryNavigationTarget): void => this.navigateLibrary(target),
+      onOpenPlayerPageSettings: (): void => {
+        this.playerMorphController.hideFullPlayer();
+        this.navigationController.openPlayerPageSettings(this.usesWideLayout());
+      }
     })
   }
 
@@ -517,6 +536,7 @@ struct Index {
     PlayerGeometryProbe({
       playerStore: this.geometryPlayerStore,
       libraryStore: this.libraryStore,
+      showFloatingWindowButton: this.settingsStore.playerPageShowFloatingWindowButton,
       topInset: this.statusBarAvoidHeight,
       bottomInset: this.navigationAvoidHeight,
       rootFrame: this.playerMorphController.rootFrame,

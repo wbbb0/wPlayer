@@ -11,12 +11,15 @@ import {
   systemBarStyleController
 } from '../appearance/SystemBarStyleController';
 import { playbackRuntime } from '../playback/PlaybackRuntime';
+import { HarmonyKeepScreenOnWindow, playerPageKeepScreenOnController } from
+  '../application/window/PlayerPageKeepScreenOnController';
 
 const DOMAIN = 0x0000;
 const TAG = 'wPlayer/EntryAbility';
 
 export default class EntryAbility extends UIAbility {
   private mainWindow?: window.Window;
+  private keepScreenOnWindow?: HarmonyKeepScreenOnWindow;
   private systemBarWindow?: SystemBarWindow;
   private runtimeLease: number = 0;
   private foregroundActive: boolean = false;
@@ -68,6 +71,8 @@ export default class EntryAbility extends UIAbility {
       }
       try {
         this.mainWindow = windowStage.getMainWindowSync();
+        this.keepScreenOnWindow = new HarmonyKeepScreenOnWindow(this.mainWindow);
+        playerPageKeepScreenOnController.bindWindow(this.keepScreenOnWindow);
         await this.mainWindow.setWindowLayoutFullScreen(true);
         await this.applyMainWindowAppearance();
         this.systemBarWindow = new HarmonySystemBarWindow(this.mainWindow);
@@ -114,6 +119,8 @@ export default class EntryAbility extends UIAbility {
   }
 
   onWindowStageDestroy(): void {
+    playerPageKeepScreenOnController.unbindWindow(this.keepScreenOnWindow);
+    this.keepScreenOnWindow = undefined;
     systemBarStyleController.unbindWindow(this.systemBarWindow);
     this.systemBarWindow = undefined;
     this.mainWindow = undefined;
@@ -122,6 +129,7 @@ export default class EntryAbility extends UIAbility {
 
   onForeground(): void {
     this.foregroundActive = true;
+    playerPageKeepScreenOnController.setForeground(true);
     systemBarStyleController.setReplaySchedulingEnabled(true);
     appAppearanceController.notifyChanged();
     this.applyMainWindowAppearance();
@@ -132,6 +140,7 @@ export default class EntryAbility extends UIAbility {
 
   onBackground(): void {
     this.foregroundActive = false;
+    playerPageKeepScreenOnController.setForeground(false);
     systemBarStyleController.setReplaySchedulingEnabled(false);
     playbackRuntime.onBackground();
     hilog.info(DOMAIN, TAG, 'Ability entered background');

@@ -70,8 +70,9 @@ internals. Do not perform a repository-wide dependency-injection rewrite solely 
 
 - PlaybackEngine exclusively owns AVPlayer creation, raw state transitions and source preparation.
 - PlaybackRuntime coordinates commands, queue behavior, engine/session integration and atomic Store projection.
-- PlaybackPersistenceCoordinator owns restore planning and preference writes. It uses the Runtime-owned queue-build
-  epoch for stale-result checks and never projects queue state itself.
+- PlaybackPersistenceCoordinator owns restore planning, serialized relational queue-snapshot writes and playback
+  preference writes. It uses the Runtime-owned queue-build epoch for stale-result checks and never projects queue
+  state itself. Persisted queue identity is positional so duplicate tracks and shuffled order survive restart.
 - PlaybackMediaCoordinator owns the single track request epoch and playback-time lyrics/artwork/palette work.
 - PlaybackPictureInPictureCoordinator delegates snapshots and lifecycle to the existing
   PlaybackPictureInPicture implementation.
@@ -127,6 +128,9 @@ same library graph.
 - AppSettingsStore owns observable settings state.
 - Small normalization and fallback decisions belong in named policy types.
 - Pages render and dispatch settings changes; they do not read Preferences directly.
+- PlayerPageKeepScreenOnController owns the effective window keep-screen-on state from bound-window, foreground,
+  player-page visibility and user-preference inputs. EntryAbility owns its Window binding; UI submits visibility and
+  preference intent without calling Window APIs directly.
 
 ## Navigation ownership
 

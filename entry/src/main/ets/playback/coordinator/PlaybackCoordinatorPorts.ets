@@ -5,6 +5,7 @@ import { DecodedFullArtwork } from '../artwork/ArtworkMemoryCache';
 import { PlaybackTrack, QueueTrack } from '../model/PlaybackModels';
 import { PlaybackMediaHost } from './PlaybackMediaCoordinator';
 import {
+  PersistedPlaybackQueueSnapshot,
   PlaybackPersistenceSettings,
   PlaybackRestoreRepository
 } from './PlaybackPersistenceCoordinator';
@@ -38,16 +39,24 @@ export class PlaybackPersistencePort implements PlaybackPersistenceSettings, Pla
     this.settingsProvider()?.setPlaybackResumeState(trackId, positionMs);
   }
 
-  setPlaybackQueue(trackIds: Array<number>, currentTrackId: number): void {
-    this.settingsProvider()?.setPlaybackQueue(trackIds, currentTrackId);
-  }
-
-  setPlaybackQueueCurrentTrackId(currentTrackId: number): void {
-    this.settingsProvider()?.setPlaybackQueueCurrentTrackId(currentTrackId);
+  clearLegacyPlaybackQueue(): void {
+    this.settingsProvider()?.clearLegacyPlaybackQueue();
   }
 
   getPlaybackQueueTracks(trackIds: Array<number>): Promise<Array<QueueTrack>> {
     return this.repository.getPlaybackQueueTracks(trackIds);
+  }
+
+  getPersistedPlaybackQueue(): Promise<PersistedPlaybackQueueSnapshot | undefined> {
+    return this.repository.getPersistedPlaybackQueue();
+  }
+
+  replacePersistedPlaybackQueue(trackIds: Array<number>, currentPosition: number): Promise<void> {
+    return this.repository.replacePersistedPlaybackQueue(trackIds, currentPosition);
+  }
+
+  updatePersistedPlaybackQueuePosition(currentPosition: number): Promise<void> {
+    return this.repository.updatePersistedPlaybackQueuePosition(currentPosition);
   }
 }
 

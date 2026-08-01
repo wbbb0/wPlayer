@@ -37,6 +37,16 @@ export interface LibraryRemovalRepository {
   commitRemoveTracks(trackIds: Array<number>): Promise<LibraryRemovalCommit>;
 }
 
+export interface PersistedPlaybackQueueItem {
+  position: number;
+  trackId: number;
+}
+
+export interface PersistedPlaybackQueueSnapshot {
+  items: Array<PersistedPlaybackQueueItem>;
+  currentPosition: number;
+}
+
 export interface ArtworkImportInput {
   metadata: ParsedArtwork;
   sourceHash?: string;

@@ -112,6 +112,11 @@ suppressing another.
 
 ## Full-player shared-element morph
 
+- “保持屏幕常亮” defaults to disabled. When enabled, the foreground main window remains awake from the start of
+  full-player opening until closing or cancellation reaches the idle phase; backgrounding or destroying the window
+  releases the request.
+- “歌词模糊效果” defaults to enabled. Disabling it keeps lyric follow, active-line emphasis and seeking behavior but
+  renders every lyric line crisp. The existing drag-time suspension applies only while the preference is enabled.
 - Use the two-pane full-player pager only for landscape viewports at least 720vp wide and tall enough to preserve
   visually dominant cover artwork; narrower or short windows retain the single-pane pager.
 - Full-player cover layouts keep artwork visually dominant by sizing playback-button containers independently from
@@ -148,8 +153,9 @@ suppressing another.
 
 ## Album-artwork picture-in-picture
 
-- The cover page keeps the picture-in-picture action visible and disables it when no current track exists, so
-  asynchronous queue restoration does not require a structural UI rebuild.
+- “显示浮窗按钮” defaults to enabled. When enabled, the cover page keeps the action visible and disables it when no
+  current track exists. When disabled, regular and ultra-compact cover layouts omit the action without reserving an
+  empty slot; automatic floating-window behavior remains unchanged.
 - Starting picture-in-picture is an explicit user action; returning the application to the background must not race
   the foreground-only PiP start request.
 - The PiP content follows the current artwork aspect ratio and uses a square fallback when dimensions are missing.

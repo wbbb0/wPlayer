@@ -33,6 +33,7 @@ import mediaImportOperationTest from './MediaImportOperation.test';
 import mediaDuplicateProofTest from './MediaDuplicateProof.test';
 import playbackCoordinatorTest from './PlaybackCoordinator.test';
 import tabReselectionTest from './TabReselection.test';
+import playerPageKeepScreenOnControllerTest from './PlayerPageKeepScreenOnController.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -70,4 +71,5 @@ export default function testsuite() {
   mediaDuplicateProofTest();
   playbackCoordinatorTest();
   tabReselectionTest();
+  playerPageKeepScreenOnControllerTest();
 }

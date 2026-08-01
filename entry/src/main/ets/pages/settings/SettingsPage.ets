@@ -17,6 +17,7 @@ export struct SettingsPage {
   scroller: Scroller = new Scroller();
   openNavigationCustomization: () => void = (): void => {};
   openFloatingWindowSettings: () => void = (): void => {};
+  openPlayerPageSettings: () => void = (): void => {};
   openAbout: () => void = (): void => {};
   openPrivacyPolicy: () => void = (): void => {};
   openDataAndPermissions: () => void = (): void => {};
@@ -96,6 +97,13 @@ export struct SettingsPage {
               isOn: this.settingsStore.autoRemoveUnavailableOnPlayback,
               onChange: (value: boolean): void =>
                 this.settingsStore.setAutoRemoveUnavailableOnPlayback(value)
+            })
+            this.ItemDivider()
+            SettingsLinkItem({
+              symbol: $r('sys.symbol.play_fill'),
+              title: '播放页面',
+              description: '屏幕常亮、浮窗按钮与歌词效果',
+              onActivate: this.openPlayerPageSettings
             })
             this.ItemDivider()
             SettingsLinkItem({

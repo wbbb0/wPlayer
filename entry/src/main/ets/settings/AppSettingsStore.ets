@@ -23,6 +23,9 @@ export class AppSettingsStore {
     FloatingWindowSettingsPolicy.AUTO_START_ON_MINIMIZE_DEFAULT;
   floatingWindowAutoCloseBehavior: FloatingWindowAutoCloseBehavior =
     FloatingWindowSettingsPolicy.AUTO_CLOSE_BEHAVIOR_DEFAULT;
+  playerPageKeepScreenOn: boolean = false;
+  playerPageShowFloatingWindowButton: boolean = true;
+  playerPageLyricBlurEffect: boolean = true;
   completedCollectionMode: CompletedCollectionMode = CompletedCollectionMode.SMART;
   demoLibraryEnabled: boolean = false;
 
@@ -54,6 +57,10 @@ export class AppSettingsStore {
       repository.getFloatingWindowAutoCloseBehavior(
         FloatingWindowSettingsPolicy.AUTO_CLOSE_BEHAVIOR_DEFAULT
       );
+    this.playerPageKeepScreenOn = repository.getPlayerPageKeepScreenOnEnabled(false);
+    this.playerPageShowFloatingWindowButton =
+      repository.getPlayerPageShowFloatingWindowButtonEnabled(true);
+    this.playerPageLyricBlurEffect = repository.getPlayerPageLyricBlurEffectEnabled(true);
     this.completedCollectionMode = CompletedCollectionSettingPolicy.normalize(
       repository.getCompletedCollectionMode(CompletedCollectionMode.SMART)
     );
@@ -120,6 +127,21 @@ export class AppSettingsStore {
     this.floatingWindowAutoCloseBehavior =
       FloatingWindowSettingsPolicy.normalizeAutoCloseBehavior(value);
     this.repository?.setFloatingWindowAutoCloseBehavior(this.floatingWindowAutoCloseBehavior);
+  }
+
+  setPlayerPageKeepScreenOn(value: boolean): void {
+    this.playerPageKeepScreenOn = value;
+    this.repository?.setPlayerPageKeepScreenOnEnabled(value);
+  }
+
+  setPlayerPageShowFloatingWindowButton(value: boolean): void {
+    this.playerPageShowFloatingWindowButton = value;
+    this.repository?.setPlayerPageShowFloatingWindowButtonEnabled(value);
+  }
+
+  setPlayerPageLyricBlurEffect(value: boolean): void {
+    this.playerPageLyricBlurEffect = value;
+    this.repository?.setPlayerPageLyricBlurEffectEnabled(value);
   }
 
   setCompletedCollectionMode(value: CompletedCollectionMode): void {

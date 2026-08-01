@@ -30,6 +30,7 @@ import {
 import { PlaybackTrack, QueueTrack, ResumeState } from '../../playback/model/PlaybackModels';
 import { LibraryDatabase } from './LibraryDatabase';
 import { MusicLibraryImporter } from './MusicLibraryImporter';
+import { MusicLibraryPlaybackQueueStore } from './MusicLibraryPlaybackQueueStore';
 import { MusicLibraryQueries } from './MusicLibraryQueries';
 import {
   ArtworkImportInput,
@@ -37,6 +38,7 @@ import {
   ArtworkCleanupCandidate,
   DuplicateCandidate,
   ImportTrackResult,
+  PersistedPlaybackQueueSnapshot,
   LibraryRemovalCommit,
   LibraryRemovalRepository,
   TrackImportInput
@@ -80,6 +82,8 @@ export class MusicRepository implements LibraryRemovalRepository {
   private readonly queries: MusicLibraryQueries = new MusicLibraryQueries(this.database);
   private readonly importer: MusicLibraryImporter = new MusicLibraryImporter(this.database);
   private readonly playlists: PlaylistRepository = new PlaylistRepository(this.database);
+  private readonly playbackQueue: MusicLibraryPlaybackQueueStore =
+    new MusicLibraryPlaybackQueueStore(this.database);
   private readonly invalidations: RepositoryInvalidationHub = new RepositoryInvalidationHub();
   private paletteCache?: ArtworkCache;
   private readonly paletteRepairs: Map<number, Promise<boolean>> = new Map<number, Promise<boolean>>();
@@ -253,6 +257,27 @@ export class MusicRepository implements LibraryRemovalRepository {
       return Promise.resolve(DemoMusicLibrary.playbackQueueTracks(trackIds));
     }
     return this.queries.getPlaybackQueueTracks(trackIds);
+  }
+
+  getPersistedPlaybackQueue(): Promise<PersistedPlaybackQueueSnapshot | undefined> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(undefined);
+    }
+    return this.playbackQueue.getSnapshot();
+  }
+
+  replacePersistedPlaybackQueue(trackIds: Array<number>, currentPosition: number): Promise<void> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve();
+    }
+    return this.playbackQueue.replaceSnapshot(trackIds, currentPosition);
+  }
+
+  updatePersistedPlaybackQueuePosition(currentPosition: number): Promise<void> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve();
+    }
+    return this.playbackQueue.updateCurrentPosition(currentPosition);
   }
 
   getResumeState(trackId: number): Promise<ResumeState> {

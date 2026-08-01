@@ -58,6 +58,22 @@ export default function playbackQueueRegressionTest() {
       expect(queue.next(RepeatMode.ONE, true)?.title).assertEqual('one');
     });
 
+    it('restores exact order and selects a later duplicate by position', 0, () => {
+      const queue = new PlaybackQueue();
+      const items = [
+        queueTrack(1, 'first duplicate'),
+        queueTrack(2, 'middle'),
+        queueTrack(1, 'second duplicate')
+      ];
+
+      expect(queue.restore(items, 2)).assertEqual(QueueBuildPhase.READY);
+      expect(queue.current()?.title).assertEqual('second duplicate');
+      const snapshot = queue.snapshot();
+      expect(snapshot.entries[0].track.title).assertEqual('first duplicate');
+      expect(snapshot.entries[1].track.title).assertEqual('middle');
+      expect(snapshot.entries[2].track.title).assertEqual('second duplicate');
+    });
+
     it('publishes only changed queue rows when the playback cursor moves', 0, () => {
       const source = new QueueTrackDataSource();
       const listener = new QueueDataListener();

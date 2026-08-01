@@ -101,10 +101,12 @@ callbacks or `module.json5` fields.
 ## Data and media safety
 
 - Every relational schema change must increment the database version.
-- Development-only destructive database rebuilds are allowed only while the project is explicitly in that phase.
-  They are not production-safe migrations.
-- If preserving user data or preparing a production release is in scope, use a versioned incremental migration and
-  ensure migration failure does not delete the music library.
+- The application is publicly released. Every relational schema change must use a versioned incremental migration
+  that preserves the existing music library and user data.
+- Never delete, rebuild or silently replace an existing database to handle a schema-version mismatch. Unknown or
+  unsupported versions must fail safely without modifying the database.
+- Run each schema migration atomically. A migration failure must roll back and leave the previous schema and user
+  data intact so a later application version can retry or recover.
 - Import and sort-index progress and per-item outcomes are session-only observable state, not relational or
   Preferences data.
 - Track records must retain enough information to detect duplicates and unavailable files.

@@ -6,77 +6,97 @@ const RESUME_MINIMUM_MS = 5000;
 const COMPLETION_REMAINING_MS = 10000;
 const COMPLETION_POSITION_FRACTION = 0.95;
 
+export interface PersistedPlaybackQueueItem {
+  position: number;
+  trackId: number;
+}
+
+export interface PersistedPlaybackQueueSnapshot {
+  items: Array<PersistedPlaybackQueueItem>;
+  currentPosition: number;
+}
+
 export interface PlaybackPersistenceSettings {
   getPlaybackLastTrackId(defaultValue?: number): number;
   getPlaybackLastPositionMs(defaultValue?: number): number;
   getPlaybackQueueTrackIds(): Array<number>;
   getPlaybackQueueCurrentTrackId(defaultValue?: number): number;
   setPlaybackResumeState(trackId: number, positionMs: number): void;
-  setPlaybackQueue(trackIds: Array<number>, currentTrackId: number): void;
-  setPlaybackQueueCurrentTrackId(currentTrackId: number): void;
+  clearLegacyPlaybackQueue(): void;
 }
 
 export interface PlaybackRestoreRepository {
   getPlaybackQueueTracks(trackIds: Array<number>): Promise<Array<QueueTrack>>;
+  getPersistedPlaybackQueue(): Promise<PersistedPlaybackQueueSnapshot | undefined>;
+  replacePersistedPlaybackQueue(trackIds: Array<number>, currentPosition: number): Promise<void>;
+  updatePersistedPlaybackQueuePosition(currentPosition: number): Promise<void>;
 }
 
 export class PlaybackRestorePlan {
-  readonly ids: Array<number>;
   readonly currentTrack: QueueTrack;
   readonly queueTracks: Array<QueueTrack>;
+  readonly currentPosition: number;
   readonly resumePositionMs: number;
 
-  constructor(
-    ids: Array<number>,
-    currentTrack: QueueTrack,
-    queueTracks: Array<QueueTrack>,
-    resumePositionMs: number
-  ) {
-    this.ids = ids;
+  constructor(currentTrack: QueueTrack, queueTracks: Array<QueueTrack>, currentPosition: number,
+    resumePositionMs: number) {
     this.currentTrack = currentTrack;
     this.queueTracks = queueTracks;
-    this.resumePositionMs = resumePositionMs;
-  }
-}
-
-export class PlaybackRestoreBasePlan {
-  readonly ids: Array<number>;
-  readonly currentTrack: QueueTrack;
-  readonly resumePositionMs: number;
-
-  constructor(ids: Array<number>, currentTrack: QueueTrack, resumePositionMs: number) {
-    this.ids = ids;
-    this.currentTrack = currentTrack;
+    this.currentPosition = currentPosition;
     this.resumePositionMs = resumePositionMs;
   }
 }
 
 export class PlaybackPersistenceCoordinator {
   private settings?: PlaybackPersistenceSettings;
+  private repository?: PlaybackRestoreRepository;
   private lastPersistedTrackId: number = -2;
   private lastPersistedPositionMs: number = -1;
+  private writeTail: Promise<void> = Promise.resolve();
 
-  bind(settings: PlaybackPersistenceSettings): void {
+  bind(settings: PlaybackPersistenceSettings, repository: PlaybackRestoreRepository): void {
     this.settings = settings;
+    this.repository = repository;
     this.resetWriteCache();
   }
 
-  reset(): void {
+  async reset(): Promise<void> {
+    await this.flush();
     this.settings = undefined;
+    this.repository = undefined;
     this.resetWriteCache();
   }
 
-  persistQueue(trackIds: Array<number>, currentTrackId: number): void {
-    this.settings?.setPlaybackQueue(trackIds, currentTrackId);
+  persistQueue(trackIds: Array<number>, currentPosition: number): void {
+    const repository = this.repository;
+    const settings = this.settings;
+    if (repository === undefined || settings === undefined) {
+      return;
+    }
+    const snapshot = trackIds.slice();
+    this.enqueueWrite(async (): Promise<void> => {
+      await repository.replacePersistedPlaybackQueue(snapshot, currentPosition);
+      settings.clearLegacyPlaybackQueue();
+    });
   }
 
-  persistQueueCurrentTrack(currentTrackId: number): void {
-    this.settings?.setPlaybackQueueCurrentTrackId(currentTrackId);
+  persistQueueCurrentPosition(currentPosition: number): void {
+    const repository = this.repository;
+    if (repository === undefined) {
+      return;
+    }
+    this.enqueueWrite(async (): Promise<void> => {
+      await repository.updatePersistedPlaybackQueuePosition(currentPosition);
+    });
   }
 
   clearResumeAndQueue(): void {
     this.persistResumeState(-1, 0);
     this.persistQueue([], -1);
+  }
+
+  flush(): Promise<void> {
+    return this.writeTail;
   }
 
   persistProgress(track: PlaybackTrack | undefined, positionMs: number, durationMs: number,
@@ -120,72 +140,69 @@ export class PlaybackPersistenceCoordinator {
     return PlaybackPersistenceCoordinator.validResumePosition(storedPosition, durationMs);
   }
 
-  async createRestoreBasePlan(repository: PlaybackRestoreRepository, buildEpoch: number,
-    isEpochCurrent: (epoch: number) => boolean): Promise<PlaybackRestoreBasePlan | undefined> {
-    const storedIds = this.settings?.getPlaybackQueueTrackIds() ?? [];
-    let trackId = this.settings?.getPlaybackQueueCurrentTrackId(-1) ?? -1;
-    if (trackId < 0) {
-      trackId = this.settings?.getPlaybackLastTrackId(-1) ?? -1;
-    }
-    if (trackId < 0 || !isEpochCurrent(buildEpoch)) {
+  async createRestorePlan(buildEpoch: number,
+    isEpochCurrent: (epoch: number) => boolean): Promise<PlaybackRestorePlan | undefined> {
+    if (this.repository === undefined || !isEpochCurrent(buildEpoch)) {
       return undefined;
     }
-    const ids = storedIds.length > 0 ? storedIds.slice() : [trackId];
-    if (ids.indexOf(trackId) < 0) {
-      ids.unshift(trackId);
-    }
-    const currentTracks = await repository.getPlaybackQueueTracks([trackId]);
+    const stored = await this.repository.getPersistedPlaybackQueue();
     if (!isEpochCurrent(buildEpoch)) {
       return undefined;
     }
-    if (currentTracks.length === 0) {
+    const snapshot = stored ?? this.legacySnapshot();
+    if (snapshot.items.length === 0) {
+      return undefined;
+    }
+    const uniqueTrackIds: Array<number> = [];
+    snapshot.items.forEach((item: PersistedPlaybackQueueItem): void => {
+      if (uniqueTrackIds.indexOf(item.trackId) < 0) {
+        uniqueTrackIds.push(item.trackId);
+      }
+    });
+    const resolvedTracks = await this.repository.getPlaybackQueueTracks(uniqueTrackIds);
+    if (!isEpochCurrent(buildEpoch)) {
+      return undefined;
+    }
+    const byId: Map<number, QueueTrack> = new Map<number, QueueTrack>();
+    resolvedTracks.forEach((track: QueueTrack): void => {
+      byId.set(track.id, track);
+    });
+    const tracks: Array<QueueTrack> = [];
+    const originalPositions: Array<number> = [];
+    snapshot.items.forEach((item: PersistedPlaybackQueueItem): void => {
+      const track = byId.get(item.trackId);
+      if (track !== undefined) {
+        tracks.push(track);
+        originalPositions.push(item.position);
+      }
+    });
+    if (tracks.length === 0) {
       this.clearResumeAndQueue();
       return undefined;
     }
-    const currentTrack = currentTracks[0];
-    const storedTrackId = this.settings?.getPlaybackLastTrackId(-1) ?? -1;
-    const storedPosition = appSettings.rememberPlaybackPosition && storedTrackId === trackId ?
-      this.settings?.getPlaybackLastPositionMs(0) ?? 0 : 0;
-    return new PlaybackRestoreBasePlan(
-      ids,
-      currentTrack,
-      PlaybackPersistenceCoordinator.validResumePosition(storedPosition, currentTrack.durationMs)
+    const currentPosition = PlaybackPersistenceCoordinator.restoredCurrentIndex(
+      originalPositions,
+      snapshot.currentPosition
     );
-  }
-
-  async completeRestorePlan(repository: PlaybackRestoreRepository, base: PlaybackRestoreBasePlan,
-    buildEpoch: number, isEpochCurrent: (epoch: number) => boolean): Promise<PlaybackRestorePlan | undefined> {
-    if (!isEpochCurrent(buildEpoch)) {
-      return undefined;
-    }
-    const remainingIds = base.ids.filter((id: number): boolean => id !== base.currentTrack.id);
-    const restoredTracks = await repository.getPlaybackQueueTracks(remainingIds);
-    if (!isEpochCurrent(buildEpoch)) {
-      return undefined;
-    }
-    const tracksById: Map<number, QueueTrack> = new Map<number, QueueTrack>();
-    restoredTracks.forEach((track: QueueTrack): void => {
-      tracksById.set(track.id, track);
-    });
-    tracksById.set(base.currentTrack.id, base.currentTrack);
-    const queueTracks: Array<QueueTrack> = [];
-    base.ids.forEach((id: number): void => {
-      const track = tracksById.get(id);
-      if (track !== undefined) {
-        queueTracks.push(track);
-      }
-    });
+    const currentTrack = tracks[currentPosition];
     return new PlaybackRestorePlan(
-      base.ids,
-      base.currentTrack,
-      queueTracks,
-      base.resumePositionMs
+      currentTrack,
+      tracks,
+      currentPosition,
+      this.resumePositionFor(currentTrack.id, currentTrack.durationMs)
     );
   }
 
-  private resetWriteCache(): void {
-    this.lastPersistedTrackId = -2;
-    this.lastPersistedPositionMs = -1;
+  static restoredCurrentIndex(originalPositions: Array<number>, storedPosition: number): number {
+    if (originalPositions.length === 0) {
+      return -1;
+    }
+    for (let index = 0; index < originalPositions.length; index += 1) {
+      if (originalPositions[index] >= storedPosition) {
+        return index;
+      }
+    }
+    return originalPositions.length - 1;
   }
 
   static validResumePosition(positionMs: number, durationMs: number): number {
@@ -195,5 +212,43 @@ export class PlaybackPersistenceCoordinator {
       return 0;
     }
     return positionMs;
+  }
+
+  private legacySnapshot(): PersistedPlaybackQueueSnapshot {
+    const storedIds = this.settings?.getPlaybackQueueTrackIds() ?? [];
+    const currentTrackId = this.settings?.getPlaybackQueueCurrentTrackId(-1) ?? -1;
+    const ids = storedIds.slice();
+    if (currentTrackId >= 0 && ids.indexOf(currentTrackId) < 0) {
+      ids.unshift(currentTrackId);
+    }
+    if (ids.length === 0 && currentTrackId < 0) {
+      const lastTrackId = this.settings?.getPlaybackLastTrackId(-1) ?? -1;
+      if (lastTrackId >= 0) {
+        ids.push(lastTrackId);
+      }
+    }
+    let currentPosition = currentTrackId >= 0 ? ids.indexOf(currentTrackId) : 0;
+    if (currentPosition < 0) {
+      currentPosition = 0;
+    }
+    return {
+      items: ids.map((trackId: number, position: number): PersistedPlaybackQueueItem => ({
+        position: position,
+        trackId: trackId
+      })),
+      currentPosition: currentPosition
+    };
+  }
+
+  private enqueueWrite(operation: () => Promise<void>): void {
+    this.writeTail = this.writeTail.then(operation).catch((error: Object): void => {
+      const message = error instanceof Error ? error.message : `${error}`;
+      console.warn(`Unable to persist playback queue: ${message}`);
+    });
+  }
+
+  private resetWriteCache(): void {
+    this.lastPersistedTrackId = -2;
+    this.lastPersistedPositionMs = -1;
   }
 }

@@ -46,7 +46,7 @@ export struct FloatingWindowSettingsPage {
           Column() {
             SettingsSelectItem({
               imageSource: $r('app.media.control_picture_in_picture'),
-              title: '打开浮窗后的行为',
+              title: '打开浮窗后',
               description: '选择浮窗启动成功后如何处理主界面',
               options: ['什么也不做', '最小化应用', '关闭播放页面'],
               selected: this.settingsStore.floatingWindowOpenBehavior,
@@ -63,7 +63,7 @@ export struct FloatingWindowSettingsPage {
             this.ItemDivider()
             SettingsToggleItem({
               symbol: $r('sys.symbol.play_fill'),
-              title: '播放时最小化自动打开浮窗',
+              title: '最小化时自动打开浮窗',
               description: '正在播放时最小化应用，自动显示专辑封面浮窗',
               isOn: this.settingsStore.floatingWindowAutoStartOnMinimize,
               onChange: (value: boolean): void => {
@@ -83,8 +83,8 @@ export struct FloatingWindowSettingsPage {
           Column() {
             SettingsSelectItem({
               symbol: $r('sys.symbol.xmark'),
-              title: '何时自动关闭小窗',
-              description: '选择何时自动关闭专辑封面小窗',
+              title: '自动关闭浮窗',
+              description: '选择何时自动关闭专辑封面浮窗',
               options: ['不自动关闭', '应用在前台时', '打开播放页面时'],
               selected: this.settingsStore.floatingWindowAutoCloseBehavior,
               value: FloatingWindowSettingsPolicy.autoCloseBehaviorLabel(

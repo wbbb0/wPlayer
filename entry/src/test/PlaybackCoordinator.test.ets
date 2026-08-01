@@ -10,7 +10,7 @@ import {
 import {
   PlaybackPersistenceCoordinator,
   PlaybackPersistenceSettings,
-  PlaybackRestoreBasePlan,
+  PersistedPlaybackQueueSnapshot,
   PlaybackRestoreRepository
 } from
   '../main/ets/playback/coordinator/PlaybackPersistenceCoordinator';
@@ -22,8 +22,7 @@ class FakePlaybackSettings implements PlaybackPersistenceSettings {
   queueTrackIds: Array<number> = [];
   queueCurrentTrackId: number = -1;
   resumeWrites: Array<string> = [];
-  queueWrites: Array<string> = [];
-  queueCursorWrites: Array<number> = [];
+  legacyClearCount: number = 0;
 
   getPlaybackLastTrackId(defaultValue: number = -1): number {
     return this.lastTrackId < 0 ? defaultValue : this.lastTrackId;
@@ -45,29 +44,48 @@ class FakePlaybackSettings implements PlaybackPersistenceSettings {
     this.resumeWrites.push(`${trackId}:${positionMs}`);
   }
 
-  setPlaybackQueue(trackIds: Array<number>, currentTrackId: number): void {
-    this.queueWrites.push(`${trackIds.join(',')}:${currentTrackId}`);
-  }
-
-  setPlaybackQueueCurrentTrackId(currentTrackId: number): void {
-    this.queueCursorWrites.push(currentTrackId);
+  clearLegacyPlaybackQueue(): void {
+    this.legacyClearCount += 1;
   }
 }
 
 class StaticRestoreRepository implements PlaybackRestoreRepository {
-  private readonly responses: Array<Array<QueueTrack>>;
+  snapshot?: PersistedPlaybackQueueSnapshot;
+  tracks: Array<QueueTrack> = [];
+  queueWrites: Array<string> = [];
+  cursorWrites: Array<number> = [];
 
-  constructor(responses: Array<Array<QueueTrack>>) {
-    this.responses = responses;
+  constructor(snapshot?: PersistedPlaybackQueueSnapshot, tracks: Array<QueueTrack> = []) {
+    this.snapshot = snapshot;
+    this.tracks = tracks;
   }
 
-  getPlaybackQueueTracks(_trackIds: Array<number>): Promise<Array<QueueTrack>> {
-    return Promise.resolve(this.responses.shift() ?? []);
+  getPlaybackQueueTracks(trackIds: Array<number>): Promise<Array<QueueTrack>> {
+    return Promise.resolve(this.tracks.filter((track: QueueTrack): boolean =>
+      trackIds.indexOf(track.id) >= 0));
+  }
+
+  getPersistedPlaybackQueue(): Promise<PersistedPlaybackQueueSnapshot | undefined> {
+    return Promise.resolve(this.snapshot);
+  }
+
+  replacePersistedPlaybackQueue(trackIds: Array<number>, currentPosition: number): Promise<void> {
+    this.queueWrites.push(`${trackIds.join(',')}:${currentPosition}`);
+    return Promise.resolve();
+  }
+
+  updatePersistedPlaybackQueuePosition(currentPosition: number): Promise<void> {
+    this.cursorWrites.push(currentPosition);
+    return Promise.resolve();
   }
 }
 
-class DeferredRestoreRepository implements PlaybackRestoreRepository {
+class DeferredRestoreRepository extends StaticRestoreRepository {
   private resolveLookup?: (tracks: Array<QueueTrack>) => void;
+
+  constructor(snapshot: PersistedPlaybackQueueSnapshot) {
+    super(snapshot);
+  }
 
   getPlaybackQueueTracks(_trackIds: Array<number>): Promise<Array<QueueTrack>> {
     return new Promise<Array<QueueTrack>>(
@@ -218,13 +236,15 @@ export default function playbackCoordinatorTest() {
     it('rejects a stale restore after the current-track lookup completes', 0, async () => {
       const coordinator = new PlaybackPersistenceCoordinator();
       const settings = new FakePlaybackSettings();
-      const repository = new DeferredRestoreRepository();
+      const repository = new DeferredRestoreRepository({
+        items: [{ position: 0, trackId: 1 }],
+        currentPosition: 0
+      });
       settings.lastTrackId = 1;
-      coordinator.bind(settings);
+      coordinator.bind(settings, repository);
       let currentEpoch = 1;
 
-      const pending = coordinator.createRestoreBasePlan(
-        repository,
+      const pending = coordinator.createRestorePlan(
         currentEpoch,
         (epoch: number): boolean => epoch === currentEpoch
       );
@@ -233,66 +253,80 @@ export default function playbackCoordinatorTest() {
 
       expect(await pending).assertUndefined();
       expect(settings.resumeWrites.length).assertEqual(0);
-      expect(settings.queueWrites.length).assertEqual(0);
+      expect(repository.queueWrites.length).assertEqual(0);
     });
 
     it('clears persisted state when the restored current track is missing', 0, async () => {
       const coordinator = new PlaybackPersistenceCoordinator();
       const settings = new FakePlaybackSettings();
       settings.lastTrackId = 7;
-      coordinator.bind(settings);
+      const repository = new StaticRestoreRepository({
+        items: [{ position: 0, trackId: 7 }],
+        currentPosition: 0
+      });
+      coordinator.bind(settings, repository);
 
-      const plan = await coordinator.createRestoreBasePlan(
-        new StaticRestoreRepository([[]]),
+      const plan = await coordinator.createRestorePlan(
         1,
         (_epoch: number): boolean => true
       );
+      await coordinator.flush();
 
       expect(plan).assertUndefined();
       expect(settings.resumeWrites[0]).assertEqual('-1:0');
-      expect(settings.queueWrites[0]).assertEqual(':-1');
+      expect(repository.queueWrites[0]).assertEqual(':-1');
     });
 
-    it('restores persisted order while filtering tracks that no longer exist', 0, async () => {
+    it('restores duplicate order and remaps a missing current item by position', 0, async () => {
       const coordinator = new PlaybackPersistenceCoordinator();
-      const base = new PlaybackRestoreBasePlan([1, 2, 3], queueTrack(2), 5000);
+      const settings = new FakePlaybackSettings();
+      const repository = new StaticRestoreRepository({
+        items: [
+          { position: 0, trackId: 1 },
+          { position: 1, trackId: 2 },
+          { position: 2, trackId: 1 }
+        ],
+        currentPosition: 1
+      }, [queueTrack(1)]);
+      coordinator.bind(settings, repository);
 
-      const plan = await coordinator.completeRestorePlan(
-        new StaticRestoreRepository([[queueTrack(1)]]),
-        base,
+      const plan = await coordinator.createRestorePlan(
         4,
         (epoch: number): boolean => epoch === 4
       );
 
       expect(plan?.queueTracks.length).assertEqual(2);
       expect(plan?.queueTracks[0].id).assertEqual(1);
-      expect(plan?.queueTracks[1].id).assertEqual(2);
-      expect(plan?.resumePositionMs).assertEqual(5000);
+      expect(plan?.queueTracks[1].id).assertEqual(1);
+      expect(plan?.currentPosition).assertEqual(1);
     });
 
     it('deduplicates resume writes and resets the cache when rebound', 0, () => {
       const coordinator = new PlaybackPersistenceCoordinator();
       const settings = new FakePlaybackSettings();
-      coordinator.bind(settings);
+      const repository = new StaticRestoreRepository();
+      coordinator.bind(settings, repository);
 
       coordinator.persistResumeState(3, 9000);
       coordinator.persistResumeState(3, 9000);
       expect(settings.resumeWrites.length).assertEqual(1);
 
-      coordinator.bind(settings);
+      coordinator.bind(settings, repository);
       coordinator.persistResumeState(3, 9000);
       expect(settings.resumeWrites.length).assertEqual(2);
     });
 
-    it('persists a queue cursor without rewriting the queue structure', 0, () => {
+    it('persists a queue cursor without rewriting the queue structure', 0, async () => {
       const coordinator = new PlaybackPersistenceCoordinator();
       const settings = new FakePlaybackSettings();
-      coordinator.bind(settings);
+      const repository = new StaticRestoreRepository();
+      coordinator.bind(settings, repository);
 
-      coordinator.persistQueueCurrentTrack(8);
+      coordinator.persistQueueCurrentPosition(8);
+      await coordinator.flush();
 
-      expect(settings.queueCursorWrites[0]).assertEqual(8);
-      expect(settings.queueWrites.length).assertEqual(0);
+      expect(repository.cursorWrites[0]).assertEqual(8);
+      expect(repository.queueWrites.length).assertEqual(0);
     });
   });
 }

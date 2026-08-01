@@ -121,6 +121,8 @@ export class PlayerMorphController {
   private readonly playerStore: PlayerStore;
   private readonly compactTabsController: HdsTabsController;
   private readonly condensedCompactTabsController: HdsTabsController;
+  private fullPlayerVisibilityListener?: (visible: boolean) => void;
+  private fullPlayerVisible: boolean = false;
 
   constructor(playerStore: PlayerStore, compactTabsController: HdsTabsController,
     condensedCompactTabsController: HdsTabsController) {
@@ -189,6 +191,11 @@ export class PlayerMorphController {
     this.transitionCoordinator.attach(uiContext);
   }
 
+  setFullPlayerVisibilityListener(listener?: (visible: boolean) => void): void {
+    this.fullPlayerVisibilityListener = listener;
+    listener?.(this.fullPlayerVisible);
+  }
+
   dispose(): void {
     this.setPlayerMorphPhase(PlayerMorphPhase.IDLE);
     this.playerMorphMotion.dispose();
@@ -204,6 +211,7 @@ export class PlayerMorphController {
     this.miniPlayerBinding.sourceVisible = true;
     this.miniPlayerBinding.sourceMarqueeActive = true;
     this.releaseMorphArtworkSource();
+    this.setFullPlayerVisibilityListener(undefined);
   }
 
   private context(): UIContext {
@@ -674,6 +682,11 @@ export class PlayerMorphController {
 
   private setPlayerMorphPhase(phase: PlayerMorphPhase): void {
     this.playerMorphPhase = phase;
+    const visible = phase !== PlayerMorphPhase.IDLE;
+    if (this.fullPlayerVisible !== visible) {
+      this.fullPlayerVisible = visible;
+      this.fullPlayerVisibilityListener?.(visible);
+    }
     this.syncSystemBarContentColor();
     if (phase === PlayerMorphPhase.OPEN) {
       systemBarStyleController.scheduleReapplyAfterFrame(

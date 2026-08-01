@@ -10,6 +10,7 @@ import {
 export struct PlayerGeometryProbe {
   @ObjectLink playerStore: PlayerStore;
   @ObjectLink libraryStore: LibraryStore;
+  @Prop showFloatingWindowButton: boolean = true;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @Prop rootFrame: PlayerFrame = { x: 0, y: 0, width: 0, height: 0 };
@@ -36,6 +37,7 @@ export struct PlayerGeometryProbe {
         pagePosition: FullPlayerPage.COVER,
         paneCount: this.paneCount,
         primaryContentColor: this.primaryContentColor,
+        showFloatingWindowButton: this.showFloatingWindowButton,
         artworkSourceWidth: this.artworkSourceWidth,
         artworkSourceHeight: this.artworkSourceHeight,
         previousArtworkFrame: this.previousArtworkFrame,

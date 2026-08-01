@@ -43,6 +43,8 @@ export struct FullPlayerContent {
   @Prop primaryContentColor: string = '#FFFFFFFF';
   @Prop artworkSourceWidth: number = 0;
   @Prop artworkSourceHeight: number = 0;
+  @Prop showFloatingWindowButton: boolean = true;
+  @Prop lyricBlurEffectEnabled: boolean = true;
   @Prop previousArtworkFrame: PlayerFrame = {
     x: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_X,
     y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y,
@@ -70,6 +72,7 @@ export struct FullPlayerContent {
     (_trackIds: Array<number>): void => {};
   onCompletedCollectionChange: (enabled: boolean) => void =
     (_enabled: boolean): void => {};
+  onOpenPlayerPageSettings: () => void = (): void => {};
   onArtworkTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
   onCenteredArtworkTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
   onPlaybackButtonTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
@@ -267,6 +270,7 @@ export struct FullPlayerContent {
       pagePosition: this.pagePosition,
       paneCount: this.paneCount,
       primaryContentColor: this.contentColor(),
+      showFloatingWindowButton: this.showFloatingWindowButton,
       artworkSourceWidth: this.artworkSourceWidth,
       artworkSourceHeight: this.artworkSourceHeight,
       previousArtworkFrame: this.previousArtworkFrame,
@@ -278,6 +282,7 @@ export struct FullPlayerContent {
       onOpenTrackDetails: this.onOpenTrackDetails,
       onRequestAddToPlaylist: this.onRequestAddToPlaylist,
       onCompletedCollectionChange: this.onCompletedCollectionChange,
+      onOpenPlayerPageSettings: this.onOpenPlayerPageSettings,
       onArtworkTarget: this.onArtworkTarget,
       onCenteredArtworkTarget: this.onCenteredArtworkTarget,
       onPlaybackButtonTarget: this.onPlaybackButtonTarget
@@ -299,6 +304,7 @@ export struct FullPlayerContent {
       focusAnimationEnabled: this.pageInteractionActive(FullPlayerPage.LYRICS),
       primaryContentColor: this.contentColor(),
       secondaryContentColor: this.secondaryContentColor(),
+      lyricBlurEffectEnabled: this.lyricBlurEffectEnabled,
       onSeek: this.onSeek
     })
   }
@@ -318,6 +324,7 @@ export struct FullPlayerContent {
       pagePosition: this.pagePosition,
       paneCount: this.paneCount,
       primaryContentColor: this.contentColor(),
+      showFloatingWindowButton: this.showFloatingWindowButton,
       artworkSourceWidth: this.artworkSourceWidth,
       artworkSourceHeight: this.artworkSourceHeight,
       previousArtworkFrame: this.previousArtworkFrame,
@@ -329,6 +336,7 @@ export struct FullPlayerContent {
       onOpenTrackDetails: this.onOpenTrackDetails,
       onRequestAddToPlaylist: this.onRequestAddToPlaylist,
       onCompletedCollectionChange: this.onCompletedCollectionChange,
+      onOpenPlayerPageSettings: this.onOpenPlayerPageSettings,
       onArtworkTarget: this.onArtworkTarget,
       onCenteredArtworkTarget: this.onCenteredArtworkTarget,
       onPlaybackButtonTarget: this.onPlaybackButtonTarget

@@ -47,7 +47,6 @@ import {
 import { PlaybackPictureInPicturePolicy } from './pip/PlaybackPictureInPicturePolicy';
 import {
   PlaybackPersistenceCoordinator,
-  PlaybackRestoreBasePlan,
   PlaybackRestorePlan
 } from './coordinator/PlaybackPersistenceCoordinator';
 import {
@@ -512,6 +511,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.stopDemoProgress();
     this.interruptCoverage();
     this.persistProgress(false);
+    await this.persistence.flush();
     this.media.invalidate();
     ++this.queueBuildEpoch;
     ++this.seekEpoch;
@@ -541,7 +541,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.media.reset();
     this.context = undefined;
     this.settings = undefined;
-    this.persistence.reset();
+    await this.persistence.reset();
     this.session = undefined;
     this.initializePromise = undefined;
   }
@@ -720,7 +720,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.pictureInPicture.reopen();
     this.context = context;
     this.settings = providedSettings === undefined ? new SettingsRepository(context) : providedSettings;
-    this.persistence.bind(this.persistencePort);
+    this.persistence.bind(this.persistencePort, this.persistencePort);
     appSettings.initialize(this.settings);
     await this.repository.initialize(context);
     const repeatMode = this.settings.getPlaybackRepeatMode(RepeatMode.ALL);
@@ -742,12 +742,11 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
 
   private async restoreLastPlayback(): Promise<void> {
     const buildEpoch = ++this.queueBuildEpoch;
-    const base = await this.persistence.createRestoreBasePlan(
-      this.persistencePort,
+    const plan = await this.persistence.createRestorePlan(
       buildEpoch,
       (epoch: number): boolean => epoch === this.queueBuildEpoch
     );
-    if (base === undefined || buildEpoch !== this.queueBuildEpoch) {
+    if (plan === undefined || buildEpoch !== this.queueBuildEpoch) {
       return;
     }
     this.queue.clear();
@@ -755,41 +754,17 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.queueSize = 0;
     this.playerStore.queueDataSource.replace([]);
     this.playerStore.setQueueCurrentIndex(-1);
-    await this.beginTrack(base.currentTrack, false, true, base.resumePositionMs);
+    await this.beginTrack(plan.currentTrack, false, true, plan.resumePositionMs);
     if (buildEpoch !== this.queueBuildEpoch) {
       return;
     }
-    this.schedulePlaybackQueueRestore(base, buildEpoch);
-  }
-
-  private schedulePlaybackQueueRestore(base: PlaybackRestoreBasePlan, buildEpoch: number): void {
-    setTimeout((): void => {
-      if (buildEpoch !== this.queueBuildEpoch) {
-        return;
-      }
-      this.persistence.completeRestorePlan(
-        this.persistencePort,
-        base,
-        buildEpoch,
-        (epoch: number): boolean => epoch === this.queueBuildEpoch
-      ).then((plan: PlaybackRestorePlan | undefined): void => {
-        if (plan !== undefined && buildEpoch === this.queueBuildEpoch) {
-          this.commitRestoredQueue(plan);
-        }
-      }).catch((error: Object): void => {
-        if (buildEpoch === this.queueBuildEpoch) {
-          this.playerStore.queuePhase = QueueBuildPhase.FAILED;
-          console.warn(`Unable to restore playback queue: ${PlaybackRuntime.messageOf(error)}`);
-        }
-      });
-    }, 0);
+    this.commitRestoredQueue(plan);
   }
 
   private commitRestoredQueue(plan: PlaybackRestorePlan): void {
-    const phase = this.queue.build(
+    const phase = this.queue.restore(
       plan.queueTracks,
-      plan.currentTrack.id,
-      this.playerStore.shuffleEnabled
+      plan.currentPosition
     );
     this.playerStore.queuePhase = phase;
     this.playerStore.queueSize = this.queue.size();
@@ -843,7 +818,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.media.reset();
     this.context = undefined;
     this.settings = undefined;
-    this.persistence.reset();
+    await this.persistence.reset();
     this.session = undefined;
   }
 
@@ -1160,7 +1135,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     const current = this.queue.current();
     this.playerStore.setQueueCurrentIndex(this.queue.currentIndex());
     if (persist && !DemoLibraryMode.isEnabled()) {
-      this.persistence.persistQueueCurrentTrack(current?.id ?? -1);
+      this.persistence.persistQueueCurrentPosition(current === undefined ? -1 : this.queue.currentIndex());
     }
     this.syncPictureInPicture();
   }
@@ -1169,12 +1144,10 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     const snapshot = this.queue.snapshot();
     this.playerStore.queueDataSource.replace(snapshot.entries);
     this.playerStore.setQueueCurrentIndex(snapshot.currentIndex);
-    const currentTrackId = snapshot.currentIndex >= 0 && snapshot.currentIndex < snapshot.entries.length ?
-      snapshot.entries[snapshot.currentIndex].track.id : -1;
     if (persist && !DemoLibraryMode.isEnabled()) {
       this.persistence.persistQueue(
         snapshot.entries.map((entry: QueueEntry) => entry.track.id),
-        currentTrackId
+        snapshot.currentIndex
       );
     }
     this.syncPictureInPicture();

@@ -153,6 +153,7 @@ export struct ResponsiveNavigationShell {
   moreScroller: Scroller = new Scroller();
   customizationScroller: Scroller = new Scroller();
   floatingWindowSettingsScroller: Scroller = new Scroller();
+  playerPageSettingsScroller: Scroller = new Scroller();
   trackDetailSheetBridge: TrackDetailSheetBridge = new TrackDetailSheetBridge();
   aboutScroller: Scroller = new Scroller();
   privacyPolicyScroller: Scroller = new Scroller();
@@ -169,6 +170,7 @@ export struct ResponsiveNavigationShell {
   onRememberLastTabChange: (value: boolean) => void = (_value: boolean): void => {};
   onRememberSortChange: (value: boolean) => void = (_value: boolean): void => {};
   onPictureInPictureSettingsChange: () => void = (): void => {};
+  onPlayerPageKeepScreenOnChange: () => void = (): void => {};
   onNavigationItemMove: (from: number, to: number) => void = (_from: number, _to: number): void => {};
   onRequestCreatePlaylist: () => void = (): void => {};
   onRequestRenamePlaylist: (playlist: PlaylistSummary) => void =
@@ -1199,6 +1201,10 @@ export struct ResponsiveNavigationShell {
         this.routePathStack(NavigationRoute.SETTINGS).pushPath({
           name: NavigationRoute.FLOATING_WINDOW_SETTINGS
         }),
+      onOpenPlayerPageSettings: (): void =>
+        this.routePathStack(NavigationRoute.SETTINGS).pushPath({
+          name: NavigationRoute.PLAYER_PAGE_SETTINGS
+        }),
       onOpenAbout: (): void => this.routePathStack(NavigationRoute.SETTINGS).pushPath({
         name: NavigationRoute.ABOUT
       }),
@@ -1250,6 +1256,7 @@ export struct ResponsiveNavigationShell {
       orderedItems: this.orderedItems(),
       customizationScroller: this.customizationScroller,
       floatingWindowSettingsScroller: this.floatingWindowSettingsScroller,
+      playerPageSettingsScroller: this.playerPageSettingsScroller,
       aboutScroller: this.aboutScroller,
       privacyPolicyScroller: this.privacyPolicyScroller,
       dataAndPermissionsScroller: this.dataAndPermissionsScroller,
@@ -1267,6 +1274,10 @@ export struct ResponsiveNavigationShell {
       onOpenFloatingWindowSettings: (): void =>
         this.routePathStack(NavigationRoute.SETTINGS).pushPath({
           name: NavigationRoute.FLOATING_WINDOW_SETTINGS
+        }),
+      onOpenPlayerPageSettings: (): void =>
+        this.routePathStack(NavigationRoute.SETTINGS).pushPath({
+          name: NavigationRoute.PLAYER_PAGE_SETTINGS
         }),
       onOpenAbout: (): void => this.routePathStack(NavigationRoute.SETTINGS).pushPath({
         name: NavigationRoute.ABOUT
@@ -1323,6 +1334,7 @@ export struct ResponsiveNavigationShell {
       onDestinationBackPressed: this.onDestinationBackPressed,
       onNavigationItemMove: this.onNavigationItemMove,
       onPictureInPictureSettingsChange: this.onPictureInPictureSettingsChange,
+      onPlayerPageKeepScreenOnChange: this.onPlayerPageKeepScreenOnChange,
       onNavigateLibrary: this.onNavigateLibrary,
       onRequestAddToPlaylist: this.onRequestAddToPlaylist,
       onOpenTrackActions: (

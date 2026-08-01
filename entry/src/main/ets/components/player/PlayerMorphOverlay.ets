@@ -6,6 +6,7 @@ import { MiniPlayerContent } from './MiniPlayerSurface';
 import { PlayerPlaybackButton } from './PlayerControls';
 import { PlayerMorphArtwork } from './PlayerMorphArtwork';
 import { PlayerMorphController } from './PlayerMorphController';
+import { AppSettingsStore } from '../../settings/AppSettingsStore';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import {
   AvailabilityState,
@@ -26,6 +27,7 @@ export struct PlayerMorphOverlay {
   @ObjectLink controller: PlayerMorphController;
   @ObjectLink playerStore: PlayerStore;
   @ObjectLink libraryStore: LibraryStore;
+  @ObjectLink settingsStore: AppSettingsStore;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @Prop primaryContentColor: string = '';
@@ -37,6 +39,7 @@ export struct PlayerMorphOverlay {
     (_track: TrackListItem): void => {};
   onNavigateLibrary: (target: LibraryNavigationTarget) => void =
     (_target: LibraryNavigationTarget): void => {};
+  onOpenPlayerPageSettings: () => void = (): void => {};
 
   private currentTrackItem(track: QueueTrack): TrackListItem {
     return {
@@ -93,6 +96,8 @@ export struct PlayerMorphOverlay {
             sideContentReady: this.controller.shouldRenderFullPlayerSideContent(),
             pageScrollingEnabled: this.controller.playerMorphPhase === PlayerMorphPhase.OPEN,
             primaryContentColor: this.primaryContentColor,
+            showFloatingWindowButton: this.settingsStore.playerPageShowFloatingWindowButton,
+            lyricBlurEffectEnabled: this.settingsStore.playerPageLyricBlurEffect,
             previousArtworkFrame: this.controller.artworkTarget,
             previousCenteredArtworkFrame: this.controller.centeredArtworkTarget,
             onClose: (): void => this.controller.hideFullPlayer(),
@@ -110,7 +115,8 @@ export struct PlayerMorphOverlay {
               this.onOpenTrackActions(trackId, anchorId),
             onOpenTrackDetails: (track: TrackListItem): void =>
               this.onOpenTrackDetails(track),
-            onNavigateLibrary: this.onNavigateLibrary
+            onNavigateLibrary: this.onNavigateLibrary,
+            onOpenPlayerPageSettings: this.onOpenPlayerPageSettings
           })
         }
         .width(this.controller.fullPlayerFrame().width)

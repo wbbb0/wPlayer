@@ -52,6 +52,7 @@ export class CurrentTrackActionMenuParams {
   readonly onAddToPlaylist: () => void;
   readonly onOpenDetails: () => void;
   readonly onCompletedCollectionChange: (enabled: boolean) => void;
+  readonly onOpenPlayerPageSettings?: () => void;
 
   constructor(
     trackAvailable: boolean,
@@ -60,7 +61,8 @@ export class CurrentTrackActionMenuParams {
     onAppendToQueue: () => void,
     onAddToPlaylist: () => void,
     onOpenDetails: () => void,
-    onCompletedCollectionChange: (enabled: boolean) => void
+    onCompletedCollectionChange: (enabled: boolean) => void,
+    onOpenPlayerPageSettings?: () => void
   ) {
     this.trackAvailable = trackAvailable;
     this.completedCollectionEnabled = completedCollectionEnabled;
@@ -69,6 +71,7 @@ export class CurrentTrackActionMenuParams {
     this.onAddToPlaylist = onAddToPlaylist;
     this.onOpenDetails = onOpenDetails;
     this.onCompletedCollectionChange = onCompletedCollectionChange;
+    this.onOpenPlayerPageSettings = onOpenPlayerPageSettings;
   }
 }
 
@@ -96,6 +99,11 @@ export function CurrentTrackActionMenu(params: CurrentTrackActionMenuParams) {
         new SymbolGlyphModifier($r('sys.symbol.checkmark')) : undefined
     })
       .onClick(() => params.onCompletedCollectionChange(!params.completedCollectionEnabled))
+    if (params.onOpenPlayerPageSettings !== undefined) {
+      MenuSectionDivider()
+      MenuItem({ content: '播放页面设置' })
+        .onClick(params.onOpenPlayerPageSettings)
+    }
   }
   .width(260)
 }

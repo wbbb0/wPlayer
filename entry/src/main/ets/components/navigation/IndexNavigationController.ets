@@ -45,6 +45,7 @@ export class IndexNavigationController {
   readonly morePathStack: NavPathStack = new NavPathStack();
   readonly moreScroller: Scroller = new Scroller();
   readonly customizationScroller: Scroller = new Scroller();
+  readonly playerPageSettingsScroller: Scroller = new Scroller();
   private settingsRepository?: SettingsRepository;
   private settingsStore?: AppSettingsStore;
   private chromeController?: NavigationChromeController;
@@ -240,6 +241,21 @@ export class IndexNavigationController {
     const pathStack = wideLayout ?
       this.rootPathStacks[navigationItemIndex(NavigationRoute.SETTINGS)] : this.morePathStack;
     pathStack.pushPath({ name: NavigationRoute.NAVIGATION_CUSTOMIZATION });
+  }
+
+  openPlayerPageSettings(wideLayout: boolean): void {
+    this.selectRoute(NavigationRoute.SETTINGS);
+    const rootStack = this.rootPathStacks[navigationItemIndex(NavigationRoute.SETTINGS)];
+    if (wideLayout) {
+      rootStack.clear(false);
+      rootStack.pushPath({ name: NavigationRoute.PLAYER_PAGE_SETTINGS });
+      this.morePathStack.clear(false);
+      return;
+    }
+    rootStack.clear(false);
+    this.morePathStack.clear(false);
+    this.morePathStack.pushPath({ name: NavigationRoute.SETTINGS }, false);
+    this.morePathStack.pushPath({ name: NavigationRoute.PLAYER_PAGE_SETTINGS });
   }
 
   setRememberLastTab(value: boolean): void {

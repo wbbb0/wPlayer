@@ -5,7 +5,16 @@ import { ARTWORK_PALETTE_VERSION } from '../artwork/ArtworkPaletteExtractor';
 import { RelationalStoreSafety } from './RelationalStoreSafety';
 
 const DATABASE_NAME = 'music_library.db';
-const DATABASE_VERSION = 12;
+const DATABASE_VERSION = 13;
+const PLAYBACK_QUEUE_STATE_SCHEMA: string = `CREATE TABLE playback_queue_state (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  current_position INTEGER NOT NULL DEFAULT -1,
+  updated_at INTEGER NOT NULL
+)`;
+const PLAYBACK_QUEUE_ITEM_SCHEMA: string = `CREATE TABLE playback_queue_item (
+  position INTEGER PRIMARY KEY,
+  track_id INTEGER NOT NULL REFERENCES track(id) ON DELETE CASCADE
+)`;
 const SORT_REBUILD_BATCH_SIZE = 500;
 
 const STORE_CONFIG: relationalStore.StoreConfig = {
@@ -239,6 +248,8 @@ const CURRENT_SCHEMA: Array<string> = [
     last_played_at INTEGER NOT NULL DEFAULT 0,
     updated_at INTEGER NOT NULL
   )`,
+  PLAYBACK_QUEUE_STATE_SCHEMA,
+  PLAYBACK_QUEUE_ITEM_SCHEMA,
   'CREATE INDEX idx_media_file_fingerprint ON media_file(file_size, quick_fingerprint)',
   `CREATE UNIQUE INDEX idx_media_file_content_fingerprint ON media_file(file_size, content_fingerprint)
    WHERE content_fingerprint <> ''`,
@@ -377,6 +388,9 @@ export class LibraryDatabase {
   private async migrate(store: relationalStore.RdbStore): Promise<boolean> {
     const hasSchemaMeta = await this.tableExists(store, 'schema_meta');
     if (!hasSchemaMeta) {
+      if (await this.hasApplicationTables(store)) {
+        throw new Error('Library database contains application tables but has no schema version; refusing to modify it');
+      }
       let transaction: relationalStore.Transaction | undefined;
       try {
         transaction = await store.createTransaction({
@@ -404,9 +418,12 @@ export class LibraryDatabase {
     }
 
     const version = await this.readSchemaVersion(store);
+    if (version === 12) {
+      await this.migrateVersion12To13(store);
+      return false;
+    }
     if (version !== DATABASE_VERSION) {
-      await this.rebuildSchema(store);
-      return true;
+      throw new Error(`Unsupported library database version ${version}; expected ${DATABASE_VERSION}`);
     }
     if (store.version !== DATABASE_VERSION) {
       store.version = DATABASE_VERSION;
@@ -414,26 +431,16 @@ export class LibraryDatabase {
     return false;
   }
 
-  private async rebuildSchema(store: relationalStore.RdbStore): Promise<void> {
+  private async migrateVersion12To13(store: relationalStore.RdbStore): Promise<void> {
     let transaction: relationalStore.Transaction | undefined;
-    const tables = [
-      'import_error', 'import_job', 'playlist_item', 'track_playback_stats', 'track_playback_state',
-      'playlist', 'track_artwork', 'track_tag_extra', 'track_genre',
-      'album_credit', 'track_credit', 'genre', 'person', 'track', 'media_file', 'album',
-      'artwork_source', 'artwork_asset', 'schema_meta'
-    ];
     try {
       transaction = await store.createTransaction({
         transactionType: relationalStore.TransactionType.IMMEDIATE
       });
-      for (let index = 0; index < tables.length; index += 1) {
-        await transaction.execute(`DROP TABLE IF EXISTS ${tables[index]}`);
-      }
-      for (let index = 0; index < CURRENT_SCHEMA.length; index += 1) {
-        await transaction.execute(this.withIfNotExists(CURRENT_SCHEMA[index]));
-      }
+      await transaction.execute(PLAYBACK_QUEUE_STATE_SCHEMA);
+      await transaction.execute(PLAYBACK_QUEUE_ITEM_SCHEMA);
       await transaction.execute(
-        'INSERT INTO schema_meta(singleton, version, migrated_at) VALUES(1, ?, ?)',
+        'UPDATE schema_meta SET version = ?, migrated_at = ? WHERE singleton = 1',
         [DATABASE_VERSION, Date.now()]
       );
       await transaction.commit();
@@ -445,7 +452,7 @@ export class LibraryDatabase {
         } catch (_) {
         }
       }
-      throw RelationalStoreSafety.operationError('Unable to rebuild library schema', error);
+      throw RelationalStoreSafety.operationError('Unable to migrate library database to version 13', error);
     }
   }
 
@@ -593,6 +600,21 @@ export class LibraryDatabase {
       throw RelationalStoreSafety.operationError(`Unable to inspect table ${tableName}`, error);
     } finally {
       RelationalStoreSafety.closeResultSet(resultSet, `table ${tableName}`);
+    }
+  }
+
+  private async hasApplicationTables(store: relationalStore.RdbStore): Promise<boolean> {
+    let resultSet: relationalStore.ResultSet | undefined;
+    try {
+      resultSet = await store.querySql(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' " +
+        "AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'naturalbase_%' LIMIT 1"
+      );
+      return resultSet.goToNextRow();
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to inspect existing library tables', error);
+    } finally {
+      RelationalStoreSafety.closeResultSet(resultSet, 'existing library tables');
     }
   }
 

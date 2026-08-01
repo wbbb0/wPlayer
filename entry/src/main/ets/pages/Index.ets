@@ -429,7 +429,6 @@ struct Index {
     ResponsiveNavigationShell({
       libraryStore: this.libraryStore,
       playlistStore: this.playlistStore,
-      playerStore: this.playerStore,
       settingsStore: this.settingsStore,
       miniPlayerBinding: this.playerMorphController.miniPlayerBinding,
       navigationChromeController: this.navigationChromeController,

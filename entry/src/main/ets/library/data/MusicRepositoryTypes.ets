@@ -39,12 +39,14 @@ export interface LibraryRemovalRepository {
 
 export interface PersistedPlaybackQueueItem {
   position: number;
+  playbackPosition: number;
   trackId: number;
 }
 
 export interface PersistedPlaybackQueueSnapshot {
   items: Array<PersistedPlaybackQueueItem>;
   currentPosition: number;
+  shuffleEnabled: boolean;
 }
 
 export interface ArtworkImportInput {

@@ -1,5 +1,9 @@
 import { image } from '@kit.ImageKit';
 import { MusicRepository } from '../../library/data/MusicRepository';
+import {
+  PersistedPlaybackQueueItem as RepositoryPlaybackQueueItem,
+  PersistedPlaybackQueueSnapshot as RepositoryPlaybackQueueSnapshot
+} from '../../library/data/MusicRepositoryTypes';
 import { SettingsRepository } from '../../settings/SettingsRepository';
 import { DecodedFullArtwork } from '../artwork/ArtworkMemoryCache';
 import { PlaybackTrack, QueueTrack } from '../model/PlaybackModels';
@@ -51,8 +55,17 @@ export class PlaybackPersistencePort implements PlaybackPersistenceSettings, Pla
     return this.repository.getPersistedPlaybackQueue();
   }
 
-  replacePersistedPlaybackQueue(trackIds: Array<number>, currentPosition: number): Promise<void> {
-    return this.repository.replacePersistedPlaybackQueue(trackIds, currentPosition);
+  replacePersistedPlaybackQueue(snapshot: PersistedPlaybackQueueSnapshot): Promise<void> {
+    const repositorySnapshot: RepositoryPlaybackQueueSnapshot = {
+      items: snapshot.items.map((item): RepositoryPlaybackQueueItem => ({
+        position: item.position,
+        playbackPosition: item.playbackPosition,
+        trackId: item.trackId
+      })),
+      currentPosition: snapshot.currentPosition,
+      shuffleEnabled: snapshot.shuffleEnabled
+    };
+    return this.repository.replacePersistedPlaybackQueue(repositorySnapshot);
   }
 
   updatePersistedPlaybackQueuePosition(currentPosition: number): Promise<void> {

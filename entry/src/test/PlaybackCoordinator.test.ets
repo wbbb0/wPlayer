@@ -52,7 +52,7 @@ class FakePlaybackSettings implements PlaybackPersistenceSettings {
 class StaticRestoreRepository implements PlaybackRestoreRepository {
   snapshot?: PersistedPlaybackQueueSnapshot;
   tracks: Array<QueueTrack> = [];
-  queueWrites: Array<string> = [];
+  queueWrites: Array<PersistedPlaybackQueueSnapshot> = [];
   cursorWrites: Array<number> = [];
 
   constructor(snapshot?: PersistedPlaybackQueueSnapshot, tracks: Array<QueueTrack> = []) {
@@ -69,14 +69,63 @@ class StaticRestoreRepository implements PlaybackRestoreRepository {
     return Promise.resolve(this.snapshot);
   }
 
-  replacePersistedPlaybackQueue(trackIds: Array<number>, currentPosition: number): Promise<void> {
-    this.queueWrites.push(`${trackIds.join(',')}:${currentPosition}`);
+  replacePersistedPlaybackQueue(snapshot: PersistedPlaybackQueueSnapshot): Promise<void> {
+    this.queueWrites.push(snapshot);
     return Promise.resolve();
   }
 
   updatePersistedPlaybackQueuePosition(currentPosition: number): Promise<void> {
     this.cursorWrites.push(currentPosition);
     return Promise.resolve();
+  }
+}
+
+class DeferredWriteRepository extends StaticRestoreRepository {
+  private resolvers: Array<() => void> = [];
+
+  replacePersistedPlaybackQueue(snapshot: PersistedPlaybackQueueSnapshot): Promise<void> {
+    this.queueWrites.push(snapshot);
+    return new Promise<void>((resolve: () => void): void => {
+      this.resolvers.push(resolve);
+    });
+  }
+
+  completeNext(): void {
+    const resolve = this.resolvers.shift();
+    resolve?.();
+  }
+}
+
+class FailFirstWriteRepository extends StaticRestoreRepository {
+  private shouldFail: boolean = true;
+
+  replacePersistedPlaybackQueue(snapshot: PersistedPlaybackQueueSnapshot): Promise<void> {
+    this.queueWrites.push(snapshot);
+    if (this.shouldFail) {
+      this.shouldFail = false;
+      return Promise.reject(new Error('first write failed'));
+    }
+    return Promise.resolve();
+  }
+}
+
+class FailThenDeferWriteRepository extends StaticRestoreRepository {
+  private writeCount: number = 0;
+  private resolveSecond?: () => void;
+
+  replacePersistedPlaybackQueue(snapshot: PersistedPlaybackQueueSnapshot): Promise<void> {
+    this.queueWrites.push(snapshot);
+    this.writeCount += 1;
+    if (this.writeCount === 1) {
+      return Promise.reject(new Error('first write failed'));
+    }
+    return new Promise<void>((resolve: () => void): void => {
+      this.resolveSecond = resolve;
+    });
+  }
+
+  completeSecond(): void {
+    this.resolveSecond?.();
   }
 }
 
@@ -116,6 +165,19 @@ function queueTrack(id: number): QueueTrack {
     palettePrimary: '',
     paletteSecondary: '',
     paletteAccent: ''
+  };
+}
+
+function persistedQueue(trackIds: Array<number>, playbackPositions: Array<number>,
+  currentPosition: number, shuffleEnabled: boolean): PersistedPlaybackQueueSnapshot {
+  return {
+    items: trackIds.map((trackId: number, position: number) => ({
+      position: position,
+      playbackPosition: playbackPositions[position],
+      trackId: trackId
+    })),
+    currentPosition: currentPosition,
+    shuffleEnabled: shuffleEnabled
   };
 }
 
@@ -236,16 +298,14 @@ export default function playbackCoordinatorTest() {
     it('rejects a stale restore after the current-track lookup completes', 0, async () => {
       const coordinator = new PlaybackPersistenceCoordinator();
       const settings = new FakePlaybackSettings();
-      const repository = new DeferredRestoreRepository({
-        items: [{ position: 0, trackId: 1 }],
-        currentPosition: 0
-      });
+      const repository = new DeferredRestoreRepository(persistedQueue([1], [0], 0, false));
       settings.lastTrackId = 1;
       coordinator.bind(settings, repository);
       let currentEpoch = 1;
 
       const pending = coordinator.createRestorePlan(
         currentEpoch,
+        false,
         (epoch: number): boolean => epoch === currentEpoch
       );
       currentEpoch = 2;
@@ -260,45 +320,43 @@ export default function playbackCoordinatorTest() {
       const coordinator = new PlaybackPersistenceCoordinator();
       const settings = new FakePlaybackSettings();
       settings.lastTrackId = 7;
-      const repository = new StaticRestoreRepository({
-        items: [{ position: 0, trackId: 7 }],
-        currentPosition: 0
-      });
+      const repository = new StaticRestoreRepository(persistedQueue([7], [0], 0, false));
       coordinator.bind(settings, repository);
 
       const plan = await coordinator.createRestorePlan(
         1,
+        false,
         (_epoch: number): boolean => true
       );
       await coordinator.flush();
 
       expect(plan).assertUndefined();
       expect(settings.resumeWrites[0]).assertEqual('-1:0');
-      expect(repository.queueWrites[0]).assertEqual(':-1');
+      expect(repository.queueWrites[0].items.length).assertEqual(0);
+      expect(repository.queueWrites[0].currentPosition).assertEqual(-1);
     });
 
     it('restores duplicate order and remaps a missing current item by position', 0, async () => {
       const coordinator = new PlaybackPersistenceCoordinator();
       const settings = new FakePlaybackSettings();
-      const repository = new StaticRestoreRepository({
-        items: [
-          { position: 0, trackId: 1 },
-          { position: 1, trackId: 2 },
-          { position: 2, trackId: 1 }
-        ],
-        currentPosition: 1
-      }, [queueTrack(1)]);
+      const repository = new StaticRestoreRepository(
+        persistedQueue([1, 2, 1], [2, 0, 1], 0, true),
+        [queueTrack(1)]
+      );
       coordinator.bind(settings, repository);
 
       const plan = await coordinator.createRestorePlan(
         4,
+        false,
         (epoch: number): boolean => epoch === 4
       );
 
       expect(plan?.queueTracks.length).assertEqual(2);
       expect(plan?.queueTracks[0].id).assertEqual(1);
       expect(plan?.queueTracks[1].id).assertEqual(1);
-      expect(plan?.currentPosition).assertEqual(1);
+      expect(plan?.playbackPositions.join(',')).assertEqual('1,0');
+      expect(plan?.currentPosition).assertEqual(0);
+      expect(plan?.shuffleEnabled).assertTrue();
     });
 
     it('deduplicates resume writes and resets the cache when rebound', 0, () => {
@@ -327,6 +385,136 @@ export default function playbackCoordinatorTest() {
 
       expect(repository.cursorWrites[0]).assertEqual(8);
       expect(repository.queueWrites.length).assertEqual(0);
+    });
+
+    it('coalesces writes during an in-flight snapshot to the latest complete state', 0, async () => {
+      const coordinator = new PlaybackPersistenceCoordinator();
+      const settings = new FakePlaybackSettings();
+      const repository = new DeferredWriteRepository();
+      coordinator.bind(settings, repository);
+
+      coordinator.persistQueue(persistedQueue([1, 2], [0, 1], 0, false));
+      coordinator.persistQueue(persistedQueue([1, 2], [1, 0], 0, true));
+      coordinator.persistQueueCurrentPosition(1);
+      repository.completeNext();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(repository.queueWrites.length).assertEqual(2);
+      expect(repository.queueWrites[1].shuffleEnabled).assertTrue();
+      expect(repository.queueWrites[1].currentPosition).assertEqual(1);
+      repository.completeNext();
+      await coordinator.flush();
+      expect(settings.legacyClearCount).assertEqual(1);
+    });
+
+    it('lets a later structural snapshot supersede a pending cursor write', 0, async () => {
+      const coordinator = new PlaybackPersistenceCoordinator();
+      const settings = new FakePlaybackSettings();
+      const repository = new DeferredWriteRepository();
+      coordinator.bind(settings, repository);
+
+      coordinator.persistQueue(persistedQueue([1, 2], [0, 1], 0, false));
+      coordinator.persistQueueCurrentPosition(1);
+      coordinator.persistQueue(persistedQueue([1, 2], [1, 0], 0, true));
+      repository.completeNext();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(repository.queueWrites.length).assertEqual(2);
+      expect(repository.queueWrites[1].currentPosition).assertEqual(0);
+      expect(repository.cursorWrites.length).assertEqual(0);
+      repository.completeNext();
+      await coordinator.flush();
+    });
+
+    it('attempts the latest pending snapshot after an earlier write fails', 0, async () => {
+      const coordinator = new PlaybackPersistenceCoordinator();
+      const settings = new FakePlaybackSettings();
+      const repository = new FailFirstWriteRepository();
+      coordinator.bind(settings, repository);
+
+      coordinator.persistQueue(persistedQueue([1], [0], 0, false));
+      coordinator.persistQueue(persistedQueue([2], [0], 0, true));
+      await coordinator.flush();
+
+      expect(repository.queueWrites.length).assertEqual(2);
+      expect(repository.queueWrites[1].items[0].trackId).assertEqual(2);
+      expect(settings.legacyClearCount).assertEqual(1);
+    });
+
+    it('does not apply a dependent cursor after its structural snapshot fails', 0, async () => {
+      const coordinator = new PlaybackPersistenceCoordinator();
+      const settings = new FakePlaybackSettings();
+      const repository = new FailFirstWriteRepository();
+      coordinator.bind(settings, repository);
+
+      coordinator.persistQueue(persistedQueue([1, 2], [1, 0], 0, true));
+      coordinator.persistQueueCurrentPosition(1);
+      await coordinator.flush();
+
+      expect(repository.queueWrites.length).assertEqual(1);
+      expect(repository.cursorWrites.length).assertEqual(0);
+      expect(settings.legacyClearCount).assertEqual(0);
+    });
+
+    it('blocks later cursor writes until a full snapshot succeeds after failure', 0, async () => {
+      const coordinator = new PlaybackPersistenceCoordinator();
+      const settings = new FakePlaybackSettings();
+      const repository = new FailFirstWriteRepository();
+      coordinator.bind(settings, repository);
+
+      coordinator.persistQueue(persistedQueue([1, 2], [1, 0], 0, true));
+      await coordinator.flush();
+      coordinator.persistQueueCurrentPosition(1);
+      await coordinator.flush();
+
+      expect(repository.queueWrites.length).assertEqual(1);
+      expect(repository.cursorWrites.length).assertEqual(0);
+      coordinator.persistQueue(persistedQueue([1, 2], [1, 0], 1, true));
+      await coordinator.flush();
+      coordinator.persistQueueCurrentPosition(0);
+      await coordinator.flush();
+      expect(repository.queueWrites.length).assertEqual(2);
+      expect(repository.cursorWrites[0]).assertEqual(0);
+    });
+
+    it('retains a cursor update while a later snapshot recovers from failure', 0, async () => {
+      const coordinator = new PlaybackPersistenceCoordinator();
+      const settings = new FakePlaybackSettings();
+      const repository = new FailThenDeferWriteRepository();
+      coordinator.bind(settings, repository);
+
+      coordinator.persistQueue(persistedQueue([1], [0], 0, false));
+      await coordinator.flush();
+      coordinator.persistQueue(persistedQueue([2, 3], [1, 0], 0, true));
+      expect(repository.queueWrites.length).assertEqual(2);
+      coordinator.persistQueueCurrentPosition(1);
+      repository.completeSecond();
+      await coordinator.flush();
+
+      expect(repository.cursorWrites[0]).assertEqual(1);
+      expect(settings.legacyClearCount).assertEqual(1);
+    });
+
+    it('rejects a corrupted persisted permutation without clearing it', 0, async () => {
+      const coordinator = new PlaybackPersistenceCoordinator();
+      const settings = new FakePlaybackSettings();
+      const repository = new StaticRestoreRepository({
+        items: [
+          { position: 0, playbackPosition: 0, trackId: 1 },
+          { position: 1, playbackPosition: 0, trackId: 2 }
+        ],
+        currentPosition: 0,
+        shuffleEnabled: true
+      }, [queueTrack(1), queueTrack(2)]);
+      coordinator.bind(settings, repository);
+
+      const plan = await coordinator.createRestorePlan(1, false, (_epoch: number): boolean => true);
+
+      expect(plan).assertUndefined();
+      expect(repository.queueWrites.length).assertEqual(0);
+      expect(settings.resumeWrites.length).assertEqual(0);
     });
   });
 }

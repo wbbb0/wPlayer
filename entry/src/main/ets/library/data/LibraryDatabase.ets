@@ -8,11 +8,13 @@ const DATABASE_NAME = 'music_library.db';
 const DATABASE_VERSION = 13;
 const PLAYBACK_QUEUE_STATE_SCHEMA: string = `CREATE TABLE playback_queue_state (
   singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-  current_position INTEGER NOT NULL DEFAULT -1,
+  current_position INTEGER NOT NULL DEFAULT -1 CHECK (current_position >= -1),
+  shuffle_enabled INTEGER NOT NULL DEFAULT 0 CHECK (shuffle_enabled IN (0, 1)),
   updated_at INTEGER NOT NULL
 )`;
 const PLAYBACK_QUEUE_ITEM_SCHEMA: string = `CREATE TABLE playback_queue_item (
-  position INTEGER PRIMARY KEY,
+  position INTEGER PRIMARY KEY CHECK (position >= 0),
+  playback_position INTEGER NOT NULL UNIQUE CHECK (playback_position >= 0),
   track_id INTEGER NOT NULL REFERENCES track(id) ON DELETE CASCADE
 )`;
 const SORT_REBUILD_BATCH_SIZE = 500;

@@ -119,6 +119,20 @@ suppressing another.
 - Missing tracks, unavailable original URIs and revoked authorization fail without opening an invalid share panel
   and provide a concise user-facing message.
 
+## Playback queue and shuffle
+
+- Enabling or disabling shuffle keeps the exact current queue entry active, including when the same track appears
+  more than once.
+- Shuffle changes only the playback permutation. Disabling it restores the queue's stable base order without
+  discarding insertions, appends or removals made while shuffle was enabled.
+- Queue restoration preserves base order, playback permutation, cursor and shuffle mode together. A valid persisted
+  queue snapshot is authoritative over the fallback shuffle preference.
+- “播放所选” follows the manual-play shuffle preference: by default it disables shuffle and preserves selection
+  order; when “手动选歌时保持随机” is enabled it builds a matching shuffled traversal and state.
+- The queue page displays active playback order, so shuffle visibly reorders rows and their relative position
+  numbers. Pure permutations use frame-separated disjoint row exchanges rather than a full reload and must not
+  implicitly animate the surrounding navigation tree.
+
 ## Full-player shared-element morph
 
 - “保持屏幕常亮” defaults to disabled. When enabled, the foreground main window remains awake from the start of

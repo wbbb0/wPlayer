@@ -104,7 +104,8 @@ export struct PlayerMorphOverlay {
             onClose: (): void => this.controller.hideFullPlayer(),
             onNavigatePage: (page: FullPlayerPage): void =>
               this.controller.navigateFullPlayerPage(page),
-            onPlayQueueTrack: (trackId: number): void => playbackRuntime.playQueueTrack(trackId),
+            onPlayQueueEntry: (queueEntryId: number): void =>
+              playbackRuntime.playQueueEntry(queueEntryId),
             onSeek: (positionMs: number): void => playbackRuntime.seek(positionMs),
             onCompletedCollectionChange: (enabled: boolean): void =>
               playbackRuntime.setCompletedCollectionEnabled(enabled),

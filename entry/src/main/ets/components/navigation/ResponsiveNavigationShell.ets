@@ -15,7 +15,6 @@ import { ComponentContent, promptAction, SymbolGlyphModifier } from '@kit.ArkUI'
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { AppAppearancePalette } from '../../appearance/AppAppearance';
-import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import {
   DynamicColor,
   DynamicContainerRole,
@@ -63,7 +62,6 @@ import { LibraryStore } from '../../library/store/LibraryStore';
 import { TrackArtworkViewerState } from '../../library/store/LibraryDetailState';
 import { PlaylistStore } from '../../playlist/store/PlaylistStore';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
-import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { MorePage } from '../../pages/library/MorePage';
 import { AlbumDetailColorPolicy } from '../../pages/library/AlbumDetailPage';
 import { AppSettingsStore } from '../../settings/AppSettingsStore';
@@ -118,7 +116,6 @@ export struct ResponsiveNavigationShell {
 
   @ObjectLink libraryStore: LibraryStore;
   @ObjectLink playlistStore: PlaylistStore;
-  @ObjectLink playerStore: PlayerStore;
   @ObjectLink settingsStore: AppSettingsStore;
   @ObjectLink miniPlayerBinding: MiniPlayerBinding;
   @ObjectLink navigationChromeController: NavigationChromeController;
@@ -1244,7 +1241,6 @@ export struct ResponsiveNavigationShell {
     ResponsiveNavigationDestinationContent({
       libraryStore: this.libraryStore,
       playlistStore: this.playlistStore,
-      playerStore: this.playerStore,
       settingsStore: this.settingsStore,
       navigationChromeController: this.navigationChromeController,
       playlistsSelection: this.playlistsSelection,
@@ -1367,7 +1363,6 @@ export struct ResponsiveNavigationShell {
     .height('100%')
     .mode(NavigationMode.Stack)
     .backgroundColor(this.themePageBackground)
-    .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
     .titleMode(HdsNavigationTitleMode.MINI)
     .hideBackButton(true)
     .titleBar(AppNavigationStyle.primaryTitleBar(
@@ -1400,7 +1395,6 @@ export struct ResponsiveNavigationShell {
     .height('100%')
     .mode(NavigationMode.Stack)
     .backgroundColor(this.themePageBackground)
-    .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
     .titleMode(HdsNavigationTitleMode.MINI)
     .hideBackButton(true)
     .titleBar(AppNavigationStyle.primaryTitleBar(
@@ -1416,7 +1410,7 @@ export struct ResponsiveNavigationShell {
   @Builder
   private MiniPlayer() {
     MiniPlayerSurface({
-      playerStore: this.playerStore,
+      playerStore: playbackRuntime.playerStore,
       binding: this.miniPlayerBinding,
       onShowFullPlayer: this.onShowFullPlayer,
       onTouchDown: (_localX: number): void => {},

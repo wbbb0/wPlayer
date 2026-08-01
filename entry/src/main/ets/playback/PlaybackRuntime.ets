@@ -131,9 +131,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   playFromLibrary(selected: TrackListItem, libraryItems: Array<TrackListItem>,
     origin: PlaybackOriginKind = PlaybackOriginKind.LIBRARY): void {
     this.applyCompletedCollectionDefault(origin);
-    if (!appSettings.preserveShuffleOnManualPlay && this.playerStore.shuffleEnabled) {
-      this.setShuffleEnabled(false);
-    }
+    this.applyManualPlaybackShufflePolicy();
     this.startLibraryPlayback(selected, libraryItems);
   }
 
@@ -198,8 +196,9 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     if (items.length === 0) {
       return;
     }
+    this.applyManualPlaybackShufflePolicy();
     const buildEpoch = ++this.queueBuildEpoch;
-    const phase = this.queue.build(items, items[0].id, false);
+    const phase = this.queue.build(items, items[0].id, this.playerStore.shuffleEnabled);
     this.playerStore.queuePhase = phase;
     this.playerStore.queueSize = this.queue.size();
     this.syncQueueSnapshot();
@@ -376,12 +375,12 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.syncQueueCursor();
   }
 
-  playQueueTrack(trackId: number): void {
+  playQueueEntry(queueEntryId: number): void {
     if (this.playerStore.queuePhase !== QueueBuildPhase.READY ||
-      this.playerStore.currentTrack?.id === trackId) {
+      this.queue.currentEntryId() === queueEntryId) {
       return;
     }
-    const selected = this.queue.select(trackId);
+    const selected = this.queue.selectEntry(queueEntryId);
     if (selected !== undefined) {
       this.clearAutomaticResumeIntents();
       this.beginTrack(selected);
@@ -421,12 +420,15 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   toggleShuffle(): void {
-    this.setShuffleEnabled(!this.playerStore.shuffleEnabled);
-    if (this.playerStore.currentTrack !== undefined) {
-      this.queue.setShuffle(this.playerStore.shuffleEnabled, this.playerStore.currentTrack.id);
+    const enabled = !this.playerStore.shuffleEnabled;
+    if (this.playerStore.currentTrack !== undefined &&
+      this.playerStore.queuePhase === QueueBuildPhase.READY && this.queue.setShuffle(enabled)) {
+      this.setShuffleEnabled(enabled);
       this.syncQueueSnapshot();
       this.prefetchCurrentWindow();
+      return;
     }
+    this.setShuffleEnabled(enabled);
   }
 
   cycleRepeatMode(): void {
@@ -489,7 +491,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     }
     const selected = new Set<number>(trackIds);
     ++this.queueBuildEpoch;
-    const entryIds = this.queue.snapshot().entries
+    const entryIds = this.queue.playbackSnapshot().entries
       .filter((entry: QueueEntry): boolean => selected.has(entry.track.id))
       .map((entry: QueueEntry): number => entry.queueEntryId);
     if (entryIds.length > 0) {
@@ -744,6 +746,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     const buildEpoch = ++this.queueBuildEpoch;
     const plan = await this.persistence.createRestorePlan(
       buildEpoch,
+      this.playerStore.shuffleEnabled,
       (epoch: number): boolean => epoch === this.queueBuildEpoch
     );
     if (plan === undefined || buildEpoch !== this.queueBuildEpoch) {
@@ -764,11 +767,13 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   private commitRestoredQueue(plan: PlaybackRestorePlan): void {
     const phase = this.queue.restore(
       plan.queueTracks,
+      plan.playbackPositions,
       plan.currentPosition
     );
     this.playerStore.queuePhase = phase;
     this.playerStore.queueSize = this.queue.size();
     if (phase === QueueBuildPhase.READY) {
+      this.setShuffleEnabled(plan.shuffleEnabled);
       this.syncQueueSnapshot();
       this.prefetchCurrentWindow();
     }
@@ -1133,24 +1138,37 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
 
   private syncQueueCursor(persist: boolean = true): void {
     const current = this.queue.current();
-    this.playerStore.setQueueCurrentIndex(this.queue.currentIndex());
+    this.playerStore.setQueueCurrentIndex(
+      this.queue.currentPlaybackPosition(),
+      this.queue.currentEntryId()
+    );
     if (persist && !DemoLibraryMode.isEnabled()) {
-      this.persistence.persistQueueCurrentPosition(current === undefined ? -1 : this.queue.currentIndex());
+      this.persistence.persistQueueCurrentPosition(
+        current === undefined ? -1 : this.queue.currentPlaybackPosition()
+      );
     }
     this.syncPictureInPicture();
   }
 
   private syncQueueSnapshot(persist: boolean = true): void {
-    const snapshot = this.queue.snapshot();
-    this.playerStore.queueDataSource.replace(snapshot.entries);
-    this.playerStore.setQueueCurrentIndex(snapshot.currentIndex);
+    const snapshot = this.queue.playbackSnapshot();
+    this.playerStore.applyQueueSnapshot(snapshot.entries, snapshot.currentIndex);
     if (persist && !DemoLibraryMode.isEnabled()) {
-      this.persistence.persistQueue(
-        snapshot.entries.map((entry: QueueEntry) => entry.track.id),
-        snapshot.currentIndex
-      );
+      this.persistQueueSnapshot();
     }
     this.syncPictureInPicture();
+  }
+
+  private persistQueueSnapshot(): void {
+    if (DemoLibraryMode.isEnabled()) {
+      return;
+    }
+    const state = this.queue.stateSnapshot();
+    this.persistence.persistQueue({
+      items: state.items,
+      currentPosition: state.currentPosition,
+      shuffleEnabled: this.playerStore.shuffleEnabled
+    });
   }
 
   private persistProgress(completed: boolean): void {
@@ -1214,6 +1232,12 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.shuffleEnabled = enabled;
     this.settings?.setPlaybackShuffleEnabled(enabled);
     this.syncSessionState();
+  }
+
+  private applyManualPlaybackShufflePolicy(): void {
+    if (!appSettings.preserveShuffleOnManualPlay && this.playerStore.shuffleEnabled) {
+      this.setShuffleEnabled(false);
+    }
   }
 
   private applyCompletedCollectionDefault(origin: PlaybackOriginKind): void {

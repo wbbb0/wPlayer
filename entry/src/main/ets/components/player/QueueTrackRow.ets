@@ -17,20 +17,19 @@ import {
   LibraryLinkAction,
   libraryLinkActions
 } from '../navigation/LibraryNavigation';
+import { QueueEntryPresentation } from '../../playback/model/PlaybackModels';
 
 @Reusable
 @Component
 export struct QueueTrackRow {
   @ObjectLink store: LibraryStore;
+  @ObjectLink presentation: QueueEntryPresentation;
   @Prop track: TrackListItem;
   @Prop artworkPath: string = '';
-  @Prop queueIndex: number = -1;
-  @Prop currentQueueIndex: number = -1;
   @Prop primaryColor: ResourceColor = $r('app.color.text_primary');
   @Prop secondaryColor: ResourceColor = $r('app.color.text_secondary');
   @Prop tertiaryColor: ResourceColor = $r('app.color.text_tertiary');
   @Prop animateColors: boolean = false;
-  @Prop active: boolean = false;
   @Prop activeBackgroundColor: ResourceColor = Color.Transparent;
   @Prop activeShadowColor: ResourceColor = Color.Transparent;
   @Prop activeShadowRadius: number = 0;
@@ -95,10 +94,10 @@ export struct QueueTrackRow {
   }
 
   private queuePositionLabel(): string {
-    if (this.queueIndex <= this.currentQueueIndex) {
+    if (this.presentation.displayIndex <= this.presentation.currentDisplayIndex) {
       return '';
     }
-    return `${this.queueIndex - this.currentQueueIndex}`;
+    return `${this.presentation.displayIndex - this.presentation.currentDisplayIndex}`;
   }
 
   private showContextMenu(event: GestureEvent): void {
@@ -136,7 +135,7 @@ export struct QueueTrackRow {
   @Builder
   private QueuePosition() {
     Stack({ alignContent: Alignment.Center }) {
-      if (this.queueIndex === this.currentQueueIndex) {
+      if (this.presentation.isActive()) {
         SymbolGlyph($r('sys.symbol.play_fill'))
           .fontSize(16)
           .fontColor([this.primaryColor])
@@ -179,7 +178,7 @@ export struct QueueTrackRow {
       Column({ space: LibraryTrackRowStyle.ALBUM_TEXT_SPACE }) {
         Text(this.track.title)
           .fontSize(LibraryTrackRowStyle.LIBRARY_TITLE_SIZE)
-          .fontWeight(this.active ? FontWeight.Bold : FontWeight.Medium)
+          .fontWeight(this.presentation.isActive() ? FontWeight.Bold : FontWeight.Medium)
           .fontColor(this.primaryColor)
           .animation({
             duration: this.animateColors ? PaletteMotionSpec.COLOR_TRANSITION_DURATION : 0,
@@ -308,8 +307,8 @@ export struct QueueTrackRow {
       bottom: this.verticalInset
     })
     .borderRadius(this.rowCornerRadius)
-    .backgroundColor(this.active ? this.activeBackgroundColor : Color.Transparent)
-    .shadow(this.active ? {
+    .backgroundColor(this.presentation.isActive() ? this.activeBackgroundColor : Color.Transparent)
+    .shadow(this.presentation.isActive() ? {
       radius: this.activeShadowRadius,
       color: this.activeShadowColor,
       offsetY: this.activeShadowOffsetY
@@ -345,8 +344,8 @@ export struct QueueTrackRow {
       bottom: this.verticalInset
     })
     .borderRadius(this.rowCornerRadius)
-    .backgroundColor(this.active ? this.activeBackgroundColor : Color.Transparent)
-    .shadow(this.active ? {
+    .backgroundColor(this.presentation.isActive() ? this.activeBackgroundColor : Color.Transparent)
+    .shadow(this.presentation.isActive() ? {
       radius: this.activeShadowRadius,
       color: this.activeShadowColor,
       offsetY: this.activeShadowOffsetY

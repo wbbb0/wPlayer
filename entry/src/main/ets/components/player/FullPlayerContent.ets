@@ -59,7 +59,7 @@ export struct FullPlayerContent {
   };
   onClose: () => void = (): void => {};
   onNavigatePage: (page: FullPlayerPage) => void = (_page: FullPlayerPage): void => {};
-  onPlayQueueTrack: (trackId: number) => void = (_trackId: number): void => {};
+  onPlayQueueEntry: (queueEntryId: number) => void = (_queueEntryId: number): void => {};
   onSeek: (positionMs: number) => void = (_positionMs: number): void => {};
   onResolveQueueArtwork: (relativePath: string) => string = (_relativePath: string): string => '';
   onOpenTrackActions: (trackId: number, anchorId: string) => void =
@@ -248,7 +248,7 @@ export struct FullPlayerContent {
       focusAnimationEnabled: this.pageInteractionActive(FullPlayerPage.QUEUE),
       primaryContentColor: this.contentColor(),
       secondaryContentColor: this.secondaryContentColor(),
-      onPlayQueueTrack: this.onPlayQueueTrack,
+      onPlayQueueEntry: this.onPlayQueueEntry,
       onResolveQueueArtwork: this.onResolveQueueArtwork,
       onOpenTrackDetails: this.onOpenTrackDetails,
       onShareTrackFile: this.onShareTrackFile,

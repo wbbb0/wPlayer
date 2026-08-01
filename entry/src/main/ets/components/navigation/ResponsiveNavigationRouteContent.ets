@@ -3,7 +3,6 @@ import {
   HdsNavDestinationTitleMode,
   HdsNavigationMenuContentOptions
 } from '@kit.UIDesignKit';
-import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import { PageBottomGradient } from '../layout/PageBottomGradient';
 import { AppShellLayoutSpec } from '../layout/AppShellLayoutSpec';
 import { AppNavigationStyle } from './AppNavigationStyle';
@@ -22,7 +21,7 @@ import {
 } from '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { PlaylistStore } from '../../playlist/store/PlaylistStore';
-import { PlayerStore } from '../../playback/model/PlaybackModels';
+import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { AppSettingsStore } from '../../settings/AppSettingsStore';
 import { MultiSelectController } from '../library/MultiSelectController';
 import { AlbumAction } from '../library/AlbumGridItem';
@@ -209,7 +208,6 @@ export struct ResponsiveNavigationRouteContent {
 export struct ResponsiveNavigationDestinationContent {
   @ObjectLink libraryStore: LibraryStore;
   @ObjectLink playlistStore: PlaylistStore;
-  @ObjectLink playerStore: PlayerStore;
   @ObjectLink settingsStore: AppSettingsStore;
   @ObjectLink navigationChromeController: NavigationChromeController;
   @ObjectLink playlistsSelection: MultiSelectController;
@@ -382,7 +380,6 @@ export struct ResponsiveNavigationDestinationContent {
       .width('100%')
       .height('100%')
       .backgroundColor(this.themePageBackground)
-      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryTitleBar(
         this.currentPlaylistSummary((this.param as PlaylistDetailRouteParams).playlistId)?.name ??
@@ -434,7 +431,6 @@ export struct ResponsiveNavigationDestinationContent {
       .width('100%')
       .height('100%')
       .backgroundColor(this.albumDetailBackground(this.param as AlbumDetailRouteParams))
-      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryBackOnlyTitleBar(
         this.albumDetailTitleMenu(
@@ -487,7 +483,6 @@ export struct ResponsiveNavigationDestinationContent {
       .width('100%')
       .height('100%')
       .backgroundColor(this.themePageBackground)
-      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryTitleBar(
         (this.param as ArtistDetailRouteParams).name,
@@ -517,7 +512,6 @@ export struct ResponsiveNavigationDestinationContent {
       .width('100%')
       .height('100%')
       .backgroundColor(this.themePageBackground)
-      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryTitleBar(
         '自定义页面',
@@ -544,7 +538,6 @@ export struct ResponsiveNavigationDestinationContent {
       .width('100%')
       .height('100%')
       .backgroundColor(this.themePageBackground)
-      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryTitleBar(
         '浮窗',
@@ -571,7 +564,6 @@ export struct ResponsiveNavigationDestinationContent {
       .width('100%')
       .height('100%')
       .backgroundColor(this.themePageBackground)
-      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryTitleBar(
         '播放页面',
@@ -583,7 +575,7 @@ export struct ResponsiveNavigationDestinationContent {
     } else if (this.name === NavigationRoute.DYNAMIC_BACKGROUND_DEBUG) {
       HdsNavDestination() {
         DynamicBackgroundDebugPage({
-          playerStore: this.playerStore,
+          playerStore: playbackRuntime.playerStore,
           bottomInset: this.bottomInset
         })
       }
@@ -614,7 +606,7 @@ export struct ResponsiveNavigationDestinationContent {
     } else if (this.name === NavigationRoute.DYNAMIC_BACKGROUND_V2_DEBUG) {
       HdsNavDestination() {
         DynamicBackgroundV2DebugPage({
-          playerStore: this.playerStore,
+          playerStore: playbackRuntime.playerStore,
           bottomInset: this.bottomInset
         })
       }
@@ -645,14 +637,13 @@ export struct ResponsiveNavigationDestinationContent {
     } else if (this.name === NavigationRoute.DYNAMIC_BACKGROUND_V3_DEBUG) {
       HdsNavDestination() {
         DynamicBackgroundV3DebugPage({
-          playerStore: this.playerStore,
+          playerStore: playbackRuntime.playerStore,
           bottomInset: this.bottomInset
         })
       }
       .width('100%')
       .height('100%')
       .backgroundColor(this.themePageBackground)
-      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryTitleBar(
         '动态背景 v3',
@@ -676,7 +667,6 @@ export struct ResponsiveNavigationDestinationContent {
       .width('100%')
       .height('100%')
       .backgroundColor(this.themePageBackground)
-      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryTitleBar(
         '关于 wPlayer',
@@ -701,7 +691,6 @@ export struct ResponsiveNavigationDestinationContent {
       .width('100%')
       .height('100%')
       .backgroundColor(this.themePageBackground)
-      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryTitleBar(
         '隐私政策',
@@ -726,7 +715,6 @@ export struct ResponsiveNavigationDestinationContent {
       .width('100%')
       .height('100%')
       .backgroundColor(this.themePageBackground)
-      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryTitleBar(
         '数据与权限',
@@ -751,7 +739,6 @@ export struct ResponsiveNavigationDestinationContent {
       .width('100%')
       .height('100%')
       .backgroundColor(this.themePageBackground)
-      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryTitleBar(
         '开源软件许可',
@@ -806,7 +793,6 @@ export struct ResponsiveNavigationDestinationContent {
       .width('100%')
       .height('100%')
       .backgroundColor(this.themePageBackground)
-      .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       .titleMode(HdsNavDestinationTitleMode.MINI)
       .titleBar(AppNavigationStyle.secondaryTitleBar(
         navigationItem(this.name)?.label ?? '',

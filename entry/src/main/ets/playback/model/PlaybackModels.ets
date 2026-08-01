@@ -61,20 +61,103 @@ export interface QueueEntry {
   track: QueueTrack;
 }
 
+@Observed
+export class QueueEntryPresentation {
+  entry: QueueEntry;
+  displayIndex: number;
+  currentDisplayIndex: number;
+
+  constructor(entry: QueueEntry, displayIndex: number, currentDisplayIndex: number) {
+    this.entry = entry;
+    this.displayIndex = displayIndex;
+    this.currentDisplayIndex = currentDisplayIndex;
+  }
+
+  isActive(): boolean {
+    return this.displayIndex === this.currentDisplayIndex;
+  }
+}
+
+export interface QueueIndexExchange {
+  start: number;
+  end: number;
+}
+
+export class QueuePermutationLayers {
+  readonly first: Array<QueueIndexExchange>;
+  readonly second: Array<QueueIndexExchange>;
+
+  constructor(first: Array<QueueIndexExchange>, second: Array<QueueIndexExchange>) {
+    this.first = first;
+    this.second = second;
+  }
+}
+
+export class QueuePermutationPolicy {
+  static project(currentEntryIds: Array<number>, targetEntryIds: Array<number>): QueuePermutationLayers {
+    const first: Array<QueueIndexExchange> = [];
+    const second: Array<QueueIndexExchange> = [];
+    const targetIndexById = new Map<number, number>();
+    targetEntryIds.forEach((entryId: number, index: number): void => {
+      targetIndexById.set(entryId, index);
+    });
+    const destinationBySource: Array<number> = currentEntryIds.map((entryId: number): number =>
+      targetIndexById.get(entryId) as number);
+    const visited = new Set<number>();
+    for (let source = 0; source < destinationBySource.length; source += 1) {
+      if (visited.has(source) || destinationBySource[source] === source) {
+        visited.add(source);
+        continue;
+      }
+      const cycle: Array<number> = [];
+      let cursor = source;
+      while (!visited.has(cursor)) {
+        visited.add(cursor);
+        cycle.push(cursor);
+        cursor = destinationBySource[cursor];
+      }
+      for (let left = 0; left < Math.floor(cycle.length / 2); left += 1) {
+        first.push({ start: cycle[left], end: cycle[cycle.length - 1 - left] });
+      }
+      for (let left = 1; left <= Math.floor((cycle.length - 1) / 2); left += 1) {
+        second.push({ start: cycle[left], end: cycle[cycle.length - left] });
+      }
+    }
+    return new QueuePermutationLayers(first, second);
+  }
+}
+
+export type QueueFrameScheduler = (task: () => void) => void;
+export type QueueProjectionComplete = (currentIndex: number) => void;
+
 export class QueueTrackDataSource implements IDataSource {
-  private items: Array<QueueEntry> = [];
+  private items: Array<QueueEntryPresentation> = [];
   private readonly listeners: Array<DataChangeListener> = [];
+  private frameScheduler?: QueueFrameScheduler;
+  private projectionEpoch: number = 0;
+  private projectionPending: boolean = false;
+  private targetCurrentEntryId: number = -1;
+  private targetCurrentIndex: number = -1;
+  private projectionCompletion?: QueueProjectionComplete;
 
   totalCount(): number {
     return this.items.length;
   }
 
-  getData(index: number): QueueEntry {
+  getData(index: number): QueueEntryPresentation {
     return this.items[index];
   }
 
   snapshot(): Array<QueueEntry> {
-    return this.items.slice();
+    return this.items.map((item: QueueEntryPresentation): QueueEntry => item.entry);
+  }
+
+  setFrameScheduler(scheduler: QueueFrameScheduler | undefined): void {
+    this.frameScheduler = scheduler;
+  }
+
+  hasPendingProjection(): boolean {
+    return this.projectionPending;
   }
 
   registerDataChangeListener(listener: DataChangeListener): void {
@@ -90,10 +173,63 @@ export class QueueTrackDataSource implements IDataSource {
     }
   }
 
-  replace(items: Array<QueueEntry>): void {
-    this.items = items.slice();
+  replace(items: Array<QueueEntry>, currentIndex: number = -1): void {
+    this.projectionEpoch += 1;
+    this.projectionPending = false;
+    this.projectionCompletion = undefined;
+    this.items = items.map((entry: QueueEntry, index: number): QueueEntryPresentation =>
+      new QueueEntryPresentation(entry, index, currentIndex));
     const operations: Array<DataOperation> = [{ type: DataOperationType.RELOAD }];
     this.listeners.forEach((listener: DataChangeListener) => listener.onDatasetChange(operations));
+  }
+
+  applySnapshot(
+    items: Array<QueueEntry>,
+    currentIndex: number,
+    changedIndices: Array<number>,
+    onComplete: QueueProjectionComplete
+  ): void {
+    this.targetCurrentIndex = currentIndex;
+    this.targetCurrentEntryId = currentIndex >= 0 && currentIndex < items.length ?
+      items[currentIndex].queueEntryId : -1;
+    this.projectionCompletion = onComplete;
+    if (!this.hasSameUniqueIdentities(items)) {
+      this.replace(items, currentIndex);
+      onComplete(currentIndex);
+      return;
+    }
+    const epoch = ++this.projectionEpoch;
+    const currentIds = this.items.map((item: QueueEntryPresentation): number =>
+      item.entry.queueEntryId);
+    const targetIds = items.map((entry: QueueEntry): number => entry.queueEntryId);
+    const layers = QueuePermutationPolicy.project(currentIds, targetIds);
+    if (layers.first.length === 0 && layers.second.length === 0) {
+      this.updatePresentation(items, this.targetCurrentEntryId);
+      this.notifyChanged(changedIndices);
+      this.completeProjection();
+      return;
+    }
+    if (this.listeners.length === 0 || this.frameScheduler === undefined) {
+      this.items = items.map((entry: QueueEntry, index: number): QueueEntryPresentation =>
+        new QueueEntryPresentation(entry, index, currentIndex));
+      this.completeProjection();
+      return;
+    }
+    this.applyExchangeLayer(layers.first, this.targetCurrentEntryId);
+    if (layers.second.length === 0) {
+      this.updatePresentation(items, this.targetCurrentEntryId);
+      this.completeProjection();
+      return;
+    }
+    this.projectionPending = true;
+    this.frameScheduler((): void => {
+      if (epoch !== this.projectionEpoch) {
+        return;
+      }
+      this.applyExchangeLayer(layers.second, this.targetCurrentEntryId);
+      this.updatePresentation(items, this.targetCurrentEntryId);
+      this.completeProjection();
+    });
   }
 
   notifyChanged(indices: Array<number>): void {
@@ -111,6 +247,92 @@ export class QueueTrackDataSource implements IDataSource {
       operations.push({ type: DataOperationType.CHANGE, index: index });
     });
     this.listeners.forEach((listener: DataChangeListener) => listener.onDatasetChange(operations));
+  }
+
+  applyCurrentIndex(
+    currentIndex: number,
+    currentEntryId: number,
+    changedIndices: Array<number>,
+    onComplete: QueueProjectionComplete
+  ): void {
+    this.targetCurrentIndex = currentIndex;
+    this.targetCurrentEntryId = currentEntryId;
+    this.projectionCompletion = onComplete;
+    this.updatePresentationIndices(currentEntryId);
+    if (this.projectionPending) {
+      return;
+    }
+    this.notifyChanged(changedIndices);
+    this.completeProjection();
+  }
+
+  private hasSameUniqueIdentities(items: Array<QueueEntry>): boolean {
+    if (items.length !== this.items.length) {
+      return false;
+    }
+    const identities = new Set<number>();
+    this.items.forEach((item: QueueEntryPresentation): void => {
+      identities.add(item.entry.queueEntryId);
+    });
+    if (identities.size !== this.items.length) {
+      return false;
+    }
+    const targetIdentities = new Set<number>();
+    for (let index = 0; index < items.length; index += 1) {
+      const identity = items[index].queueEntryId;
+      if (!identities.has(identity) || targetIdentities.has(identity)) {
+        return false;
+      }
+      targetIdentities.add(identity);
+    }
+    return true;
+  }
+
+  private applyExchangeLayer(exchanges: Array<QueueIndexExchange>, currentEntryId: number): void {
+    if (exchanges.length === 0) {
+      return;
+    }
+    exchanges.forEach((exchange: QueueIndexExchange): void => {
+      const startItem = this.items[exchange.start];
+      this.items[exchange.start] = this.items[exchange.end];
+      this.items[exchange.end] = startItem;
+    });
+    this.updatePresentationIndices(currentEntryId);
+    const operations: Array<DataOperation> = exchanges.map((exchange: QueueIndexExchange): DataOperation => ({
+      type: DataOperationType.EXCHANGE,
+      index: { start: exchange.start, end: exchange.end }
+    }));
+    this.listeners.forEach((listener: DataChangeListener): void =>
+      listener.onDatasetChange(operations));
+  }
+
+  private updatePresentation(items: Array<QueueEntry>, currentEntryId: number): void {
+    const entriesById = new Map<number, QueueEntry>();
+    items.forEach((entry: QueueEntry): void => {
+      entriesById.set(entry.queueEntryId, entry);
+    });
+    this.items.forEach((item: QueueEntryPresentation): void => {
+      item.entry = entriesById.get(item.entry.queueEntryId) as QueueEntry;
+    });
+    this.updatePresentationIndices(currentEntryId);
+  }
+
+  private updatePresentationIndices(currentEntryId: number): void {
+    const currentIndex = this.items.findIndex((item: QueueEntryPresentation): boolean =>
+      item.entry.queueEntryId === currentEntryId);
+    this.items.forEach((item: QueueEntryPresentation, index: number): void => {
+      item.displayIndex = index;
+      item.currentDisplayIndex = currentIndex;
+    });
+  }
+
+  private completeProjection(): void {
+    this.projectionPending = false;
+    const completion = this.projectionCompletion;
+    this.projectionCompletion = undefined;
+    if (completion !== undefined) {
+      completion(this.targetCurrentIndex);
+    }
   }
 }
 
@@ -277,14 +499,37 @@ export class PlayerStore {
     }
   }
 
-  setQueueCurrentIndex(index: number): void {
-    if (this.queueCurrentIndex === index) {
+  setQueueCurrentIndex(index: number, currentEntryId: number = -1): void {
+    if (this.queueCurrentIndex === index && !this.queueDataSource.hasPendingProjection()) {
       return;
     }
     const previousIndex = this.queueCurrentIndex;
-    this.queueCurrentIndex = index;
-    this.queueDataSource.notifyChanged([previousIndex, index]);
-    this.queueIndexListeners.slice().forEach((listener: QueueIndexListener) => listener(index));
+    this.queueDataSource.applyCurrentIndex(
+      index,
+      currentEntryId,
+      [previousIndex, index],
+      (projectedIndex: number): void => {
+        this.queueCurrentIndex = projectedIndex;
+        this.queueIndexListeners.slice().forEach((listener: QueueIndexListener): void =>
+          listener(projectedIndex));
+      }
+    );
+  }
+
+  applyQueueSnapshot(entries: Array<QueueEntry>, currentIndex: number): void {
+    const previousIndex = this.queueCurrentIndex;
+    this.queueDataSource.applySnapshot(
+      entries,
+      currentIndex,
+      [previousIndex, currentIndex],
+      (projectedIndex: number): void => {
+        this.queueCurrentIndex = projectedIndex;
+        if (previousIndex !== projectedIndex) {
+          this.queueIndexListeners.slice().forEach((listener: QueueIndexListener): void =>
+            listener(projectedIndex));
+        }
+      }
+    );
   }
 
   hasCurrentTrack(): boolean {

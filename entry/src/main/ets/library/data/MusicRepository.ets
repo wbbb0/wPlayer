@@ -266,11 +266,11 @@ export class MusicRepository implements LibraryRemovalRepository {
     return this.playbackQueue.getSnapshot();
   }
 
-  replacePersistedPlaybackQueue(trackIds: Array<number>, currentPosition: number): Promise<void> {
+  replacePersistedPlaybackQueue(snapshot: PersistedPlaybackQueueSnapshot): Promise<void> {
     if (DemoLibraryMode.isEnabled()) {
       return Promise.resolve();
     }
-    return this.playbackQueue.replaceSnapshot(trackIds, currentPosition);
+    return this.playbackQueue.replaceSnapshot(snapshot);
   }
 
   updatePersistedPlaybackQueuePosition(currentPosition: number): Promise<void> {

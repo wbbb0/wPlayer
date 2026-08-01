@@ -10,6 +10,17 @@ export interface PlaybackQueueSnapshot {
   currentIndex: number;
 }
 
+export interface PlaybackQueueStateItem {
+  position: number;
+  playbackPosition: number;
+  trackId: number;
+}
+
+export interface PlaybackQueueStateSnapshot {
+  items: Array<PlaybackQueueStateItem>;
+  currentPosition: number;
+}
+
 export interface PlaybackQueueRemovalResult {
   removedCurrent: boolean;
   current?: QueueTrack;
@@ -21,7 +32,7 @@ export class PlaybackQueue {
   private cursor: number = -1;
   private nextEntryId: number = 0;
   private readonly firstItemIndexById: Map<number, number> = new Map<number, number>();
-  private readonly firstCursorById: Map<number, number> = new Map<number, number>();
+  private readonly cursorByEntryId: Map<number, number> = new Map<number, number>();
 
   build(items: Array<QueueTrack>, currentTrackId: number, shuffleEnabled: boolean): QueueBuildPhase {
     if (items.length === 0) {
@@ -41,41 +52,59 @@ export class PlaybackQueue {
     return QueueBuildPhase.READY;
   }
 
-  restore(items: Array<QueueTrack>, currentPosition: number): QueueBuildPhase {
-    if (items.length === 0 || currentPosition < 0 || currentPosition >= items.length) {
+  restore(items: Array<QueueTrack>, playbackPositions: Array<number>,
+    currentPosition: number): QueueBuildPhase {
+    if (items.length === 0 || playbackPositions.length !== items.length ||
+      currentPosition < 0 || currentPosition >= items.length ||
+      !PlaybackQueue.isPermutation(playbackPositions)) {
       this.clear();
       return items.length === 0 ? QueueBuildPhase.EMPTY : QueueBuildPhase.FAILED;
     }
     this.items = items.map((item: QueueTrack) => this.createEntry(item));
-    this.order = items.map((_item: QueueTrack, index: number): number => index);
+    this.order = new Array<number>(items.length);
+    playbackPositions.forEach((playbackPosition: number, itemIndex: number): void => {
+      this.order[playbackPosition] = itemIndex;
+    });
     this.cursor = currentPosition;
     this.rebuildIndexes();
     return QueueBuildPhase.READY;
   }
 
-  setShuffle(enabled: boolean, currentTrackId: number): void {
-    if (this.items.length === 0) {
-      return;
+  setShuffle(enabled: boolean): boolean {
+    if (this.items.length === 0 || this.cursor < 0 || this.cursor >= this.order.length) {
+      return false;
     }
-    const currentIndex = this.firstItemIndexById.get(currentTrackId);
-    if (currentIndex === undefined) {
-      return;
-    }
-    this.order = this.buildOrder(currentIndex, enabled);
-    this.cursor = enabled ? 0 : currentIndex;
+    const currentItemIndex = this.order[this.cursor];
+    this.order = this.buildOrder(currentItemIndex, enabled);
+    this.cursor = enabled ? 0 : currentItemIndex;
     this.rebuildCursorIndex();
+    return true;
   }
 
   current(): QueueTrack | undefined {
     return this.itemAtCursor(this.cursor);
   }
 
-  currentIndex(): number {
+  currentPlaybackPosition(): number {
     return this.cursor;
   }
 
-  select(trackId: number): QueueTrack | undefined {
-    const selectedCursor = this.firstCursorById.get(trackId);
+  displayCurrentIndex(): number {
+    if (this.cursor < 0 || this.cursor >= this.order.length) {
+      return -1;
+    }
+    return this.order[this.cursor];
+  }
+
+  currentEntryId(): number | undefined {
+    if (this.cursor < 0 || this.cursor >= this.order.length) {
+      return undefined;
+    }
+    return this.items[this.order[this.cursor]].queueEntryId;
+  }
+
+  selectEntry(queueEntryId: number): QueueTrack | undefined {
+    const selectedCursor = this.cursorByEntryId.get(queueEntryId);
     if (selectedCursor === undefined) {
       return undefined;
     }
@@ -83,7 +112,7 @@ export class PlaybackQueue {
     return this.current();
   }
 
-  snapshot(): PlaybackQueueSnapshot {
+  playbackSnapshot(): PlaybackQueueSnapshot {
     const snapshotEntries: Array<QueueEntry> = [];
     this.order.forEach((itemIndex: number) => {
       snapshotEntries.push(this.items[itemIndex]);
@@ -91,6 +120,28 @@ export class PlaybackQueue {
     return {
       entries: snapshotEntries,
       currentIndex: this.cursor
+    };
+  }
+
+  displaySnapshot(): PlaybackQueueSnapshot {
+    return {
+      entries: this.items.slice(),
+      currentIndex: this.displayCurrentIndex()
+    };
+  }
+
+  stateSnapshot(): PlaybackQueueStateSnapshot {
+    const playbackPositions = new Array<number>(this.items.length);
+    this.order.forEach((itemIndex: number, playbackPosition: number): void => {
+      playbackPositions[itemIndex] = playbackPosition;
+    });
+    return {
+      items: this.items.map((entry: QueueEntry, position: number): PlaybackQueueStateItem => ({
+        position: position,
+        playbackPosition: playbackPositions[position],
+        trackId: entry.track.id
+      })),
+      currentPosition: this.cursor
     };
   }
 
@@ -128,11 +179,13 @@ export class PlaybackQueue {
     if (items.length === 0 || this.cursor < 0) {
       return;
     }
-    const insertedOrder: Array<number> = [];
-    items.forEach((item: QueueTrack) => {
-      insertedOrder.push(this.items.length);
-      this.items.push(this.createEntry(item));
-    });
+    const currentItemIndex = this.order[this.cursor];
+    const insertedEntries = items.map((item: QueueTrack): QueueEntry => this.createEntry(item));
+    const insertedOrder = insertedEntries.map((_entry: QueueEntry, index: number): number =>
+      currentItemIndex + index + 1);
+    this.items.splice(currentItemIndex + 1, 0, ...insertedEntries);
+    this.order = this.order.map((itemIndex: number): number =>
+      itemIndex > currentItemIndex ? itemIndex + insertedEntries.length : itemIndex);
     this.order.splice(this.cursor + 1, 0, ...insertedOrder);
     this.rebuildIndexes();
   }
@@ -152,21 +205,40 @@ export class PlaybackQueue {
     const selectedIds = new Set<number>(entryIds);
     const orderedEntries = this.order.map((itemIndex: number): QueueEntry => this.items[itemIndex]);
     const currentEntry = orderedEntries[this.cursor];
-    const remaining = orderedEntries.filter((entry: QueueEntry): boolean =>
+    const remainingOrdered = orderedEntries.filter((entry: QueueEntry): boolean =>
       !selectedIds.has(entry.queueEntryId));
     const removedCurrent = currentEntry !== undefined && selectedIds.has(currentEntry.queueEntryId);
-    if (remaining.length === 0) {
+    if (remainingOrdered.length === 0) {
       this.clear();
       return { removedCurrent: removedCurrent };
     }
-    this.items = remaining;
-    this.order = remaining.map((_entry: QueueEntry, index: number): number => index);
+    let targetEntryId = currentEntry.queueEntryId;
     if (removedCurrent) {
-      this.cursor = Math.min(this.cursor, remaining.length - 1);
-    } else {
-      this.cursor = remaining.findIndex((entry: QueueEntry): boolean =>
-        entry.queueEntryId === currentEntry.queueEntryId);
+      for (let index = this.cursor + 1; index < orderedEntries.length; index += 1) {
+        if (!selectedIds.has(orderedEntries[index].queueEntryId)) {
+          targetEntryId = orderedEntries[index].queueEntryId;
+          break;
+        }
+      }
+      if (selectedIds.has(targetEntryId)) {
+        for (let index = this.cursor - 1; index >= 0; index -= 1) {
+          if (!selectedIds.has(orderedEntries[index].queueEntryId)) {
+            targetEntryId = orderedEntries[index].queueEntryId;
+            break;
+          }
+        }
+      }
     }
+    this.items = this.items.filter((entry: QueueEntry): boolean =>
+      !selectedIds.has(entry.queueEntryId));
+    const itemIndexByEntryId = new Map<number, number>();
+    this.items.forEach((entry: QueueEntry, itemIndex: number): void => {
+      itemIndexByEntryId.set(entry.queueEntryId, itemIndex);
+    });
+    this.order = remainingOrdered.map((entry: QueueEntry): number =>
+      itemIndexByEntryId.get(entry.queueEntryId) as number);
+    this.cursor = remainingOrdered.findIndex((entry: QueueEntry): boolean =>
+      entry.queueEntryId === targetEntryId);
     this.rebuildIndexes();
     return { removedCurrent: removedCurrent, current: this.current() };
   }
@@ -223,7 +295,7 @@ export class PlaybackQueue {
     this.order = [];
     this.cursor = -1;
     this.firstItemIndexById.clear();
-    this.firstCursorById.clear();
+    this.cursorByEntryId.clear();
   }
 
   private itemAtCursor(cursor: number): QueueTrack | undefined {
@@ -248,12 +320,9 @@ export class PlaybackQueue {
   }
 
   private rebuildCursorIndex(): void {
-    this.firstCursorById.clear();
+    this.cursorByEntryId.clear();
     this.order.forEach((itemIndex: number, orderCursor: number) => {
-      const trackId = this.items[itemIndex].track.id;
-      if (!this.firstCursorById.has(trackId)) {
-        this.firstCursorById.set(trackId, orderCursor);
-      }
+      this.cursorByEntryId.set(this.items[itemIndex].queueEntryId, orderCursor);
     });
   }
 
@@ -302,5 +371,18 @@ export class PlaybackQueue {
       return sequential;
     }
     return [currentIndex].concat(remainder);
+  }
+
+  private static isPermutation(positions: Array<number>): boolean {
+    const seen = new Set<number>();
+    for (let index = 0; index < positions.length; index += 1) {
+      const position = positions[index];
+      if (!Number.isInteger(position) || position < 0 || position >= positions.length ||
+        seen.has(position)) {
+        return false;
+      }
+      seen.add(position);
+    }
+    return seen.size === positions.length;
   }
 }

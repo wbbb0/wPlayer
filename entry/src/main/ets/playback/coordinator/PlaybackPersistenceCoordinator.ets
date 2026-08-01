@@ -8,12 +8,14 @@ const COMPLETION_POSITION_FRACTION = 0.95;
 
 export interface PersistedPlaybackQueueItem {
   position: number;
+  playbackPosition: number;
   trackId: number;
 }
 
 export interface PersistedPlaybackQueueSnapshot {
   items: Array<PersistedPlaybackQueueItem>;
   currentPosition: number;
+  shuffleEnabled: boolean;
 }
 
 export interface PlaybackPersistenceSettings {
@@ -28,23 +30,32 @@ export interface PlaybackPersistenceSettings {
 export interface PlaybackRestoreRepository {
   getPlaybackQueueTracks(trackIds: Array<number>): Promise<Array<QueueTrack>>;
   getPersistedPlaybackQueue(): Promise<PersistedPlaybackQueueSnapshot | undefined>;
-  replacePersistedPlaybackQueue(trackIds: Array<number>, currentPosition: number): Promise<void>;
+  replacePersistedPlaybackQueue(snapshot: PersistedPlaybackQueueSnapshot): Promise<void>;
   updatePersistedPlaybackQueuePosition(currentPosition: number): Promise<void>;
 }
 
 export class PlaybackRestorePlan {
   readonly currentTrack: QueueTrack;
   readonly queueTracks: Array<QueueTrack>;
+  readonly playbackPositions: Array<number>;
   readonly currentPosition: number;
   readonly resumePositionMs: number;
+  readonly shuffleEnabled: boolean;
 
-  constructor(currentTrack: QueueTrack, queueTracks: Array<QueueTrack>, currentPosition: number,
-    resumePositionMs: number) {
+  constructor(currentTrack: QueueTrack, queueTracks: Array<QueueTrack>,
+    playbackPositions: Array<number>, currentPosition: number, resumePositionMs: number,
+    shuffleEnabled: boolean) {
     this.currentTrack = currentTrack;
     this.queueTracks = queueTracks;
+    this.playbackPositions = playbackPositions;
     this.currentPosition = currentPosition;
     this.resumePositionMs = resumePositionMs;
+    this.shuffleEnabled = shuffleEnabled;
   }
+}
+
+interface ResolvedPersistedQueueItem extends PersistedPlaybackQueueItem {
+  track: QueueTrack;
 }
 
 export class PlaybackPersistenceCoordinator {
@@ -52,51 +63,66 @@ export class PlaybackPersistenceCoordinator {
   private repository?: PlaybackRestoreRepository;
   private lastPersistedTrackId: number = -2;
   private lastPersistedPositionMs: number = -1;
-  private writeTail: Promise<void> = Promise.resolve();
+  private pendingSnapshot?: PersistedPlaybackQueueSnapshot;
+  private pendingCurrentPosition?: number;
+  private writePumpRunning: boolean = false;
+  private writePump: Promise<void> = Promise.resolve();
+  private legacyQueueCleared: boolean = false;
+  private cursorWritesBlocked: boolean = false;
 
   bind(settings: PlaybackPersistenceSettings, repository: PlaybackRestoreRepository): void {
     this.settings = settings;
     this.repository = repository;
     this.resetWriteCache();
+    this.legacyQueueCleared = false;
+    this.cursorWritesBlocked = false;
   }
 
   async reset(): Promise<void> {
     await this.flush();
     this.settings = undefined;
     this.repository = undefined;
+    this.pendingSnapshot = undefined;
+    this.pendingCurrentPosition = undefined;
+    this.legacyQueueCleared = false;
+    this.cursorWritesBlocked = false;
     this.resetWriteCache();
   }
 
-  persistQueue(trackIds: Array<number>, currentPosition: number): void {
-    const repository = this.repository;
-    const settings = this.settings;
-    if (repository === undefined || settings === undefined) {
+  persistQueue(snapshot: PersistedPlaybackQueueSnapshot): void {
+    if (this.repository === undefined || this.settings === undefined) {
       return;
     }
-    const snapshot = trackIds.slice();
-    this.enqueueWrite(async (): Promise<void> => {
-      await repository.replacePersistedPlaybackQueue(snapshot, currentPosition);
-      settings.clearLegacyPlaybackQueue();
-    });
+    this.pendingSnapshot = PlaybackPersistenceCoordinator.copySnapshot(snapshot);
+    this.pendingCurrentPosition = undefined;
+    this.cursorWritesBlocked = false;
+    this.ensureWritePump();
   }
 
   persistQueueCurrentPosition(currentPosition: number): void {
-    const repository = this.repository;
-    if (repository === undefined) {
+    if (this.repository === undefined) {
       return;
     }
-    this.enqueueWrite(async (): Promise<void> => {
-      await repository.updatePersistedPlaybackQueuePosition(currentPosition);
-    });
+    if (this.pendingSnapshot !== undefined) {
+      this.pendingSnapshot.currentPosition = currentPosition;
+    } else if (!this.cursorWritesBlocked) {
+      this.pendingCurrentPosition = currentPosition;
+    }
+    this.ensureWritePump();
   }
 
   clearResumeAndQueue(): void {
     this.persistResumeState(-1, 0);
-    this.persistQueue([], -1);
+    this.persistQueue({ items: [], currentPosition: -1, shuffleEnabled: false });
   }
 
-  flush(): Promise<void> {
-    return this.writeTail;
+  async flush(): Promise<void> {
+    while (this.writePumpRunning || this.pendingSnapshot !== undefined ||
+      this.pendingCurrentPosition !== undefined) {
+      this.ensureWritePump();
+      const currentPump = this.writePump;
+      await currentPump;
+    }
   }
 
   persistProgress(track: PlaybackTrack | undefined, positionMs: number, durationMs: number,
@@ -140,7 +166,7 @@ export class PlaybackPersistenceCoordinator {
     return PlaybackPersistenceCoordinator.validResumePosition(storedPosition, durationMs);
   }
 
-  async createRestorePlan(buildEpoch: number,
+  async createRestorePlan(buildEpoch: number, fallbackShuffleEnabled: boolean,
     isEpochCurrent: (epoch: number) => boolean): Promise<PlaybackRestorePlan | undefined> {
     if (this.repository === undefined || !isEpochCurrent(buildEpoch)) {
       return undefined;
@@ -149,8 +175,12 @@ export class PlaybackPersistenceCoordinator {
     if (!isEpochCurrent(buildEpoch)) {
       return undefined;
     }
-    const snapshot = stored ?? this.legacySnapshot();
+    const snapshot = stored ?? this.legacySnapshot(fallbackShuffleEnabled);
     if (snapshot.items.length === 0) {
+      return undefined;
+    }
+    if (!PlaybackPersistenceCoordinator.validSnapshot(snapshot)) {
+      console.warn('Ignoring invalid persisted playback queue snapshot');
       return undefined;
     }
     const uniqueTrackIds: Array<number> = [];
@@ -167,29 +197,46 @@ export class PlaybackPersistenceCoordinator {
     resolvedTracks.forEach((track: QueueTrack): void => {
       byId.set(track.id, track);
     });
-    const tracks: Array<QueueTrack> = [];
-    const originalPositions: Array<number> = [];
-    snapshot.items.forEach((item: PersistedPlaybackQueueItem): void => {
+    const resolvedItems: Array<ResolvedPersistedQueueItem> = [];
+    snapshot.items.slice().sort((left: PersistedPlaybackQueueItem,
+      right: PersistedPlaybackQueueItem): number => left.position - right.position)
+      .forEach((item: PersistedPlaybackQueueItem): void => {
       const track = byId.get(item.trackId);
       if (track !== undefined) {
-        tracks.push(track);
-        originalPositions.push(item.position);
+        resolvedItems.push({
+          position: item.position,
+          playbackPosition: item.playbackPosition,
+          trackId: item.trackId,
+          track: track
+        });
       }
     });
-    if (tracks.length === 0) {
+    if (resolvedItems.length === 0) {
       this.clearResumeAndQueue();
       return undefined;
     }
+    const playbackItems = resolvedItems.slice().sort((left: ResolvedPersistedQueueItem,
+      right: ResolvedPersistedQueueItem): number =>
+      left.playbackPosition - right.playbackPosition);
+    const playbackPositionByBasePosition: Map<number, number> = new Map<number, number>();
+    playbackItems.forEach((item: ResolvedPersistedQueueItem, playbackPosition: number): void => {
+      playbackPositionByBasePosition.set(item.position, playbackPosition);
+    });
+    const tracks = resolvedItems.map((item: ResolvedPersistedQueueItem): QueueTrack => item.track);
+    const playbackPositions = resolvedItems.map((item: ResolvedPersistedQueueItem): number =>
+      playbackPositionByBasePosition.get(item.position) as number);
     const currentPosition = PlaybackPersistenceCoordinator.restoredCurrentIndex(
-      originalPositions,
+      playbackItems.map((item: ResolvedPersistedQueueItem): number => item.playbackPosition),
       snapshot.currentPosition
     );
-    const currentTrack = tracks[currentPosition];
+    const currentTrack = playbackItems[currentPosition].track;
     return new PlaybackRestorePlan(
       currentTrack,
       tracks,
+      playbackPositions,
       currentPosition,
-      this.resumePositionFor(currentTrack.id, currentTrack.durationMs)
+      this.resumePositionFor(currentTrack.id, currentTrack.durationMs),
+      snapshot.shuffleEnabled
     );
   }
 
@@ -214,7 +261,7 @@ export class PlaybackPersistenceCoordinator {
     return positionMs;
   }
 
-  private legacySnapshot(): PersistedPlaybackQueueSnapshot {
+  private legacySnapshot(shuffleEnabled: boolean): PersistedPlaybackQueueSnapshot {
     const storedIds = this.settings?.getPlaybackQueueTrackIds() ?? [];
     const currentTrackId = this.settings?.getPlaybackQueueCurrentTrackId(-1) ?? -1;
     const ids = storedIds.slice();
@@ -234,17 +281,103 @@ export class PlaybackPersistenceCoordinator {
     return {
       items: ids.map((trackId: number, position: number): PersistedPlaybackQueueItem => ({
         position: position,
+        playbackPosition: position,
         trackId: trackId
       })),
-      currentPosition: currentPosition
+      currentPosition: currentPosition,
+      shuffleEnabled: shuffleEnabled
     };
   }
 
-  private enqueueWrite(operation: () => Promise<void>): void {
-    this.writeTail = this.writeTail.then(operation).catch((error: Object): void => {
-      const message = error instanceof Error ? error.message : `${error}`;
-      console.warn(`Unable to persist playback queue: ${message}`);
+  private ensureWritePump(): void {
+    if (this.writePumpRunning || this.repository === undefined ||
+      (this.pendingSnapshot === undefined && this.pendingCurrentPosition === undefined)) {
+      return;
+    }
+    this.writePumpRunning = true;
+    this.writePump = this.drainWrites().finally((): void => {
+      this.writePumpRunning = false;
+      this.ensureWritePump();
     });
+  }
+
+  private async drainWrites(): Promise<void> {
+    while (this.pendingSnapshot !== undefined || this.pendingCurrentPosition !== undefined) {
+      const repository = this.repository;
+      if (repository === undefined) {
+        return;
+      }
+      if (this.pendingSnapshot !== undefined) {
+        const snapshot = this.pendingSnapshot;
+        this.pendingSnapshot = undefined;
+        try {
+          await repository.replacePersistedPlaybackQueue(snapshot);
+          this.cursorWritesBlocked = false;
+          if (!this.legacyQueueCleared && this.settings !== undefined) {
+            this.settings.clearLegacyPlaybackQueue();
+            this.legacyQueueCleared = true;
+          }
+        } catch (error) {
+          PlaybackPersistenceCoordinator.logWriteFailure(error);
+          this.cursorWritesBlocked = this.pendingSnapshot === undefined;
+          if (this.pendingSnapshot === undefined) {
+            this.pendingCurrentPosition = undefined;
+          }
+        }
+        continue;
+      }
+      const currentPosition = this.pendingCurrentPosition as number;
+      this.pendingCurrentPosition = undefined;
+      try {
+        await repository.updatePersistedPlaybackQueuePosition(currentPosition);
+      } catch (error) {
+        PlaybackPersistenceCoordinator.logWriteFailure(error);
+      }
+    }
+  }
+
+  private static copySnapshot(snapshot: PersistedPlaybackQueueSnapshot): PersistedPlaybackQueueSnapshot {
+    return {
+      items: snapshot.items.map((item: PersistedPlaybackQueueItem): PersistedPlaybackQueueItem => ({
+        position: item.position,
+        playbackPosition: item.playbackPosition,
+        trackId: item.trackId
+      })),
+      currentPosition: snapshot.currentPosition,
+      shuffleEnabled: snapshot.shuffleEnabled
+    };
+  }
+
+  private static validSnapshot(snapshot: PersistedPlaybackQueueSnapshot): boolean {
+    if (snapshot.items.length === 0) {
+      return snapshot.currentPosition === -1;
+    }
+    if (snapshot.currentPosition < 0 || snapshot.currentPosition >= snapshot.items.length) {
+      return false;
+    }
+    const basePositions = snapshot.items.map((item: PersistedPlaybackQueueItem): number => item.position);
+    const playbackPositions = snapshot.items.map(
+      (item: PersistedPlaybackQueueItem): number => item.playbackPosition);
+    return PlaybackPersistenceCoordinator.isPermutation(basePositions) &&
+      PlaybackPersistenceCoordinator.isPermutation(playbackPositions);
+  }
+
+  private static isPermutation(positions: Array<number>): boolean {
+    const seen = new Set<number>();
+    for (let index = 0; index < positions.length; index += 1) {
+      const position = positions[index];
+      if (!Number.isInteger(position) || position < 0 || position >= positions.length ||
+        seen.has(position)) {
+        return false;
+      }
+      seen.add(position);
+    }
+    return seen.size === positions.length;
+  }
+
+  private static logWriteFailure(error: Object): void {
+    const message = error instanceof Error ? error.message : `${error}`;
+    console.warn(`Unable to persist playback queue: ${message}`);
   }
 
   private resetWriteCache(): void {

@@ -70,9 +70,11 @@ internals. Do not perform a repository-wide dependency-injection rewrite solely 
 
 - PlaybackEngine exclusively owns AVPlayer creation, raw state transitions and source preparation.
 - PlaybackRuntime coordinates commands, queue behavior, engine/session integration and atomic Store projection.
-- PlaybackPersistenceCoordinator owns restore planning, serialized relational queue-snapshot writes and playback
-  preference writes. It uses the Runtime-owned queue-build epoch for stale-result checks and never projects queue
-  state itself. Persisted queue identity is positional so duplicate tracks and shuffled order survive restart.
+- PlaybackPersistenceCoordinator owns restore planning, an ordered latest-wins pump for relational queue snapshots
+  and cursor writes, and playback preference writes. It uses the Runtime-owned queue-build epoch for stale-result
+  checks and never projects queue state itself. A persisted snapshot atomically records stable base positions, the
+  active playback permutation, cursor and shuffle mode so duplicate tracks and natural-order restoration survive
+  restart.
 - PlaybackMediaCoordinator owns the single track request epoch and playback-time lyrics/artwork/palette work.
 - PlaybackPictureInPictureCoordinator delegates snapshots and lifecycle to the existing
   PlaybackPictureInPicture implementation.
@@ -80,7 +82,14 @@ internals. Do not perform a repository-wide dependency-injection rewrite solely 
 - PlaybackSession owns AVSession and background-control integration.
 - PlaybackPictureInPicture owns system PiP nodes, lifecycle callbacks and control-event adaptation.
 - PlayerStore is observable UI state, not a command service and not an AVPlayer state machine.
-- PlaybackQueue owns queue identity, ordering, shuffle and cursor invariants.
+- PlayerStore owns the ArkUI queue-projection notification policy and exposes active playback order: identical
+  snapshots are a no-op, permutations use at most two frame-separated layers of disjoint keyed exchanges, cursor
+  changes update only affected rows, and structural changes retain stable keys through a reload.
+  Navigation containers do not receive PlayerStore; leaf playback surfaces reference the application PlayerStore
+  directly and own the deep observation boundary.
+- PlaybackQueue owns stable base-entry identity, the active playback permutation, shuffle and exact-entry cursor
+  invariants. The UI projects playback order while persistence records both base and playback positions. Insert,
+  append and removal operations update both orders without collapsing shuffled order into the natural base order.
 - Support policies own independently testable decisions such as power, reconnect and state reduction.
 
 Use request epochs or equivalent invalidation for asynchronous work that can be superseded. A stale completion must
@@ -138,6 +147,9 @@ same library graph.
 ## Navigation ownership
 
 - Persistent navigation hosts live at the root tab shell.
+- Do not attach implicit palette animations to an entire HdsNavigation or HdsNavDestination. Palette transitions
+  are driven explicitly by the appearance owner so unrelated playback state cannot animate or rebuild a complete
+  navigation render tree.
 - Each tab owns one controlled navigation stack.
 - Shared route definitions and responsive promotion/demotion logic stay in the navigation layer.
 - `IndexNavigationController` and the root shell composition own route selection, tab controllers and the persistent

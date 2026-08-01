@@ -1,9 +1,11 @@
 import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
+import { FrameCallback } from '@kit.ArkUI';
 import { TitleBarMotionSpec } from '../navigation/TitleBarMotionSpec';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import {
   PlayerStore,
   QueueEntry,
+  QueueEntryPresentation,
   QueueIndexListener,
   QueueTrack
 } from '../../playback/model/PlaybackModels';
@@ -30,6 +32,71 @@ import {
   PlayerLayoutSpec,
   PlayerMotionSpec
 } from './PlayerMotion';
+
+class QueueProjectionFrameCallback extends FrameCallback {
+  private readonly task: () => void;
+
+  constructor(task: () => void) {
+    super();
+    this.task = task;
+  }
+
+  onFrame(_frameTimeInNano: number): void {
+    this.task();
+  }
+}
+
+@Component
+struct QueueRowDivider {
+  @ObjectLink presentation: QueueEntryPresentation;
+  @Prop color: ResourceColor = Color.Transparent;
+
+  build() {
+    Divider()
+      .strokeWidth(PlayerLayoutSpec.FULL_PLAYER_QUEUE_DIVIDER_HEIGHT)
+      .color(this.color)
+      .opacity(this.presentation.displayIndex > 0 ?
+        PlayerLayoutSpec.FULL_PLAYER_QUEUE_DIVIDER_OPACITY : 0)
+      .margin({
+        left: PlayerLayoutSpec.FULL_PLAYER_QUEUE_INDEX_WIDTH +
+          PlayerLayoutSpec.FULL_PLAYER_QUEUE_ARTWORK_SIZE + 20 +
+          PlayerLayoutSpec.FULL_PLAYER_QUEUE_CONTENT_HORIZONTAL_INSET,
+        right: PlayerLayoutSpec.FULL_PLAYER_QUEUE_CONTENT_HORIZONTAL_INSET
+      })
+  }
+}
+
+@Component
+struct ActiveQueueRowBackground {
+  @ObjectLink presentation: QueueEntryPresentation;
+  @Prop paneCount: number = 1;
+
+  build() {
+    if (this.presentation.isActive()) {
+      if (this.paneCount > 1) {
+        Row()
+          .width('100%')
+          .height('100%')
+          .linearGradient({
+            direction: GradientDirection.Right,
+            colors: [
+              [$r('app.color.glass_surface_strong'), 0],
+              [
+                $r('app.color.glass_surface_strong'),
+                PlayerLayoutSpec.FULL_PLAYER_QUEUE_ACTIVE_FADE_START
+              ],
+              [Color.Transparent, 1]
+            ]
+          })
+      } else {
+        Row()
+          .width('100%')
+          .height('100%')
+          .backgroundColor($r('app.color.glass_surface_strong'))
+      }
+    }
+  }
+}
 
 export function queueTrackListItem(track: QueueTrack): TrackListItem {
   return {
@@ -237,7 +304,7 @@ export struct FullPlayerQueuePage {
   @Prop focusAnimationEnabled: boolean = true;
   @Prop primaryContentColor: string = '#FFFFFFFF';
   @Prop secondaryContentColor: string = '#B8FFFFFF';
-  onPlayQueueTrack: (trackId: number) => void = (_trackId: number): void => {};
+  onPlayQueueEntry: (queueEntryId: number) => void = (_queueEntryId: number): void => {};
   onResolveQueueArtwork: (relativePath: string) => string =
     (_relativePath: string): string => '';
   onOpenTrackDetails: (track: TrackListItem) => void =
@@ -263,11 +330,15 @@ export struct FullPlayerQueuePage {
   };
 
   aboutToAppear(): void {
+    this.playerStore.queueDataSource.setFrameScheduler((task: () => void): void => {
+      this.getUIContext().postFrameCallback(new QueueProjectionFrameCallback(task));
+    });
     this.onFocusSyncActiveChanged();
     this.syncListenerRegistration();
   }
 
   aboutToDisappear(): void {
+    this.playerStore.queueDataSource.setFrameScheduler(undefined);
     this.removeListener();
   }
 
@@ -345,31 +416,6 @@ export struct FullPlayerQueuePage {
     });
   }
 
-  @Builder
-  private ActiveQueueRowBackground() {
-    if (this.paneCount > 1) {
-      Row()
-        .width('100%')
-        .height('100%')
-        .linearGradient({
-          direction: GradientDirection.Right,
-          colors: [
-            [$r('app.color.glass_surface_strong'), 0],
-            [
-              $r('app.color.glass_surface_strong'),
-              PlayerLayoutSpec.FULL_PLAYER_QUEUE_ACTIVE_FADE_START
-            ],
-            [Color.Transparent, 1]
-          ]
-        })
-    } else {
-      Row()
-        .width('100%')
-        .height('100%')
-        .backgroundColor($r('app.color.glass_surface_strong'))
-    }
-  }
-
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
       Column() {
@@ -397,37 +443,31 @@ export struct FullPlayerQueuePage {
           .padding({ bottom: this.bottomInset })
         } else {
           List({ space: 0, scroller: this.queueScroller }) {
-            LazyForEach(this.playerStore.queueDataSource, (entry: QueueEntry, index: number) => {
+            LazyForEach(this.playerStore.queueDataSource,
+              (presentation: QueueEntryPresentation) => {
               ListItem() {
                 Column() {
-                  if (index > 0) {
-                    Divider()
-                      .strokeWidth(PlayerLayoutSpec.FULL_PLAYER_QUEUE_DIVIDER_HEIGHT)
-                      .color(this.secondaryContentColor)
-                      .opacity(PlayerLayoutSpec.FULL_PLAYER_QUEUE_DIVIDER_OPACITY)
-                      .margin({
-                        left: PlayerLayoutSpec.FULL_PLAYER_QUEUE_INDEX_WIDTH +
-                          PlayerLayoutSpec.FULL_PLAYER_QUEUE_ARTWORK_SIZE + 20 +
-                          PlayerLayoutSpec.FULL_PLAYER_QUEUE_CONTENT_HORIZONTAL_INSET,
-                        right: PlayerLayoutSpec.FULL_PLAYER_QUEUE_CONTENT_HORIZONTAL_INSET
-                      })
-                  }
+                  QueueRowDivider({
+                    presentation: presentation,
+                    color: this.secondaryContentColor
+                  })
                   Stack() {
-                    if (index === this.playerStore.queueCurrentIndex) {
-                      this.ActiveQueueRowBackground()
-                    }
+                    ActiveQueueRowBackground({
+                      presentation: presentation,
+                      paneCount: this.paneCount
+                    })
                     Row() {
                       QueueTrackRow({
-                        track: queueTrackListItem(entry.track),
+                        presentation: presentation,
+                        track: queueTrackListItem(presentation.entry.track),
                         store: this.libraryStore,
-                        artworkPath: this.onResolveQueueArtwork(entry.track.smallArtworkPath),
-                        queueIndex: index,
-                        currentQueueIndex: this.playerStore.queueCurrentIndex,
+                        artworkPath: this.onResolveQueueArtwork(
+                          presentation.entry.track.smallArtworkPath
+                        ),
                         primaryColor: this.primaryContentColor,
                         secondaryColor: this.secondaryContentColor,
                         tertiaryColor: this.secondaryContentColor,
                         animateColors: true,
-                        active: entry.track.id === this.playerStore.currentTrack?.id,
                         horizontalInset: PlayerLayoutSpec.FULL_PLAYER_QUEUE_CONTENT_HORIZONTAL_INSET,
                         verticalInset: PlayerLayoutSpec.FULL_PLAYER_QUEUE_ROW_VERTICAL_INSET,
                         artworkSize: PlayerLayoutSpec.FULL_PLAYER_QUEUE_ARTWORK_SIZE,
@@ -443,11 +483,13 @@ export struct FullPlayerQueuePage {
                         onOpenDetails: this.onOpenTrackDetails,
                         onShareTrackFile: this.onShareTrackFile,
                         selectionMode: this.selectionStore.selectionActive,
-                        selected: this.selectionStore.isSelected(entry.queueEntryId),
-                        onActivate: (track: TrackListItem): void =>
-                          this.onPlayQueueTrack(track.id),
+                        selected: this.selectionStore.isSelected(
+                          presentation.entry.queueEntryId
+                        ),
+                        onActivate: (_track: TrackListItem): void =>
+                          this.onPlayQueueEntry(presentation.entry.queueEntryId),
                         onToggleSelection: (_track: TrackListItem): void =>
-                          this.selectionStore.toggle(entry)
+                          this.selectionStore.toggle(presentation.entry)
                       })
                         .reuseId(this.selectionStore.selectionActive ?
                           'player_queue_selection' : 'player_queue_track')
@@ -463,7 +505,8 @@ export struct FullPlayerQueuePage {
                 .width('100%')
               }
               .height(PlayerLayoutSpec.FULL_PLAYER_QUEUE_ITEM_HEIGHT)
-            }, (entry: QueueEntry) => `${entry.queueEntryId}`)
+            }, (presentation: QueueEntryPresentation) =>
+              `${presentation.entry.queueEntryId}`)
           }
           .layoutWeight(1)
           .width('100%')

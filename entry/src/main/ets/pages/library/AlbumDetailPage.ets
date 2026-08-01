@@ -117,6 +117,7 @@ export struct AlbumDetailPage {
     (_items: Array<TrackListItem>): void => {};
   onOpenTrackDetails: (track: TrackListItem) => void =
     (_track: TrackListItem): void => {};
+  onShareTrackFile: (trackId: number) => void = (_trackId: number): void => {};
   private readonly artworkChangeListener = (): void => {
     this.state.refresh(this.store).catch((error: Object): void => {
       console.warn(`Unable to refresh album artwork colors: ${error}`);
@@ -557,6 +558,7 @@ export struct AlbumDetailPage {
                 },
                 onOpenActions: this.onOpenTrackActions,
                 onOpenDetails: this.onOpenTrackDetails,
+                onShareTrackFile: this.onShareTrackFile,
                 onNavigateAction: this.onNavigateTrackAction,
                 onRequestAddToPlaylist: this.onRequestAddToPlaylist,
                 onToggleSelection: (item: TrackListItem): void => this.toggleSelection(item)

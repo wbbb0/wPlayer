@@ -53,6 +53,7 @@ export struct PlayerMorphArtwork {
   onAppendToQueue: () => void = (): void => {};
   onAddToPlaylist: () => void = (): void => {};
   onOpenDetails: () => void = (): void => {};
+  onShareTrackFile: () => void = (): void => {};
   onCompletedCollectionChange: (enabled: boolean) => void =
     (_enabled: boolean): void => {};
 
@@ -205,15 +206,16 @@ export struct PlayerMorphArtwork {
 
   @Builder
   private CurrentTrackMenu() {
-    CurrentTrackActionMenu(new CurrentTrackActionMenuParams(
-      this.playerStore.currentTrack !== undefined,
-      this.playerStore.completedCollectionEnabled,
-      this.onInsertNext,
-      this.onAppendToQueue,
-      this.onAddToPlaylist,
-      this.onOpenDetails,
-      this.onCompletedCollectionChange
-    ))
+    CurrentTrackActionMenu(new CurrentTrackActionMenuParams({
+      trackAvailable: this.playerStore.currentTrack !== undefined,
+      completedCollectionEnabled: this.playerStore.completedCollectionEnabled,
+      onInsertNext: this.onInsertNext,
+      onAppendToQueue: this.onAppendToQueue,
+      onAddToPlaylist: this.onAddToPlaylist,
+      onOpenDetails: this.onOpenDetails,
+      onShareFile: this.onShareTrackFile,
+      onCompletedCollectionChange: this.onCompletedCollectionChange
+    }))
   }
 
   @Builder

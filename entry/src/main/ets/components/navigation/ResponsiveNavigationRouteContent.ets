@@ -102,6 +102,7 @@ export struct ResponsiveNavigationRouteContent {
   onOpenTrackActions: (item: TrackListItem, anchorId: string) => void =
     (_item: TrackListItem, _anchorId: string): void => {};
   onOpenTrackDetails: (item: TrackListItem) => void = (_item: TrackListItem): void => {};
+  onShareTrackFile: (trackId: number) => void = (_trackId: number): void => {};
   onNavigateLibrary: (target: LibraryNavigationTarget) => void =
     (_target: LibraryNavigationTarget): void => {};
   onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
@@ -144,6 +145,7 @@ export struct ResponsiveNavigationRouteContent {
         onPlayTrack: this.onPlayTrack,
         onOpenTrackActions: this.onOpenTrackActions,
         onOpenTrackDetails: this.onOpenTrackDetails,
+        onShareTrackFile: this.onShareTrackFile,
         onNavigateTrackAction: this.onNavigateLibrary,
         onRequestAddToPlaylist: this.onRequestAddToPlaylist
       })
@@ -298,6 +300,7 @@ export struct ResponsiveNavigationDestinationContent {
     current?: LibraryEntityIdentity
   ) => void = (_item: TrackListItem, _anchorId: string, _current?: LibraryEntityIdentity): void => {};
   onOpenTrackDetails: (item: TrackListItem) => void = (_item: TrackListItem): void => {};
+  onShareTrackFile: (trackId: number) => void = (_trackId: number): void => {};
   onAlbumAction: (albumId: number, action: AlbumAction) => void =
     (_albumId: number, _action: AlbumAction): void => {};
 
@@ -368,7 +371,8 @@ export struct ResponsiveNavigationDestinationContent {
               this.libraryStore.resolveArtworkPath(relativePath),
             onRequestAddToPlaylist: this.onRequestAddToPlaylist,
             onNavigateLibrary: this.onNavigateLibrary,
-            onOpenTrackDetails: this.onOpenTrackDetails
+            onOpenTrackDetails: this.onOpenTrackDetails,
+            onShareTrackFile: this.onShareTrackFile
           })
           PageBottomGradient({ maskColor: this.themePageBackground })
         }
@@ -416,6 +420,7 @@ export struct ResponsiveNavigationDestinationContent {
             onOpenTrackActions: (item: TrackListItem, anchorId: string): void =>
               this.onOpenTrackActions(item, anchorId, (this.param as AlbumDetailRouteParams).identity()),
             onOpenTrackDetails: this.onOpenTrackDetails,
+            onShareTrackFile: this.onShareTrackFile,
             onNavigateTrackAction: this.onNavigateLibrary,
             onRequestAddToPlaylist: this.onRequestAddToPlaylist
           })
@@ -470,6 +475,7 @@ export struct ResponsiveNavigationDestinationContent {
             onOpenTrackActions: (item: TrackListItem, anchorId: string): void =>
               this.onOpenTrackActions(item, anchorId, (this.param as ArtistDetailRouteParams).identity()),
             onOpenTrackDetails: this.onOpenTrackDetails,
+            onShareTrackFile: this.onShareTrackFile,
             onNavigateTrackAction: this.onNavigateLibrary,
             onRequestAddToPlaylist: this.onRequestAddToPlaylist
           })
@@ -774,6 +780,7 @@ export struct ResponsiveNavigationDestinationContent {
             onOpenTrackActions: (item: TrackListItem, anchorId: string): void =>
               this.onOpenTrackActions(item, anchorId),
             onOpenTrackDetails: this.onOpenTrackDetails,
+            onShareTrackFile: this.onShareTrackFile,
             onNavigateLibrary: this.onNavigateLibrary,
             onRequestAddToPlaylist: this.onRequestAddToPlaylist,
             onAlbumAction: this.onAlbumAction,

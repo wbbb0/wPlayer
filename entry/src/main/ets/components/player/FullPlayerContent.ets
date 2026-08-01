@@ -66,6 +66,7 @@ export struct FullPlayerContent {
     (_trackId: number, _anchorId: string): void => {};
   onOpenTrackDetails: (track: TrackListItem) => void =
     (_track: TrackListItem): void => {};
+  onShareTrackFile: (trackId: number) => void = (_trackId: number): void => {};
   onNavigateLibrary: (target: LibraryNavigationTarget) => void =
     (_target: LibraryNavigationTarget): void => {};
   onRequestAddToPlaylist: (trackIds: Array<number>) => void =
@@ -250,6 +251,7 @@ export struct FullPlayerContent {
       onPlayQueueTrack: this.onPlayQueueTrack,
       onResolveQueueArtwork: this.onResolveQueueArtwork,
       onOpenTrackDetails: this.onOpenTrackDetails,
+      onShareTrackFile: this.onShareTrackFile,
       onNavigateLibrary: this.onNavigateLibrary,
       onRequestAddToPlaylist: this.onRequestAddToPlaylist
     })
@@ -280,6 +282,7 @@ export struct FullPlayerContent {
       onSeek: this.onSeek,
       onOpenTrackActions: this.onOpenTrackActions,
       onOpenTrackDetails: this.onOpenTrackDetails,
+      onShareTrackFile: this.onShareTrackFile,
       onRequestAddToPlaylist: this.onRequestAddToPlaylist,
       onCompletedCollectionChange: this.onCompletedCollectionChange,
       onOpenPlayerPageSettings: this.onOpenPlayerPageSettings,
@@ -334,6 +337,7 @@ export struct FullPlayerContent {
       onSeek: this.onSeek,
       onOpenTrackActions: this.onOpenTrackActions,
       onOpenTrackDetails: this.onOpenTrackDetails,
+      onShareTrackFile: this.onShareTrackFile,
       onRequestAddToPlaylist: this.onRequestAddToPlaylist,
       onCompletedCollectionChange: this.onCompletedCollectionChange,
       onOpenPlayerPageSettings: this.onOpenPlayerPageSettings,

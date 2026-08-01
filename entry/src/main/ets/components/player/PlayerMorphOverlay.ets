@@ -39,6 +39,7 @@ export struct PlayerMorphOverlay {
     (_track: TrackListItem): void => {};
   onNavigateLibrary: (target: LibraryNavigationTarget) => void =
     (_target: LibraryNavigationTarget): void => {};
+  onShareTrackFile: (trackId: number) => void = (_trackId: number): void => {};
   onOpenPlayerPageSettings: () => void = (): void => {};
 
   private currentTrackItem(track: QueueTrack): TrackListItem {
@@ -115,6 +116,7 @@ export struct PlayerMorphOverlay {
               this.onOpenTrackActions(trackId, anchorId),
             onOpenTrackDetails: (track: TrackListItem): void =>
               this.onOpenTrackDetails(track),
+            onShareTrackFile: this.onShareTrackFile,
             onNavigateLibrary: this.onNavigateLibrary,
             onOpenPlayerPageSettings: this.onOpenPlayerPageSettings
           })
@@ -193,6 +195,11 @@ export struct PlayerMorphOverlay {
       onAppendToQueue: (): void => playbackRuntime.appendCurrentToQueue(),
       onAddToPlaylist: (): void => this.addCurrentTrackToPlaylist(),
       onOpenDetails: (): void => this.openCurrentTrackDetails(),
+      onShareTrackFile: (): void => {
+        if (this.playerStore.currentTrack !== undefined) {
+          this.onShareTrackFile(this.playerStore.currentTrack.id);
+        }
+      },
       onCompletedCollectionChange: (enabled: boolean): void =>
         playbackRuntime.setCompletedCollectionEnabled(enabled)
     })

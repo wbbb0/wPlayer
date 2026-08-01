@@ -55,6 +55,11 @@ import {
 import { NavigationRoute } from '../components/navigation/MoreNavigation';
 import { playerPageKeepScreenOnController } from
   '../application/window/PlayerPageKeepScreenOnController';
+import { MusicFileShareCoordinator } from '../library/share/MusicFileShareCoordinator';
+import { PickerMusicFileUriAccessActivator } from
+  '../library/share/PickerMusicFileUriAccessActivator';
+import { SystemMusicFileSharePresenter } from '../library/share/SystemMusicFileSharePresenter';
+import { RepositoryTrackShareSource } from '../library/share/RepositoryTrackShareSource';
 
 @Entry
 @Component
@@ -63,6 +68,12 @@ struct Index {
   private readonly condensedCompactTabsController: HdsTabsController = new HdsTabsController();
   private readonly expandedTabsController: HdsTabsController = new HdsTabsController();
   private readonly trackDetailSheetBridge: TrackDetailSheetBridge = new TrackDetailSheetBridge();
+  private readonly musicFileShareCoordinator: MusicFileShareCoordinator =
+    new MusicFileShareCoordinator(
+      new RepositoryTrackShareSource(playbackRuntime.repository),
+      new PickerMusicFileUriAccessActivator(),
+      new SystemMusicFileSharePresenter()
+    );
   private compactMiniPlayerContent?: ComponentContent<MiniPlayerHostParams>;
   private condensedCompactMiniPlayerContent?: ComponentContent<MiniPlayerHostParams>;
   private wideMiniPlayerContent?: ComponentContent<MiniPlayerHostParams>;
@@ -261,10 +272,34 @@ struct Index {
       this.libraryStore,
       trackId,
       anchorId,
-      [],
-      undefined,
-      (target: LibraryNavigationTarget): void => this.navigateLibrary(target)
+      {
+        queueItems: [],
+        onNavigate: (target: LibraryNavigationTarget): void => this.navigateLibrary(target),
+        onRequestAddToPlaylist: (_items: Array<TrackListItem>): void => {},
+        onShareTrackFile: (id: number): void => this.shareTrackFile(id),
+        removeLabel: ''
+      }
     );
+  }
+
+  private shareTrackFile(trackId: number): void {
+    const context = this.getUIContext().getHostContext();
+    if (context === undefined) {
+      this.showShareMessage('当前页面暂时无法打开系统分享');
+      return;
+    }
+    this.musicFileShareCoordinator.share(context as common.UIAbilityContext, trackId)
+      .catch((error: Object): void => {
+        this.showShareMessage(error instanceof Error ? error.message : `${error}`);
+      });
+  }
+
+  private showShareMessage(message: string): void {
+    try {
+      this.getUIContext().getPromptAction().showToast({ message: message });
+    } catch (error) {
+      console.warn(`Unable to show music-file share message: ${error instanceof Error ? error.message : error}`);
+    }
   }
 
   private showPlaylistSuccessDialog(message: string): void {
@@ -462,6 +497,7 @@ struct Index {
         this.playlistController.openRenamer(playlist),
       onRequestAddToPlaylist: (items: Array<TrackListItem>): void =>
         this.playlistController.requestAddToPlaylist(items),
+      onShareTrackFile: (trackId: number): void => this.shareTrackFile(trackId),
       onNavigateLibrary: (target: LibraryNavigationTarget): void => this.navigateLibrary(target)
     })
   }
@@ -523,6 +559,7 @@ struct Index {
         this.playerMorphController.hideFullPlayer();
         this.trackDetailSheetBridge.open(track);
       },
+      onShareTrackFile: (trackId: number): void => this.shareTrackFile(trackId),
       onNavigateLibrary: (target: LibraryNavigationTarget): void => this.navigateLibrary(target),
       onOpenPlayerPageSettings: (): void => {
         this.playerMorphController.hideFullPlayer();

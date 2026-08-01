@@ -94,6 +94,9 @@ not publish state, release a resource now owned by newer work, or clear a curren
   orchestration; MediaDuplicateProof owns full-fingerprint duplicate proof; MediaArtworkPipeline owns bounded
   artwork work and importer-scoped cleanup.
 - LibraryRemovalService coordinates committed library deletion with post-commit Picker authorization cleanup.
+- MusicFileShareCoordinator owns music-file share validation and orchestration through narrow track-source,
+  Picker-URI-access and system-share-presenter ports. Index owns the coordinator and supplies the current ability
+  context; adapters never copy the audio file, derive a physical path or retain the context.
 - MetadataReader owns documented media metadata and artwork extraction.
 - `libwplayermedia.so` implements the MP3/FLAC fallback parser and bounded pixel conversion behind
   MediaFileTasks. It synchronously borrows caller-owned file descriptors on taskpool workers, uses positioned reads

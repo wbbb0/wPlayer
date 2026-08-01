@@ -34,6 +34,7 @@ import mediaDuplicateProofTest from './MediaDuplicateProof.test';
 import playbackCoordinatorTest from './PlaybackCoordinator.test';
 import tabReselectionTest from './TabReselection.test';
 import playerPageKeepScreenOnControllerTest from './PlayerPageKeepScreenOnController.test';
+import musicFileShareCoordinatorTest from './MusicFileShareCoordinator.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -72,4 +73,5 @@ export default function testsuite() {
   playbackCoordinatorTest();
   tabReselectionTest();
   playerPageKeepScreenOnControllerTest();
+  musicFileShareCoordinatorTest();
 }

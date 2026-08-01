@@ -110,6 +110,15 @@ Taps:
 Gesture arbitration must preserve taps, horizontal drag and vertical drag together. Do not repair one gesture by
 suppressing another.
 
+## Music-file actions
+
+- Single-track action menus expose “分享音乐文件” next to file information, including library rows, playlist rows,
+  queue rows and the current-track menu.
+- Sharing hands the original Picker-authorized music-file URI to the system share panel. It must not copy the audio
+  into application storage or derive a physical path from the URI.
+- Missing tracks, unavailable original URIs and revoked authorization fail without opening an invalid share panel
+  and provide a concise user-facing message.
+
 ## Full-player shared-element morph
 
 - “保持屏幕常亮” defaults to disabled. When enabled, the foreground main window remains awake from the start of

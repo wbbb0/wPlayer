@@ -48,6 +48,7 @@ export struct ArtistDetailPage {
     (_items: Array<TrackListItem>): void => {};
   onOpenTrackDetails: (track: TrackListItem) => void =
     (_track: TrackListItem): void => {};
+  onShareTrackFile: (trackId: number) => void = (_trackId: number): void => {};
   private readonly scrollBehavior: PageListBehavior =
     new PageListBehavior(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT);
 
@@ -276,6 +277,7 @@ export struct ArtistDetailPage {
                   onActivate: (item: TrackListItem): void => this.playTrack(item),
                   onOpenActions: this.onOpenTrackActions,
                   onOpenDetails: this.onOpenTrackDetails,
+                  onShareTrackFile: this.onShareTrackFile,
                   onNavigateAction: this.onNavigateTrackAction,
                   onRequestAddToPlaylist: this.onRequestAddToPlaylist,
                   selectionMode: this.selection.active,

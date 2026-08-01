@@ -177,6 +177,7 @@ export struct ResponsiveNavigationShell {
     (_playlist: PlaylistSummary): void => {};
   onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
     (_items: Array<TrackListItem>): void => {};
+  onShareTrackFile: (trackId: number) => void = (_trackId: number): void => {};
   onNavigateLibrary: (target: LibraryNavigationTarget) => void =
     (_target: LibraryNavigationTarget): void => {};
   private readonly miniPlayerBuilder: () => void = (): void => this.MiniPlayer();
@@ -870,13 +871,15 @@ export struct ResponsiveNavigationShell {
       this.libraryStore,
       item.id,
       anchorId,
-      [item],
-      current,
-      this.onNavigateLibrary,
-      this.onRequestAddToPlaylist,
-      '',
-      undefined,
-      (track: TrackListItem): void => this.openTrackDetails(track)
+      {
+        queueItems: [item],
+        current: current,
+        onNavigate: this.onNavigateLibrary,
+        onRequestAddToPlaylist: this.onRequestAddToPlaylist,
+        onShareTrackFile: this.onShareTrackFile,
+        removeLabel: '',
+        onOpenDetails: (track: TrackListItem): void => this.openTrackDetails(track)
+      }
     );
   }
 
@@ -1192,6 +1195,7 @@ export struct ResponsiveNavigationShell {
       onOpenTrackActions: (item: TrackListItem, anchorId: string): void =>
         this.openTrackActions(item, anchorId),
       onOpenTrackDetails: (item: TrackListItem): void => this.openTrackDetails(item),
+      onShareTrackFile: this.onShareTrackFile,
       onNavigateLibrary: this.onNavigateLibrary,
       onRequestAddToPlaylist: this.onRequestAddToPlaylist,
       onAlbumAction: (albumId: number, action: AlbumAction): void =>
@@ -1337,6 +1341,7 @@ export struct ResponsiveNavigationShell {
       onPlayerPageKeepScreenOnChange: this.onPlayerPageKeepScreenOnChange,
       onNavigateLibrary: this.onNavigateLibrary,
       onRequestAddToPlaylist: this.onRequestAddToPlaylist,
+      onShareTrackFile: this.onShareTrackFile,
       onOpenTrackActions: (
         item: TrackListItem,
         anchorId: string,

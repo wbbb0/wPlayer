@@ -51,28 +51,33 @@ export class CurrentTrackActionMenuParams {
   readonly onAppendToQueue: () => void;
   readonly onAddToPlaylist: () => void;
   readonly onOpenDetails: () => void;
+  readonly onShareFile: () => void;
   readonly onCompletedCollectionChange: (enabled: boolean) => void;
   readonly onOpenPlayerPageSettings?: () => void;
 
-  constructor(
-    trackAvailable: boolean,
-    completedCollectionEnabled: boolean,
-    onInsertNext: () => void,
-    onAppendToQueue: () => void,
-    onAddToPlaylist: () => void,
-    onOpenDetails: () => void,
-    onCompletedCollectionChange: (enabled: boolean) => void,
-    onOpenPlayerPageSettings?: () => void
-  ) {
-    this.trackAvailable = trackAvailable;
-    this.completedCollectionEnabled = completedCollectionEnabled;
-    this.onInsertNext = onInsertNext;
-    this.onAppendToQueue = onAppendToQueue;
-    this.onAddToPlaylist = onAddToPlaylist;
-    this.onOpenDetails = onOpenDetails;
-    this.onCompletedCollectionChange = onCompletedCollectionChange;
-    this.onOpenPlayerPageSettings = onOpenPlayerPageSettings;
+  constructor(options: CurrentTrackActionMenuOptions) {
+    this.trackAvailable = options.trackAvailable;
+    this.completedCollectionEnabled = options.completedCollectionEnabled;
+    this.onInsertNext = options.onInsertNext;
+    this.onAppendToQueue = options.onAppendToQueue;
+    this.onAddToPlaylist = options.onAddToPlaylist;
+    this.onOpenDetails = options.onOpenDetails;
+    this.onShareFile = options.onShareFile;
+    this.onCompletedCollectionChange = options.onCompletedCollectionChange;
+    this.onOpenPlayerPageSettings = options.onOpenPlayerPageSettings;
   }
+}
+
+export interface CurrentTrackActionMenuOptions {
+  trackAvailable: boolean;
+  completedCollectionEnabled: boolean;
+  onInsertNext: () => void;
+  onAppendToQueue: () => void;
+  onAddToPlaylist: () => void;
+  onOpenDetails: () => void;
+  onShareFile: () => void;
+  onCompletedCollectionChange: (enabled: boolean) => void;
+  onOpenPlayerPageSettings?: () => void;
 }
 
 @Builder
@@ -92,6 +97,9 @@ export function CurrentTrackActionMenu(params: CurrentTrackActionMenuParams) {
     MenuItem({ content: '文件信息' })
       .enabled(params.trackAvailable)
       .onClick(params.onOpenDetails)
+    MenuItem({ content: '分享音乐文件' })
+      .enabled(params.trackAvailable)
+      .onClick(params.onShareFile)
     MenuSectionDivider()
     MenuItem({
       content: '收集完整听过的音乐',

@@ -242,6 +242,7 @@ export struct FullPlayerQueuePage {
     (_relativePath: string): string => '';
   onOpenTrackDetails: (track: TrackListItem) => void =
     (_track: TrackListItem): void => {};
+  onShareTrackFile: (trackId: number) => void = (_trackId: number): void => {};
   onNavigateLibrary: (target: LibraryNavigationTarget) => void =
     (_target: LibraryNavigationTarget): void => {};
   onRequestAddToPlaylist: (trackIds: Array<number>) => void =
@@ -440,6 +441,7 @@ export struct FullPlayerQueuePage {
                             items.map((item: TrackListItem): number => item.id)
                           ),
                         onOpenDetails: this.onOpenTrackDetails,
+                        onShareTrackFile: this.onShareTrackFile,
                         selectionMode: this.selectionStore.selectionActive,
                         selected: this.selectionStore.isSelected(entry.queueEntryId),
                         onActivate: (track: TrackListItem): void =>

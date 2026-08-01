@@ -51,6 +51,7 @@ export struct FullPlayerCoverPage {
     (_trackId: number, _anchorId: string): void => {};
   onOpenTrackDetails: (track: TrackListItem) => void =
     (_track: TrackListItem): void => {};
+  onShareTrackFile: (trackId: number) => void = (_trackId: number): void => {};
   onRequestAddToPlaylist: (trackIds: Array<number>) => void =
     (_trackIds: Array<number>): void => {};
   onCompletedCollectionChange: (enabled: boolean) => void =
@@ -76,24 +77,29 @@ export struct FullPlayerCoverPage {
 
   @Builder
   private CurrentTrackMenu() {
-    CurrentTrackActionMenu(new CurrentTrackActionMenuParams(
-      this.playerStore.currentTrack !== undefined,
-      this.playerStore.completedCollectionEnabled,
-      () => playbackRuntime.insertCurrentNext(),
-      () => playbackRuntime.appendCurrentToQueue(),
-      () => {
+    CurrentTrackActionMenu(new CurrentTrackActionMenuParams({
+      trackAvailable: this.playerStore.currentTrack !== undefined,
+      completedCollectionEnabled: this.playerStore.completedCollectionEnabled,
+      onInsertNext: (): void => playbackRuntime.insertCurrentNext(),
+      onAppendToQueue: (): void => playbackRuntime.appendCurrentToQueue(),
+      onAddToPlaylist: (): void => {
         if (this.playerStore.currentTrack !== undefined) {
           this.onRequestAddToPlaylist([this.playerStore.currentTrack.id]);
         }
       },
-      () => {
+      onOpenDetails: (): void => {
         if (this.playerStore.currentTrack !== undefined) {
           this.onOpenTrackDetails(queueTrackListItem(this.playerStore.currentTrack));
         }
       },
-      this.onCompletedCollectionChange,
-      this.onOpenPlayerPageSettings
-    ))
+      onShareFile: (): void => {
+        if (this.playerStore.currentTrack !== undefined) {
+          this.onShareTrackFile(this.playerStore.currentTrack.id);
+        }
+      },
+      onCompletedCollectionChange: this.onCompletedCollectionChange,
+      onOpenPlayerPageSettings: this.onOpenPlayerPageSettings
+    }))
   }
 
   private pageWidth(): number {

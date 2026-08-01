@@ -52,6 +52,7 @@ export struct QueueTrackRow {
   onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
     (_items: Array<TrackListItem>): void => {};
   onOpenDetails: (track: TrackListItem) => void = (_track: TrackListItem): void => {};
+  onShareTrackFile: (trackId: number) => void = (_trackId: number): void => {};
   @State contextMenuShown: boolean = false;
   @State linkActions: Array<LibraryLinkAction> = [];
   private measuredIdentityWidth: number = 0;
@@ -71,6 +72,7 @@ export struct QueueTrackRow {
     this.onRequestAddToPlaylist =
       params.onRequestAddToPlaylist as (items: Array<TrackListItem>) => void;
     this.onOpenDetails = params.onOpenDetails as (track: TrackListItem) => void;
+    this.onShareTrackFile = params.onShareTrackFile as (trackId: number) => void;
   }
 
   aboutToRecycle(): void {
@@ -226,15 +228,15 @@ export struct QueueTrackRow {
 
   @Builder
   private ContextMenu() {
-    TrackActionMenu(new TrackActionMenuParams(
-      [this.track],
-      this.linkActions,
-      this.onNavigateAction,
-      this.onRequestAddToPlaylist,
-      '',
-      undefined,
-      this.onOpenDetails
-    ))
+    TrackActionMenu(new TrackActionMenuParams({
+      queueItems: [this.track],
+      linkActions: this.linkActions,
+      onNavigate: this.onNavigateAction,
+      onRequestAddToPlaylist: this.onRequestAddToPlaylist,
+      removeLabel: '',
+      onOpenDetails: this.onOpenDetails,
+      onShareFile: (): void => this.onShareTrackFile(this.track.id)
+    }))
   }
 
   @Builder

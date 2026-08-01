@@ -90,6 +90,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   private seekEpoch: number = 0;
   private pendingSeekPositionMs?: number;
   private currentPlaybackTrack?: PlaybackTrack;
+  private artworkPrefetchReadyEpoch: number = -1;
   private lastPositionWriteAt: number = 0;
   private coverageNeedsRestart: boolean = false;
   private paletteChangeListener?: (primary: string, secondary: string, accent: string) => void;
@@ -357,11 +358,11 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       return;
     }
     const next = this.queue.next(this.playerStore.repeatMode, false);
-    this.syncQueueSnapshot();
     if (next !== undefined) {
       this.clearAutomaticResumeIntents();
       this.beginTrack(next);
     }
+    this.syncQueueCursor();
   }
 
   previous(): void {
@@ -369,11 +370,11 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       return;
     }
     const previous = this.queue.previous();
-    this.syncQueueSnapshot();
     if (previous !== undefined) {
       this.clearAutomaticResumeIntents();
       this.beginTrack(previous);
     }
+    this.syncQueueCursor();
   }
 
   playQueueTrack(trackId: number): void {
@@ -382,11 +383,11 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       return;
     }
     const selected = this.queue.select(trackId);
-    this.syncQueueSnapshot();
     if (selected !== undefined) {
       this.clearAutomaticResumeIntents();
       this.beginTrack(selected);
     }
+    this.syncQueueCursor();
   }
 
   seek(positionMs: number): void {
@@ -605,7 +606,6 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       });
     }
     const next = this.queue.next(this.playerStore.repeatMode, true);
-    this.syncQueueSnapshot();
     if (next !== undefined) {
       this.beginTrack(next, this.playerStore.playWhenReady);
     } else {
@@ -613,6 +613,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       this.playerStore.transportState = this.stateReducer.settleCompletion();
       this.syncSessionState();
     }
+    this.syncQueueCursor();
   }
 
   queueArtworkUri(relativePath: string): string {
@@ -866,6 +867,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     const sameLargeArtwork = PlaybackMediaCoordinator.sameArtwork(previousTrack, track, true);
     const sameSmallArtwork = PlaybackMediaCoordinator.sameArtwork(previousTrack, track, false);
     const epoch = this.media.beginRequest();
+    this.artworkPrefetchReadyEpoch = -1;
     if (!sameLargeArtwork) {
       this.media.retireFullArtwork();
     }
@@ -904,9 +906,6 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       this.media.loadHeroArtwork(track, epoch, this.mediaHost);
     }
     const playbackStarted = this.loadAndPlayTrack(track.id, epoch, restoredPositionMs);
-    if (this.playerStore.queuePhase === QueueBuildPhase.READY) {
-      this.prefetchCurrentWindow();
-    }
     return playbackStarted;
   }
 
@@ -995,9 +994,14 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       if (!this.isTrackRequestCurrent(epoch)) {
         return;
       }
-      if (!this.media.hasFullArtwork()) {
+      const fullArtworkWork = this.media.hasFullArtwork() ? Promise.resolve() :
         this.media.loadFullArtwork(track, epoch, this.mediaHost);
-      }
+      fullArtworkWork.finally((): void => {
+        if (this.isTrackRequestCurrent(epoch)) {
+          this.artworkPrefetchReadyEpoch = epoch;
+          this.prefetchCurrentWindow();
+        }
+      });
     } catch (error) {
       if (!this.isTrackRequestCurrent(epoch)) {
         return;
@@ -1022,7 +1026,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     const currentChanged = current.palettePrimary !== refreshed.palettePrimary ||
       current.paletteSecondary !== refreshed.paletteSecondary ||
       current.paletteAccent !== refreshed.paletteAccent;
-    const queueUpdated = this.queue.updateArtworkPalette(
+    const updatedQueueIndices = this.queue.updateArtworkPalette(
       refreshed,
       refreshed.palettePrimary,
       refreshed.paletteSecondary,
@@ -1034,10 +1038,10 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.palettePrimary = refreshed.palettePrimary;
     this.playerStore.paletteSecondary = refreshed.paletteSecondary;
     this.playerStore.paletteAccent = refreshed.paletteAccent;
-    if (queueUpdated > 0 && this.playerStore.queuePhase === QueueBuildPhase.READY) {
-      this.syncQueueSnapshot(false);
+    if (updatedQueueIndices.length > 0 && this.playerStore.queuePhase === QueueBuildPhase.READY) {
+      this.playerStore.queueDataSource.notifyChanged(updatedQueueIndices);
     }
-    if (currentChanged || queueUpdated > 0) {
+    if (currentChanged || updatedQueueIndices.length > 0) {
       this.notifyPaletteChange();
     }
   }
@@ -1142,12 +1146,23 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   private prefetchCurrentWindow(): void {
-    if (this.playerStore.currentTrack === undefined) {
+    if (this.playerStore.currentTrack === undefined ||
+      this.playerStore.queuePhase !== QueueBuildPhase.READY ||
+      this.artworkPrefetchReadyEpoch !== this.media.currentRequest()) {
       return;
     }
     const radius = Math.max(0, Math.min(8, this.settings?.getPlaybackArtworkWindowRadius(2) ?? 2));
     const window = this.queue.playbackWindow(radius, this.playerStore.repeatMode);
-    this.media.prefetchWindow(window.items, window.currentIndex, radius);
+    this.media.schedulePrefetchWindow(window.items, window.currentIndex, radius);
+  }
+
+  private syncQueueCursor(persist: boolean = true): void {
+    const current = this.queue.current();
+    this.playerStore.setQueueCurrentIndex(this.queue.currentIndex());
+    if (persist && !DemoLibraryMode.isEnabled()) {
+      this.persistence.persistQueueCurrentTrack(current?.id ?? -1);
+    }
+    this.syncPictureInPicture();
   }
 
   private syncQueueSnapshot(persist: boolean = true): void {
@@ -1373,7 +1388,6 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
         return;
       }
       const next = this.queue.next(this.playerStore.repeatMode, true);
-      this.syncQueueSnapshot(false);
       if (next !== undefined) {
         this.beginDemoTrack(next, true);
       } else {
@@ -1384,6 +1398,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
         this.playerStore.transportState = this.stateReducer.settleCompletion();
         this.syncSessionState();
       }
+      this.syncQueueCursor(false);
     }, 1000);
   }
 

@@ -42,6 +42,10 @@ export class PlaybackPersistencePort implements PlaybackPersistenceSettings, Pla
     this.settingsProvider()?.setPlaybackQueue(trackIds, currentTrackId);
   }
 
+  setPlaybackQueueCurrentTrackId(currentTrackId: number): void {
+    this.settingsProvider()?.setPlaybackQueueCurrentTrackId(currentTrackId);
+  }
+
   getPlaybackQueueTracks(trackIds: Array<number>): Promise<Array<QueueTrack>> {
     return this.repository.getPlaybackQueueTracks(trackIds);
   }

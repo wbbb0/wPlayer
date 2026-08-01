@@ -5,6 +5,9 @@ import {
 } from '../main/ets/playback/coordinator/PlaybackAudioRecoveryCoordinator';
 import { PlaybackMediaCoordinator } from '../main/ets/playback/coordinator/PlaybackMediaCoordinator';
 import {
+  ArtworkPrefetchCoordinator
+} from '../main/ets/playback/coordinator/ArtworkPrefetchCoordinator';
+import {
   PlaybackPersistenceCoordinator,
   PlaybackPersistenceSettings,
   PlaybackRestoreBasePlan,
@@ -20,6 +23,7 @@ class FakePlaybackSettings implements PlaybackPersistenceSettings {
   queueCurrentTrackId: number = -1;
   resumeWrites: Array<string> = [];
   queueWrites: Array<string> = [];
+  queueCursorWrites: Array<number> = [];
 
   getPlaybackLastTrackId(defaultValue: number = -1): number {
     return this.lastTrackId < 0 ? defaultValue : this.lastTrackId;
@@ -43,6 +47,10 @@ class FakePlaybackSettings implements PlaybackPersistenceSettings {
 
   setPlaybackQueue(trackIds: Array<number>, currentTrackId: number): void {
     this.queueWrites.push(`${trackIds.join(',')}:${currentTrackId}`);
+  }
+
+  setPlaybackQueueCurrentTrackId(currentTrackId: number): void {
+    this.queueCursorWrites.push(currentTrackId);
   }
 }
 
@@ -146,6 +154,60 @@ export default function playbackCoordinatorTest() {
       expect(coordinator.isCurrent(second)).assertFalse();
     });
 
+    it('runs only the latest delayed artwork prefetch request', 0, async () => {
+      const callbacks: Array<() => void> = [];
+      const cancelled: Array<number> = [];
+      const coordinator = new ArtworkPrefetchCoordinator(
+        1500,
+        (callback: () => void, _delayMs: number): number => {
+          callbacks.push(callback);
+          return callbacks.length;
+        },
+        (timerId: number): void => {
+          cancelled.push(timerId);
+        }
+      );
+      const runs: Array<string> = [];
+
+      coordinator.schedule(async (_shouldContinue: () => boolean): Promise<void> => {
+        runs.push('first');
+      });
+      coordinator.schedule(async (shouldContinue: () => boolean): Promise<void> => {
+        if (shouldContinue()) {
+          runs.push('second');
+        }
+      });
+      callbacks[0]();
+      callbacks[1]();
+      await Promise.resolve();
+
+      expect(cancelled[0]).assertEqual(1);
+      expect(runs.length).assertEqual(1);
+      expect(runs[0]).assertEqual('second');
+    });
+
+    it('invalidates delayed artwork prefetch before it starts', 0, async () => {
+      const callbacks: Array<() => void> = [];
+      const coordinator = new ArtworkPrefetchCoordinator(
+        1500,
+        (callback: () => void, _delayMs: number): number => {
+          callbacks.push(callback);
+          return callbacks.length;
+        },
+        (_timerId: number): void => {}
+      );
+      let runs = 0;
+      coordinator.schedule(async (_shouldContinue: () => boolean): Promise<void> => {
+        runs += 1;
+      });
+      coordinator.invalidate();
+
+      callbacks[0]();
+      await Promise.resolve();
+
+      expect(runs).assertEqual(0);
+    });
+
     it('normalizes persisted resume positions at playback boundaries', 0, () => {
       expect(PlaybackPersistenceCoordinator.validResumePosition(4999, 120000)).assertEqual(0);
       expect(PlaybackPersistenceCoordinator.validResumePosition(5000, 120000)).assertEqual(5000);
@@ -220,6 +282,17 @@ export default function playbackCoordinatorTest() {
       coordinator.bind(settings);
       coordinator.persistResumeState(3, 9000);
       expect(settings.resumeWrites.length).assertEqual(2);
+    });
+
+    it('persists a queue cursor without rewriting the queue structure', 0, () => {
+      const coordinator = new PlaybackPersistenceCoordinator();
+      const settings = new FakePlaybackSettings();
+      coordinator.bind(settings);
+
+      coordinator.persistQueueCurrentTrack(8);
+
+      expect(settings.queueCursorWrites[0]).assertEqual(8);
+      expect(settings.queueWrites.length).assertEqual(0);
     });
   });
 }

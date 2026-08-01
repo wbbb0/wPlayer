@@ -95,6 +95,23 @@ export class QueueTrackDataSource implements IDataSource {
     const operations: Array<DataOperation> = [{ type: DataOperationType.RELOAD }];
     this.listeners.forEach((listener: DataChangeListener) => listener.onDatasetChange(operations));
   }
+
+  notifyChanged(indices: Array<number>): void {
+    const unique = new Set<number>();
+    indices.forEach((index: number): void => {
+      if (index >= 0 && index < this.items.length) {
+        unique.add(index);
+      }
+    });
+    if (unique.size === 0) {
+      return;
+    }
+    const operations: Array<DataOperation> = [];
+    unique.forEach((index: number): void => {
+      operations.push({ type: DataOperationType.CHANGE, index: index });
+    });
+    this.listeners.forEach((listener: DataChangeListener) => listener.onDatasetChange(operations));
+  }
 }
 
 export interface PlaybackTrack extends QueueTrack {
@@ -264,7 +281,9 @@ export class PlayerStore {
     if (this.queueCurrentIndex === index) {
       return;
     }
+    const previousIndex = this.queueCurrentIndex;
     this.queueCurrentIndex = index;
+    this.queueDataSource.notifyChanged([previousIndex, index]);
     this.queueIndexListeners.slice().forEach((listener: QueueIndexListener) => listener(index));
   }
 

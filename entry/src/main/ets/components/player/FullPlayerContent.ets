@@ -107,15 +107,24 @@ export struct FullPlayerContent {
   }
 
   private isPageInActiveViewport(page: FullPlayerPage): boolean {
-    if (this.paneCount > 1) {
-      const startPosition = FullPlayerPagerSpec.positionForPage(this.activePage, this.paneCount);
-      return page >= startPosition && page < startPosition + this.paneCount;
-    }
-    return page === this.activePage;
+    return FullPlayerPagerSpec.pageIsInActiveViewport(page, this.activePage, this.paneCount);
   }
 
   private shouldRenderPage(page: FullPlayerPage): boolean {
     return this.sideContentReady || this.isPageInActiveViewport(page);
+  }
+
+  private pageInteractionActive(page: FullPlayerPage): boolean {
+    return !this.measuresArtworkTarget &&
+      this.pageScrollingEnabled && this.isPageInActiveViewport(page);
+  }
+
+  private pageFocusSyncActive(page: FullPlayerPage): boolean {
+    return !this.measuresArtworkTarget && FullPlayerPagerSpec.pageViewportVisibility(
+      page,
+      this.pagePosition,
+      this.paneCount
+    ) > 0;
   }
 
   private headerTextInset(page: FullPlayerPage): number {
@@ -229,9 +238,10 @@ export struct FullPlayerContent {
       pageWidth: this.pageWidth(),
       paneCount: this.paneCount,
       bottomInset: this.bottomInset,
-      listenerActive: !this.measuresArtworkTarget,
-      pageScrollingEnabled: this.pageScrollingEnabled,
-      focusAnimationEnabled: this.pageScrollingEnabled,
+      focusSyncActive: this.pageFocusSyncActive(FullPlayerPage.QUEUE),
+      listenerActive: this.pageInteractionActive(FullPlayerPage.QUEUE),
+      pageScrollingEnabled: this.pageInteractionActive(FullPlayerPage.QUEUE),
+      focusAnimationEnabled: this.pageInteractionActive(FullPlayerPage.QUEUE),
       primaryContentColor: this.contentColor(),
       secondaryContentColor: this.secondaryContentColor(),
       onPlayQueueTrack: this.onPlayQueueTrack,
@@ -247,7 +257,7 @@ export struct FullPlayerContent {
     FullPlayerCoverPage({
       playerStore: this.playerStore,
       ultraCompact: false,
-      marqueeActive: this.marqueeActive,
+      marqueeActive: this.marqueeActive && this.isPageInActiveViewport(FullPlayerPage.COVER),
       topInset: this.topInset,
       bottomInset: this.bottomInset,
       showArtwork: this.showArtwork,
@@ -283,9 +293,10 @@ export struct FullPlayerContent {
       rootHeight: this.rootFrame.height,
       topInset: this.topInset,
       bottomInset: this.bottomInset,
-      listenerActive: !this.measuresArtworkTarget,
-      pageScrollingEnabled: this.pageScrollingEnabled,
-      focusAnimationEnabled: this.pageScrollingEnabled,
+      focusSyncActive: this.pageFocusSyncActive(FullPlayerPage.LYRICS),
+      listenerActive: this.pageInteractionActive(FullPlayerPage.LYRICS),
+      pageScrollingEnabled: this.pageInteractionActive(FullPlayerPage.LYRICS),
+      focusAnimationEnabled: this.pageInteractionActive(FullPlayerPage.LYRICS),
       primaryContentColor: this.contentColor(),
       secondaryContentColor: this.secondaryContentColor(),
       onSeek: this.onSeek
@@ -297,7 +308,7 @@ export struct FullPlayerContent {
     FullPlayerCoverPage({
       playerStore: this.playerStore,
       ultraCompact: true,
-      marqueeActive: this.marqueeActive,
+      marqueeActive: this.marqueeActive && this.isPageInActiveViewport(FullPlayerPage.COVER),
       topInset: this.topInset,
       bottomInset: this.bottomInset,
       showArtwork: this.showArtwork,

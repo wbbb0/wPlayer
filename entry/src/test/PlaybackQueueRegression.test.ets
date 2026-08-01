@@ -2,9 +2,24 @@ import { describe, it, expect } from '@ohos/hypium';
 import {
   QueueBuildPhase,
   QueueEntry,
+  QueueTrackDataSource,
   QueueTrack,
   RepeatMode
 } from '../main/ets/playback/model/PlaybackModels';
+
+class QueueDataListener implements DataChangeListener {
+  operations: Array<DataOperation> = [];
+
+  onDataReloaded(): void {}
+  onDataAdded(_index: number): void {}
+  onDataMoved(_from: number, _to: number): void {}
+  onDataDeleted(_index: number): void {}
+  onDataChanged(_index: number): void {}
+  onDataChange(_index: number): void {}
+  onDatasetChange(dataOperations: Array<DataOperation>): void {
+    this.operations = dataOperations;
+  }
+}
 import { PlaybackQueue } from '../main/ets/playback/queue/PlaybackQueue';
 
 function queueTrack(id: number, title: string): QueueTrack {
@@ -41,6 +56,25 @@ export default function playbackQueueRegressionTest() {
       expect(queue.next(RepeatMode.OFF, true) === undefined).assertTrue();
       expect(queue.next(RepeatMode.ALL, true)?.title).assertEqual('one');
       expect(queue.next(RepeatMode.ONE, true)?.title).assertEqual('one');
+    });
+
+    it('publishes only changed queue rows when the playback cursor moves', 0, () => {
+      const source = new QueueTrackDataSource();
+      const listener = new QueueDataListener();
+      source.registerDataChangeListener(listener);
+      source.replace([
+        { queueEntryId: 1, track: queueTrack(1, 'one') },
+        { queueEntryId: 2, track: queueTrack(2, 'two') },
+        { queueEntryId: 3, track: queueTrack(3, 'three') }
+      ]);
+
+      source.notifyChanged([0, 1, 1, -1]);
+
+      expect(listener.operations.length).assertEqual(2);
+      expect(listener.operations[0].type).assertEqual(DataOperationType.CHANGE);
+      expect(listener.operations[0].index).assertEqual(0);
+      expect(listener.operations[1].type).assertEqual(DataOperationType.CHANGE);
+      expect(listener.operations[1].index).assertEqual(1);
     });
 
     it('selects the first duplicate in current order and leaves cursor on a miss', 0, () => {
@@ -169,7 +203,7 @@ export default function playbackQueueRegressionTest() {
       other.palettePrimary = '#FF222222';
       queue.build([first, second, other], 1, false);
 
-      const updated = queue.updateArtworkPalette(
+      const updatedIndices = queue.updateArtworkPalette(
         first,
         '#FF334455',
         '#FF667788',
@@ -177,7 +211,9 @@ export default function playbackQueueRegressionTest() {
       );
       const snapshot = queue.snapshot();
 
-      expect(updated).assertEqual(2);
+      expect(updatedIndices.length).assertEqual(2);
+      expect(updatedIndices[0]).assertEqual(0);
+      expect(updatedIndices[1]).assertEqual(1);
       expect(snapshot.entries[0].track.palettePrimary).assertEqual('#FF334455');
       expect(snapshot.entries[1].track.palettePrimary).assertEqual('#FF334455');
       expect(snapshot.entries[1].track.paletteSecondary).assertEqual('#FF667788');

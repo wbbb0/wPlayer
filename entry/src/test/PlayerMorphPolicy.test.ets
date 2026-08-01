@@ -221,15 +221,60 @@ export default function playerMorphPolicyTest() {
       expect(memory.restore(2)).assertEqual(0);
     });
 
-    it('positions player lists immediately before animating follow-up focus', 0, () => {
+    it('activates only pages inside the settled full-player viewport', 0, () => {
+      expect(FullPlayerPagerSpec.pageIsInActiveViewport(
+        FullPlayerPage.QUEUE, FullPlayerPage.QUEUE, 1
+      )).assertTrue();
+      expect(FullPlayerPagerSpec.pageIsInActiveViewport(
+        FullPlayerPage.COVER, FullPlayerPage.QUEUE, 1
+      )).assertFalse();
+      expect(FullPlayerPagerSpec.pageIsInActiveViewport(
+        FullPlayerPage.QUEUE, FullPlayerPage.QUEUE, 2
+      )).assertTrue();
+      expect(FullPlayerPagerSpec.pageIsInActiveViewport(
+        FullPlayerPage.COVER, FullPlayerPage.QUEUE, 2
+      )).assertTrue();
+      expect(FullPlayerPagerSpec.pageIsInActiveViewport(
+        FullPlayerPage.LYRICS, FullPlayerPage.QUEUE, 2
+      )).assertFalse();
+      expect(FullPlayerPagerSpec.pageIsInActiveViewport(
+        FullPlayerPage.COVER, FullPlayerPage.LYRICS, 2
+      )).assertTrue();
+      expect(FullPlayerPagerSpec.pageIsInActiveViewport(
+        FullPlayerPage.LYRICS, FullPlayerPage.LYRICS, 2
+      )).assertTrue();
+    });
+
+    it('detects a side page as soon as it enters the presentation viewport', 0, () => {
+      expect(FullPlayerPagerSpec.pageViewportVisibility(
+        FullPlayerPage.LYRICS, FullPlayerPage.COVER, 1
+      )).assertEqual(0);
+      expect(FullPlayerPagerSpec.pageViewportVisibility(
+        FullPlayerPage.LYRICS, FullPlayerPage.COVER + 0.01, 1
+      ) > 0).assertTrue();
+      expect(FullPlayerPagerSpec.pageViewportVisibility(
+        FullPlayerPage.QUEUE, FullPlayerPage.COVER, 1
+      )).assertEqual(0);
+      expect(FullPlayerPagerSpec.pageViewportVisibility(
+        FullPlayerPage.QUEUE, FullPlayerPage.COVER - 0.01, 1
+      ) > 0).assertTrue();
+    });
+
+    it('waits for list layout before immediate focus and animates the first follow-up', 0, () => {
       const focusState = new FullPlayerListFocusState();
-      expect(focusState.consumeAnimated(true)).assertFalse();
-      expect(focusState.consumeAnimated(false)).assertFalse();
-      expect(focusState.consumeAnimated(false)).assertFalse();
-      expect(focusState.consumeAnimated(true)).assertTrue();
+      expect(focusState.canSynchronizeImmediately(true, 4, 10)).assertFalse();
+      expect(focusState.consumeFollowAnimation(true)).assertTrue();
+      focusState.markLayoutReady();
+      expect(focusState.canSynchronizeImmediately(true, 4, 10)).assertTrue();
+      focusState.completeImmediateFocus();
+      expect(focusState.canSynchronizeImmediately(true, 4, 10)).assertFalse();
+      expect(focusState.consumeFollowAnimation(true)).assertTrue();
       focusState.reset();
-      expect(focusState.consumeAnimated(true)).assertFalse();
-      expect(focusState.consumeAnimated(true)).assertTrue();
+      expect(focusState.canSynchronizeImmediately(false, 4, 10)).assertFalse();
+      expect(focusState.canSynchronizeImmediately(true, -1, 10)).assertFalse();
+      expect(focusState.canSynchronizeImmediately(true, 4, 0)).assertFalse();
+      expect(focusState.canSynchronizeImmediately(true, 4, 10)).assertTrue();
+      expect(focusState.consumeFollowAnimation(true)).assertTrue();
     });
 
     it('does not change pager memory until a settle is committed', 0, () => {

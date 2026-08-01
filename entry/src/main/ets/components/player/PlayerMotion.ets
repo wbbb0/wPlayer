@@ -186,6 +186,12 @@ export class FullPlayerPagerSpec {
     return Math.max(0, Math.min(1, visibleSpan));
   }
 
+  static pageIsInActiveViewport(targetPage: FullPlayerPage, activePage: FullPlayerPage,
+    paneCount: number): boolean {
+    const startPosition = FullPlayerPagerSpec.positionForPage(activePage, paneCount);
+    return targetPage >= startPosition && targetPage < startPosition + Math.max(1, paneCount);
+  }
+
   static pagerPageTargetX(canonicalX: number, targetPage: FullPlayerPage,
     pagePosition: number, pageSpan: number): number {
     return canonicalX + (targetPage - pagePosition) * pageSpan;
@@ -230,15 +236,28 @@ export class FullPlayerPagerMemory {
 
 export class FullPlayerListFocusState {
   private immediateFocusPending: boolean = true;
+  private layoutReady: boolean = false;
 
   reset(): void {
     this.immediateFocusPending = true;
   }
 
-  consumeAnimated(animationAllowed: boolean): boolean {
-    if (this.immediateFocusPending) {
+  markLayoutReady(): void {
+    this.layoutReady = true;
+  }
+
+  canSynchronizeImmediately(active: boolean, index: number, itemCount: number): boolean {
+    return this.immediateFocusPending && this.layoutReady && active &&
+      index >= 0 && itemCount > 0;
+  }
+
+  completeImmediateFocus(): void {
+    this.immediateFocusPending = false;
+  }
+
+  consumeFollowAnimation(animationAllowed: boolean): boolean {
+    if (this.layoutReady) {
       this.immediateFocusPending = false;
-      return false;
     }
     return animationAllowed;
   }

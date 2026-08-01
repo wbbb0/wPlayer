@@ -58,6 +58,10 @@ export class PlaybackQueue {
     return this.itemAtCursor(this.cursor);
   }
 
+  currentIndex(): number {
+    return this.cursor;
+  }
+
   select(trackId: number): QueueTrack | undefined {
     const selectedCursor = this.firstCursorById.get(trackId);
     if (selectedCursor === undefined) {
@@ -179,9 +183,9 @@ export class PlaybackQueue {
   }
 
   updateArtworkPalette(reference: QueueTrack, primary: string, secondary: string,
-    accent: string): number {
-    let updated = 0;
-    this.items.forEach((entry: QueueEntry) => {
+    accent: string): Array<number> {
+    const updatedItemIndices: Set<number> = new Set<number>();
+    this.items.forEach((entry: QueueEntry, itemIndex: number): void => {
       if (!PlaybackQueue.sameArtwork(entry.track, reference) ||
         (entry.track.palettePrimary === primary &&
           entry.track.paletteSecondary === secondary &&
@@ -191,9 +195,15 @@ export class PlaybackQueue {
       entry.track.palettePrimary = primary;
       entry.track.paletteSecondary = secondary;
       entry.track.paletteAccent = accent;
-      updated += 1;
+      updatedItemIndices.add(itemIndex);
     });
-    return updated;
+    const updatedOrderIndices: Array<number> = [];
+    this.order.forEach((itemIndex: number, orderIndex: number): void => {
+      if (updatedItemIndices.has(itemIndex)) {
+        updatedOrderIndices.push(orderIndex);
+      }
+    });
+    return updatedOrderIndices;
   }
 
   clear(): void {

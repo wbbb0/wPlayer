@@ -13,6 +13,7 @@ export interface PlaybackPersistenceSettings {
   getPlaybackQueueCurrentTrackId(defaultValue?: number): number;
   setPlaybackResumeState(trackId: number, positionMs: number): void;
   setPlaybackQueue(trackIds: Array<number>, currentTrackId: number): void;
+  setPlaybackQueueCurrentTrackId(currentTrackId: number): void;
 }
 
 export interface PlaybackRestoreRepository {
@@ -67,6 +68,10 @@ export class PlaybackPersistenceCoordinator {
 
   persistQueue(trackIds: Array<number>, currentTrackId: number): void {
     this.settings?.setPlaybackQueue(trackIds, currentTrackId);
+  }
+
+  persistQueueCurrentTrack(currentTrackId: number): void {
+    this.settings?.setPlaybackQueueCurrentTrackId(currentTrackId);
   }
 
   clearResumeAndQueue(): void {

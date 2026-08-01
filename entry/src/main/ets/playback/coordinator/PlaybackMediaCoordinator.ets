@@ -7,6 +7,7 @@ import { MetadataReader } from '../../library/metadata/MetadataReader';
 import { ArtworkMemoryCache, DecodedFullArtwork } from '../artwork/ArtworkMemoryCache';
 import { PlaybackTrack, QueueTrack } from '../model/PlaybackModels';
 import { RequestEpoch } from '../support/RequestEpoch';
+import { ArtworkPrefetchCoordinator } from './ArtworkPrefetchCoordinator';
 
 export interface PlaybackMediaHost {
   isTrackRequestCurrent(token: number): boolean;
@@ -18,16 +19,21 @@ export interface PlaybackMediaHost {
 }
 
 export class PlaybackMediaCoordinator {
+  private static readonly PREFETCH_DELAY_MS: number = 1500;
   private context?: common.UIAbilityContext;
   private artworkCache?: ArtworkMemoryCache;
   private fullArtwork?: DecodedFullArtwork;
   private readonly requestEpoch: RequestEpoch = new RequestEpoch();
+  private readonly prefetch: ArtworkPrefetchCoordinator =
+    new ArtworkPrefetchCoordinator(PlaybackMediaCoordinator.PREFETCH_DELAY_MS);
 
   beginRequest(): number {
+    this.invalidatePrefetch();
     return this.requestEpoch.begin();
   }
 
   invalidate(): number {
+    this.invalidatePrefetch();
     return this.requestEpoch.invalidate();
   }
 
@@ -46,6 +52,7 @@ export class PlaybackMediaCoordinator {
 
   reset(): void {
     this.requestEpoch.invalidate();
+    this.invalidatePrefetch();
     this.artworkCache?.releaseAll();
     this.retireFullArtwork();
     this.context = undefined;
@@ -53,6 +60,7 @@ export class PlaybackMediaCoordinator {
   }
 
   clearArtwork(): void {
+    this.invalidatePrefetch();
     this.retireFullArtwork();
     this.artworkCache?.clear();
   }
@@ -137,15 +145,33 @@ export class PlaybackMediaCoordinator {
     });
   }
 
-  prefetchWindow(items: Array<QueueTrack>, currentIndex: number, radius: number): void {
-    this.artworkCache?.prefetchWindow(items, currentIndex, radius).catch((error: Object): void => {
-      console.warn(`Unable to prefetch artwork window: ${PlaybackMediaCoordinator.messageOf(error)}`);
+  schedulePrefetchWindow(items: Array<QueueTrack>, currentIndex: number, radius: number): void {
+    const requestedItems = items.slice();
+    this.prefetch.schedule(async (shouldContinue: () => boolean): Promise<void> => {
+      const cache = this.artworkCache;
+      if (!shouldContinue() || cache === undefined) {
+        return;
+      }
+      try {
+        await cache.prefetchWindow(
+          requestedItems,
+          currentIndex,
+          radius,
+          (): boolean => shouldContinue() && cache === this.artworkCache
+        );
+      } catch (error) {
+        console.warn(`Unable to prefetch artwork window: ${PlaybackMediaCoordinator.messageOf(error)}`);
+      }
     });
   }
 
   retireFullArtwork(): void {
     this.artworkCache?.releaseFullArtwork(this.fullArtwork);
     this.fullArtwork = undefined;
+  }
+
+  private invalidatePrefetch(): void {
+    this.prefetch.invalidate();
   }
 
   static sameArtwork(previous: QueueTrack | undefined, next: QueueTrack, large: boolean): boolean {

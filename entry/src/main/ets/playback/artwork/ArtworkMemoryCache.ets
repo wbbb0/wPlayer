@@ -104,8 +104,9 @@ export class ArtworkMemoryCache {
     return task;
   }
 
-  async prefetchWindow(items: Array<QueueTrack>, currentIndex: number, radius: number): Promise<void> {
-    if (currentIndex < 0 || currentIndex >= items.length) {
+  async prefetchWindow(items: Array<QueueTrack>, currentIndex: number, radius: number,
+    shouldContinue: () => boolean = (): boolean => true): Promise<void> {
+    if (!shouldContinue() || currentIndex < 0 || currentIndex >= items.length) {
       return;
     }
     const nextPinned: Set<string> = new Set();
@@ -118,18 +119,38 @@ export class ArtworkMemoryCache {
       }
     }
     this.pinned = nextPinned;
+    if (!shouldContinue()) {
+      return;
+    }
     await this.loadLarge(items[currentIndex]);
+    if (!shouldContinue()) {
+      return;
+    }
     for (let distance = 1; distance <= radius; distance += 1) {
       const previousIndex = currentIndex - distance;
       const nextIndex = currentIndex + distance;
       if (previousIndex >= 0) {
+        if (!shouldContinue()) {
+          return;
+        }
         await this.loadLarge(items[previousIndex]);
+        if (!shouldContinue()) {
+          return;
+        }
       }
       if (nextIndex < items.length) {
+        if (!shouldContinue()) {
+          return;
+        }
         await this.loadLarge(items[nextIndex]);
+        if (!shouldContinue()) {
+          return;
+        }
       }
     }
-    this.evictIfNeeded();
+    if (shouldContinue()) {
+      this.evictIfNeeded();
+    }
   }
 
   async decodeFullArtwork(track: PlaybackTrack): Promise<DecodedFullArtwork | undefined> {

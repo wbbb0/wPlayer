@@ -193,6 +193,10 @@ export class SettingsRepository {
     ]);
   }
 
+  setPlaybackQueueCurrentTrackId(currentTrackId: number): void {
+    this.setValue(PLAYBACK_QUEUE_CURRENT_TRACK_ID_KEY, currentTrackId);
+  }
+
   getFollowPlaybackThemeEnabled(defaultValue: boolean = true): boolean {
     return this.getBoolean(FOLLOW_PLAYBACK_THEME_KEY, defaultValue);
   }

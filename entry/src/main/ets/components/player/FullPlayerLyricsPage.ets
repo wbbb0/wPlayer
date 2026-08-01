@@ -9,7 +9,8 @@ import { TimedLyricRow } from './FullPlayerSharedControls';
 import {
   FULL_PLAYER_VERTICAL_GESTURE_HOST_ID,
   FullPlayerListFocusState,
-  PlayerLayoutSpec
+  PlayerLayoutSpec,
+  PlayerMotionSpec
 } from './PlayerMotion';
 
 @Component
@@ -20,6 +21,7 @@ export struct FullPlayerLyricsPage {
   @Prop rootHeight: number = 0;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
+  @Prop @Watch('onFocusSyncActiveChanged') focusSyncActive: boolean = false;
   @Prop @Watch('onListenerActiveChanged') listenerActive: boolean = true;
   @Prop pageScrollingEnabled: boolean = true;
   @Prop focusAnimationEnabled: boolean = true;
@@ -32,6 +34,7 @@ export struct FullPlayerLyricsPage {
   private lastFocusedLyricIndex: number = -1;
   private observedLyricDocumentRevision: number = -1;
   private listenerRegistered: boolean = false;
+  private initialFocusSyncScheduled: boolean = false;
   private readonly lyricIndexListener: LyricIndexListener = (index: number): void => {
     this.syncLyricDocument();
     if (!this.listenerActive || index < 0 || this.playerStore.timedLyrics.length === 0) {
@@ -39,12 +42,13 @@ export struct FullPlayerLyricsPage {
     }
     this.focusLyricIndex(
       index,
-      this.focusState.consumeAnimated(this.focusAnimationEnabled)
+      this.focusState.consumeFollowAnimation(this.focusAnimationEnabled)
     );
   };
 
   aboutToAppear(): void {
     this.syncLyricDocument();
+    this.onFocusSyncActiveChanged();
     this.syncListenerRegistration();
   }
 
@@ -54,6 +58,16 @@ export struct FullPlayerLyricsPage {
 
   private onListenerActiveChanged(): void {
     this.syncListenerRegistration();
+  }
+
+  private onFocusSyncActiveChanged(): void {
+    if (!this.focusSyncActive) {
+      return;
+    }
+    this.lyricBlurEnabled = true;
+    this.focusState.reset();
+    this.lastFocusedLyricIndex = -1;
+    this.scheduleInitialFocusSync();
   }
 
   private syncLyricDocument(): void {
@@ -70,9 +84,9 @@ export struct FullPlayerLyricsPage {
   private syncListenerRegistration(): void {
     if (this.listenerActive && !this.listenerRegistered) {
       this.lyricBlurEnabled = true;
-      this.focusState.reset();
       this.playerStore.addLyricIndexListener(this.lyricIndexListener);
       this.listenerRegistered = true;
+      this.scheduleInitialFocusSync();
     } else if (!this.listenerActive) {
       this.removeListener();
     }
@@ -88,18 +102,32 @@ export struct FullPlayerLyricsPage {
 
   onDidBuild(): void {
     this.syncLyricDocument();
-    if (!this.listenerActive) {
+    this.scheduleInitialFocusSync();
+  }
+
+  private scheduleInitialFocusSync(): void {
+    if (this.initialFocusSyncScheduled) {
       return;
     }
+    this.initialFocusSyncScheduled = true;
+    Promise.resolve().then((): void => {
+      this.initialFocusSyncScheduled = false;
+      this.syncInitialFocus();
+    });
+  }
+
+  private syncInitialFocus(): void {
     const lyricIndex = this.playerStore.activeLyricIndex;
     if (this.playerStore.timedLyrics.length === 0) {
       this.lastFocusedLyricIndex = -1;
     }
-    if (lyricIndex >= 0 && lyricIndex !== this.lastFocusedLyricIndex) {
-      this.focusLyricIndex(
-        lyricIndex,
-        this.focusState.consumeAnimated(this.focusAnimationEnabled)
-      );
+    if (this.focusState.canSynchronizeImmediately(
+      this.focusSyncActive,
+      lyricIndex,
+      this.playerStore.timedLyrics.length
+    )) {
+      this.focusLyricIndex(lyricIndex, false);
+      this.focusState.completeImmediateFocus();
     }
   }
 
@@ -152,7 +180,15 @@ export struct FullPlayerLyricsPage {
               })
                 .reuseId('timed_lyric')
             }
-            .onClick(() => this.seekToLyric(line))
+            .gesture(
+              GestureGroup(GestureMode.Exclusive,
+                PanGesture({
+                  direction: PanDirection.Horizontal,
+                  distance: PlayerMotionSpec.GESTURE_AXIS_LOCK_DISTANCE
+                }),
+                TapGesture().onAction(() => this.seekToLyric(line))
+              )
+            )
           }, (line: TimedLyricLine, index: number) => `${line.timeMs}_${index}`)
         }
         .width('100%')
@@ -162,6 +198,10 @@ export struct FullPlayerLyricsPage {
         .cachedCount(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT, true)
         .scrollBar(BarState.Off)
         .contentEndOffset(this.lyricContentEndOffset())
+        .onAreaChange((_oldValue: Area, _newValue: Area): void => {
+          this.focusState.markLayoutReady();
+          this.syncInitialFocus();
+        })
         .onWillStartDragging(() => {
           this.lyricBlurEnabled = false;
         })

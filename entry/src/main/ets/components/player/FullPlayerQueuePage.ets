@@ -231,6 +231,7 @@ export struct FullPlayerQueuePage {
   @Prop pageWidth: number = 0;
   @Prop paneCount: number = 1;
   @Prop bottomInset: number = 0;
+  @Prop @Watch('onFocusSyncActiveChanged') focusSyncActive: boolean = false;
   @Prop @Watch('onListenerActiveChanged') listenerActive: boolean = true;
   @Prop pageScrollingEnabled: boolean = true;
   @Prop focusAnimationEnabled: boolean = true;
@@ -249,17 +250,19 @@ export struct FullPlayerQueuePage {
   private readonly focusState: FullPlayerListFocusState = new FullPlayerListFocusState();
   private lastFocusedQueueIndex: number = -1;
   private listenerRegistered: boolean = false;
+  private initialFocusSyncScheduled: boolean = false;
   private readonly queueIndexListener: QueueIndexListener = (index: number): void => {
     if (!this.listenerActive || index < 0 || this.playerStore.queueSize === 0) {
       return;
     }
     this.focusQueueIndex(
       index,
-      this.focusState.consumeAnimated(this.focusAnimationEnabled)
+      this.focusState.consumeFollowAnimation(this.focusAnimationEnabled)
     );
   };
 
   aboutToAppear(): void {
+    this.onFocusSyncActiveChanged();
     this.syncListenerRegistration();
   }
 
@@ -271,11 +274,20 @@ export struct FullPlayerQueuePage {
     this.syncListenerRegistration();
   }
 
+  private onFocusSyncActiveChanged(): void {
+    if (!this.focusSyncActive) {
+      return;
+    }
+    this.focusState.reset();
+    this.lastFocusedQueueIndex = -1;
+    this.scheduleInitialFocusSync();
+  }
+
   private syncListenerRegistration(): void {
     if (this.listenerActive && !this.listenerRegistered) {
-      this.focusState.reset();
       this.playerStore.addQueueIndexListener(this.queueIndexListener);
       this.listenerRegistered = true;
+      this.scheduleInitialFocusSync();
     } else if (!this.listenerActive) {
       this.removeListener();
     }
@@ -290,12 +302,29 @@ export struct FullPlayerQueuePage {
   }
 
   onDidBuild(): void {
-    if (this.listenerActive && this.playerStore.queueCurrentIndex >= 0 &&
-      this.lastFocusedQueueIndex !== this.playerStore.queueCurrentIndex) {
-      this.focusQueueIndex(
-        this.playerStore.queueCurrentIndex,
-        this.focusState.consumeAnimated(this.focusAnimationEnabled)
-      );
+    this.scheduleInitialFocusSync();
+  }
+
+  private scheduleInitialFocusSync(): void {
+    if (this.initialFocusSyncScheduled) {
+      return;
+    }
+    this.initialFocusSyncScheduled = true;
+    Promise.resolve().then((): void => {
+      this.initialFocusSyncScheduled = false;
+      this.syncInitialFocus();
+    });
+  }
+
+  private syncInitialFocus(): void {
+    const queueIndex = this.playerStore.queueCurrentIndex;
+    if (this.focusState.canSynchronizeImmediately(
+      this.focusSyncActive,
+      queueIndex,
+      this.playerStore.queueSize
+    )) {
+      this.focusQueueIndex(queueIndex, false);
+      this.focusState.completeImmediateFocus();
     }
   }
 
@@ -441,6 +470,10 @@ export struct FullPlayerQueuePage {
           .cachedCount(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT, true)
           .scrollBar(BarState.Auto)
           .contentEndOffset(this.bottomInset)
+          .onAreaChange((_oldValue: Area, _newValue: Area): void => {
+            this.focusState.markLayoutReady();
+            this.syncInitialFocus();
+          })
           .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) =>
             this.blockVerticalPlayerGesture(recognizers))
         }

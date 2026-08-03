@@ -518,10 +518,12 @@ export class PlayerStore {
 
   applyQueueSnapshot(entries: Array<QueueEntry>, currentIndex: number): void {
     const previousIndex = this.queueCurrentIndex;
+    const changedIndices: Array<number> = previousIndex === currentIndex ?
+      [] : [previousIndex, currentIndex];
     this.queueDataSource.applySnapshot(
       entries,
       currentIndex,
-      [previousIndex, currentIndex],
+      changedIndices,
       (projectedIndex: number): void => {
         this.queueCurrentIndex = projectedIndex;
         if (previousIndex !== projectedIndex) {

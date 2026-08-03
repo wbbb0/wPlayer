@@ -10,6 +10,7 @@ import {
 import {
   PlaybackPersistenceCoordinator,
   PlaybackPersistenceSettings,
+  PersistedPlaybackQueueItem,
   PersistedPlaybackQueueSnapshot,
   PlaybackRestoreRepository
 } from
@@ -171,7 +172,7 @@ function queueTrack(id: number): QueueTrack {
 function persistedQueue(trackIds: Array<number>, playbackPositions: Array<number>,
   currentPosition: number, shuffleEnabled: boolean): PersistedPlaybackQueueSnapshot {
   return {
-    items: trackIds.map((trackId: number, position: number) => ({
+    items: trackIds.map((trackId: number, position: number): PersistedPlaybackQueueItem => ({
       position: position,
       playbackPosition: playbackPositions[position],
       trackId: trackId

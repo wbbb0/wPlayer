@@ -8,6 +8,10 @@ import {
   PlayerStore,
   RepeatMode
 } from '../main/ets/playback/model/PlaybackModels';
+import {
+  PlaybackQueue,
+  PlaybackQueueStateItem
+} from '../main/ets/playback/queue/PlaybackQueue';
 
 class QueueDataListener implements DataChangeListener {
   operations: Array<DataOperation> = [];
@@ -15,9 +19,11 @@ class QueueDataListener implements DataChangeListener {
 
   onDataReloaded(): void {}
   onDataAdded(_index: number): void {}
+  onDataAdd(_index: number): void {}
   onDataMoved(_from: number, _to: number): void {}
   onDataMove(_from: number, _to: number): void {}
   onDataDeleted(_index: number): void {}
+  onDataDelete(_index: number): void {}
   onDataChanged(_index: number): void {}
   onDataChange(_index: number): void {}
   onDatasetChange(dataOperations: Array<DataOperation>): void {
@@ -25,10 +31,13 @@ class QueueDataListener implements DataChangeListener {
     this.batches.push(dataOperations);
   }
 }
-import {
-  PlaybackQueue,
-  PlaybackQueueStateItem
-} from '../main/ets/playback/queue/PlaybackQueue';
+
+function expectChangeOperation(operation: DataOperation, expectedIndex: number): void {
+  expect(operation.type).assertEqual(DataOperationType.CHANGE);
+  if (operation.type === DataOperationType.CHANGE) {
+    expect(operation.index).assertEqual(expectedIndex);
+  }
+}
 
 function queueTrack(id: number, title: string): QueueTrack {
   return {
@@ -95,10 +104,8 @@ export default function playbackQueueRegressionTest() {
       source.notifyChanged([0, 1, 1, -1]);
 
       expect(listener.operations.length).assertEqual(2);
-      expect(listener.operations[0].type).assertEqual(DataOperationType.CHANGE);
-      expect(listener.operations[0].index).assertEqual(0);
-      expect(listener.operations[1].type).assertEqual(DataOperationType.CHANGE);
-      expect(listener.operations[1].index).assertEqual(1);
+      expectChangeOperation(listener.operations[0], 0);
+      expectChangeOperation(listener.operations[1], 1);
     });
 
     it('publishes no operations for an identical queue snapshot', 0, () => {
@@ -228,10 +235,8 @@ export default function playbackQueueRegressionTest() {
       store.applyQueueSnapshot(entries, 2);
 
       expect(listener.operations.length).assertEqual(2);
-      expect(listener.operations[0].type).assertEqual(DataOperationType.CHANGE);
-      expect(listener.operations[0].index).assertEqual(0);
-      expect(listener.operations[1].type).assertEqual(DataOperationType.CHANGE);
-      expect(listener.operations[1].index).assertEqual(2);
+      expectChangeOperation(listener.operations[0], 0);
+      expectChangeOperation(listener.operations[1], 2);
     });
 
     it('selects an exact duplicate queue entry and leaves cursor on a miss', 0, () => {

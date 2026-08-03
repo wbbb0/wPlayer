@@ -13,6 +13,10 @@ import { PlaylistListRow } from '../../components/library/PlaylistListRow';
 import {
   MenuSectionDivider
 } from '../../components/library/MenuActionGroups';
+import {
+  DragSelectionController,
+  DragSelectionHitMode
+} from '../../components/library/DragSelectionController';
 
 const DELETE_ANIMATION_DURATION: number = 180;
 
@@ -23,6 +27,10 @@ export struct PlaylistsPage {
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   scroller: Scroller = new Scroller();
+  private readonly dragSelection: DragSelectionController = new DragSelectionController(
+    (ids: Array<number>, selected: boolean): void => this.selection.previewSelection(ids, selected),
+    (active: boolean): void => { this.selectionDragActive = active; }
+  );
   onOpenPlaylist: (playlist: PlaylistSummary) => void = (_playlist: PlaylistSummary): void => {};
   onRequestRename: (playlist: PlaylistSummary) => void = (_playlist: PlaylistSummary): void => {};
   onExportPlaylist: (playlistId: number) => void = (_playlistId: number): void => {};
@@ -30,6 +38,7 @@ export struct PlaylistsPage {
   @State private removingPlaylistIds: Array<number> = [];
   @State private selectedPlaylists: Array<PlaylistSummary> = [];
   @State private selectionBusy: boolean = false;
+  @State private selectionDragActive: boolean = false;
   onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
     (_items: Array<TrackListItem>): void => {};
 
@@ -59,6 +68,10 @@ export struct PlaylistsPage {
         );
       }
     };
+  }
+
+  aboutToDisappear(): void {
+    this.dragSelection.end();
   }
 
   private durationLabel(durationMs: number): string {
@@ -103,8 +116,12 @@ export struct PlaylistsPage {
   }
 
   private toggleSelection(playlist: PlaylistSummary): void {
-    this.selection.toggle(playlist.id);
-    if (!this.selection.isSelected(playlist.id)) {
+    this.setSelection(playlist, !this.selection.isSelected(playlist.id));
+  }
+
+  private setSelection(playlist: PlaylistSummary, selected: boolean): void {
+    this.selection.setSelected(playlist.id, selected);
+    if (!selected) {
       this.selectedPlaylists =
         this.selectedPlaylists.filter((item: PlaylistSummary): boolean => item.id !== playlist.id);
     } else {
@@ -197,7 +214,7 @@ export struct PlaylistsPage {
   }
 
   @Builder
-  private PlaylistContent(playlist: PlaylistSummary) {
+  private PlaylistContent(playlist: PlaylistSummary, order: number) {
     PlaylistListRow({
       playlist: playlist,
       subtitle: this.playlistSubtitle(playlist),
@@ -210,9 +227,19 @@ export struct PlaylistsPage {
       contextMenu: (): void => this.PlaylistMenu(playlist),
       actionAnchorPrefix: 'playlists',
       selectionMode: this.selection.active,
-      selected: this.selection.isSelected(playlist.id),
+      selected: this.selection.isPresentedSelected(playlist.id),
       onActivate: this.onOpenPlaylist,
-      onToggleSelection: (item: PlaylistSummary): void => this.toggleSelection(item)
+      onToggleSelection: (item: PlaylistSummary): void => this.toggleSelection(item),
+      onSelectionTargetAreaChange: (item: PlaylistSummary, area: Area): void =>
+        this.dragSelection.updateTarget(item.id, order, area, DragSelectionHitMode.ROW,
+          (): boolean => this.selection.isSelected(item.id),
+          (selected: boolean): void => this.setSelection(item, selected)),
+      onSelectionTargetRemoved: (id: number): void => this.dragSelection.removeTarget(id),
+      onSelectionDragStart: (item: PlaylistSummary, _x: number, _y: number): void =>
+        this.dragSelection.start(item.id),
+      onSelectionDragUpdate: (x: number, y: number): void => this.dragSelection.update(x, y),
+      onSelectionDragEnd: (): void => this.dragSelection.end(),
+      onSelectionDragCancel: (): void => this.dragSelection.cancel()
     })
       .reuseId('playlists')
   }
@@ -229,7 +256,7 @@ export struct PlaylistsPage {
                 .opacity(0.3)
                 .margin({ left: 80, right: PageLayoutSpec.HORIZONTAL_INSET })
             }
-            this.PlaylistContent(playlist)
+            this.PlaylistContent(playlist, index)
           }
           .width('100%')
         }
@@ -258,6 +285,7 @@ export struct PlaylistsPage {
     .height('100%')
     .contentStartOffset(PageLayoutSpec.primaryContentStart(this.topInset))
     .contentEndOffset(PageLayoutSpec.contentEnd(this.bottomInset))
+    .enableScrollInteraction(!this.selectionDragActive)
     .attributeModifier(this.scrollBehavior)
     }
     .width('100%')

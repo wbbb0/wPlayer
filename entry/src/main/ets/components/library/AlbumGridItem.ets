@@ -95,12 +95,21 @@ export struct AlbumGridItem {
   @Prop secondaryColor: ResourceColor = $r('app.color.text_secondary');
   onActivate: (album: AlbumListItem) => void = (_album: AlbumListItem): void => {};
   onToggleSelection: (album: AlbumListItem) => void = (_album: AlbumListItem): void => {};
+  onSelectionTargetAreaChange: (album: AlbumListItem, area: Area) => void =
+    (_album: AlbumListItem, _area: Area): void => {};
+  onSelectionTargetRemoved: (albumId: number) => void = (_albumId: number): void => {};
+  onSelectionDragStart: (album: AlbumListItem, x: number, y: number) => void =
+    (_album: AlbumListItem, _x: number, _y: number): void => {};
+  onSelectionDragUpdate: (x: number, y: number) => void = (_x: number, _y: number): void => {};
+  onSelectionDragEnd: () => void = (): void => {};
+  onSelectionDragCancel: () => void = (): void => {};
   onAction: (album: AlbumListItem, action: AlbumAction) => void =
     (_album: AlbumListItem, _action: AlbumAction): void => {};
   onNavigate: (target: LibraryNavigationTarget) => void =
     (_target: LibraryNavigationTarget): void => {};
 
   aboutToReuse(params: ESObject): void {
+    this.onSelectionTargetRemoved(this.album.id);
     this.contextMenuShown = false;
     this.measuredItemWidth = 0;
     this.measuredItemHeight = 0;
@@ -109,8 +118,47 @@ export struct AlbumGridItem {
       params.artworkShadowEnabled as boolean : true;
     this.onActivate = params.onActivate as (album: AlbumListItem) => void;
     this.onToggleSelection = params.onToggleSelection as (album: AlbumListItem) => void;
+    this.onSelectionTargetAreaChange = typeof params.onSelectionTargetAreaChange === 'function' ?
+      params.onSelectionTargetAreaChange as (album: AlbumListItem, area: Area) => void :
+      (_album: AlbumListItem, _area: Area): void => {};
+    this.onSelectionTargetRemoved = typeof params.onSelectionTargetRemoved === 'function' ?
+      params.onSelectionTargetRemoved as (albumId: number) => void : (_albumId: number): void => {};
+    this.onSelectionDragStart = typeof params.onSelectionDragStart === 'function' ?
+      params.onSelectionDragStart as (album: AlbumListItem, x: number, y: number) => void :
+      (_album: AlbumListItem, _x: number, _y: number): void => {};
+    this.onSelectionDragUpdate = typeof params.onSelectionDragUpdate === 'function' ?
+      params.onSelectionDragUpdate as (x: number, y: number) => void : (_x: number, _y: number): void => {};
+    this.onSelectionDragEnd = typeof params.onSelectionDragEnd === 'function' ?
+      params.onSelectionDragEnd as () => void : (): void => {};
+    this.onSelectionDragCancel = typeof params.onSelectionDragCancel === 'function' ?
+      params.onSelectionDragCancel as () => void : (): void => {};
     this.onAction = params.onAction as (album: AlbumListItem, action: AlbumAction) => void;
     this.onNavigate = params.onNavigate as (target: LibraryNavigationTarget) => void;
+  }
+
+  aboutToRecycle(): void {
+    this.onSelectionTargetRemoved(this.album.id);
+  }
+
+  private handleSelectionTouch(event: TouchEvent): void {
+    event.stopPropagation();
+    const points = event.changedTouches.length > 0 ? event.changedTouches : event.touches;
+    if (points.length === 0) {
+      if (event.type === TouchType.Cancel) {
+        this.onSelectionDragCancel();
+      }
+      return;
+    }
+    const point = points[0];
+    if (event.type === TouchType.Down) {
+      this.onSelectionDragStart(this.album, point.windowX, point.windowY);
+    } else if (event.type === TouchType.Move) {
+      this.onSelectionDragUpdate(point.windowX, point.windowY);
+    } else if (event.type === TouchType.Up) {
+      this.onSelectionDragEnd();
+    } else if (event.type === TouchType.Cancel) {
+      this.onSelectionDragCancel();
+    }
   }
 
   @Builder
@@ -126,15 +174,27 @@ export struct AlbumGridItem {
   @Builder
   private AlbumVisualContent() {
     Column({ space: 7 }) {
-      ArtworkView({
-        sourcePath: this.album.artworkPath.length > 0 ?
-          this.store.resolveArtworkPath(this.album.artworkPath) : '',
-        sourceWidth: this.album.artworkWidth,
-        sourceHeight: this.album.artworkHeight,
-        fitMode: ArtworkFitMode.CONTAIN,
-        cornerRadius: 18,
-        shadowEnabled: this.artworkShadowEnabled && this.album.artworkPath.length > 0
-      })
+      Stack() {
+        ArtworkView({
+          sourcePath: this.album.artworkPath.length > 0 ?
+            this.store.resolveArtworkPath(this.album.artworkPath) : '',
+          sourceWidth: this.album.artworkWidth,
+          sourceHeight: this.album.artworkHeight,
+          fitMode: ArtworkFitMode.CONTAIN,
+          cornerRadius: 18,
+          shadowEnabled: this.artworkShadowEnabled && this.album.artworkPath.length > 0
+        })
+        if (this.selectionMode) {
+          Row()
+            .width('100%')
+            .height('100%')
+            .onTouch((event: TouchEvent): void => this.handleSelectionTouch(event))
+        }
+      }
+      .width('100%')
+      .aspectRatio(1)
+      .onAreaChange((_oldValue: Area, newValue: Area): void =>
+        this.onSelectionTargetAreaChange(this.album, newValue))
       Text(this.album.title)
         .fontSize(15)
         .fontWeight(FontWeight.Medium)

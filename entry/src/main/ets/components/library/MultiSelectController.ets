@@ -14,6 +14,8 @@ export class MultiSelectActionMenuParams {
 export class MultiSelectController {
   active: boolean = false;
   selectedIds: Array<number> = [];
+  pendingIds: Array<number> = [];
+  pendingSelected: boolean = true;
   deleteEnabled: boolean = false;
   busy: boolean = false;
   onPlay: () => void = (): void => {};
@@ -28,12 +30,14 @@ export class MultiSelectController {
   activate(): void {
     this.active = true;
     this.selectedIds = [];
+    this.pendingIds = [];
     this.onStateChange();
   }
 
   cancel(): void {
     this.active = false;
     this.selectedIds = [];
+    this.pendingIds = [];
     this.busy = false;
     this.onStateChange();
   }
@@ -54,11 +58,37 @@ export class MultiSelectController {
     this.onStateChange();
   }
 
+  isPresentedSelected(id: number): boolean {
+    return this.pendingIds.includes(id) ? this.pendingSelected : this.isSelected(id);
+  }
+
+  previewSelection(ids: Array<number>, selected: boolean): void {
+    if (!this.active) {
+      this.pendingIds = [];
+      return;
+    }
+    this.pendingIds = ids.slice();
+    this.pendingSelected = selected;
+  }
+
+  setSelected(id: number, selected: boolean): void {
+    if (!this.active || this.isSelected(id) === selected) {
+      return;
+    }
+    if (selected) {
+      this.selectedIds = this.selectedIds.concat([id]);
+    } else {
+      this.selectedIds = this.selectedIds.filter((selectedId: number): boolean => selectedId !== id);
+    }
+    this.onStateChange();
+  }
+
   replaceSelection(ids: Array<number>): void {
     if (!this.active) {
       return;
     }
     this.selectedIds = ids.slice();
+    this.pendingIds = [];
     this.onStateChange();
   }
 

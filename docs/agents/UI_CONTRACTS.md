@@ -89,6 +89,12 @@ directly; do not add wrapper margins, borders or replacement backgrounds.
   Album-card shadows are omitted in high-density scrolling surfaces.
 - Entering selection mode keeps reusable row/card identity and its content subtree stable. Only the leading
   selection slot and indicator animate; artwork and text must not fade or be reconstructed during the transition.
+- In selection mode, a vertical pan that starts on a row's selection indicator previews a contiguous range from
+  the anchor row to the current row. A horizontal pan that starts on album artwork previews the same range in the
+  grid's display order, like Shift selection, including intervening cells at row boundaries. Moving back toward
+  the anchor shrinks the preview; the actual selection changes only when the gesture ends. The anchor item's state
+  determines whether the range is added or cleared. Pans that start outside these explicit targets retain normal
+  scrolling behavior.
 
 ## Floating navigation and mini player
 

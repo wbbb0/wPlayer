@@ -64,6 +64,14 @@ export struct LibraryTrackRow {
   @Prop tertiaryColor: ResourceColor = $r('app.color.text_tertiary');
   onActivate: (track: TrackListItem) => void = (_track: TrackListItem): void => {};
   onToggleSelection: (track: TrackListItem) => void = (_track: TrackListItem): void => {};
+  onSelectionTargetAreaChange: (track: TrackListItem, area: Area) => void =
+    (_track: TrackListItem, _area: Area): void => {};
+  onSelectionTargetRemoved: (trackId: number) => void = (_trackId: number): void => {};
+  onSelectionDragStart: (track: TrackListItem, x: number, y: number) => void =
+    (_track: TrackListItem, _x: number, _y: number): void => {};
+  onSelectionDragUpdate: (x: number, y: number) => void = (_x: number, _y: number): void => {};
+  onSelectionDragEnd: () => void = (): void => {};
+  onSelectionDragCancel: () => void = (): void => {};
   onOpenActions: (track: TrackListItem, anchorId: string) => void =
     (_track: TrackListItem, _anchorId: string): void => {};
   onNavigateAction: (target: LibraryNavigationTarget) => void =
@@ -80,6 +88,7 @@ export struct LibraryTrackRow {
   private contextMenuLoadEpoch: number = 0;
 
   aboutToReuse(params: ESObject): void {
+    this.onSelectionTargetRemoved(this.track.id);
     this.contextMenuLoadEpoch += 1;
     this.contextMenuShown = false;
     this.linkActions = [];
@@ -87,6 +96,20 @@ export struct LibraryTrackRow {
     this.suppressActivationUntil = 0;
     this.onActivate = params.onActivate as (track: TrackListItem) => void;
     this.onToggleSelection = params.onToggleSelection as (track: TrackListItem) => void;
+    this.onSelectionTargetAreaChange = typeof params.onSelectionTargetAreaChange === 'function' ?
+      params.onSelectionTargetAreaChange as (track: TrackListItem, area: Area) => void :
+      (_track: TrackListItem, _area: Area): void => {};
+    this.onSelectionTargetRemoved = typeof params.onSelectionTargetRemoved === 'function' ?
+      params.onSelectionTargetRemoved as (trackId: number) => void : (_trackId: number): void => {};
+    this.onSelectionDragStart = typeof params.onSelectionDragStart === 'function' ?
+      params.onSelectionDragStart as (track: TrackListItem, x: number, y: number) => void :
+      (_track: TrackListItem, _x: number, _y: number): void => {};
+    this.onSelectionDragUpdate = typeof params.onSelectionDragUpdate === 'function' ?
+      params.onSelectionDragUpdate as (x: number, y: number) => void : (_x: number, _y: number): void => {};
+    this.onSelectionDragEnd = typeof params.onSelectionDragEnd === 'function' ?
+      params.onSelectionDragEnd as () => void : (): void => {};
+    this.onSelectionDragCancel = typeof params.onSelectionDragCancel === 'function' ?
+      params.onSelectionDragCancel as () => void : (): void => {};
     this.onOpenActions =
       params.onOpenActions as (track: TrackListItem, anchorId: string) => void;
     this.onNavigateAction =
@@ -101,6 +124,7 @@ export struct LibraryTrackRow {
 
   aboutToRecycle(): void {
     this.contextMenuLoadEpoch += 1;
+    this.onSelectionTargetRemoved(this.track.id);
   }
 
   private titleSize(): number {
@@ -271,7 +295,11 @@ export struct LibraryTrackRow {
       selected: this.selected,
       unselectedColor: this.tertiaryColor,
       slotWidth: LibraryTrackRowStyle.SELECTION_WIDTH,
-      trailingGap: LibraryTrackRowStyle.SELECTION_GAP
+      trailingGap: LibraryTrackRowStyle.SELECTION_GAP,
+      onSelectionPanStart: (x: number, y: number): void => this.onSelectionDragStart(this.track, x, y),
+      onSelectionPanUpdate: this.onSelectionDragUpdate,
+      onSelectionPanEnd: this.onSelectionDragEnd,
+      onSelectionPanCancel: this.onSelectionDragCancel
     })
   }
 
@@ -349,6 +377,8 @@ export struct LibraryTrackRow {
     .borderRadius(this.rowCornerRadius)
     .hoverEffect(HoverEffect.None)
     .opacity(LibraryItemAvailability.opacity(this.track.availability))
+    .onAreaChange((_oldValue: Area, newValue: Area): void =>
+      this.onSelectionTargetAreaChange(this.track, newValue))
     .onClick(() => {
       if (Date.now() < this.suppressActivationUntil) {
         return;

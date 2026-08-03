@@ -27,6 +27,10 @@ import { AlbumAction } from '../../components/library/AlbumGridItem';
 import { AlbumPreviewGrid } from '../../components/library/AlbumPreviewGrid';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
 import { ArtworkSize } from '../../components/artwork/ArtworkLayout';
+import {
+  DragSelectionController,
+  DragSelectionHitMode
+} from '../../components/library/DragSelectionController';
 
 export class AlbumDetailColorPolicy {
   private static readonly BACKGROUND_TONE_ADJUSTMENT: number = 0.33;
@@ -101,9 +105,14 @@ export struct AlbumDetailPage {
   @Prop showArtwork: boolean = true;
   @Prop themeBackground: string = '#FF000000';
   @State selectedItems: Array<TrackListItem> = [];
+  @State selectionDragActive: boolean = false;
   private multipleDiscTracks?: Array<TrackListItem>;
   private multipleDiscResult: boolean = false;
   scroller: Scroller = new Scroller();
+  private readonly dragSelection: DragSelectionController = new DragSelectionController(
+    (ids: Array<number>, selected: boolean): void => this.selection.previewSelection(ids, selected),
+    (active: boolean): void => { this.selectionDragActive = active; }
+  );
   private readonly scrollBehavior: PageListBehavior =
     new PageListBehavior(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT);
   onOpenArtist: (artist: ArtistReference) => void = (_artist: ArtistReference): void => {};
@@ -152,6 +161,7 @@ export struct AlbumDetailPage {
   }
 
   aboutToDisappear(): void {
+    this.dragSelection.end();
     this.store.removeArtworkChangeListener(this.artworkChangeListener);
   }
 
@@ -224,8 +234,12 @@ export struct AlbumDetailPage {
   }
 
   private toggleSelection(track: TrackListItem): void {
-    this.selection.toggle(track.id);
-    if (!this.selection.isSelected(track.id)) {
+    this.setSelection(track, !this.selection.isSelected(track.id));
+  }
+
+  private setSelection(track: TrackListItem, selected: boolean): void {
+    this.selection.setSelected(track.id, selected);
+    if (!selected) {
       this.selectedItems =
         this.selectedItems.filter((item: TrackListItem): boolean => item.id !== track.id);
     } else {
@@ -557,7 +571,7 @@ export struct AlbumDetailPage {
                 minimumHeight: 58,
                 rowCornerRadius: 14,
                 selectionMode: this.selection.active,
-                selected: this.selection.isSelected(track.id),
+                selected: this.selection.isPresentedSelected(track.id),
                 primaryColor: this.primaryContentColor(),
                 secondaryColor: this.secondaryContentColor(),
                 tertiaryColor: this.secondaryContentColor(),
@@ -572,7 +586,19 @@ export struct AlbumDetailPage {
                 onShareTrackFile: this.onShareTrackFile,
                 onNavigateAction: this.onNavigateTrackAction,
                 onRequestAddToPlaylist: this.onRequestAddToPlaylist,
-                onToggleSelection: (item: TrackListItem): void => this.toggleSelection(item)
+                onToggleSelection: (item: TrackListItem): void => this.toggleSelection(item),
+                onSelectionTargetAreaChange: (item: TrackListItem, area: Area): void =>
+                  this.dragSelection.updateTarget(item.id, index, area,
+                    DragSelectionHitMode.ROW,
+                    (): boolean => this.selection.isSelected(item.id),
+                    (selected: boolean): void => this.setSelection(item, selected)),
+                onSelectionTargetRemoved: (id: number): void => this.dragSelection.removeTarget(id),
+                onSelectionDragStart: (item: TrackListItem, _x: number, _y: number): void =>
+                  this.dragSelection.start(item.id),
+                onSelectionDragUpdate: (x: number, y: number): void =>
+                  this.dragSelection.update(x, y),
+                onSelectionDragEnd: (): void => this.dragSelection.end(),
+                onSelectionDragCancel: (): void => this.dragSelection.cancel()
               })
                 .reuseId('album_detail_track')
             }
@@ -606,6 +632,7 @@ export struct AlbumDetailPage {
     .height('100%')
     .contentStartOffset(PageLayoutSpec.primaryContentStart(this.topInset))
     .contentEndOffset(PageLayoutSpec.contentEnd(this.bottomInset))
+    .enableScrollInteraction(!this.selectionDragActive)
     .attributeModifier(this.scrollBehavior)
     .backgroundColor(this.currentThemeBackground())
     .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })

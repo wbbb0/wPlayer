@@ -21,6 +21,14 @@ export struct PlaylistListRow {
     (_playlist: PlaylistSummary): void => {};
   onToggleSelection: (playlist: PlaylistSummary) => void =
     (_playlist: PlaylistSummary): void => {};
+  onSelectionTargetAreaChange: (playlist: PlaylistSummary, area: Area) => void =
+    (_playlist: PlaylistSummary, _area: Area): void => {};
+  onSelectionTargetRemoved: (playlistId: number) => void = (_playlistId: number): void => {};
+  onSelectionDragStart: (playlist: PlaylistSummary, x: number, y: number) => void =
+    (_playlist: PlaylistSummary, _x: number, _y: number): void => {};
+  onSelectionDragUpdate: (x: number, y: number) => void = (_x: number, _y: number): void => {};
+  onSelectionDragEnd: () => void = (): void => {};
+  onSelectionDragCancel: () => void = (): void => {};
   @Builder
   private EmptyMenu() {
   }
@@ -30,15 +38,34 @@ export struct PlaylistListRow {
   private suppressActivationUntil: number = 0;
 
   aboutToReuse(params: ESObject): void {
+    this.onSelectionTargetRemoved(this.playlist.id);
     this.contextMenuShown = false;
     this.measuredIdentityWidth = 0;
     this.suppressActivationUntil = 0;
     this.onActivate = params.onActivate as (playlist: PlaylistSummary) => void;
     this.onToggleSelection =
       params.onToggleSelection as (playlist: PlaylistSummary) => void;
+    this.onSelectionTargetAreaChange = typeof params.onSelectionTargetAreaChange === 'function' ?
+      params.onSelectionTargetAreaChange as (playlist: PlaylistSummary, area: Area) => void :
+      (_playlist: PlaylistSummary, _area: Area): void => {};
+    this.onSelectionTargetRemoved = typeof params.onSelectionTargetRemoved === 'function' ?
+      params.onSelectionTargetRemoved as (playlistId: number) => void : (_playlistId: number): void => {};
+    this.onSelectionDragStart = typeof params.onSelectionDragStart === 'function' ?
+      params.onSelectionDragStart as (playlist: PlaylistSummary, x: number, y: number) => void :
+      (_playlist: PlaylistSummary, _x: number, _y: number): void => {};
+    this.onSelectionDragUpdate = typeof params.onSelectionDragUpdate === 'function' ?
+      params.onSelectionDragUpdate as (x: number, y: number) => void : (_x: number, _y: number): void => {};
+    this.onSelectionDragEnd = typeof params.onSelectionDragEnd === 'function' ?
+      params.onSelectionDragEnd as () => void : (): void => {};
+    this.onSelectionDragCancel = typeof params.onSelectionDragCancel === 'function' ?
+      params.onSelectionDragCancel as () => void : (): void => {};
     if (params.contextMenu !== undefined) {
       this.contextMenu = params.contextMenu as () => void;
     }
+  }
+
+  aboutToRecycle(): void {
+    this.onSelectionTargetRemoved(this.playlist.id);
   }
 
   private actionAnchorId(): string {
@@ -120,7 +147,12 @@ export struct PlaylistListRow {
       selectionMode: this.selectionMode,
       selected: this.selected,
       slotWidth: LibraryTrackRowStyle.SELECTION_WIDTH,
-      trailingGap: LibraryTrackRowStyle.SELECTION_GAP
+      trailingGap: LibraryTrackRowStyle.SELECTION_GAP,
+      onSelectionPanStart: (x: number, y: number): void =>
+        this.onSelectionDragStart(this.playlist, x, y),
+      onSelectionPanUpdate: this.onSelectionDragUpdate,
+      onSelectionPanEnd: this.onSelectionDragEnd,
+      onSelectionPanCancel: this.onSelectionDragCancel
     })
   }
 
@@ -186,6 +218,8 @@ export struct PlaylistListRow {
       bottom: this.verticalInset
     })
     .hoverEffect(HoverEffect.None)
+    .onAreaChange((_oldValue: Area, newValue: Area): void =>
+      this.onSelectionTargetAreaChange(this.playlist, newValue))
     .onClick(() => {
       if (Date.now() < this.suppressActivationUntil) {
         return;

@@ -8,6 +8,10 @@ import { LibrarySlot } from '../../library/store/PagedLibraryDataSource';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { LayoutLength } from '../../components/layout/LayoutLength';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
+import {
+  DragSelectionController,
+  DragSelectionHitMode
+} from '../../components/library/DragSelectionController';
 
 @Component
 export struct AlbumCollectionPage {
@@ -19,7 +23,12 @@ export struct AlbumCollectionPage {
   @State gridWidth: number = 0;
   @State selectedAlbums: Array<AlbumListItem> = [];
   @State selectionBusy: boolean = false;
+  @State selectionDragActive: boolean = false;
   scroller: Scroller = new Scroller();
+  private readonly dragSelection: DragSelectionController = new DragSelectionController(
+    (ids: Array<number>, selected: boolean): void => this.selection.previewSelection(ids, selected),
+    (active: boolean): void => { this.selectionDragActive = active; }
+  );
   onOpenAlbum: (album: AlbumListItem) => void = (_album: AlbumListItem): void => {};
   onAlbumAction: (album: AlbumListItem, action: AlbumAction) => void =
     (_album: AlbumListItem, _action: AlbumAction): void => {};
@@ -45,6 +54,7 @@ export struct AlbumCollectionPage {
   }
 
   aboutToDisappear(): void {
+    this.dragSelection.end();
     this.state.deactivate(this.store);
   }
 
@@ -64,9 +74,13 @@ export struct AlbumCollectionPage {
   }
 
   private toggleSelection(album: AlbumListItem): void {
-    this.selection.toggle(album.id);
+    this.setSelection(album, !this.selection.isSelected(album.id));
+  }
+
+  private setSelection(album: AlbumListItem, selected: boolean): void {
+    this.selection.setSelected(album.id, selected);
     this.selectedAlbums = this.selectedAlbums.filter((item: AlbumListItem): boolean => item.id !== album.id);
-    if (this.selection.isSelected(album.id)) {
+    if (selected) {
       this.selectedAlbums = this.selectedAlbums.concat([album]);
     }
   }
@@ -118,9 +132,21 @@ export struct AlbumCollectionPage {
               actionsEnabled: true,
               artworkShadowEnabled: false,
               selectionMode: this.selection.active,
-              selected: this.selection.isSelected(slot.value.id),
+              selected: this.selection.isPresentedSelected(slot.value.id),
               onActivate: this.onOpenAlbum,
               onToggleSelection: (album: AlbumListItem): void => this.toggleSelection(album),
+              onSelectionTargetAreaChange: (album: AlbumListItem, area: Area): void =>
+                this.dragSelection.updateTarget(album.id, slot.index, area,
+                  DragSelectionHitMode.RECTANGLE,
+                  (): boolean => this.selection.isSelected(album.id),
+                  (selected: boolean): void => this.setSelection(album, selected)),
+              onSelectionTargetRemoved: (id: number): void => this.dragSelection.removeTarget(id),
+              onSelectionDragStart: (album: AlbumListItem, _x: number, _y: number): void =>
+                this.dragSelection.start(album.id),
+              onSelectionDragUpdate: (x: number, y: number): void =>
+                this.dragSelection.update(x, y),
+              onSelectionDragEnd: (): void => this.dragSelection.end(),
+              onSelectionDragCancel: (): void => this.dragSelection.cancel(),
               onAction: this.onAlbumAction,
               onNavigate: this.onNavigate
             }).reuseId('album_collection')
@@ -154,5 +180,6 @@ export struct AlbumCollectionPage {
         this.gridWidth = nextWidth;
       }
     })
+    .enableScrollInteraction(!this.selectionDragActive)
   }
 }

@@ -16,6 +16,10 @@ import {
 } from '../../components/library/LibraryTrackRow';
 import { LibraryTrackRowPlaceholder } from '../../components/library/LibraryTrackRowPlaceholder';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
+import {
+  DragSelectionController,
+  DragSelectionHitMode
+} from '../../components/library/DragSelectionController';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 
 @Component
@@ -26,6 +30,7 @@ export struct SongsPage {
   @Prop bottomInset: number = 0;
   @State selectedSectionIndex: number = 0;
   @State selectedItems: Array<TrackListItem> = [];
+  @State selectionDragActive: boolean = false;
   onPlayTrack: (item: TrackListItem) => void = (_item: TrackListItem): void => {};
   onOpenTrackActions: (item: TrackListItem, anchorId: string) => void =
     (_item: TrackListItem, _anchorId: string): void => {};
@@ -37,6 +42,10 @@ export struct SongsPage {
     (_track: TrackListItem): void => {};
   onShareTrackFile: (trackId: number) => void = (_trackId: number): void => {};
   scroller: Scroller = new Scroller();
+  private readonly dragSelection: DragSelectionController = new DragSelectionController(
+    (ids: Array<number>, selected: boolean): void => this.selection.previewSelection(ids, selected),
+    (active: boolean): void => { this.selectionDragActive = active; }
+  );
   private readonly scrollBehavior: PageListBehavior =
     new PageListBehavior(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT);
 
@@ -50,6 +59,10 @@ export struct SongsPage {
       playbackRuntime.appendToQueue(this.currentSelection());
     this.selection.selectableCount = this.store.statistics.trackCount;
     this.selection.onToggleAll = (): void => this.toggleAll();
+  }
+
+  aboutToDisappear(): void {
+    this.dragSelection.end();
   }
 
   private toggleAll(): void {
@@ -74,8 +87,12 @@ export struct SongsPage {
   }
 
   private toggleSelection(item: TrackListItem): void {
-    this.selection.toggle(item.id);
-    if (!this.selection.isSelected(item.id)) {
+    this.setSelection(item, !this.selection.isSelected(item.id));
+  }
+
+  private setSelection(item: TrackListItem, selected: boolean): void {
+    this.selection.setSelected(item.id, selected);
+    if (!selected) {
       this.selectedItems =
         this.selectedItems.filter((selected: TrackListItem): boolean => selected.id !== item.id);
     } else {
@@ -134,14 +151,26 @@ export struct SongsPage {
                     artworkSize: 52,
                     artworkCornerRadius: 10,
                     selectionMode: this.selection.active,
-                    selected: this.selection.isSelected(slot.value.id),
+                    selected: this.selection.isPresentedSelected(slot.value.id),
                     onActivate: this.onPlayTrack,
                     onOpenActions: this.onOpenTrackActions,
                     onOpenDetails: this.onOpenTrackDetails,
                     onShareTrackFile: this.onShareTrackFile,
                     onNavigateAction: this.onNavigateTrackAction,
                     onRequestAddToPlaylist: this.onRequestAddToPlaylist,
-                    onToggleSelection: (item: TrackListItem): void => this.toggleSelection(item)
+                    onToggleSelection: (item: TrackListItem): void => this.toggleSelection(item),
+                    onSelectionTargetAreaChange: (item: TrackListItem, area: Area): void =>
+                      this.dragSelection.updateTarget(item.id, slot.index, area,
+                        DragSelectionHitMode.ROW,
+                        (): boolean => this.selection.isSelected(item.id),
+                        (selected: boolean): void => this.setSelection(item, selected)),
+                    onSelectionTargetRemoved: (id: number): void => this.dragSelection.removeTarget(id),
+                    onSelectionDragStart: (item: TrackListItem, _x: number, _y: number): void =>
+                      this.dragSelection.start(item.id),
+                    onSelectionDragUpdate: (x: number, y: number): void =>
+                      this.dragSelection.update(x, y),
+                    onSelectionDragEnd: (): void => this.dragSelection.end(),
+                    onSelectionDragCancel: (): void => this.dragSelection.cancel()
                   })
                     .height(68)
                     .reuseId('songs_library')
@@ -168,6 +197,7 @@ export struct SongsPage {
         .contentEndOffset(PageLayoutSpec.contentEnd(this.bottomInset))
         .scrollBar(this.store.trackIndexPresentation === LibraryIndexPresentation.ALPHABET ?
           BarState.Off : BarState.Auto)
+        .enableScrollInteraction(!this.selectionDragActive)
         .onScrollIndex((firstIndex: number, lastIndex: number, _centerIndex: number) => {
           if (firstIndex < 0) {
             return;

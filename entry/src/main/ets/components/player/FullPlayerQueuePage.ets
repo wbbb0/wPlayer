@@ -17,6 +17,10 @@ import {
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
 import {
+  DragSelectionController,
+  DragSelectionHitMode
+} from '../library/DragSelectionController';
+import {
   PlayerModeAction,
   PlayerModeButton,
   PlayerSymbolIcon
@@ -124,6 +128,8 @@ export function queueTrackListItem(track: QueueTrack): TrackListItem {
 @Observed
 export class FullPlayerQueueSelectionStore {
   selectedEntries: Array<QueueEntry> = [];
+  pendingEntryIds: Array<number> = [];
+  pendingSelected: boolean = true;
   selectionActive: boolean = false;
 
   isSelected(entryId: number): boolean {
@@ -131,9 +137,19 @@ export class FullPlayerQueueSelectionStore {
       entry.queueEntryId === entryId);
   }
 
+  isPresentedSelected(entryId: number): boolean {
+    return this.pendingEntryIds.includes(entryId) ? this.pendingSelected : this.isSelected(entryId);
+  }
+
+  previewSelection(entryIds: Array<number>, selected: boolean): void {
+    this.pendingEntryIds = this.selectionActive ? entryIds.slice() : [];
+    this.pendingSelected = selected;
+  }
+
   begin(): void {
     this.selectionActive = true;
     this.selectedEntries = [];
+    this.pendingEntryIds = [];
   }
 
   toggle(entry: QueueEntry): void {
@@ -145,9 +161,22 @@ export class FullPlayerQueueSelectionStore {
     this.selectedEntries = this.selectedEntries.concat([entry]);
   }
 
+  setSelected(entry: QueueEntry, selected: boolean): void {
+    if (!this.selectionActive || this.isSelected(entry.queueEntryId) === selected) {
+      return;
+    }
+    if (selected) {
+      this.selectedEntries = this.selectedEntries.concat([entry]);
+    } else {
+      this.selectedEntries = this.selectedEntries.filter((item: QueueEntry): boolean =>
+        item.queueEntryId !== entry.queueEntryId);
+    }
+  }
+
   cancel(): void {
     this.selectionActive = false;
     this.selectedEntries = [];
+    this.pendingEntryIds = [];
   }
 
   toggleAll(entries: Array<QueueEntry>): void {
@@ -304,6 +333,7 @@ export struct FullPlayerQueuePage {
   @Prop focusAnimationEnabled: boolean = true;
   @Prop primaryContentColor: string = '#FFFFFFFF';
   @Prop secondaryContentColor: string = '#B8FFFFFF';
+  @State selectionDragActive: boolean = false;
   onPlayQueueEntry: (queueEntryId: number) => void = (_queueEntryId: number): void => {};
   onResolveQueueArtwork: (relativePath: string) => string =
     (_relativePath: string): string => '';
@@ -315,6 +345,12 @@ export struct FullPlayerQueuePage {
   onRequestAddToPlaylist: (trackIds: Array<number>) => void =
     (_trackIds: Array<number>): void => {};
   private readonly queueScroller: Scroller = new Scroller();
+  private readonly dragSelection: DragSelectionController =
+    new DragSelectionController(
+      (ids: Array<number>, selected: boolean): void =>
+        this.selectionStore.previewSelection(ids, selected),
+      (active: boolean): void => { this.selectionDragActive = active; }
+    );
   private readonly focusState: FullPlayerListFocusState = new FullPlayerListFocusState();
   private lastFocusedQueueIndex: number = -1;
   private listenerRegistered: boolean = false;
@@ -338,6 +374,7 @@ export struct FullPlayerQueuePage {
   }
 
   aboutToDisappear(): void {
+    this.dragSelection.end();
     this.playerStore.queueDataSource.setFrameScheduler(undefined);
     this.removeListener();
   }
@@ -483,13 +520,32 @@ export struct FullPlayerQueuePage {
                         onOpenDetails: this.onOpenTrackDetails,
                         onShareTrackFile: this.onShareTrackFile,
                         selectionMode: this.selectionStore.selectionActive,
-                        selected: this.selectionStore.isSelected(
+                        selectionTargetId: presentation.entry.queueEntryId,
+                        selected: this.selectionStore.isPresentedSelected(
                           presentation.entry.queueEntryId
                         ),
                         onActivate: (_track: TrackListItem): void =>
                           this.onPlayQueueEntry(presentation.entry.queueEntryId),
                         onToggleSelection: (_track: TrackListItem): void =>
-                          this.selectionStore.toggle(presentation.entry)
+                          this.selectionStore.toggle(presentation.entry),
+                        onSelectionTargetAreaChange: (entryId: number, area: Area): void =>
+                          this.dragSelection.updateTarget(
+                            entryId,
+                            presentation.displayIndex,
+                            area,
+                            DragSelectionHitMode.ROW,
+                            (): boolean => this.selectionStore.isSelected(entryId),
+                            (selected: boolean): void =>
+                              this.selectionStore.setSelected(presentation.entry, selected)
+                          ),
+                        onSelectionTargetRemoved: (entryId: number): void =>
+                          this.dragSelection.removeTarget(entryId),
+                        onSelectionDragStart: (entryId: number, _x: number, _y: number): void =>
+                          this.dragSelection.start(entryId),
+                        onSelectionDragUpdate: (x: number, y: number): void =>
+                          this.dragSelection.update(x, y),
+                        onSelectionDragEnd: (): void => this.dragSelection.end(),
+                        onSelectionDragCancel: (): void => this.dragSelection.cancel()
                       })
                         .reuseId('player_queue_track')
                     }
@@ -510,11 +566,11 @@ export struct FullPlayerQueuePage {
           .layoutWeight(1)
           .width('100%')
           .edgeEffect(EdgeEffect.Spring)
-          .enableScrollInteraction(this.pageScrollingEnabled)
+          .enableScrollInteraction(this.pageScrollingEnabled && !this.selectionDragActive)
           .cachedCount(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT, true)
           .scrollBar(BarState.Auto)
           .contentEndOffset(this.bottomInset)
-          .onAreaChange((_oldValue: Area, _newValue: Area): void => {
+          .onAreaChange((_oldValue: Area, newValue: Area): void => {
             this.focusState.markLayoutReady();
             this.syncInitialFocus();
           })

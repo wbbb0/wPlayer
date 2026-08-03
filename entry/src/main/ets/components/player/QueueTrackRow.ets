@@ -45,8 +45,17 @@ export struct QueueTrackRow {
   @Prop menuPlacement: Placement = Placement.BottomLeft;
   @Prop selectionMode: boolean = false;
   @Prop selected: boolean = false;
+  @Prop selectionTargetId: number = -1;
   onActivate: (track: TrackListItem) => void = (_track: TrackListItem): void => {};
   onToggleSelection: (track: TrackListItem) => void = (_track: TrackListItem): void => {};
+  onSelectionTargetAreaChange: (entryId: number, area: Area) => void =
+    (_entryId: number, _area: Area): void => {};
+  onSelectionTargetRemoved: (entryId: number) => void = (_entryId: number): void => {};
+  onSelectionDragStart: (entryId: number, x: number, y: number) => void =
+    (_entryId: number, _x: number, _y: number): void => {};
+  onSelectionDragUpdate: (x: number, y: number) => void = (_x: number, _y: number): void => {};
+  onSelectionDragEnd: () => void = (): void => {};
+  onSelectionDragCancel: () => void = (): void => {};
   onNavigateAction: (target: LibraryNavigationTarget) => void =
     (_target: LibraryNavigationTarget): void => {};
   onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
@@ -60,6 +69,7 @@ export struct QueueTrackRow {
   private contextMenuLoadEpoch: number = 0;
 
   aboutToReuse(params: ESObject): void {
+    this.onSelectionTargetRemoved(this.selectionTargetId);
     this.contextMenuLoadEpoch += 1;
     this.contextMenuShown = false;
     this.linkActions = [];
@@ -67,6 +77,20 @@ export struct QueueTrackRow {
     this.suppressActivationUntil = 0;
     this.onActivate = params.onActivate as (track: TrackListItem) => void;
     this.onToggleSelection = params.onToggleSelection as (track: TrackListItem) => void;
+    this.onSelectionTargetAreaChange = typeof params.onSelectionTargetAreaChange === 'function' ?
+      params.onSelectionTargetAreaChange as (entryId: number, area: Area) => void :
+      (_entryId: number, _area: Area): void => {};
+    this.onSelectionTargetRemoved = typeof params.onSelectionTargetRemoved === 'function' ?
+      params.onSelectionTargetRemoved as (entryId: number) => void : (_entryId: number): void => {};
+    this.onSelectionDragStart = typeof params.onSelectionDragStart === 'function' ?
+      params.onSelectionDragStart as (entryId: number, x: number, y: number) => void :
+      (_entryId: number, _x: number, _y: number): void => {};
+    this.onSelectionDragUpdate = typeof params.onSelectionDragUpdate === 'function' ?
+      params.onSelectionDragUpdate as (x: number, y: number) => void : (_x: number, _y: number): void => {};
+    this.onSelectionDragEnd = typeof params.onSelectionDragEnd === 'function' ?
+      params.onSelectionDragEnd as () => void : (): void => {};
+    this.onSelectionDragCancel = typeof params.onSelectionDragCancel === 'function' ?
+      params.onSelectionDragCancel as () => void : (): void => {};
     this.onNavigateAction =
       params.onNavigateAction as (target: LibraryNavigationTarget) => void;
     this.onRequestAddToPlaylist =
@@ -77,6 +101,7 @@ export struct QueueTrackRow {
 
   aboutToRecycle(): void {
     this.contextMenuLoadEpoch += 1;
+    this.onSelectionTargetRemoved(this.selectionTargetId);
   }
 
   private durationLabel(): string {
@@ -249,7 +274,12 @@ export struct QueueTrackRow {
       selected: this.selected,
       unselectedColor: this.tertiaryColor,
       slotWidth: LibraryTrackRowStyle.SELECTION_WIDTH,
-      trailingGap: LibraryTrackRowStyle.SELECTION_GAP + 10
+      trailingGap: LibraryTrackRowStyle.SELECTION_GAP + 10,
+      onSelectionPanStart: (x: number, y: number): void =>
+        this.onSelectionDragStart(this.selectionTargetId, x, y),
+      onSelectionPanUpdate: this.onSelectionDragUpdate,
+      onSelectionPanEnd: this.onSelectionDragEnd,
+      onSelectionPanCancel: this.onSelectionDragCancel
     })
   }
 
@@ -311,6 +341,8 @@ export struct QueueTrackRow {
     })
     .hoverEffect(HoverEffect.None)
     .opacity(LibraryItemAvailability.opacity(this.track.availability))
+    .onAreaChange((_oldValue: Area, newValue: Area): void =>
+      this.onSelectionTargetAreaChange(this.selectionTargetId, newValue))
     .gesture(
       GestureGroup(GestureMode.Exclusive,
         PanGesture({

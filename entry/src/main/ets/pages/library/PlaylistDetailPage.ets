@@ -26,6 +26,10 @@ import {
   DetailTrackListPagingPolicy,
   DetailTrackVisibleRange
 } from '../../library/store/DetailTrackListPagingPolicy';
+import {
+  DragSelectionController,
+  DragSelectionHitMode
+} from '../../components/library/DragSelectionController';
 
 const REMOVE_ANIMATION_DURATION: number = 180;
 
@@ -41,7 +45,12 @@ export struct PlaylistDetailPage {
   @State removingTrackIds: Array<number> = [];
   @State selectedItems: Array<PlaylistTrackItem> = [];
   @State snapshotActionBusy: boolean = false;
+  @State selectionDragActive: boolean = false;
   scroller: Scroller = new Scroller();
+  private readonly dragSelection: DragSelectionController = new DragSelectionController(
+    (ids: Array<number>, selected: boolean): void => this.selection.previewSelection(ids, selected),
+    (active: boolean): void => { this.selectionDragActive = active; }
+  );
   onResolveArtwork: (relativePath: string) => string = (_relativePath: string): string => '';
   onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
     (_items: Array<TrackListItem>): void => {};
@@ -64,6 +73,10 @@ export struct PlaylistDetailPage {
       playbackRuntime.appendToQueue(this.currentSelection());
     this.selection.onDelete = (): void => this.confirmRemoveSelection();
     this.selection.onToggleAll = (): void => this.toggleAll();
+  }
+
+  aboutToDisappear(): void {
+    this.dragSelection.end();
   }
 
   private toggleAll(): void {
@@ -160,8 +173,12 @@ export struct PlaylistDetailPage {
   }
 
   private toggleSelection(item: PlaylistTrackItem): void {
-    this.selection.toggle(item.id);
-    if (!this.selection.isSelected(item.id)) {
+    this.setSelection(item, !this.selection.isSelected(item.id));
+  }
+
+  private setSelection(item: PlaylistTrackItem, selected: boolean): void {
+    this.selection.setSelected(item.id, selected);
+    if (!selected) {
       this.selectedItems =
         this.selectedItems.filter((selected: PlaylistTrackItem): boolean => selected.id !== item.id);
     } else {
@@ -346,7 +363,7 @@ export struct PlaylistDetailPage {
   }
 
   @Builder
-  private TrackContent(item: PlaylistTrackItem) {
+  private TrackContent(item: PlaylistTrackItem, order: number) {
     LibraryTrackRow({
       track: item,
       store: this.libraryStore,
@@ -367,9 +384,21 @@ export struct PlaylistDetailPage {
       onRequestAddToPlaylist: this.onRequestAddToPlaylist,
       onRemoveAction: (): void => this.confirmRemoveTrack(item),
       selectionMode: this.selection.active,
-      selected: this.selection.isSelected(item.id),
+      selected: this.selection.isPresentedSelected(item.id),
       onToggleSelection: (track: TrackListItem): void =>
-        this.toggleSelection(track as PlaylistTrackItem)
+        this.toggleSelection(track as PlaylistTrackItem),
+      onSelectionTargetAreaChange: (track: TrackListItem, area: Area): void => {
+        const item = track as PlaylistTrackItem;
+        this.dragSelection.updateTarget(item.id, order, area, DragSelectionHitMode.ROW,
+          (): boolean => this.selection.isSelected(item.id),
+          (selected: boolean): void => this.setSelection(item, selected));
+      },
+      onSelectionTargetRemoved: (id: number): void => this.dragSelection.removeTarget(id),
+      onSelectionDragStart: (track: TrackListItem, _x: number, _y: number): void =>
+        this.dragSelection.start(track.id),
+      onSelectionDragUpdate: (x: number, y: number): void => this.dragSelection.update(x, y),
+      onSelectionDragEnd: (): void => this.dragSelection.end(),
+      onSelectionDragCancel: (): void => this.dragSelection.cancel()
     })
   }
 
@@ -426,7 +455,7 @@ export struct PlaylistDetailPage {
             LazyForEach(this.store.detailItemDataSource, (slot: LibrarySlot<PlaylistTrackItem>) => {
               if (slot.value !== undefined) {
                 ListItem() {
-                  this.TrackContent(slot.value!)
+                  this.TrackContent(slot.value!, slot.index)
                 }
                   .height(this.isRemovingTrack(slot.value.id) ? 0 : 62)
                   .clip(true)
@@ -460,6 +489,7 @@ export struct PlaylistDetailPage {
         .height('100%')
         .contentStartOffset(PageLayoutSpec.primaryContentStart(this.topInset))
         .contentEndOffset(PageLayoutSpec.contentEnd(this.bottomInset))
+        .enableScrollInteraction(!this.selectionDragActive)
         .attributeModifier(this.scrollBehavior)
         .onScrollIndex((firstIndex: number, lastIndex: number, _centerIndex: number): void => {
           const range: DetailTrackVisibleRange | undefined =

@@ -9,6 +9,10 @@ import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
 import { LibrarySlot } from '../../library/store/PagedLibraryDataSource';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
+import {
+  DragSelectionController,
+  DragSelectionHitMode
+} from '../../components/library/DragSelectionController';
 
 @Component
 export struct ArtistTrackCollectionPage {
@@ -18,7 +22,12 @@ export struct ArtistTrackCollectionPage {
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @Prop actionAnchorPrefix: string = 'artist_tracks';
+  @State selectionDragActive: boolean = false;
   scroller: Scroller = new Scroller();
+  private readonly dragSelection: DragSelectionController = new DragSelectionController(
+    (ids: Array<number>, selected: boolean): void => this.selection.previewSelection(ids, selected),
+    (active: boolean): void => { this.selectionDragActive = active; }
+  );
   @State selectedItems: Array<TrackListItem> = [];
   @State snapshotBusy: boolean = false;
   onOpenTrackActions: (track: TrackListItem, anchorId: string) => void =
@@ -45,6 +54,7 @@ export struct ArtistTrackCollectionPage {
   }
 
   aboutToDisappear(): void {
+    this.dragSelection.end();
     this.state.deactivate(this.store);
   }
 
@@ -64,9 +74,13 @@ export struct ArtistTrackCollectionPage {
   }
 
   private toggleSelection(track: TrackListItem): void {
-    this.selection.toggle(track.id);
+    this.setSelection(track, !this.selection.isSelected(track.id));
+  }
+
+  private setSelection(track: TrackListItem, selected: boolean): void {
+    this.selection.setSelected(track.id, selected);
     this.selectedItems = this.selectedItems.filter((item: TrackListItem): boolean => item.id !== track.id);
-    if (this.selection.isSelected(track.id)) {
+    if (selected) {
       this.selectedItems = this.selectedItems.concat([track]);
     }
   }
@@ -120,14 +134,26 @@ export struct ArtistTrackCollectionPage {
                 artworkSize: 52,
                 artworkCornerRadius: 10,
                 selectionMode: this.selection.active,
-                selected: this.selection.isSelected(slot.value.id),
+                selected: this.selection.isPresentedSelected(slot.value.id),
                 onActivate: (item: TrackListItem): void => this.playTrack(item),
                 onOpenActions: this.onOpenTrackActions,
                 onOpenDetails: this.onOpenTrackDetails,
                 onShareTrackFile: this.onShareTrackFile,
                 onNavigateAction: this.onNavigateTrackAction,
                 onRequestAddToPlaylist: this.onRequestAddToPlaylist,
-                onToggleSelection: (item: TrackListItem): void => this.toggleSelection(item)
+                onToggleSelection: (item: TrackListItem): void => this.toggleSelection(item),
+                onSelectionTargetAreaChange: (item: TrackListItem, area: Area): void =>
+                  this.dragSelection.updateTarget(item.id, slot.index, area,
+                    DragSelectionHitMode.ROW,
+                    (): boolean => this.selection.isSelected(item.id),
+                    (selected: boolean): void => this.setSelection(item, selected)),
+                onSelectionTargetRemoved: (id: number): void => this.dragSelection.removeTarget(id),
+                onSelectionDragStart: (item: TrackListItem, _x: number, _y: number): void =>
+                  this.dragSelection.start(item.id),
+                onSelectionDragUpdate: (x: number, y: number): void =>
+                  this.dragSelection.update(x, y),
+                onSelectionDragEnd: (): void => this.dragSelection.end(),
+                onSelectionDragCancel: (): void => this.dragSelection.cancel()
               }).height(68).reuseId('artist_tracks')
             } else {
               LibraryTrackRowPlaceholder({ horizontalInset: 16, verticalInset: 8, artworkSize: 52,
@@ -141,6 +167,7 @@ export struct ArtistTrackCollectionPage {
     .contentStartOffset(PageLayoutSpec.primaryContentStart(this.topInset))
     .contentEndOffset(PageLayoutSpec.contentEnd(this.bottomInset))
     .attributeModifier(this.scrollBehavior)
+    .enableScrollInteraction(!this.selectionDragActive)
     .onScrollIndex((firstIndex: number, lastIndex: number): void => {
       this.state.ensureRange(firstIndex, lastIndex).catch((error: Object): void =>
         console.warn(`Unable to prefetch artist tracks: ${error}`));

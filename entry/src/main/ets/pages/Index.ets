@@ -8,6 +8,7 @@ import {
   PlayerMotionSpec
 } from '../components/player/PlayerMotion';
 import { LibraryStore } from '../library/store/LibraryStore';
+import { AlbumCollectionScope } from '../library/store/LibraryCollectionState';
 import {
   LibraryNavigationTarget,
   PlaylistSummary,
@@ -266,6 +267,14 @@ struct Index {
     }
   }
 
+  private openArtistTracks(artistId: number, artistName: string): void {
+    this.navigationController.openArtistTracks(artistId, artistName, this.usesWideLayout());
+  }
+
+  private openAlbumCollection(scope: AlbumCollectionScope, ownerId: number, title: string): void {
+    this.navigationController.openAlbumCollection(scope, ownerId, title, this.usesWideLayout());
+  }
+
   private openFullPlayerTrackActions(trackId: number, anchorId: string): void {
     TrackActionMenuPresenter.open(
       this.getUIContext(),
@@ -497,7 +506,11 @@ struct Index {
       onRequestAddToPlaylist: (items: Array<TrackListItem>): void =>
         this.playlistController.requestAddToPlaylist(items),
       onShareTrackFile: (trackId: number): void => this.shareTrackFile(trackId),
-      onNavigateLibrary: (target: LibraryNavigationTarget): void => this.navigateLibrary(target)
+      onNavigateLibrary: (target: LibraryNavigationTarget): void => this.navigateLibrary(target),
+      onOpenArtistTracks: (artistId: number, artistName: string): void =>
+        this.openArtistTracks(artistId, artistName),
+      onOpenAlbumCollection: (scope: AlbumCollectionScope, ownerId: number, title: string): void =>
+        this.openAlbumCollection(scope, ownerId, title)
     })
   }
 

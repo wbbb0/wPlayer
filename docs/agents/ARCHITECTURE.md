@@ -117,6 +117,9 @@ not publish state, release a resource now owned by newer work, or clear a curren
   data-access classes own their same-domain reads and writes; MusicRepository retains projection invalidation.
 - MusicLibraryImporter owns transactional import persistence.
 - LibraryStore owns observable library UI state and session-only operation reports.
+- Detail stores expose bounded previews. Full artist-track, artist-album and related-album collections use
+  route-owned collection state backed by independently paged data sources; detail pages do not retain or preload
+  those complete result sets.
 - ArtworkCache owns persistent resized artwork files; ArtworkMemoryCache owns playback-time decoded artwork.
 
 Do not make URI strings, display names, quick fingerprints or metadata alone authoritative proof of physical file
@@ -157,6 +160,8 @@ same library graph.
   root selection-controller identities.
 - `ResponsiveNavigationRouteContent` builds root pages and navigation destinations from navigation-layer-owned
   identities and user-intent callbacks; it does not own responsive state or create another navigation stack.
+- Collection destinations own their paging, selection and scroll identities in their route parameters so compact
+  and expanded hosts render the same durable state without nesting another Navigation.
 - `ResponsiveNavigationModalHost` hosts navigation-level sheets and content covers while visibility and import
   orchestration remain Shell-owned. `SelectionNavigationTitleBar` presents selection chrome without owning
   selection actions or state.

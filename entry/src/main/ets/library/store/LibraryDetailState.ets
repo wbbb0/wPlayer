@@ -9,22 +9,6 @@ import { EmbeddedArtworkService } from '../artwork/EmbeddedArtworkService';
 import { LibraryStore } from './LibraryStore';
 import { TrackListItem } from '../model/LibraryModels';
 import { LibraryListDataSource } from './LibraryListDataSource';
-import { LibraryPageLoader, PagedLibraryDataSource } from './PagedLibraryDataSource';
-import { LibraryPagingPolicy } from './LibraryPagingPolicy';
-
-class ArtistTrackPageLoader implements LibraryPageLoader<TrackListItem> {
-  private readonly store: LibraryStore;
-  private readonly artistId: number;
-
-  constructor(store: LibraryStore, artistId: number) {
-    this.store = store;
-    this.artistId = artistId;
-  }
-
-  load(offset: number, limit: number): Promise<Array<TrackListItem>> {
-    return this.store.getArtistTrackPage(this.artistId, offset, limit);
-  }
-}
 
 @Observed
 export class AlbumDetailState {
@@ -94,12 +78,6 @@ export class ArtistDetailState {
   detail?: ArtistDetailOverview;
   loading: boolean = false;
   error: string = '';
-  readonly trackDataSource: PagedLibraryDataSource<TrackListItem> =
-    new PagedLibraryDataSource<TrackListItem>(
-      LibraryPagingPolicy.TRACK_QUERY_PAGE_SIZE,
-      LibraryPagingPolicy.MAX_CACHED_PAGES,
-      (item: TrackListItem): string => `${item.id}`
-    );
   private loadEpoch: number = 0;
   private loaded: boolean = false;
   private loadedContentRevision: number = -1;
@@ -157,23 +135,11 @@ export class ArtistDetailState {
     return this.loadInternal(store, true);
   }
 
-  ensureTrackRange(firstIndex: number, lastIndex: number): Promise<void> {
-    const start = LibraryPagingPolicy.prefetchStartForVisibleRange(
-      firstIndex,
-      LibraryPagingPolicy.TRACK_QUERY_PAGE_SIZE
-    );
-    const end = LibraryPagingPolicy.prefetchEndForVisibleRange(
-      lastIndex,
-      LibraryPagingPolicy.TRACK_QUERY_PAGE_SIZE
-    );
-    return this.trackDataSource.ensureRange(start, end, firstIndex);
-  }
-
   async loadTrackSnapshot(store: LibraryStore): Promise<Array<TrackListItem>> {
     const epoch = this.loadEpoch;
     const expectedCount = this.detail?.trackCount ?? 0;
     const tracks = await store.loadArtistTrackPlaybackOrder(this.artistId, expectedCount);
-    if (epoch !== this.loadEpoch || this.detail === undefined) {
+    if (epoch !== this.loadEpoch || this.activeStore !== store || this.detail === undefined) {
       throw new Error('艺术家内容已更新，请重试');
     }
     return tracks;
@@ -197,18 +163,9 @@ export class ArtistDetailState {
       this.loaded = detail !== undefined;
       this.loadedContentRevision = contentRevision;
       if (detail === undefined) {
-        this.trackDataSource.clear();
         this.error = '艺术家不存在或已从音乐库移除';
         return;
       }
-      this.trackDataSource.reset(
-        detail.trackCount,
-        new ArtistTrackPageLoader(store, this.artistId)
-      );
-      await this.trackDataSource.ensureRange(
-        0,
-        LibraryPagingPolicy.initialPrefetchLastIndex(LibraryPagingPolicy.TRACK_QUERY_PAGE_SIZE)
-      );
     } catch (error) {
       if (epoch === this.loadEpoch) {
         this.loaded = false;

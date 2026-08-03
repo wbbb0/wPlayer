@@ -961,6 +961,10 @@ export class LibraryStore {
     return this.repository.getAlbumDetail(albumId);
   }
 
+  getAlbumTracks(albumId: number): Promise<Array<TrackListItem>> {
+    return this.repository.getAlbumTracks(albumId);
+  }
+
   getAlbumArtists(albumId: number): Promise<Array<ArtistReference>> {
     return this.repository.getAlbumArtists(albumId);
   }
@@ -978,6 +982,28 @@ export class LibraryStore {
     return this.repository.getArtistTrackPage(artistId, offset, limit);
   }
 
+  getArtistTrackCount(artistId: number): Promise<number> {
+    return this.repository.getArtistTrackCount(artistId);
+  }
+
+  getArtistAlbumCount(artistId: number): Promise<number> {
+    return this.repository.getArtistAlbumCount(artistId);
+  }
+
+  getArtistAlbumPage(artistId: number, offset: number,
+    limit: number): Promise<Array<AlbumListItem>> {
+    return this.repository.getArtistAlbumPage(artistId, offset, limit);
+  }
+
+  getRelatedAlbumCount(albumId: number): Promise<number> {
+    return this.repository.getRelatedAlbumCount(albumId);
+  }
+
+  getRelatedAlbumPage(albumId: number, offset: number,
+    limit: number): Promise<Array<AlbumListItem>> {
+    return this.repository.getRelatedAlbumPage(albumId, offset, limit);
+  }
+
   getArtistTracks(artistId: number): Promise<Array<TrackListItem>> {
     return this.repository.getArtistTracks(artistId);
   }
@@ -993,6 +1019,32 @@ export class LibraryStore {
       }
     }
     throw new Error('艺术家歌曲正在变化，请稍后重试播放');
+  }
+
+  async loadArtistAlbumSelectionOrder(artistId: number,
+    expectedCount: number): Promise<Array<AlbumListItem>> {
+    for (let attempt = 0; attempt < PLAYBACK_ORDER_STABILITY_ATTEMPTS; attempt += 1) {
+      const revision = this.repository.currentInvalidationRevision();
+      const albums = await this.repository.getArtistAlbums(artistId);
+      if (this.repository.currentInvalidationRevision() === revision &&
+        albums.length === expectedCount) {
+        return albums;
+      }
+    }
+    throw new Error('艺术家专辑正在变化，请稍后重试');
+  }
+
+  async loadRelatedAlbumSelectionOrder(albumId: number,
+    expectedCount: number): Promise<Array<AlbumListItem>> {
+    for (let attempt = 0; attempt < PLAYBACK_ORDER_STABILITY_ATTEMPTS; attempt += 1) {
+      const revision = this.repository.currentInvalidationRevision();
+      const albums = await this.repository.getRelatedAlbums(albumId);
+      if (this.repository.currentInvalidationRevision() === revision &&
+        albums.length === expectedCount) {
+        return albums;
+      }
+    }
+    throw new Error('相关专辑正在变化，请稍后重试');
   }
 
   getTrackDetail(trackId: number): Promise<TrackDetail | undefined> {

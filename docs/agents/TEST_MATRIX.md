@@ -23,6 +23,7 @@
 | M3U | encodings, malformed rows, duplicate rows, matching ambiguity, Unicode and round trip |
 | Settings | corrupt/missing values, normalization, persistence and observable-store synchronization |
 | Navigation | root selection, per-tab stacks, detail back behavior and breakpoint promotion/demotion |
+| Detail collections | bounded previews, view-all routing, independent paging, selection and return-state continuity |
 | Player gestures/morph | axis arbitration, thresholds, cancellation, frozen geometry, rapid input and final material handoff |
 
 ## UI manual matrix

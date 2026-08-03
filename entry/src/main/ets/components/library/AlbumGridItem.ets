@@ -87,6 +87,7 @@ export struct AlbumGridItem {
   @ObjectLink store: LibraryStore;
   @Prop album: AlbumListItem;
   @Prop actionsEnabled: boolean = false;
+  @Prop artworkShadowEnabled: boolean = true;
   @Prop selectionMode: boolean = false;
   @Prop selected: boolean = false;
   @Prop primaryColor: ResourceColor = $r('app.color.text_primary');
@@ -103,6 +104,8 @@ export struct AlbumGridItem {
     this.measuredItemWidth = 0;
     this.measuredItemHeight = 0;
     this.suppressActivationUntil = 0;
+    this.artworkShadowEnabled = typeof params.artworkShadowEnabled === 'boolean' ?
+      params.artworkShadowEnabled as boolean : true;
     this.onActivate = params.onActivate as (album: AlbumListItem) => void;
     this.onToggleSelection = params.onToggleSelection as (album: AlbumListItem) => void;
     this.onAction = params.onAction as (album: AlbumListItem, action: AlbumAction) => void;
@@ -129,7 +132,7 @@ export struct AlbumGridItem {
         sourceHeight: this.album.artworkHeight,
         fitMode: ArtworkFitMode.CONTAIN,
         cornerRadius: 18,
-        shadowEnabled: this.album.artworkPath.length > 0
+        shadowEnabled: this.artworkShadowEnabled && this.album.artworkPath.length > 0
       })
       Text(this.album.title)
         .fontSize(15)

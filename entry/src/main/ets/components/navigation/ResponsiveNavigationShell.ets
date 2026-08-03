@@ -59,6 +59,7 @@ import {
 } from
   '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
+import { AlbumCollectionScope } from '../../library/store/LibraryCollectionState';
 import { TrackArtworkViewerState } from '../../library/store/LibraryDetailState';
 import { PlaylistStore } from '../../playlist/store/PlaylistStore';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
@@ -67,7 +68,8 @@ import { AlbumDetailColorPolicy } from '../../pages/library/AlbumDetailPage';
 import { AppSettingsStore } from '../../settings/AppSettingsStore';
 import {
   AlbumDetailRouteParams,
-  ArtistDetailRouteParams
+  ArtistDetailRouteParams,
+  LibraryCollectionSelectionParams
 } from './LibraryNavigation';
 import {
   M3uImportNameConflictAction,
@@ -177,6 +179,10 @@ export struct ResponsiveNavigationShell {
   onShareTrackFile: (trackId: number) => void = (_trackId: number): void => {};
   onNavigateLibrary: (target: LibraryNavigationTarget) => void =
     (_target: LibraryNavigationTarget): void => {};
+  onOpenArtistTracks: (artistId: number, artistName: string) => void =
+    (_artistId: number, _artistName: string): void => {};
+  onOpenAlbumCollection: (scope: AlbumCollectionScope, ownerId: number, title: string) => void =
+    (_scope: AlbumCollectionScope, _ownerId: number, _title: string): void => {};
   private readonly miniPlayerBuilder: () => void = (): void => this.MiniPlayer();
   private readonly playlistTransferService: M3uTransferService =
     new M3uTransferService(playbackRuntime.repository);
@@ -846,11 +852,17 @@ export struct ResponsiveNavigationShell {
     params: ArtistDetailRouteParams,
     revision: number
   ): HdsNavigationMenuContentOptions {
-    params.selection.selectableCount = params.state.detail?.trackCount ?? 0;
+    params.selection.cancel();
+    return { maxCount: 0, value: [] };
+  }
+
+  private collectionTitleMenu(params: LibraryCollectionSelectionParams,
+    revision: number, totalCount: number): HdsNavigationMenuContentOptions {
+    params.selection.selectableCount = totalCount;
     return SelectionNavigationTitleBar.menu(
       this.getUIContext(),
       params.selection,
-      `artist_detail_selection_${params.instanceId}`,
+      `library_collection_selection_${params.instanceId}`,
       revision,
       this.onDetailSelectionChange,
       [],
@@ -886,17 +898,17 @@ export struct ResponsiveNavigationShell {
   }
 
   private performAlbumAction(albumId: number, action: AlbumAction): void {
-    this.libraryStore.getAlbumDetail(albumId)
-      .then((detail): void => {
-        if (detail === undefined || detail.tracks.length === 0) {
+    this.libraryStore.getAlbumTracks(albumId)
+      .then((tracks: Array<TrackListItem>): void => {
+        if (tracks.length === 0) {
           return;
         }
         if (action === AlbumAction.INSERT_NEXT) {
-          playbackRuntime.insertNext(detail.tracks);
+          playbackRuntime.insertNext(tracks);
         } else if (action === AlbumAction.APPEND_QUEUE) {
-          playbackRuntime.appendToQueue(detail.tracks);
+          playbackRuntime.appendToQueue(tracks);
         } else {
-          this.onRequestAddToPlaylist(detail.tracks);
+          this.onRequestAddToPlaylist(tracks);
         }
       })
       .catch((error: Object): void => {
@@ -1195,6 +1207,8 @@ export struct ResponsiveNavigationShell {
       onOpenTrackDetails: (item: TrackListItem): void => this.openTrackDetails(item),
       onShareTrackFile: this.onShareTrackFile,
       onNavigateLibrary: this.onNavigateLibrary,
+      onOpenArtistTracks: this.onOpenArtistTracks,
+      onOpenAlbumCollection: this.onOpenAlbumCollection,
       onRequestAddToPlaylist: this.onRequestAddToPlaylist,
       onAlbumAction: (albumId: number, action: AlbumAction): void =>
         this.performAlbumAction(albumId, action),
@@ -1324,6 +1338,11 @@ export struct ResponsiveNavigationShell {
         revision: number
       ): HdsNavigationMenuContentOptions =>
         this.artistDetailTitleMenu(params, revision),
+      collectionTitleMenu: (
+        params: LibraryCollectionSelectionParams,
+        revision: number,
+        totalCount: number
+      ): HdsNavigationMenuContentOptions => this.collectionTitleMenu(params, revision, totalCount),
       albumDetailBackground: (params: AlbumDetailRouteParams): string =>
         this.albumDetailBackground(params),
       albumDetailContentColor: (params: AlbumDetailRouteParams): string =>
@@ -1338,6 +1357,8 @@ export struct ResponsiveNavigationShell {
       onPictureInPictureSettingsChange: this.onPictureInPictureSettingsChange,
       onPlayerPageKeepScreenOnChange: this.onPlayerPageKeepScreenOnChange,
       onNavigateLibrary: this.onNavigateLibrary,
+      onOpenArtistTracks: this.onOpenArtistTracks,
+      onOpenAlbumCollection: this.onOpenAlbumCollection,
       onRequestAddToPlaylist: this.onRequestAddToPlaylist,
       onShareTrackFile: this.onShareTrackFile,
       onOpenTrackActions: (

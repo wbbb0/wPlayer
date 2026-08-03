@@ -11,9 +11,12 @@ import {
 } from './AppPrimaryTitleContent';
 import {
   AlbumDetailRouteParams,
+  AlbumCollectionRouteParams,
   ArtistDetailRouteParams,
+  ArtistTrackCollectionRouteParams,
   LibraryDetailRoute
 } from './LibraryNavigation';
+import { AlbumCollectionScope } from '../../library/store/LibraryCollectionState';
 import { NavigationChromeController } from './NavigationChromeController';
 import {
   ALL_ROOT_NAVIGATION_ITEMS,
@@ -225,6 +228,21 @@ export class IndexNavigationController {
         )
       });
     }
+  }
+
+  openArtistTracks(artistId: number, artistName: string, wideLayout: boolean): void {
+    this.activeNavigationStack(wideLayout).pushPath({
+      name: LibraryDetailRoute.ARTIST_TRACKS,
+      param: new ArtistTrackCollectionRouteParams(artistId, artistName)
+    });
+  }
+
+  openAlbumCollection(scope: AlbumCollectionScope, ownerId: number,
+    title: string, wideLayout: boolean): void {
+    this.activeNavigationStack(wideLayout).pushPath({
+      name: LibraryDetailRoute.ALBUM_COLLECTION,
+      param: new AlbumCollectionRouteParams(scope, ownerId, title)
+    });
   }
 
   openMoreDestination(routeId: string): void {

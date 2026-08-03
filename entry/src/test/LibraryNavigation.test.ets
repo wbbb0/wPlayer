@@ -4,9 +4,12 @@ import {
   TrackNavigationTargets
 } from '../main/ets/library/model/LibraryModels';
 import {
+  AlbumCollectionRouteParams,
+  ArtistTrackCollectionRouteParams,
   LibraryLinkRole,
   libraryLinkActions
 } from '../main/ets/components/navigation/LibraryNavigation';
+import { AlbumCollectionScope } from '../main/ets/library/store/LibraryCollectionState';
 import { TrackDetailSheetBridge } from '../main/ets/components/navigation/TrackDetailSheetBridge';
 import {
   AvailabilityState,
@@ -109,6 +112,23 @@ export default function libraryNavigationTest() {
       bridge.detach(secondHandler);
       bridge.open(track(4));
       expect(openedTrackId).assertEqual(30);
+    });
+
+    it('gives each collection route independent durable state', 0, () => {
+      const firstTracks = new ArtistTrackCollectionRouteParams(10, 'Artist A');
+      const secondTracks = new ArtistTrackCollectionRouteParams(10, 'Artist A');
+      const artistAlbums = new AlbumCollectionRouteParams(
+        AlbumCollectionScope.ARTIST, 10, 'Artist A的专辑'
+      );
+      const relatedAlbums = new AlbumCollectionRouteParams(
+        AlbumCollectionScope.RELATED, 20, '相关专辑'
+      );
+
+      expect(firstTracks.instanceId === secondTracks.instanceId).assertFalse();
+      expect(firstTracks.state === secondTracks.state).assertFalse();
+      expect(firstTracks.selection === secondTracks.selection).assertFalse();
+      expect(artistAlbums.state === relatedAlbums.state).assertFalse();
+      expect(firstTracks.title).assertEqual('Artist A的歌曲');
     });
   });
 }

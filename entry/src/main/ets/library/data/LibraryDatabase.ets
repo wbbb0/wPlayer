@@ -3,9 +3,13 @@ import { common } from '@kit.AbilityKit';
 import { SortKeyNormalizer } from '../metadata/SortKeyNormalizer';
 import { ARTWORK_PALETTE_VERSION } from '../artwork/ArtworkPaletteExtractor';
 import { RelationalStoreSafety } from './RelationalStoreSafety';
+import {
+  LibrarySchemaMigrationAction,
+  LibrarySchemaMigrationPolicy
+} from './LibrarySchemaMigrationPolicy';
 
 const DATABASE_NAME = 'music_library.db';
-const DATABASE_VERSION = 13;
+const DATABASE_VERSION = LibrarySchemaMigrationPolicy.CURRENT_VERSION;
 const PLAYBACK_QUEUE_STATE_SCHEMA: string = `CREATE TABLE playback_queue_state (
   singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
   current_position INTEGER NOT NULL DEFAULT -1 CHECK (current_position >= -1),
@@ -17,6 +21,8 @@ const PLAYBACK_QUEUE_ITEM_SCHEMA: string = `CREATE TABLE playback_queue_item (
   playback_position INTEGER NOT NULL UNIQUE CHECK (playback_position >= 0),
   track_id INTEGER NOT NULL REFERENCES track(id) ON DELETE CASCADE
 )`;
+const ALBUM_CREDIT_PERSON_INDEX_SCHEMA: string =
+  'CREATE INDEX idx_album_credit_person_album ON album_credit(person_id, album_id)';
 const SORT_REBUILD_BATCH_SIZE = 500;
 
 const STORE_CONFIG: relationalStore.StoreConfig = {
@@ -269,6 +275,7 @@ const CURRENT_SCHEMA: Array<string> = [
   'CREATE INDEX idx_album_release_date ON album(release_date_sort, id)',
   'CREATE INDEX idx_album_created_at ON album(created_at, id)',
   'CREATE INDEX idx_track_credit_person_role ON track_credit(person_id, role, track_id)',
+  ALBUM_CREDIT_PERSON_INDEX_SCHEMA,
   'CREATE INDEX idx_track_genre_genre ON track_genre(genre_id, track_id)',
   'CREATE INDEX idx_track_artwork_fallback ON track_artwork(track_id, picture_type, ordinal)',
   'CREATE INDEX idx_artwork_asset_gc ON artwork_asset(ref_count, unreferenced_at)',
@@ -420,11 +427,12 @@ export class LibraryDatabase {
     }
 
     const version = await this.readSchemaVersion(store);
-    if (version === 12) {
+    const action = LibrarySchemaMigrationPolicy.actionFor(version);
+    if (action === LibrarySchemaMigrationAction.MIGRATE_PRODUCTION) {
       await this.migrateVersion12To13(store);
       return false;
     }
-    if (version !== DATABASE_VERSION) {
+    if (action === LibrarySchemaMigrationAction.REJECT) {
       throw new Error(`Unsupported library database version ${version}; expected ${DATABASE_VERSION}`);
     }
     if (store.version !== DATABASE_VERSION) {
@@ -441,6 +449,7 @@ export class LibraryDatabase {
       });
       await transaction.execute(PLAYBACK_QUEUE_STATE_SCHEMA);
       await transaction.execute(PLAYBACK_QUEUE_ITEM_SCHEMA);
+      await transaction.execute(ALBUM_CREDIT_PERSON_INDEX_SCHEMA);
       await transaction.execute(
         'UPDATE schema_meta SET version = ?, migrated_at = ? WHERE singleton = 1',
         [DATABASE_VERSION, Date.now()]

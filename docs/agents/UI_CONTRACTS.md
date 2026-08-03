@@ -60,6 +60,10 @@ directly; do not add wrapper margins, borders or replacement backgrounds.
 - Feature pages must not create private nested Navigation stacks.
 - Persistent tabs and player controls remain above secondary destinations.
 - Detail pages preserve the selected tab and floating chrome.
+- Artist details show bounded song and album previews. Their “view all” actions open collection destinations whose
+  lists are independently paged and virtualized.
+- Album details show related albums as a bounded, two-row horizontal preview. “View all” opens an independently
+  paged album collection destination and keeps the current tab stack and floating chrome.
 
 ## Page layout
 
@@ -78,6 +82,8 @@ directly; do not add wrapper margins, borders or replacement backgrounds.
 - Use responsive Grid policies or a shared layout specification; do not hard-code feature-page column counts.
 - Album grids keep at least two equal-width columns; wider layouts retain the shared preferred minimum column width
   when deriving additional columns.
+- Root and collection album grids declare regular item sizing, use virtualized slots and render large album artwork.
+  Album-card shadows are omitted in high-density scrolling surfaces.
 
 ## Floating navigation and mini player
 

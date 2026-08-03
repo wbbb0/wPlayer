@@ -112,6 +112,10 @@ export class MusicLibraryQueries {
     return this.detail.getAlbumDetail(albumId);
   }
 
+  getAlbumTracks(albumId: number): Promise<Array<TrackListItem>> {
+    return this.detail.getAlbumTracks(albumId);
+  }
+
   getAlbumArtists(albumId: number): Promise<Array<ArtistReference>> {
     return this.detail.getAlbumArtists(albumId);
   }
@@ -127,6 +131,36 @@ export class MusicLibraryQueries {
   getArtistTrackPage(artistId: number, offset: number,
     limit: number): Promise<Array<TrackListItem>> {
     return this.detail.getArtistTrackPage(artistId, offset, limit);
+  }
+
+  getArtistTrackCount(artistId: number): Promise<number> {
+    return this.detail.getArtistTrackCount(artistId);
+  }
+
+  getArtistAlbumCount(artistId: number): Promise<number> {
+    return this.detail.getArtistAlbumCount(artistId);
+  }
+
+  getArtistAlbumPage(artistId: number, offset: number,
+    limit: number): Promise<Array<AlbumListItem>> {
+    return this.detail.getArtistAlbumPage(artistId, offset, limit);
+  }
+
+  getArtistAlbums(artistId: number): Promise<Array<AlbumListItem>> {
+    return this.detail.getArtistAlbums(artistId);
+  }
+
+  getRelatedAlbumCount(albumId: number): Promise<number> {
+    return this.detail.getRelatedAlbumCount(albumId);
+  }
+
+  getRelatedAlbumPage(albumId: number, offset: number,
+    limit: number): Promise<Array<AlbumListItem>> {
+    return this.detail.getRelatedAlbumPage(albumId, offset, limit);
+  }
+
+  getRelatedAlbums(albumId: number): Promise<Array<AlbumListItem>> {
+    return this.detail.getRelatedAlbums(albumId);
   }
 
   getArtistTracks(artistId: number): Promise<Array<TrackListItem>> {

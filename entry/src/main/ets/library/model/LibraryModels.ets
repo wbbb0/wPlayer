@@ -308,6 +308,7 @@ export interface AlbumListItem {
 export interface AlbumDetail {
   album: AlbumListItem;
   albumArtists: Array<ArtistReference>;
+  relatedAlbumCount: number;
   relatedAlbums: Array<AlbumListItem>;
   releaseYear: number;
   genreDisplay: string;
@@ -320,6 +321,7 @@ export interface ArtistDetailOverview {
   trackCount: number;
   totalDurationMs: number;
   albums: Array<AlbumListItem>;
+  trackPreview: Array<TrackListItem>;
 }
 
 export interface ArtistDetail extends ArtistDetailOverview {

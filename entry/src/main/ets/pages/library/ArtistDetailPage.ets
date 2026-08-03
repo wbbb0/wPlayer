@@ -1,6 +1,7 @@
 import { PageLayoutSpec } from '../../components/layout/PageLayoutSpec';
 import { PageListBehavior } from '../../components/layout/PageScrollBehavior';
-import { AlbumGridSection } from '../../components/library/AlbumGridItem';
+import { AlbumPreviewGrid } from '../../components/library/AlbumPreviewGrid';
+import { AlbumAction } from '../../components/library/AlbumGridItem';
 import {
   LibraryTrackRow,
   LibraryTrackRowVariant
@@ -13,18 +14,9 @@ import {
   TrackListItem
 } from '../../library/model/LibraryModels';
 import { ArtistDetailState } from '../../library/store/LibraryDetailState';
-import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
-import {
-  LibrarySlot
-} from '../../library/store/PagedLibraryDataSource';
-import { LibraryTrackRowPlaceholder } from '../../components/library/LibraryTrackRowPlaceholder';
-import {
-  DetailTrackListPagingPolicy,
-  DetailTrackVisibleRange
-} from '../../library/store/DetailTrackListPagingPolicy';
 
 @Component
 export struct ArtistDetailPage {
@@ -36,10 +28,13 @@ export struct ArtistDetailPage {
   @Prop rootWidth: number = 0;
   @Prop actionAnchorPrefix: string = 'artist';
   @Prop currentIdentity: LibraryEntityIdentity | undefined = undefined;
-  @State selectedItems: Array<TrackListItem> = [];
   @State snapshotActionBusy: boolean = false;
   scroller: Scroller = new Scroller();
   onOpenAlbum: (album: AlbumListItem) => void = (_album: AlbumListItem): void => {};
+  onOpenAllTracks: () => void = (): void => {};
+  onOpenAllAlbums: () => void = (): void => {};
+  onAlbumAction: (album: AlbumListItem, action: AlbumAction) => void =
+    (_album: AlbumListItem, _action: AlbumAction): void => {};
   onOpenTrackActions: (track: TrackListItem, anchorId: string) => void =
     (_track: TrackListItem, _anchorId: string): void => {};
   onNavigateTrackAction: (target: LibraryNavigationTarget) => void =
@@ -49,35 +44,11 @@ export struct ArtistDetailPage {
   onOpenTrackDetails: (track: TrackListItem) => void =
     (_track: TrackListItem): void => {};
   onShareTrackFile: (trackId: number) => void = (_trackId: number): void => {};
-  private readonly scrollBehavior: PageListBehavior =
-    new PageListBehavior(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT);
+  private readonly scrollBehavior: PageListBehavior = new PageListBehavior();
 
   aboutToAppear(): void {
     this.state.activate(this.store);
-    this.selection.deleteEnabled = false;
-    this.selection.onPlay = (): void => this.playSelection();
-    this.selection.onAddToPlaylist = (): void =>
-      this.onRequestAddToPlaylist(this.currentSelection());
-    this.selection.onInsertNext = (): void => playbackRuntime.insertNext(this.currentSelection());
-    this.selection.onAppendToQueue = (): void =>
-      playbackRuntime.appendToQueue(this.currentSelection());
-    this.selection.onToggleAll = (): void => this.toggleAll();
-  }
-
-  private toggleAll(): void {
-    if (this.selection.allSelected()) {
-      this.selectedItems = [];
-      this.selection.replaceSelection([]);
-      return;
-    }
-    this.selection.setBusy(true);
-    this.state.loadTrackSnapshot(this.store).then((tracks: Array<TrackListItem>): void => {
-      this.selectedItems = tracks;
-      this.selection.selectableCount = tracks.length;
-      this.selection.replaceSelection(tracks.map((track: TrackListItem): number => track.id));
-    }).catch((error: Object): void => {
-      console.warn(`Unable to select all artist tracks: ${error}`);
-    }).finally((): void => this.selection.setBusy(false));
+    this.selection.cancel();
   }
 
   aboutToDisappear(): void {
@@ -114,32 +85,6 @@ export struct ArtistDetailPage {
         playbackRuntime.playInOrder(current, tracks);
       }
     });
-  }
-
-  private currentSelection(): Array<TrackListItem> {
-    return this.selectedItems.filter((item: TrackListItem): boolean =>
-      this.selection.isSelected(item.id));
-  }
-
-  private toggleSelection(track: TrackListItem): void {
-    this.selection.toggle(track.id);
-    if (!this.selection.isSelected(track.id)) {
-      this.selectedItems =
-        this.selectedItems.filter((item: TrackListItem): boolean => item.id !== track.id);
-    } else {
-      this.selectedItems =
-        this.selectedItems.filter((item: TrackListItem): boolean => item.id !== track.id)
-          .concat([track]);
-    }
-  }
-
-  private playSelection(): void {
-    const items = this.currentSelection();
-    if (items.length > 0) {
-      playbackRuntime.playInOrder(items[0], items);
-      this.selectedItems = [];
-      this.selection.cancel();
-    }
   }
 
   @Builder
@@ -215,16 +160,24 @@ export struct ArtistDetailPage {
   }
 
   @Builder
-  private SectionTitle(title: string, count: number) {
+  private SectionTitle(title: string, count: number, showAll: boolean, onShowAll: () => void) {
     Row() {
       Text(title)
         .fontSize(20)
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.text_primary'))
       Blank()
-      Text(`${count}`)
-        .fontSize(13)
-        .fontColor($r('app.color.text_secondary'))
+      if (showAll) {
+        Button('查看全部')
+          .fontSize(13)
+          .fontColor($r('app.color.text_primary'))
+          .backgroundColor(Color.Transparent)
+          .onClick(onShowAll)
+      } else {
+        Text(`${count}`)
+          .fontSize(13)
+          .fontColor($r('app.color.text_secondary'))
+      }
     }
     .width('100%')
     .padding({
@@ -244,31 +197,42 @@ export struct ArtistDetailPage {
         }
         if (this.state.detail.albums.length > 0) {
           ListItem() {
-            this.SectionTitle('专辑', this.state.detail.albumCount)
+            this.SectionTitle(
+              '专辑',
+              this.state.detail.albumCount,
+              this.state.detail.albumCount > this.state.detail.albums.length,
+              this.onOpenAllAlbums
+            )
           }
           ListItem() {
-            AlbumGridSection({
+            AlbumPreviewGrid({
               store: this.store,
               albums: this.state.detail.albums,
               containerWidth: this.rootWidth,
-              onOpenAlbum: this.onOpenAlbum
+              onOpenAlbum: this.onOpenAlbum,
+              onAlbumAction: this.onAlbumAction,
+              onNavigate: this.onNavigateTrackAction
             })
           }
         }
         if (this.state.detail.trackCount > 0) {
           ListItem() {
-            this.SectionTitle('歌曲', this.state.detail.trackCount)
+            this.SectionTitle(
+              '歌曲',
+              this.state.detail.trackCount,
+              this.state.detail.trackCount > this.state.detail.trackPreview.length,
+              this.onOpenAllTracks
+            )
           }
-          LazyForEach(this.state.trackDataSource, (slot: LibrarySlot<TrackListItem>) => {
-            if (slot.value !== undefined) {
+          ForEach(this.state.detail.trackPreview, (track: TrackListItem) => {
               ListItem() {
                 LibraryTrackRow({
-                  track: slot.value,
+                  track: track,
                   store: this.store,
                   currentIdentity: this.currentIdentity,
                   variant: LibraryTrackRowVariant.LIBRARY,
-                  artworkPath: slot.value.smallArtworkPath.length > 0 ?
-                    this.store.resolveArtworkPath(slot.value.smallArtworkPath) : '',
+                  artworkPath: track.smallArtworkPath.length > 0 ?
+                    this.store.resolveArtworkPath(track.smallArtworkPath) : '',
                   actionAnchorPrefix: this.actionAnchorPrefix,
                   horizontalInset: PageLayoutSpec.HORIZONTAL_INSET,
                   verticalInset: 6,
@@ -279,26 +243,11 @@ export struct ArtistDetailPage {
                   onOpenDetails: this.onOpenTrackDetails,
                   onShareTrackFile: this.onShareTrackFile,
                   onNavigateAction: this.onNavigateTrackAction,
-                  onRequestAddToPlaylist: this.onRequestAddToPlaylist,
-                  selectionMode: this.selection.active,
-                  selected: this.selection.isSelected(slot.value.id),
-                  onToggleSelection: (item: TrackListItem): void => this.toggleSelection(item)
+                  onRequestAddToPlaylist: this.onRequestAddToPlaylist
                 })
                   .reuseId('artist_detail_track')
               }
-            } else {
-              ListItem() {
-                LibraryTrackRowPlaceholder({
-                  horizontalInset: PageLayoutSpec.HORIZONTAL_INSET,
-                  verticalInset: 6,
-                  minimumHeight: 60,
-                  artworkSize: 48,
-                  artworkCornerRadius: 9,
-                  selectionMode: this.selection.active
-                })
-              }
-            }
-          }, (slot: LibrarySlot<TrackListItem>) => slot.key)
+          }, (track: TrackListItem) => `${track.id}`)
         }
       } else if (this.state.loading) {
         ListItem() {
@@ -323,24 +272,6 @@ export struct ArtistDetailPage {
     .contentStartOffset(PageLayoutSpec.primaryContentStart(this.topInset))
     .contentEndOffset(PageLayoutSpec.contentEnd(this.bottomInset))
     .attributeModifier(this.scrollBehavior)
-    .onScrollIndex((firstIndex: number, lastIndex: number, _centerIndex: number): void => {
-      const detail = this.state.detail;
-      if (detail === undefined || detail.trackCount === 0) {
-        return;
-      }
-      const range: DetailTrackVisibleRange | undefined =
-        DetailTrackListPagingPolicy.visibleDataRange(
-          firstIndex,
-          lastIndex,
-          DetailTrackListPagingPolicy.artistTrackDataStartIndex(detail.albums.length > 0),
-          detail.trackCount
-        );
-      if (range !== undefined) {
-        this.state.ensureTrackRange(range.firstIndex, range.lastIndex)
-          .catch((error: Object): void =>
-            console.warn(`Unable to prefetch artist tracks: ${error}`));
-      }
-    })
     }
     .width('100%')
     .height('100%')

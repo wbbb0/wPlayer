@@ -458,6 +458,13 @@ export class MusicRepository implements LibraryRemovalRepository {
     return this.queries.getAlbumDetail(albumId);
   }
 
+  getAlbumTracks(albumId: number): Promise<Array<TrackListItem>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.albumTracks(albumId));
+    }
+    return this.queries.getAlbumTracks(albumId);
+  }
+
   getAlbumArtists(albumId: number): Promise<Array<ArtistReference>> {
     if (DemoLibraryMode.isEnabled()) {
       return Promise.resolve(DemoMusicLibrary.albumArtists(albumId));
@@ -485,6 +492,57 @@ export class MusicRepository implements LibraryRemovalRepository {
       return Promise.resolve(DemoMusicLibrary.artistTrackPage(artistId, offset, limit));
     }
     return this.queries.getArtistTrackPage(artistId, offset, limit);
+  }
+
+  getArtistTrackCount(artistId: number): Promise<number> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.artistTracks(artistId).length);
+    }
+    return this.queries.getArtistTrackCount(artistId);
+  }
+
+  getArtistAlbumCount(artistId: number): Promise<number> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.artistAlbums(artistId).length);
+    }
+    return this.queries.getArtistAlbumCount(artistId);
+  }
+
+  getArtistAlbumPage(artistId: number, offset: number,
+    limit: number): Promise<Array<AlbumListItem>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.artistAlbumPage(artistId, offset, limit));
+    }
+    return this.queries.getArtistAlbumPage(artistId, offset, limit);
+  }
+
+  getArtistAlbums(artistId: number): Promise<Array<AlbumListItem>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.artistAlbums(artistId));
+    }
+    return this.queries.getArtistAlbums(artistId);
+  }
+
+  getRelatedAlbumCount(albumId: number): Promise<number> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.relatedAlbums(albumId).length);
+    }
+    return this.queries.getRelatedAlbumCount(albumId);
+  }
+
+  getRelatedAlbumPage(albumId: number, offset: number,
+    limit: number): Promise<Array<AlbumListItem>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.relatedAlbumPage(albumId, offset, limit));
+    }
+    return this.queries.getRelatedAlbumPage(albumId, offset, limit);
+  }
+
+  getRelatedAlbums(albumId: number): Promise<Array<AlbumListItem>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.relatedAlbums(albumId));
+    }
+    return this.queries.getRelatedAlbums(albumId);
   }
 
   getArtistTracks(artistId: number): Promise<Array<TrackListItem>> {

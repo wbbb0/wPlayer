@@ -25,6 +25,7 @@ import {
 } from './MusicLibraryQueryRows';
 import { RelationalStoreSafety } from './RelationalStoreSafety';
 import { LibraryQueryPagingPolicy } from './LibraryQueryPagingPolicy';
+import { LibraryCollectionQueryPolicy } from './LibraryCollectionQueryPolicy';
 
 interface ArtistTrackStatistics {
   trackCount: number;
@@ -93,10 +94,27 @@ export class MusicLibraryDetailQueries {
     if (album === undefined) {
       return undefined;
     }
-    let trackResult: relationalStore.ResultSet | undefined;
+    const tracks = await this.queryAlbumTracks(albumId);
+    const albumArtists = await this.getAlbumArtists(albumId);
+    const relatedAlbumCount = albumArtists.length > 0 ? await this.getRelatedAlbumCount(albumId) : 0;
+    return {
+      album: album,
+      albumArtists: albumArtists,
+      relatedAlbumCount: relatedAlbumCount,
+      relatedAlbums: relatedAlbumCount > 0 ? await this.getRelatedAlbumPage(
+        albumId, 0, LibraryCollectionQueryPolicy.RELATED_ALBUM_PREVIEW_LIMIT
+      ) : [],
+      releaseYear: releaseYear,
+      genreDisplay: genreDisplay,
+      tracks: tracks
+    };
+  }
+
+  private async queryAlbumTracks(albumId: number): Promise<Array<TrackListItem>> {
+    let resultSet: relationalStore.ResultSet | undefined;
     const tracks: Array<TrackListItem> = [];
     try {
-      trackResult = await this.database.getStore().querySql(
+      resultSet = await this.database.getStore().querySql(
         `SELECT t.id, t.title, t.artist_display, t.album_display, t.duration_ms,
           COALESCE(t.track_number, 0), COALESCE(t.disc_number, 0),
           COALESCE(a.small_hash, ''), COALESCE(a.small_path, ''),
@@ -114,23 +132,15 @@ export class MusicLibraryDetailQueries {
           t.track_number ASC, t.id ASC`,
         [albumId]
       );
-      while (trackResult.goToNextRow()) {
-        tracks.push(trackListItemFromCurrentRow(trackResult));
+      while (resultSet.goToNextRow()) {
+        tracks.push(trackListItemFromCurrentRow(resultSet));
       }
+      return tracks;
     } catch (error) {
       throw RelationalStoreSafety.operationError(`Unable to read album tracks ${albumId}`, error);
     } finally {
-      RelationalStoreSafety.closeResultSet(trackResult, 'album tracks');
+      RelationalStoreSafety.closeResultSet(resultSet, 'album tracks');
     }
-    const albumArtists = await this.getAlbumArtists(albumId);
-    return {
-      album: album,
-      albumArtists: albumArtists,
-      relatedAlbums: albumArtists.length > 0 ? await this.getRelatedAlbums(albumId) : [],
-      releaseYear: releaseYear,
-      genreDisplay: genreDisplay,
-      tracks: tracks
-    };
   }
 
   async getTrackNavigationTargets(trackId: number): Promise<TrackNavigationTargets | undefined> {
@@ -376,14 +386,19 @@ export class MusicLibraryDetailQueries {
     if (artist === undefined) {
       return undefined;
     }
-    const albums = await this.getArtistAlbums(artistId);
+    const albumCount = await this.getArtistAlbumCount(artistId);
     const statistics = await this.getArtistTrackStatistics(artistId);
     return {
       artist: artist,
-      albumCount: albums.length,
+      albumCount: albumCount,
       trackCount: statistics.trackCount,
       totalDurationMs: statistics.totalDurationMs,
-      albums: albums
+      albums: albumCount > 0 ? await this.getArtistAlbumPage(
+        artistId, 0, LibraryCollectionQueryPolicy.ARTIST_ALBUM_PREVIEW_LIMIT
+      ) : [],
+      trackPreview: statistics.trackCount > 0 ? await this.getArtistTrackPage(
+        artistId, 0, LibraryCollectionQueryPolicy.ARTIST_TRACK_PREVIEW_LIMIT
+      ) : []
     };
   }
 
@@ -397,7 +412,8 @@ export class MusicLibraryDetailQueries {
       albumCount: overview.albumCount,
       trackCount: overview.trackCount,
       totalDurationMs: overview.totalDurationMs,
-      albums: overview.albums,
+      albums: await this.getArtistAlbums(artistId),
+      trackPreview: overview.trackPreview,
       tracks: await this.getArtistTracks(artistId)
     };
   }
@@ -432,6 +448,10 @@ export class MusicLibraryDetailQueries {
     } finally {
       RelationalStoreSafety.closeResultSet(resultSet, 'artist track statistics');
     }
+  }
+
+  async getArtistTrackCount(artistId: number): Promise<number> {
+    return (await this.getArtistTrackStatistics(artistId)).trackCount;
   }
 
   private async getTrackArtists(trackId: number): Promise<Array<ArtistReference>> {
@@ -482,9 +502,46 @@ export class MusicLibraryDetailQueries {
     }
   }
 
-  private async getArtistAlbums(artistId: number): Promise<Array<AlbumListItem>> {
+  async getArtistAlbumCount(artistId: number): Promise<number> {
     let resultSet: relationalStore.ResultSet | undefined;
     try {
+      resultSet = await this.database.getStore().querySql(
+        `SELECT COUNT(DISTINCT al.id)
+         FROM album_credit ac
+         JOIN album al ON al.id = ac.album_id
+         WHERE ac.person_id = ?`,
+        [artistId]
+      );
+      return resultSet.goToNextRow() ? resultSet.getLong(0) : 0;
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to count albums for artist ${artistId}`, error);
+    } finally {
+      RelationalStoreSafety.closeResultSet(resultSet, 'artist album count');
+    }
+  }
+
+  getArtistAlbumPage(artistId: number, offset: number,
+    limit: number): Promise<Array<AlbumListItem>> {
+    return this.queryArtistAlbums(
+      artistId,
+      LibraryQueryPagingPolicy.offset(offset),
+      LibraryQueryPagingPolicy.limit(limit)
+    );
+  }
+
+  getArtistAlbums(artistId: number): Promise<Array<AlbumListItem>> {
+    return this.queryArtistAlbums(artistId);
+  }
+
+  private async queryArtistAlbums(artistId: number, offset?: number,
+    limit?: number): Promise<Array<AlbumListItem>> {
+    let resultSet: relationalStore.ResultSet | undefined;
+    try {
+      const pageClause = offset === undefined || limit === undefined ? '' : ' LIMIT ? OFFSET ?';
+      const bindings: Array<number> = [artistId];
+      if (offset !== undefined && limit !== undefined) {
+        bindings.push(limit, offset);
+      }
       resultSet = await this.database.getStore().querySql(
         `SELECT DISTINCT al.id, al.title, al.album_artist_display, al.track_count,
           al.total_duration_ms, COALESCE(a.large_path, ''),
@@ -499,8 +556,8 @@ export class MusicLibraryDetailQueries {
          JOIN album al ON al.id = ac.album_id
          LEFT JOIN artwork_asset a ON a.id = al.primary_artwork_id
          WHERE ac.person_id = ?
-         ORDER BY al.release_date_sort DESC, al.sort_title_key, al.id`,
-        [artistId]
+         ORDER BY al.release_date_sort DESC, al.sort_title_key, al.id${pageClause}`,
+        bindings
       );
       return this.readAlbumListItems(resultSet);
     } catch (error) {
@@ -510,9 +567,49 @@ export class MusicLibraryDetailQueries {
     }
   }
 
-  private async getRelatedAlbums(albumId: number): Promise<Array<AlbumListItem>> {
+  async getRelatedAlbumCount(albumId: number): Promise<number> {
     let resultSet: relationalStore.ResultSet | undefined;
     try {
+      resultSet = await this.database.getStore().querySql(
+        `SELECT COUNT(DISTINCT al.id)
+         FROM album_credit current_credit
+         JOIN album_credit related_credit
+           ON related_credit.person_id = current_credit.person_id
+         JOIN album al ON al.id = related_credit.album_id
+         WHERE current_credit.album_id = ?
+           AND al.id <> ?`,
+        [albumId, albumId]
+      );
+      return resultSet.goToNextRow() ? resultSet.getLong(0) : 0;
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(`Unable to count albums related to ${albumId}`, error);
+    } finally {
+      RelationalStoreSafety.closeResultSet(resultSet, 'related album count');
+    }
+  }
+
+  getRelatedAlbumPage(albumId: number, offset: number,
+    limit: number): Promise<Array<AlbumListItem>> {
+    return this.queryRelatedAlbums(
+      albumId,
+      LibraryQueryPagingPolicy.offset(offset),
+      LibraryQueryPagingPolicy.limit(limit)
+    );
+  }
+
+  getRelatedAlbums(albumId: number): Promise<Array<AlbumListItem>> {
+    return this.queryRelatedAlbums(albumId);
+  }
+
+  private async queryRelatedAlbums(albumId: number, offset?: number,
+    limit?: number): Promise<Array<AlbumListItem>> {
+    let resultSet: relationalStore.ResultSet | undefined;
+    try {
+      const pageClause = offset === undefined || limit === undefined ? '' : ' LIMIT ? OFFSET ?';
+      const bindings: Array<number> = [albumId, albumId];
+      if (offset !== undefined && limit !== undefined) {
+        bindings.push(limit, offset);
+      }
       resultSet = await this.database.getStore().querySql(
         `SELECT DISTINCT al.id, al.title, al.album_artist_display, al.track_count,
           al.total_duration_ms, COALESCE(a.large_path, ''),
@@ -530,8 +627,8 @@ export class MusicLibraryDetailQueries {
          LEFT JOIN artwork_asset a ON a.id = al.primary_artwork_id
          WHERE current_credit.album_id = ?
            AND al.id <> ?
-         ORDER BY al.release_date_sort DESC, al.sort_title_key, al.id`,
-        [albumId, albumId]
+         ORDER BY al.release_date_sort DESC, al.sort_title_key, al.id${pageClause}`,
+        bindings
       );
       return this.readAlbumListItems(resultSet);
     } catch (error) {
@@ -564,6 +661,10 @@ export class MusicLibraryDetailQueries {
 
   getArtistTracks(artistId: number): Promise<Array<TrackListItem>> {
     return this.queryArtistTracks(artistId);
+  }
+
+  getAlbumTracks(albumId: number): Promise<Array<TrackListItem>> {
+    return this.queryAlbumTracks(albumId);
   }
 
   private async queryArtistTracks(artistId: number, offset?: number,

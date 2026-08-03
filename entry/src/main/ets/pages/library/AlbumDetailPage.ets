@@ -23,7 +23,8 @@ import {
   DynamicColor,
   DynamicContainerRole
 } from '../../appearance/DynamicColor';
-import { AlbumAction, AlbumGridSection } from '../../components/library/AlbumGridItem';
+import { AlbumAction } from '../../components/library/AlbumGridItem';
+import { AlbumPreviewGrid } from '../../components/library/AlbumPreviewGrid';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
 import { ArtworkSize } from '../../components/artwork/ArtworkLayout';
 
@@ -107,6 +108,7 @@ export struct AlbumDetailPage {
     new PageListBehavior(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT);
   onOpenArtist: (artist: ArtistReference) => void = (_artist: ArtistReference): void => {};
   onOpenAlbum: (album: AlbumListItem) => void = (_album: AlbumListItem): void => {};
+  onOpenAllRelatedAlbums: () => void = (): void => {};
   onAlbumAction: (album: AlbumListItem, action: AlbumAction) => void =
     (_album: AlbumListItem, _action: AlbumAction): void => {};
   onOpenTrackActions: (track: TrackListItem, anchorId: string) => void =
@@ -481,21 +483,30 @@ export struct AlbumDetailPage {
   @Builder
   private RelatedAlbums(detail: AlbumDetail) {
     Column({ space: 10 }) {
-      Text(this.relatedAlbumsTitle(detail))
-        .fontSize(20)
-        .fontWeight(FontWeight.Bold)
-        .fontColor(this.primaryContentColor())
-        .width('100%')
-        .padding({
-          left: PageLayoutSpec.HORIZONTAL_INSET,
-          right: PageLayoutSpec.HORIZONTAL_INSET,
-          top: 20
-        })
-      AlbumGridSection({
+      Row() {
+        Text(this.relatedAlbumsTitle(detail))
+          .fontSize(20)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(this.primaryContentColor())
+        Blank()
+        if (detail.relatedAlbumCount > detail.relatedAlbums.length) {
+          Button('查看全部')
+            .fontSize(13)
+            .fontColor(this.primaryContentColor())
+            .backgroundColor(Color.Transparent)
+            .onClick(this.onOpenAllRelatedAlbums)
+        }
+      }
+      .width('100%')
+      .padding({
+        left: PageLayoutSpec.HORIZONTAL_INSET,
+        right: PageLayoutSpec.HORIZONTAL_INSET,
+        top: 20
+      })
+      AlbumPreviewGrid({
         store: this.store,
         albums: detail.relatedAlbums,
         containerWidth: this.rootWidth,
-        actionsEnabled: true,
         primaryColor: this.primaryContentColor(),
         secondaryColor: this.secondaryContentColor(),
         onOpenAlbum: this.onOpenAlbum,

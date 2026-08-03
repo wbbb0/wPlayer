@@ -432,8 +432,8 @@ export class DemoMusicLibrary {
     return {
       album: cloneAlbum(album),
       albumArtists: albumArtists,
-      relatedAlbums: DEMO_ALBUMS.filter((candidate: AlbumListItem): boolean => candidate.id !== albumId)
-        .map((candidate: AlbumListItem): AlbumListItem => cloneAlbum(candidate)),
+      relatedAlbumCount: DemoMusicLibrary.relatedAlbums(albumId).length,
+      relatedAlbums: DemoMusicLibrary.relatedAlbumPage(albumId, 0, 12),
       releaseYear: albumId === -1101 ? 2026 : 2025,
       genreDisplay: albumId === -1103 ? '氛围 / 电子' : '轻音乐',
       tracks: DEMO_TRACKS.filter((track: TrackListItem): boolean =>
@@ -468,7 +468,8 @@ export class DemoMusicLibrary {
       albumCount: 1,
       trackCount: tracks.length,
       totalDurationMs: album.totalDurationMs,
-      albums: [cloneAlbum(album)]
+      albums: [cloneAlbum(album)],
+      trackPreview: tracks.slice(0, 10)
     };
   }
 
@@ -482,7 +483,8 @@ export class DemoMusicLibrary {
       albumCount: overview.albumCount,
       trackCount: overview.trackCount,
       totalDurationMs: overview.totalDurationMs,
-      albums: overview.albums,
+      albums: DemoMusicLibrary.artistAlbums(artistId),
+      trackPreview: overview.trackPreview,
       tracks: DemoMusicLibrary.artistTracks(artistId)
     };
   }
@@ -495,6 +497,39 @@ export class DemoMusicLibrary {
     const albumId = overview.albums[0].id;
     return DEMO_TRACKS.filter((track: TrackListItem): boolean =>
       DemoMusicLibrary.albumIdForTrack(track.id) === albumId).map(cloneTrack);
+  }
+
+  static albumTracks(albumId: number): Array<TrackListItem> {
+    return DEMO_TRACKS.filter((track: TrackListItem): boolean =>
+      DemoMusicLibrary.albumIdForTrack(track.id) === albumId).map(cloneTrack);
+  }
+
+  static artistAlbums(artistId: number): Array<AlbumListItem> {
+    const albumId = artistId === -2001 ? -1101 : artistId === -2002 ? -1102 : artistId === -2003 ? -1103 : 0;
+    if (albumId === 0) {
+      return [];
+    }
+    const album = DEMO_ALBUMS.find((candidate: AlbumListItem): boolean => candidate.id === albumId);
+    return album === undefined ? [] : [cloneAlbum(album)];
+  }
+
+  static artistAlbumPage(artistId: number, offset: number,
+    limit: number): Array<AlbumListItem> {
+    const safeOffset = LibraryQueryPagingPolicy.offset(offset);
+    const safeLimit = LibraryQueryPagingPolicy.limit(limit);
+    return DemoMusicLibrary.artistAlbums(artistId).slice(safeOffset, safeOffset + safeLimit);
+  }
+
+  static relatedAlbums(albumId: number): Array<AlbumListItem> {
+    return DEMO_ALBUMS.filter((candidate: AlbumListItem): boolean => candidate.id !== albumId)
+      .map((candidate: AlbumListItem): AlbumListItem => cloneAlbum(candidate));
+  }
+
+  static relatedAlbumPage(albumId: number, offset: number,
+    limit: number): Array<AlbumListItem> {
+    const safeOffset = LibraryQueryPagingPolicy.offset(offset);
+    const safeLimit = LibraryQueryPagingPolicy.limit(limit);
+    return DemoMusicLibrary.relatedAlbums(albumId).slice(safeOffset, safeOffset + safeLimit);
   }
 
   static artistTrackPage(artistId: number, offset: number,

@@ -10,6 +10,11 @@ import {
   AlbumDetailState,
   ArtistDetailState
 } from '../../library/store/LibraryDetailState';
+import {
+  AlbumCollectionScope,
+  AlbumCollectionState,
+  ArtistTrackCollectionState
+} from '../../library/store/LibraryCollectionState';
 import { MultiSelectController } from '../library/MultiSelectController';
 
 let routeInstanceId: number = 0;
@@ -17,6 +22,50 @@ let routeInstanceId: number = 0;
 export class LibraryDetailRoute {
   static readonly ALBUM: string = 'libraryAlbumDetail';
   static readonly ARTIST: string = 'libraryArtistDetail';
+  static readonly ARTIST_TRACKS: string = 'libraryArtistTracks';
+  static readonly ALBUM_COLLECTION: string = 'libraryAlbumCollection';
+}
+
+export interface LibraryCollectionSelectionParams {
+  readonly instanceId: number;
+  readonly title: string;
+  readonly selection: MultiSelectController;
+}
+
+export class ArtistTrackCollectionRouteParams implements LibraryCollectionSelectionParams {
+  readonly instanceId: number;
+  readonly artistId: number;
+  readonly title: string;
+  readonly state: ArtistTrackCollectionState;
+  readonly selection: MultiSelectController = new MultiSelectController();
+  readonly scroller: Scroller = new Scroller();
+
+  constructor(artistId: number, artistName: string) {
+    this.instanceId = ++routeInstanceId;
+    this.artistId = artistId;
+    this.title = `${artistName}的歌曲`;
+    this.state = new ArtistTrackCollectionState(artistId);
+  }
+
+  anchorPrefix(): string {
+    return `artist_tracks_${this.instanceId}`;
+  }
+}
+
+export class AlbumCollectionRouteParams implements LibraryCollectionSelectionParams {
+  readonly instanceId: number;
+  readonly ownerId: number;
+  readonly title: string;
+  readonly state: AlbumCollectionState;
+  readonly selection: MultiSelectController = new MultiSelectController();
+  readonly scroller: Scroller = new Scroller();
+
+  constructor(scope: AlbumCollectionScope, ownerId: number, title: string) {
+    this.instanceId = ++routeInstanceId;
+    this.ownerId = ownerId;
+    this.title = title;
+    this.state = new AlbumCollectionState(scope, ownerId);
+  }
 }
 
 @Observed

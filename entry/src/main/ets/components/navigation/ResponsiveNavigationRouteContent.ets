@@ -37,6 +37,9 @@ import {
   AlbumDetailPage
 } from '../../pages/library/AlbumDetailPage';
 import { ArtistDetailPage } from '../../pages/library/ArtistDetailPage';
+import { ArtistTrackCollectionPage } from '../../pages/library/ArtistTrackCollectionPage';
+import { AlbumCollectionPage } from '../../pages/library/AlbumCollectionPage';
+import { AlbumCollectionScope } from '../../library/store/LibraryCollectionState';
 import { FloatingWindowSettingsPage } from '../../pages/settings/FloatingWindowSettingsPage';
 import { PlayerPageSettingsPage } from '../../pages/settings/PlayerPageSettingsPage';
 import { DynamicBackgroundDebugPage } from '../../pages/settings/DynamicBackgroundDebugPage';
@@ -49,7 +52,10 @@ import { DataAndPermissionsPage } from '../../pages/settings/DataAndPermissionsP
 import { OpenSourceLicensesPage } from '../../pages/settings/OpenSourceLicensesPage';
 import {
   AlbumDetailRouteParams,
+  AlbumCollectionRouteParams,
   ArtistDetailRouteParams,
+  ArtistTrackCollectionRouteParams,
+  LibraryCollectionSelectionParams,
   LibraryDetailRoute,
   albumTarget,
   artistTarget
@@ -105,6 +111,10 @@ export struct ResponsiveNavigationRouteContent {
   onShareTrackFile: (trackId: number) => void = (_trackId: number): void => {};
   onNavigateLibrary: (target: LibraryNavigationTarget) => void =
     (_target: LibraryNavigationTarget): void => {};
+  onOpenArtistTracks: (artistId: number, artistName: string) => void =
+    (_artistId: number, _artistName: string): void => {};
+  onOpenAlbumCollection: (scope: AlbumCollectionScope, ownerId: number, title: string) => void =
+    (_scope: AlbumCollectionScope, _ownerId: number, _title: string): void => {};
   onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
     (_items: Array<TrackListItem>): void => {};
   onAlbumAction: (albumId: number, action: AlbumAction) => void =
@@ -277,6 +287,16 @@ export struct ResponsiveNavigationDestinationContent {
       _params: ArtistDetailRouteParams,
       _revision: number
     ): HdsNavigationMenuContentOptions => ({ maxCount: 0, value: [] });
+  collectionTitleMenu: (
+    params: LibraryCollectionSelectionParams,
+    revision: number,
+    totalCount: number
+  ) => HdsNavigationMenuContentOptions =
+    (
+      _params: LibraryCollectionSelectionParams,
+      _revision: number,
+      _totalCount: number
+    ): HdsNavigationMenuContentOptions => ({ maxCount: 0, value: [] });
   albumDetailBackground: (params: AlbumDetailRouteParams) => string =
     (_params: AlbumDetailRouteParams): string => '#FF000000';
   albumDetailContentColor: (params: AlbumDetailRouteParams) => string =
@@ -293,6 +313,10 @@ export struct ResponsiveNavigationDestinationContent {
   onPlayerPageKeepScreenOnChange: () => void = (): void => {};
   onNavigateLibrary: (target: LibraryNavigationTarget) => void =
     (_target: LibraryNavigationTarget): void => {};
+  onOpenArtistTracks: (artistId: number, artistName: string) => void =
+    (_artistId: number, _artistName: string): void => {};
+  onOpenAlbumCollection: (scope: AlbumCollectionScope, ownerId: number, title: string) => void =
+    (_scope: AlbumCollectionScope, _ownerId: number, _title: string): void => {};
   onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
     (_items: Array<TrackListItem>): void => {};
   onOpenTrackActions: (
@@ -328,6 +352,10 @@ export struct ResponsiveNavigationDestinationContent {
       (this.param as AlbumDetailRouteParams).selection.cancel();
     } else if (this.name === LibraryDetailRoute.ARTIST) {
       (this.param as ArtistDetailRouteParams).selection.cancel();
+    } else if (this.name === LibraryDetailRoute.ARTIST_TRACKS) {
+      (this.param as ArtistTrackCollectionRouteParams).selection.cancel();
+    } else if (this.name === LibraryDetailRoute.ALBUM_COLLECTION) {
+      (this.param as AlbumCollectionRouteParams).selection.cancel();
     }
   }
 
@@ -416,6 +444,11 @@ export struct ResponsiveNavigationDestinationContent {
               title: album.title,
               palettePrimary: album.palettePrimary
             })),
+            onOpenAllRelatedAlbums: (): void => this.onOpenAlbumCollection(
+              AlbumCollectionScope.RELATED,
+              (this.param as AlbumDetailRouteParams).albumId,
+              `${(this.param as AlbumDetailRouteParams).title}的相关专辑`
+            ),
             onAlbumAction: (album, action): void => this.onAlbumAction(album.id, action),
             onOpenTrackActions: (item: TrackListItem, anchorId: string): void =>
               this.onOpenTrackActions(item, anchorId, (this.param as AlbumDetailRouteParams).identity()),
@@ -471,6 +504,16 @@ export struct ResponsiveNavigationDestinationContent {
               title: album.title,
               palettePrimary: album.palettePrimary
             })),
+            onOpenAllTracks: (): void => this.onOpenArtistTracks(
+              (this.param as ArtistDetailRouteParams).artistId,
+              (this.param as ArtistDetailRouteParams).name
+            ),
+            onOpenAllAlbums: (): void => this.onOpenAlbumCollection(
+              AlbumCollectionScope.ARTIST,
+              (this.param as ArtistDetailRouteParams).artistId,
+              `${(this.param as ArtistDetailRouteParams).name}的专辑`
+            ),
+            onAlbumAction: (album, action): void => this.onAlbumAction(album.id, action),
             onOpenTrackActions: (item: TrackListItem, anchorId: string): void =>
               this.onOpenTrackActions(item, anchorId, (this.param as ArtistDetailRouteParams).identity()),
             onOpenTrackDetails: this.onOpenTrackDetails,
@@ -496,6 +539,74 @@ export struct ResponsiveNavigationDestinationContent {
         this.playbackChromeBackgroundColor()
       ))
       .bindToScrollable([(this.param as ArtistDetailRouteParams).scroller])
+      .onBackPressed(this.onDestinationBackPressed)
+    } else if (this.name === LibraryDetailRoute.ARTIST_TRACKS) {
+      HdsNavDestination() {
+        Stack({ alignContent: Alignment.Bottom }) {
+          ArtistTrackCollectionPage({
+            store: this.libraryStore,
+            state: (this.param as ArtistTrackCollectionRouteParams).state,
+            selection: (this.param as ArtistTrackCollectionRouteParams).selection,
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            scroller: (this.param as ArtistTrackCollectionRouteParams).scroller,
+            actionAnchorPrefix: (this.param as ArtistTrackCollectionRouteParams).anchorPrefix(),
+            onOpenTrackActions: (item: TrackListItem, anchorId: string): void =>
+              this.onOpenTrackActions(item, anchorId),
+            onOpenTrackDetails: this.onOpenTrackDetails,
+            onShareTrackFile: this.onShareTrackFile,
+            onNavigateTrackAction: this.onNavigateLibrary,
+            onRequestAddToPlaylist: this.onRequestAddToPlaylist
+          })
+          PageBottomGradient({ maskColor: this.themePageBackground })
+        }.width('100%').height('100%')
+      }
+      .width('100%').height('100%')
+      .backgroundColor(this.themePageBackground)
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        (this.param as ArtistTrackCollectionRouteParams).title,
+        this.collectionTitleMenu(
+          this.param as ArtistTrackCollectionRouteParams,
+          this.detailSelectionRevision,
+          (this.param as ArtistTrackCollectionRouteParams).state.totalCount
+        ),
+        this.playbackChromeBackgroundColor()
+      ))
+      .bindToScrollable([(this.param as ArtistTrackCollectionRouteParams).scroller])
+      .onBackPressed(this.onDestinationBackPressed)
+    } else if (this.name === LibraryDetailRoute.ALBUM_COLLECTION) {
+      HdsNavDestination() {
+        Stack({ alignContent: Alignment.Bottom }) {
+          AlbumCollectionPage({
+            store: this.libraryStore,
+            state: (this.param as AlbumCollectionRouteParams).state,
+            selection: (this.param as AlbumCollectionRouteParams).selection,
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            scroller: (this.param as AlbumCollectionRouteParams).scroller,
+            onOpenAlbum: (album): void => this.onNavigateLibrary(albumTarget({ id: album.id,
+              title: album.title, palettePrimary: album.palettePrimary })),
+            onAlbumAction: (album, action): void => this.onAlbumAction(album.id, action),
+            onNavigate: this.onNavigateLibrary,
+            onRequestAddToPlaylist: this.onRequestAddToPlaylist
+          })
+          PageBottomGradient({ maskColor: this.themePageBackground })
+        }.width('100%').height('100%')
+      }
+      .width('100%').height('100%')
+      .backgroundColor(this.themePageBackground)
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        (this.param as AlbumCollectionRouteParams).title,
+        this.collectionTitleMenu(
+          this.param as AlbumCollectionRouteParams,
+          this.detailSelectionRevision,
+          (this.param as AlbumCollectionRouteParams).state.totalCount
+        ),
+        this.playbackChromeBackgroundColor()
+      ))
+      .bindToScrollable([(this.param as AlbumCollectionRouteParams).scroller])
       .onBackPressed(this.onDestinationBackPressed)
     } else if (this.name === NavigationRoute.NAVIGATION_CUSTOMIZATION) {
       HdsNavDestination() {
@@ -773,6 +884,8 @@ export struct ResponsiveNavigationDestinationContent {
             onOpenTrackDetails: this.onOpenTrackDetails,
             onShareTrackFile: this.onShareTrackFile,
             onNavigateLibrary: this.onNavigateLibrary,
+            onOpenArtistTracks: this.onOpenArtistTracks,
+            onOpenAlbumCollection: this.onOpenAlbumCollection,
             onRequestAddToPlaylist: this.onRequestAddToPlaylist,
             onAlbumAction: this.onAlbumAction,
             onOpenNavigationCustomization: this.onOpenNavigationCustomization,

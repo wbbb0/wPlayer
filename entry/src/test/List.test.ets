@@ -1,6 +1,9 @@
 import localUnitTest from './LocalUnit.test';
 import riskRegressionTest from './RiskRegression.test';
 import libraryPagingTest from './LibraryPaging.test';
+import librarySchemaMigrationPolicyTest from './LibrarySchemaMigrationPolicy.test';
+import albumPreviewLayoutTest from './AlbumPreviewLayout.test';
+import libraryCollectionPolicyTest from './LibraryCollectionPolicy.test';
 import appRuntimeLifecycleTest from './AppRuntimeLifecycle.test';
 import playbackQueueRegressionTest from './PlaybackQueueRegression.test';
 import artworkCleanupRegressionTest from './ArtworkCleanupRegression.test';
@@ -40,6 +43,9 @@ export default function testsuite() {
   localUnitTest();
   riskRegressionTest();
   libraryPagingTest();
+  librarySchemaMigrationPolicyTest();
+  albumPreviewLayoutTest();
+  libraryCollectionPolicyTest();
   appRuntimeLifecycleTest();
   playbackQueueRegressionTest();
   artworkCleanupRegressionTest();

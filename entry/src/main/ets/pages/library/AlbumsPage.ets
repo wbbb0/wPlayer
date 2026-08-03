@@ -92,9 +92,9 @@ export struct AlbumsPage {
     const tracks: Array<TrackListItem> = [];
     const albums = this.currentSelection();
     for (let index = 0; index < albums.length; index += 1) {
-      const detail = await this.store.getAlbumDetail(albums[index].id);
-      if (detail !== undefined) {
-        detail.tracks.forEach((track: TrackListItem): void => {
+      const albumTracks = await this.store.getAlbumTracks(albums[index].id);
+      if (albumTracks.length > 0) {
+        albumTracks.forEach((track: TrackListItem): void => {
           if (!tracks.some((existing: TrackListItem): boolean => existing.id === track.id)) {
             tracks.push(track);
           }
@@ -138,7 +138,7 @@ export struct AlbumsPage {
     } else {
       Column() {
         Stack({ alignContent: Alignment.End }) {
-        Grid(this.scroller) {
+        Grid(this.scroller, { regularSize: [1, 1] }) {
           LazyForEach(this.store.albumDataSource, (slot: LibrarySlot<AlbumListItem>) => {
             GridItem() {
               if (slot.value !== undefined) {
@@ -146,6 +146,7 @@ export struct AlbumsPage {
                   store: this.store,
                   album: slot.value,
                   actionsEnabled: true,
+                  artworkShadowEnabled: false,
                   selectionMode: this.selection.active,
                   selected: this.selection.isSelected(slot.value.id),
                   onActivate: this.onOpenAlbum,

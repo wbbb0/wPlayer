@@ -2,6 +2,7 @@ import { PlaylistSummary } from '../../library/model/LibraryModels';
 import { LibraryContextInteraction } from './LibraryContextInteraction';
 import { LibraryTrackRowStyle } from './LibraryTrackRow';
 import { ContextPreviewGeometry } from './ContextPreviewGeometry';
+import { LibrarySelectionIndicator } from './LibrarySelectionIndicator';
 
 @Reusable
 @Component
@@ -45,6 +46,9 @@ export struct PlaylistListRow {
   }
 
   private showContextMenu(event: GestureEvent): void {
+    if (this.selectionMode) {
+      return;
+    }
     const frame = ContextPreviewGeometry.fromGesture(event);
     if (frame.width <= 0) {
       console.warn('Unable to measure playlist context preview from gesture target');
@@ -112,19 +116,12 @@ export struct PlaylistListRow {
 
   @Builder
   private SelectionIndicator() {
-    Stack() {
-      SymbolGlyph(this.selected ? $r('sys.symbol.checkmark_circle_fill') : $r('sys.symbol.circle'))
-        .fontSize(22)
-        .fontColor([
-          this.selected ? $r('app.color.theme_accent') : $r('app.color.text_tertiary')
-        ])
-    }
-    .width(this.selectionMode ? LibraryTrackRowStyle.SELECTION_WIDTH : 0)
-    .opacity(this.selectionMode ? 1 : 0)
-    .translate({ x: this.selectionMode ? 0 : -12 })
-    .margin({ right: this.selectionMode ? LibraryTrackRowStyle.SELECTION_GAP : 0 })
-    .clip(true)
-    .animation({ duration: 180, curve: Curve.EaseOut })
+    LibrarySelectionIndicator({
+      selectionMode: this.selectionMode,
+      selected: this.selected,
+      slotWidth: LibraryTrackRowStyle.SELECTION_WIDTH,
+      trailingGap: LibraryTrackRowStyle.SELECTION_GAP
+    })
   }
 
   @Builder
@@ -176,14 +173,8 @@ export struct PlaylistListRow {
   build() {
     Row({ space: LibraryTrackRowStyle.CONTENT_SPACE }) {
       this.SelectionIndicator()
-      if (this.selectionMode) {
-        Row() {
-          this.IdentityContent()
-        }
-        .layoutWeight(1)
-        .clip(true)
-      } else {
-        this.InteractiveIdentity()
+      this.InteractiveIdentity()
+      if (!this.selectionMode) {
         this.ActionButton()
       }
     }

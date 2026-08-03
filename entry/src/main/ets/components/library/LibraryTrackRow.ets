@@ -16,6 +16,7 @@ import {
   libraryLinkActions
 } from '../navigation/LibraryNavigation';
 import { ContextPreviewGeometry } from './ContextPreviewGeometry';
+import { LibrarySelectionIndicator } from './LibrarySelectionIndicator';
 
 export enum LibraryTrackRowVariant {
   LIBRARY = 0,
@@ -137,6 +138,9 @@ export struct LibraryTrackRow {
   }
 
   private showContextMenu(event: GestureEvent): void {
+    if (this.selectionMode) {
+      return;
+    }
     const frame = ContextPreviewGeometry.fromGesture(event);
     if (frame.width <= 0) {
       console.warn('Unable to measure track context preview from gesture target');
@@ -154,13 +158,13 @@ export struct LibraryTrackRow {
   private async loadContextMenu(epoch: number, trackId: number): Promise<void> {
     try {
       const targets = await this.store.getTrackNavigationTargets(trackId);
-      if (epoch !== this.contextMenuLoadEpoch || trackId !== this.track.id) {
+      if (epoch !== this.contextMenuLoadEpoch || trackId !== this.track.id || this.selectionMode) {
         return;
       }
       this.linkActions =
         targets === undefined ? [] : libraryLinkActions(targets, this.currentIdentity);
     } catch (error) {
-      if (epoch !== this.contextMenuLoadEpoch || trackId !== this.track.id) {
+      if (epoch !== this.contextMenuLoadEpoch || trackId !== this.track.id || this.selectionMode) {
         return;
       }
       this.linkActions = [];
@@ -262,17 +266,13 @@ export struct LibraryTrackRow {
 
   @Builder
   private SelectionIndicator() {
-    Stack() {
-      SymbolGlyph(this.selected ? $r('sys.symbol.checkmark_circle_fill') : $r('sys.symbol.circle'))
-        .fontSize(22)
-        .fontColor([this.selected ? $r('app.color.theme_accent') : this.tertiaryColor])
-    }
-    .width(this.selectionMode ? LibraryTrackRowStyle.SELECTION_WIDTH : 0)
-    .opacity(this.selectionMode ? 1 : 0)
-    .translate({ x: this.selectionMode ? 0 : -12 })
-    .margin({ right: this.selectionMode ? LibraryTrackRowStyle.SELECTION_GAP : 0 })
-    .clip(true)
-    .animation({ duration: 180, curve: Curve.EaseOut })
+    LibrarySelectionIndicator({
+      selectionMode: this.selectionMode,
+      selected: this.selected,
+      unselectedColor: this.tertiaryColor,
+      slotWidth: LibraryTrackRowStyle.SELECTION_WIDTH,
+      trailingGap: LibraryTrackRowStyle.SELECTION_GAP
+    })
   }
 
   @Builder
@@ -335,15 +335,7 @@ export struct LibraryTrackRow {
   build() {
     Row({ space: LibraryTrackRowStyle.CONTENT_SPACE }) {
       this.SelectionIndicator()
-      if (this.selectionMode) {
-        Row() {
-          this.IdentityContent()
-        }
-        .layoutWeight(1)
-        .clip(true)
-      } else {
-        this.InteractiveIdentity()
-      }
+      this.InteractiveIdentity()
       this.TrailingContent()
     }
     .width('100%')

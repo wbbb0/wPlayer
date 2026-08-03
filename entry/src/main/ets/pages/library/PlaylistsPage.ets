@@ -214,6 +214,7 @@ export struct PlaylistsPage {
       onActivate: this.onOpenPlaylist,
       onToggleSelection: (item: PlaylistSummary): void => this.toggleSelection(item)
     })
+      .reuseId('playlists')
   }
 
   build() {

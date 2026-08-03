@@ -124,6 +124,11 @@ export struct AlbumsPage {
     });
   }
 
+  private alphabetIndexVisible(): boolean {
+    return this.store.albumIndexPresentation === LibraryIndexPresentation.ALPHABET &&
+      this.store.albumSections.length > 0;
+  }
+
   build() {
     if (this.store.statistics.albumCount === 0) {
       LibraryEmptyState({
@@ -155,7 +160,7 @@ export struct AlbumsPage {
                   onAction: this.onAlbumAction,
                   onNavigate: this.onNavigateAlbumAction
                 })
-                  .reuseId(this.selection.active ? 'albums_selection' : 'albums_actions')
+                  .reuseId('albums')
               } else {
                 Column({ space: 7 }) {
                   Row()
@@ -184,14 +189,18 @@ export struct AlbumsPage {
           }, (slot: LibrarySlot<AlbumListItem>) => slot.key)
         }
         .columnsTemplate(PageLayoutSpec.albumColumnsTemplate(
-          this.gridWidth,
+          this.gridWidth - LibraryAlphabetIndex.contentGutter(this.alphabetIndexVisible()),
           PageLayoutSpec.HORIZONTAL_INSET
         ))
         .columnsGap(PageLayoutSpec.ALBUM_COLUMN_GAP)
         .rowsGap(PageLayoutSpec.ALBUM_ROW_GAP)
         .width('100%')
         .height('100%')
-        .padding({ left: PageLayoutSpec.HORIZONTAL_INSET, right: PageLayoutSpec.HORIZONTAL_INSET })
+        .padding({
+          left: PageLayoutSpec.HORIZONTAL_INSET,
+          right: PageLayoutSpec.HORIZONTAL_INSET +
+            LibraryAlphabetIndex.contentGutter(this.alphabetIndexVisible())
+        })
         .contentStartOffset(PageLayoutSpec.primaryContentStart(this.topInset))
         .contentEndOffset(PageLayoutSpec.contentEnd(this.bottomInset))
         .scrollBar(this.store.albumIndexPresentation === LibraryIndexPresentation.ALPHABET ?
@@ -214,8 +223,7 @@ export struct AlbumsPage {
         })
         .attributeModifier(this.scrollBehavior)
 
-        if (this.store.albumIndexPresentation === LibraryIndexPresentation.ALPHABET &&
-          this.store.albumSections.length > 0) {
+        if (this.alphabetIndexVisible()) {
           LibraryAlphabetIndex({
             sections: this.store.albumSections,
             selectedIndex: this.selectedSectionIndex,
@@ -225,7 +233,10 @@ export struct AlbumsPage {
               this.scroller.scrollToIndex(itemIndex, false, ScrollAlign.START);
             }
           })
-          .margin({ right: 2, bottom: PageLayoutSpec.contentEnd(this.bottomInset) / 2 })
+          .margin({
+            right: LibraryAlphabetIndex.RIGHT_MARGIN,
+            bottom: PageLayoutSpec.contentEnd(this.bottomInset) / 2
+          })
         }
         }
         .layoutWeight(1)

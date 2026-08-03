@@ -82,8 +82,13 @@ directly; do not add wrapper margins, borders or replacement backgrounds.
 - Use responsive Grid policies or a shared layout specification; do not hard-code feature-page column counts.
 - Album grids keep at least two equal-width columns; wider layouts retain the shared preferred minimum column width
   when deriving additional columns.
+- When an alphabet index is visible, combine the page's existing trailing inset with only the additional gutter
+  needed to clear the index track; the index must not cover row actions, text or album artwork or create a wide
+  empty strip.
 - Root and collection album grids declare regular item sizing, use virtualized slots and render large album artwork.
   Album-card shadows are omitted in high-density scrolling surfaces.
+- Entering selection mode keeps reusable row/card identity and its content subtree stable. Only the leading
+  selection slot and indicator animate; artwork and text must not fade or be reconstructed during the transition.
 
 ## Floating navigation and mini player
 

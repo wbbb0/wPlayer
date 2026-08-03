@@ -15,6 +15,7 @@ import { ContextPreviewGeometry } from './ContextPreviewGeometry';
 import {
   MenuSectionDivider
 } from './MenuActionGroups';
+import { LibrarySelectionIndicator } from './LibrarySelectionIndicator';
 
 export enum AlbumAction {
   INSERT_NEXT = 0,
@@ -175,6 +176,9 @@ export struct AlbumGridItem {
   }
 
   private showContextMenu(event: GestureEvent): void {
+    if (!this.actionsEnabled || this.selectionMode) {
+      return;
+    }
     const frame = ContextPreviewGeometry.fromGesture(event);
     if (frame.width <= 0 || frame.height <= 0) {
       console.warn('Unable to measure album context preview from gesture target');
@@ -197,16 +201,19 @@ export struct AlbumGridItem {
   private SelectableAlbumContent() {
     Stack({ alignContent: Alignment.TopStart }) {
       this.AlbumVisualContent()
-      SymbolGlyph(this.selected ? $r('sys.symbol.checkmark_circle_fill') : $r('sys.symbol.circle'))
-        .fontSize(26)
-        .fontColor([this.selected ? $r('app.color.theme_accent') : this.secondaryColor])
-        .backgroundColor($r('app.color.glass_surface_strong'))
-        .borderRadius(15)
+      LibrarySelectionIndicator({
+        selectionMode: this.selectionMode,
+        selected: this.selected,
+        unselectedColor: this.secondaryColor,
+        surfaceColor: $r('app.color.glass_surface_strong'),
+        fontSize: 26,
+        slotWidth: 30,
+        trailingGap: 0,
+        hiddenOffsetX: -10,
+        cornerRadius: 15,
+        collapseLayoutSpace: false
+      })
         .margin({ top: 8, left: 8 })
-        .opacity(this.selectionMode ? 1 : 0)
-        .translate({ x: this.selectionMode ? 0 : -10 })
-        .scale({ x: this.selectionMode ? 1 : 0.7, y: this.selectionMode ? 1 : 0.7 })
-        .animation({ duration: 180, curve: Curve.EaseOut })
     }
     .width('100%')
     .onClick(() => {
@@ -222,40 +229,36 @@ export struct AlbumGridItem {
   }
 
   build() {
-    if (this.actionsEnabled && !this.selectionMode) {
+    Stack() {
       Stack() {
-        Stack() {
-          this.SelectableAlbumContent()
-        }
-        .width('100%')
-        .opacity(this.contextMenuShown ? 0 : 1)
+        this.SelectableAlbumContent()
       }
-        .width('100%')
-        .bindContextMenu(
-          this.contextMenuShown,
-          this.AlbumMenu(),
-          {
-            preview: this.AlbumContextPreview,
-            previewBorderRadius: 0,
-            layoutRegionMargin: ContextPreviewGeometry.layoutRegionMargin(),
-            previewAnimationOptions: ContextPreviewGeometry.animationOptions(),
-            onDisappear: (): void => {
-              this.contextMenuShown = false;
-            }
-          }
-        )
-        .gesture(
-          LongPressGesture({
-            repeat: false,
-            duration: LibraryContextInteraction.LONG_PRESS_DURATION
-          })
-            .onAction((event: GestureEvent) => {
-              this.showContextMenu(event);
-            })
-        )
-    } else {
-      this.SelectableAlbumContent()
+      .width('100%')
+      .opacity(this.contextMenuShown ? 0 : 1)
     }
+    .width('100%')
+    .bindContextMenu(
+      this.contextMenuShown,
+      this.AlbumMenu(),
+      {
+        preview: this.AlbumContextPreview,
+        previewBorderRadius: 0,
+        layoutRegionMargin: ContextPreviewGeometry.layoutRegionMargin(),
+        previewAnimationOptions: ContextPreviewGeometry.animationOptions(),
+        onDisappear: (): void => {
+          this.contextMenuShown = false;
+        }
+      }
+    )
+    .gesture(
+      LongPressGesture({
+        repeat: false,
+        duration: LibraryContextInteraction.LONG_PRESS_DURATION
+      })
+        .onAction((event: GestureEvent) => {
+          this.showContextMenu(event);
+        })
+    )
   }
 }
 

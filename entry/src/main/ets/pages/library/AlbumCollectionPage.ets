@@ -123,7 +123,7 @@ export struct AlbumCollectionPage {
               onToggleSelection: (album: AlbumListItem): void => this.toggleSelection(album),
               onAction: this.onAlbumAction,
               onNavigate: this.onNavigate
-            }).reuseId(this.selection.active ? 'album_collection_selection' : 'album_collection_actions')
+            }).reuseId('album_collection')
           } else {
             Column({ space: 7 }) {
               Row().width('100%').aspectRatio(1).borderRadius(18)

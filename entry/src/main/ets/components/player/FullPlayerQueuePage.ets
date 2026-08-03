@@ -491,8 +491,7 @@ export struct FullPlayerQueuePage {
                         onToggleSelection: (_track: TrackListItem): void =>
                           this.selectionStore.toggle(presentation.entry)
                       })
-                        .reuseId(this.selectionStore.selectionActive ?
-                          'player_queue_selection' : 'player_queue_track')
+                        .reuseId('player_queue_track')
                     }
                     .width('100%')
                     .padding({

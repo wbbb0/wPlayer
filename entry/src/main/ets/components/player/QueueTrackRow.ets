@@ -18,6 +18,7 @@ import {
   libraryLinkActions
 } from '../navigation/LibraryNavigation';
 import { QueueEntryPresentation } from '../../playback/model/PlaybackModels';
+import { LibrarySelectionIndicator } from '../library/LibrarySelectionIndicator';
 
 @Reusable
 @Component
@@ -101,6 +102,9 @@ export struct QueueTrackRow {
   }
 
   private showContextMenu(event: GestureEvent): void {
+    if (this.selectionMode) {
+      return;
+    }
     const frame = ContextPreviewGeometry.fromGesture(event);
     if (frame.width <= 0) {
       console.warn('Unable to measure queue context preview from gesture target');
@@ -118,12 +122,12 @@ export struct QueueTrackRow {
   private async loadContextMenu(epoch: number, trackId: number): Promise<void> {
     try {
       const targets = await this.store.getTrackNavigationTargets(trackId);
-      if (epoch !== this.contextMenuLoadEpoch || trackId !== this.track.id) {
+      if (epoch !== this.contextMenuLoadEpoch || trackId !== this.track.id || this.selectionMode) {
         return;
       }
       this.linkActions = targets === undefined ? [] : libraryLinkActions(targets, undefined);
     } catch (error) {
-      if (epoch !== this.contextMenuLoadEpoch || trackId !== this.track.id) {
+      if (epoch !== this.contextMenuLoadEpoch || trackId !== this.track.id || this.selectionMode) {
         return;
       }
       this.linkActions = [];
@@ -240,28 +244,13 @@ export struct QueueTrackRow {
 
   @Builder
   private SelectionIndicator() {
-    Stack() {
-      SymbolGlyph(this.selected ? $r('sys.symbol.checkmark_circle_fill') : $r('sys.symbol.circle'))
-        .fontSize(22)
-        .fontColor([this.selected ? $r('app.color.theme_accent') : this.tertiaryColor])
-    }
-    .width(this.selectionMode ? LibraryTrackRowStyle.SELECTION_WIDTH : 0)
-    .opacity(this.selectionMode ? 1 : 0)
-    .translate({ x: this.selectionMode ? 0 : -12 })
-    .margin({ right: this.selectionMode ? LibraryTrackRowStyle.SELECTION_GAP : 0 })
-    .clip(true)
-    .animation({ duration: 180, curve: Curve.EaseOut })
-  }
-
-  @Builder
-  private RowContent() {
-    this.SelectionIndicator()
-    Row() {
-      this.IdentityContent()
-    }
-    .layoutWeight(1)
-    .clip(true)
-    this.Duration()
+    LibrarySelectionIndicator({
+      selectionMode: this.selectionMode,
+      selected: this.selected,
+      unselectedColor: this.tertiaryColor,
+      slotWidth: LibraryTrackRowStyle.SELECTION_WIDTH,
+      trailingGap: LibraryTrackRowStyle.SELECTION_GAP + 10
+    })
   }
 
   @Builder
@@ -271,6 +260,7 @@ export struct QueueTrackRow {
     }
     .layoutWeight(1)
     .clip(true)
+    .margin({ right: 10 })
     .opacity(this.contextMenuShown ? 0 : 1)
     .bindContextMenu(
       this.contextMenuShown,
@@ -295,44 +285,9 @@ export struct QueueTrackRow {
   }
 
   @Builder
-  private SelectionRow() {
-    Row({ space: 10 }) {
-      this.RowContent()
-    }
-    .width('100%')
-    .padding({
-      left: this.horizontalInset,
-      right: this.horizontalInset,
-      top: this.verticalInset,
-      bottom: this.verticalInset
-    })
-    .borderRadius(this.rowCornerRadius)
-    .backgroundColor(this.presentation.isActive() ? this.activeBackgroundColor : Color.Transparent)
-    .shadow(this.presentation.isActive() ? {
-      radius: this.activeShadowRadius,
-      color: this.activeShadowColor,
-      offsetY: this.activeShadowOffsetY
-    } : {
-      radius: 0,
-      color: Color.Transparent,
-      offsetY: 0
-    })
-    .hoverEffect(HoverEffect.None)
-    .opacity(LibraryItemAvailability.opacity(this.track.availability))
-    .gesture(
-      GestureGroup(GestureMode.Exclusive,
-        PanGesture({
-          direction: PanDirection.Horizontal,
-          distance: this.queueGestureDistance
-        }),
-        TapGesture().onAction(() => this.onToggleSelection(this.track))
-      )
-    )
-  }
-
-  @Builder
-  private ActionRow() {
-    Row({ space: 10 }) {
+  private StableRow() {
+    Row() {
+      this.SelectionIndicator()
       this.ContextMenuIdentity()
       this.Duration()
     }
@@ -366,17 +321,17 @@ export struct QueueTrackRow {
           if (Date.now() < this.suppressActivationUntil) {
             return;
           }
-          this.onActivate(this.track);
+          if (this.selectionMode) {
+            this.onToggleSelection(this.track);
+          } else {
+            this.onActivate(this.track);
+          }
         })
       )
     )
   }
 
   build() {
-    if (this.selectionMode) {
-      this.SelectionRow()
-    } else {
-      this.ActionRow()
-    }
+    this.StableRow()
   }
 }

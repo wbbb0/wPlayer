@@ -128,7 +128,7 @@ export struct ArtistTrackCollectionPage {
                 onNavigateAction: this.onNavigateTrackAction,
                 onRequestAddToPlaylist: this.onRequestAddToPlaylist,
                 onToggleSelection: (item: TrackListItem): void => this.toggleSelection(item)
-              }).height(68).reuseId(this.selection.active ? 'artist_tracks_selection' : 'artist_tracks_actions')
+              }).height(68).reuseId('artist_tracks')
             } else {
               LibraryTrackRowPlaceholder({ horizontalInset: 16, verticalInset: 8, artworkSize: 52,
                 artworkCornerRadius: 10, selectionMode: this.selection.active }).height(68)

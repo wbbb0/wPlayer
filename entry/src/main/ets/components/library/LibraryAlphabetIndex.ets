@@ -3,12 +3,19 @@ import { LayoutLength } from '../layout/LayoutLength';
 
 @Component
 export struct LibraryAlphabetIndex {
+  static readonly INDEX_WIDTH: number = 28;
+  static readonly RIGHT_MARGIN: number = 2;
+  static readonly ADDITIONAL_CONTENT_GUTTER: number = 14;
   private static readonly ITEM_SIZE: number = 16;
   private static readonly POPUP_X: number = 32;
   @Prop sections: Array<LibrarySection> = [];
   @Prop selectedIndex: number = 0;
   @State indexerHeight: number = 0;
   onSelect: (itemIndex: number, sectionIndex: number) => void = () => {};
+
+  static contentGutter(visible: boolean): number {
+    return visible ? LibraryAlphabetIndex.ADDITIONAL_CONTENT_GUTTER : 0;
+  }
 
   private labels(): Array<string> {
     return this.sections.map((section: LibrarySection) => section.label);
@@ -29,7 +36,7 @@ export struct LibraryAlphabetIndex {
   build() {
     AlphabetIndexer({ arrayValue: this.labels(), selected: 0 })
       .selected(this.effectiveSelectedIndex())
-      .width(28)
+      .width(LibraryAlphabetIndex.INDEX_WIDTH)
       .height('90%')
       .itemSize(LibraryAlphabetIndex.ITEM_SIZE)
       .usingPopup(true)

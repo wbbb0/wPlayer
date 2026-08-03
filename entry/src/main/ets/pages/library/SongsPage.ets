@@ -94,6 +94,11 @@ export struct SongsPage {
     }
   }
 
+  private alphabetIndexVisible(): boolean {
+    return this.store.trackIndexPresentation === LibraryIndexPresentation.ALPHABET &&
+      this.store.trackSections.length > 0;
+  }
+
   build() {
     if (this.store.statistics.trackCount === 0) {
       LibraryEmptyState({
@@ -139,7 +144,7 @@ export struct SongsPage {
                     onToggleSelection: (item: TrackListItem): void => this.toggleSelection(item)
                   })
                     .height(68)
-                    .reuseId(this.selection.active ? 'songs_library_selection' : 'songs_library_actions')
+                    .reuseId('songs_library')
                 } else {
                   LibraryTrackRowPlaceholder({
                     horizontalInset: 16,
@@ -158,6 +163,7 @@ export struct SongsPage {
         }
         .width('100%')
         .height('100%')
+        .padding({ right: LibraryAlphabetIndex.contentGutter(this.alphabetIndexVisible()) })
         .contentStartOffset(PageLayoutSpec.primaryContentStart(this.topInset))
         .contentEndOffset(PageLayoutSpec.contentEnd(this.bottomInset))
         .scrollBar(this.store.trackIndexPresentation === LibraryIndexPresentation.ALPHABET ?
@@ -174,8 +180,7 @@ export struct SongsPage {
         })
         .attributeModifier(this.scrollBehavior)
 
-        if (this.store.trackIndexPresentation === LibraryIndexPresentation.ALPHABET &&
-          this.store.trackSections.length > 0) {
+        if (this.alphabetIndexVisible()) {
           LibraryAlphabetIndex({
             sections: this.store.trackSections,
             selectedIndex: this.selectedSectionIndex,
@@ -185,7 +190,10 @@ export struct SongsPage {
               this.scroller.scrollToIndex(itemIndex, false, ScrollAlign.START);
             }
           })
-          .margin({ right: 2, bottom: PageLayoutSpec.contentEnd(this.bottomInset) / 2 })
+          .margin({
+            right: LibraryAlphabetIndex.RIGHT_MARGIN,
+            bottom: PageLayoutSpec.contentEnd(this.bottomInset) / 2
+          })
         }
 
       }

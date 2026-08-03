@@ -15,6 +15,10 @@ import {
   PlayerMorphPhase,
   PlayerMotionSpec
 } from './PlayerMotion';
+import {
+  PlayerArtworkPlaybackVisualAction,
+  PlayerArtworkPlaybackVisualState
+} from './PlayerArtworkPlaybackVisualState';
 
 @Component
 export struct PlayerMorphArtwork {
@@ -24,12 +28,13 @@ export struct PlayerMorphArtwork {
   private contextPreviewWidth: number = 0;
   private contextPreviewHeight: number = 0;
   private contextPreviewRestScale: number = 1;
-  private playbackVisualTarget: number = 1;
+  private readonly playbackVisualState: PlayerArtworkPlaybackVisualState =
+    new PlayerArtworkPlaybackVisualState();
   private mounted: boolean = false;
   @Prop geometryProgress: number = 0;
   @Prop positionProgress: number = 0;
   @Prop elementOpacity: number = 1;
-  @Prop morphPhase: PlayerMorphPhase = PlayerMorphPhase.IDLE;
+  @Prop @Watch('onMorphPhaseChanged') morphPhase: PlayerMorphPhase = PlayerMorphPhase.IDLE;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @Prop frozenMiniPlayerFrame: PlayerFrame = {
@@ -59,8 +64,8 @@ export struct PlayerMorphArtwork {
 
   aboutToAppear(): void {
     this.mounted = true;
-    this.playbackVisualTarget = this.currentPlaybackVisualTarget();
-    this.playbackVisualProgress = this.playbackVisualTarget;
+    this.playbackVisualState.reset(this.currentPlaybackVisualTarget());
+    this.playbackVisualProgress = this.playbackVisualState.value();
   }
 
   aboutToDisappear(): void {
@@ -75,14 +80,30 @@ export struct PlayerMorphArtwork {
 
   private onPlayerStoreChanged(): void {
     const target = this.currentPlaybackVisualTarget();
-    if (target === this.playbackVisualTarget) {
+    if (!this.mounted) {
+      this.playbackVisualState.reset(target);
+      this.playbackVisualProgress = this.playbackVisualState.value();
       return;
     }
-    this.playbackVisualTarget = target;
-    if (!this.mounted || this.morphPhase !== PlayerMorphPhase.OPEN) {
-      this.playbackVisualProgress = target;
+    this.applyPlaybackVisualAction(
+      this.playbackVisualState.updateTarget(target, this.morphPhase)
+    );
+  }
+
+  private onMorphPhaseChanged(): void {
+    if (!this.mounted) {
       return;
     }
+    this.applyPlaybackVisualAction(
+      this.playbackVisualState.updatePhase(this.morphPhase)
+    );
+  }
+
+  private applyPlaybackVisualAction(action: PlayerArtworkPlaybackVisualAction): void {
+    if (action !== PlayerArtworkPlaybackVisualAction.ANIMATE_TO_TARGET) {
+      return;
+    }
+    const target = this.playbackVisualState.value();
     this.getUIContext().animateTo({
       curve: curves.springMotion(
         PlayerMotionSpec.ARTWORK_STATE_SPRING_RESPONSE,

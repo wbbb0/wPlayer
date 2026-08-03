@@ -8,6 +8,10 @@ import {
 import {
   PresentationMotionState
 } from '../main/ets/components/player/PresentationMotionState';
+import {
+  PlayerArtworkPlaybackVisualAction,
+  PlayerArtworkPlaybackVisualState
+} from '../main/ets/components/player/PlayerArtworkPlaybackVisualState';
 import { PlayerMorphGeometry } from '../main/ets/components/player/PlayerMorphGeometry';
 import {
   MiniBarResizeAction,
@@ -185,6 +189,50 @@ export default function playerMorphPolicyTest() {
         PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS,
         activeProgress
       )).assertEqual(PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS);
+    });
+
+    it('defers playback artwork motion until opening completes', 0, () => {
+      const state = new PlayerArtworkPlaybackVisualState();
+      state.reset(0);
+
+      expect(state.updateTarget(1, PlayerMorphPhase.OPENING)).assertEqual(
+        PlayerArtworkPlaybackVisualAction.NONE
+      );
+      expect(state.value()).assertEqual(0);
+
+      expect(state.updatePhase(PlayerMorphPhase.OPEN)).assertEqual(
+        PlayerArtworkPlaybackVisualAction.ANIMATE_TO_TARGET
+      );
+      expect(state.value()).assertEqual(1);
+    });
+
+    it('coalesces playback changes while artwork morphing is active', 0, () => {
+      const state = new PlayerArtworkPlaybackVisualState();
+      state.reset(0);
+
+      expect(state.updateTarget(1, PlayerMorphPhase.OPENING)).assertEqual(
+        PlayerArtworkPlaybackVisualAction.NONE
+      );
+      expect(state.updateTarget(0, PlayerMorphPhase.OPENING)).assertEqual(
+        PlayerArtworkPlaybackVisualAction.NONE
+      );
+      expect(state.updatePhase(PlayerMorphPhase.OPEN)).assertEqual(
+        PlayerArtworkPlaybackVisualAction.NONE
+      );
+      expect(state.value()).assertEqual(0);
+    });
+
+    it('animates playback artwork changes immediately after opening', 0, () => {
+      const state = new PlayerArtworkPlaybackVisualState();
+      state.reset(1);
+
+      expect(state.updateTarget(0, PlayerMorphPhase.OPEN)).assertEqual(
+        PlayerArtworkPlaybackVisualAction.ANIMATE_TO_TARGET
+      );
+      expect(state.value()).assertEqual(0);
+      expect(state.updatePhase(PlayerMorphPhase.CLOSING)).assertEqual(
+        PlayerArtworkPlaybackVisualAction.NONE
+      );
     });
 
     it('allows a page drag to take over the previous settle', 0, () => {

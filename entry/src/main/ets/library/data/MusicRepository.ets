@@ -16,6 +16,7 @@ import {
   PlaylistTrackSortField,
   PlaylistTransferTrack,
   LibraryCatalog,
+  LibraryCategoryListItem,
   LibraryPage,
   LibraryStatistics,
   MediaFileCheckCandidate,
@@ -470,6 +471,57 @@ export class MusicRepository implements LibraryRemovalRepository {
       return Promise.resolve(DemoMusicLibrary.albumArtists(albumId));
     }
     return this.queries.getAlbumArtists(albumId);
+  }
+
+  getArtistCatalog(): Promise<LibraryCatalog> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.artistCategoryCatalog());
+    }
+    return this.queries.getArtistCatalog();
+  }
+
+  getArtistPage(catalog: LibraryCatalog, offset: number,
+    limit: number): Promise<Array<LibraryCategoryListItem>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.artistCategories().slice(offset, offset + limit));
+    }
+    return this.queries.getArtistPage(catalog, offset, limit);
+  }
+
+  getGenreCatalog(): Promise<LibraryCatalog> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(DemoMusicLibrary.genreCategoryCatalog());
+    }
+    return this.queries.getGenreCatalog();
+  }
+
+  getGenrePage(catalog: LibraryCatalog, offset: number,
+    limit: number): Promise<Array<LibraryCategoryListItem>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve([]);
+    }
+    return this.queries.getGenrePage(catalog, offset, limit);
+  }
+
+  getGenreTrackCount(genreId: number): Promise<number> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve(0);
+    }
+    return this.queries.getGenreTrackCount(genreId);
+  }
+
+  getGenreTrackPage(genreId: number, offset: number, limit: number): Promise<Array<TrackListItem>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve([]);
+    }
+    return this.queries.getGenreTrackPage(genreId, offset, limit);
+  }
+
+  getGenreTracks(genreId: number): Promise<Array<TrackListItem>> {
+    if (DemoLibraryMode.isEnabled()) {
+      return Promise.resolve([]);
+    }
+    return this.queries.getGenreTracks(genreId);
   }
 
   getArtistDetail(artistId: number): Promise<ArtistDetail | undefined> {

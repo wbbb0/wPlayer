@@ -4,6 +4,8 @@ export class NavigationRoute {
   static readonly PLAYLISTS: string = 'playlists';
   static readonly SONGS: string = 'songs';
   static readonly ALBUMS: string = 'albums';
+  static readonly ARTISTS: string = 'artists';
+  static readonly GENRES: string = 'genres';
   static readonly LIBRARY_MANAGEMENT: string = 'libraryManagement';
   static readonly SETTINGS: string = 'settings';
   static readonly FLOATING_WINDOW_SETTINGS: string = 'floatingWindowSettings';
@@ -23,9 +25,11 @@ export enum NavigationPageKind {
   PLAYLISTS = 0,
   SONGS = 1,
   ALBUMS = 2,
-  LIBRARY_MANAGEMENT = 3,
-  SETTINGS = 4,
-  DEBUG = 5
+  ARTISTS = 3,
+  GENRES = 4,
+  LIBRARY_MANAGEMENT = 5,
+  SETTINGS = 6,
+  DEBUG = 7
 }
 
 export interface NavigationPageItem {
@@ -59,6 +63,20 @@ const DEFAULT_DYNAMIC_NAVIGATION_ITEMS: Array<NavigationPageItem> = [
     label: '专辑',
     description: '按专辑浏览音乐',
     symbol: $r('sys.symbol.opticaldisc')
+  },
+  {
+    routeId: NavigationRoute.ARTISTS,
+    kind: NavigationPageKind.ARTISTS,
+    label: '艺人',
+    description: '按艺人浏览音乐',
+    symbol: $r('sys.symbol.person_2_fill')
+  },
+  {
+    routeId: NavigationRoute.GENRES,
+    kind: NavigationPageKind.GENRES,
+    label: '流派',
+    description: '按流派浏览音乐',
+    symbol: $r('sys.symbol.music_note_list_fill')
   },
   {
     routeId: NavigationRoute.LIBRARY_MANAGEMENT,

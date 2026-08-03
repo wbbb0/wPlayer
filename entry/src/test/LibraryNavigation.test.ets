@@ -6,6 +6,7 @@ import {
 import {
   AlbumCollectionRouteParams,
   ArtistTrackCollectionRouteParams,
+  GenreTrackCollectionRouteParams,
   LibraryLinkRole,
   libraryLinkActions
 } from '../main/ets/components/navigation/LibraryNavigation';
@@ -117,6 +118,7 @@ export default function libraryNavigationTest() {
     it('gives each collection route independent durable state', 0, () => {
       const firstTracks = new ArtistTrackCollectionRouteParams(10, 'Artist A');
       const secondTracks = new ArtistTrackCollectionRouteParams(10, 'Artist A');
+      const genreTracks = new GenreTrackCollectionRouteParams(30, '摇滚');
       const artistAlbums = new AlbumCollectionRouteParams(
         AlbumCollectionScope.ARTIST, 10, 'Artist A的专辑'
       );
@@ -127,8 +129,10 @@ export default function libraryNavigationTest() {
       expect(firstTracks.instanceId === secondTracks.instanceId).assertFalse();
       expect(firstTracks.state === secondTracks.state).assertFalse();
       expect(firstTracks.selection === secondTracks.selection).assertFalse();
+      expect(firstTracks.state === genreTracks.state).assertFalse();
       expect(artistAlbums.state === relatedAlbums.state).assertFalse();
       expect(firstTracks.title).assertEqual('Artist A的歌曲');
+      expect(genreTracks.title).assertEqual('摇滚的歌曲');
     });
   });
 }

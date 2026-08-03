@@ -13,7 +13,8 @@ import {
 import {
   AlbumCollectionScope,
   AlbumCollectionState,
-  ArtistTrackCollectionState
+  ArtistTrackCollectionState,
+  GenreTrackCollectionState
 } from '../../library/store/LibraryCollectionState';
 import { MultiSelectController } from '../library/MultiSelectController';
 
@@ -23,6 +24,7 @@ export class LibraryDetailRoute {
   static readonly ALBUM: string = 'libraryAlbumDetail';
   static readonly ARTIST: string = 'libraryArtistDetail';
   static readonly ARTIST_TRACKS: string = 'libraryArtistTracks';
+  static readonly GENRE_TRACKS: string = 'libraryGenreTracks';
   static readonly ALBUM_COLLECTION: string = 'libraryAlbumCollection';
 }
 
@@ -49,6 +51,26 @@ export class ArtistTrackCollectionRouteParams implements LibraryCollectionSelect
 
   anchorPrefix(): string {
     return `artist_tracks_${this.instanceId}`;
+  }
+}
+
+export class GenreTrackCollectionRouteParams implements LibraryCollectionSelectionParams {
+  readonly instanceId: number;
+  readonly genreId: number;
+  readonly title: string;
+  readonly state: GenreTrackCollectionState;
+  readonly selection: MultiSelectController = new MultiSelectController();
+  readonly scroller: Scroller = new Scroller();
+
+  constructor(genreId: number, genreName: string) {
+    this.instanceId = ++routeInstanceId;
+    this.genreId = genreId;
+    this.title = `${genreName}的歌曲`;
+    this.state = new GenreTrackCollectionState(genreId);
+  }
+
+  anchorPrefix(): string {
+    return `genre_tracks_${this.instanceId}`;
   }
 }
 

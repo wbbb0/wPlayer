@@ -205,6 +205,20 @@ export interface ArtistReference {
   name: string;
 }
 
+export enum LibraryCategoryKind {
+  ARTIST = 0,
+  GENRE = 1
+}
+
+export interface LibraryCategoryListItem {
+  id: number;
+  kind: LibraryCategoryKind;
+  name: string;
+  trackCount: number;
+  albumCount: number;
+  sectionKey: string;
+}
+
 export interface AlbumReference {
   id: number;
   title: string;

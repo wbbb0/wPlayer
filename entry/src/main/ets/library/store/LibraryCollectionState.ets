@@ -3,17 +3,26 @@ import { LibraryStore } from './LibraryStore';
 import { LibraryPageLoader, PagedLibraryDataSource } from './PagedLibraryDataSource';
 import { LibraryPagingPolicy } from './LibraryPagingPolicy';
 
-class ArtistTrackCollectionPageLoader implements LibraryPageLoader<TrackListItem> {
-  private readonly store: LibraryStore;
-  private readonly artistId: number;
+export enum TrackCollectionScope {
+  ARTIST = 0,
+  GENRE = 1
+}
 
-  constructor(store: LibraryStore, artistId: number) {
+class TrackCollectionPageLoader implements LibraryPageLoader<TrackListItem> {
+  private readonly store: LibraryStore;
+  private readonly scope: TrackCollectionScope;
+  private readonly ownerId: number;
+
+  constructor(store: LibraryStore, scope: TrackCollectionScope, ownerId: number) {
     this.store = store;
-    this.artistId = artistId;
+    this.scope = scope;
+    this.ownerId = ownerId;
   }
 
   load(offset: number, limit: number): Promise<Array<TrackListItem>> {
-    return this.store.getArtistTrackPage(this.artistId, offset, limit);
+    return this.scope === TrackCollectionScope.ARTIST ?
+      this.store.getArtistTrackPage(this.ownerId, offset, limit) :
+      this.store.getGenreTrackPage(this.ownerId, offset, limit);
   }
 }
 
@@ -41,8 +50,9 @@ class AlbumCollectionPageLoader implements LibraryPageLoader<AlbumListItem> {
 }
 
 @Observed
-export class ArtistTrackCollectionState {
-  readonly artistId: number;
+export class LibraryTrackCollectionState {
+  readonly scope: TrackCollectionScope;
+  readonly ownerId: number;
   totalCount: number = 0;
   loading: boolean = false;
   error: string = '';
@@ -67,12 +77,13 @@ export class ArtistTrackCollectionState {
       return;
     }
     this.refresh(store).catch((error: Object): void => {
-      console.warn(`Unable to refresh artist track collection ${this.artistId}: ${this.messageOf(error)}`);
+      console.warn(`Unable to refresh track collection ${this.ownerId}: ${this.messageOf(error)}`);
     });
   };
 
-  constructor(artistId: number) {
-    this.artistId = artistId;
+  constructor(scope: TrackCollectionScope, ownerId: number) {
+    this.scope = scope;
+    this.ownerId = ownerId;
   }
 
   async activate(store: LibraryStore): Promise<void> {
@@ -118,10 +129,12 @@ export class ArtistTrackCollectionState {
   async loadSnapshot(store: LibraryStore): Promise<Array<TrackListItem>> {
     const epoch = this.loadEpoch;
     const expectedCount = this.totalCount;
-    const items = await store.loadArtistTrackPlaybackOrder(this.artistId, expectedCount);
+    const items = this.scope === TrackCollectionScope.ARTIST ?
+      await store.loadArtistTrackPlaybackOrder(this.ownerId, expectedCount) :
+      await store.loadGenreTrackPlaybackOrder(this.ownerId, expectedCount);
     if (epoch !== this.loadEpoch || this.activeStore !== store ||
       this.loadedContentRevision !== store.libraryContentRevision) {
-      throw new Error('艺术家歌曲已更新，请重试');
+      throw new Error('歌曲集合已更新，请重试');
     }
     return items;
   }
@@ -136,13 +149,14 @@ export class ArtistTrackCollectionState {
     this.loading = true;
     this.error = '';
     try {
-      const count = await store.getArtistTrackCount(this.artistId);
+      const count = this.scope === TrackCollectionScope.ARTIST ?
+        await store.getArtistTrackCount(this.ownerId) : await store.getGenreTrackCount(this.ownerId);
       if (epoch !== this.loadEpoch) {
         return;
       }
       this.totalCount = count;
       this.loadedContentRevision = contentRevision;
-      this.dataSource.reset(count, new ArtistTrackCollectionPageLoader(store, this.artistId));
+      this.dataSource.reset(count, new TrackCollectionPageLoader(store, this.scope, this.ownerId));
       await this.dataSource.ensureRange(
         0, LibraryPagingPolicy.initialPrefetchLastIndex(LibraryPagingPolicy.TRACK_QUERY_PAGE_SIZE)
       );
@@ -164,13 +178,25 @@ export class ArtistTrackCollectionState {
     if (this.refreshPending && this.activeStore === store) {
       this.refreshPending = false;
       this.refresh(store).catch((error: Object): void => {
-        console.warn(`Unable to continue artist track refresh: ${this.messageOf(error)}`);
+        console.warn(`Unable to continue track collection refresh: ${this.messageOf(error)}`);
       });
     }
   }
 
   private messageOf(error: Object): string {
     return error instanceof Error ? error.message : `${error}`;
+  }
+}
+
+export class ArtistTrackCollectionState extends LibraryTrackCollectionState {
+  constructor(artistId: number) {
+    super(TrackCollectionScope.ARTIST, artistId);
+  }
+}
+
+export class GenreTrackCollectionState extends LibraryTrackCollectionState {
+  constructor(genreId: number) {
+    super(TrackCollectionScope.GENRE, genreId);
   }
 }
 

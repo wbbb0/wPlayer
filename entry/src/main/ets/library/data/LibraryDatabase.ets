@@ -162,7 +162,8 @@ const CURRENT_SCHEMA: Array<string> = [
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     name_key TEXT NOT NULL UNIQUE,
-    sort_name_key TEXT NOT NULL
+    sort_name_key TEXT NOT NULL,
+    name_section TEXT NOT NULL DEFAULT '#'
   )`,
   `CREATE TABLE track_credit (
     track_id INTEGER NOT NULL REFERENCES track(id) ON DELETE CASCADE,
@@ -180,7 +181,9 @@ const CURRENT_SCHEMA: Array<string> = [
   `CREATE TABLE genre (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    name_key TEXT NOT NULL UNIQUE
+    name_key TEXT NOT NULL UNIQUE,
+    sort_name_key TEXT NOT NULL,
+    name_section TEXT NOT NULL DEFAULT '#'
   )`,
   `CREATE TABLE track_genre (
     track_id INTEGER NOT NULL REFERENCES track(id) ON DELETE CASCADE,
@@ -275,8 +278,10 @@ const CURRENT_SCHEMA: Array<string> = [
   'CREATE INDEX idx_album_release_date ON album(release_date_sort, id)',
   'CREATE INDEX idx_album_created_at ON album(created_at, id)',
   'CREATE INDEX idx_track_credit_person_role ON track_credit(person_id, role, track_id)',
+  'CREATE INDEX idx_person_name_natural ON person(name_section, sort_name_key, id)',
   ALBUM_CREDIT_PERSON_INDEX_SCHEMA,
   'CREATE INDEX idx_track_genre_genre ON track_genre(genre_id, track_id)',
+  'CREATE INDEX idx_genre_name_natural ON genre(name_section, sort_name_key, id)',
   'CREATE INDEX idx_track_artwork_fallback ON track_artwork(track_id, picture_type, ordinal)',
   'CREATE INDEX idx_artwork_asset_gc ON artwork_asset(ref_count, unreferenced_at)',
   `CREATE UNIQUE INDEX idx_playlist_fixed_key ON playlist(fixed_key)
@@ -450,6 +455,16 @@ export class LibraryDatabase {
       await transaction.execute(PLAYBACK_QUEUE_STATE_SCHEMA);
       await transaction.execute(PLAYBACK_QUEUE_ITEM_SCHEMA);
       await transaction.execute(ALBUM_CREDIT_PERSON_INDEX_SCHEMA);
+      await transaction.execute("ALTER TABLE person ADD COLUMN name_section TEXT NOT NULL DEFAULT '#'");
+      await transaction.execute("ALTER TABLE genre ADD COLUMN sort_name_key TEXT NOT NULL DEFAULT ''");
+      await transaction.execute("ALTER TABLE genre ADD COLUMN name_section TEXT NOT NULL DEFAULT '#'");
+      await this.rebuildCategorySortKeys(transaction);
+      await transaction.execute(
+        'CREATE INDEX idx_person_name_natural ON person(name_section, sort_name_key, id)'
+      );
+      await transaction.execute(
+        'CREATE INDEX idx_genre_name_natural ON genre(name_section, sort_name_key, id)'
+      );
       await transaction.execute(
         'UPDATE schema_meta SET version = ?, migrated_at = ? WHERE singleton = 1',
         [DATABASE_VERSION, Date.now()]
@@ -464,6 +479,54 @@ export class LibraryDatabase {
         }
       }
       throw RelationalStoreSafety.operationError('Unable to migrate library database to version 13', error);
+    }
+  }
+
+  private async rebuildCategorySortKeys(transaction: relationalStore.Transaction): Promise<void> {
+    try {
+      await transaction.execute(
+        `CREATE TEMP TABLE temp_category_sort (
+          entity_type INTEGER NOT NULL,
+          id INTEGER NOT NULL,
+          natural_key TEXT NOT NULL,
+          name_section TEXT NOT NULL,
+          PRIMARY KEY (entity_type, id)
+        )`
+      );
+      const buckets: Array<relationalStore.ValuesBucket> = [];
+      const tables: Array<string> = ['person', 'genre'];
+      for (let tableIndex = 0; tableIndex < tables.length; tableIndex += 1) {
+        const resultSet = await transaction.querySql(`SELECT id, name FROM ${tables[tableIndex]}`);
+        try {
+          while (resultSet.goToNextRow()) {
+            const sort = SortKeyNormalizer.natural(resultSet.getString(1));
+            buckets.push({
+              entity_type: tableIndex,
+              id: resultSet.getLong(0),
+              natural_key: sort.key,
+              name_section: sort.section
+            });
+          }
+        } finally {
+          RelationalStoreSafety.closeResultSet(resultSet, `${tables[tableIndex]} category sort rebuild`);
+        }
+      }
+      if (buckets.length > 0) {
+        await transaction.batchInsert('temp_category_sort', buckets);
+      }
+      await transaction.execute(
+        `UPDATE person SET
+          sort_name_key = (SELECT natural_key FROM temp_category_sort s WHERE s.entity_type = 0 AND s.id = person.id),
+          name_section = (SELECT name_section FROM temp_category_sort s WHERE s.entity_type = 0 AND s.id = person.id)`
+      );
+      await transaction.execute(
+        `UPDATE genre SET
+          sort_name_key = (SELECT natural_key FROM temp_category_sort s WHERE s.entity_type = 1 AND s.id = genre.id),
+          name_section = (SELECT name_section FROM temp_category_sort s WHERE s.entity_type = 1 AND s.id = genre.id)`
+      );
+      await transaction.execute('DROP TABLE temp_category_sort');
+    } catch (error) {
+      throw RelationalStoreSafety.operationError('Unable to rebuild category sort keys', error);
     }
   }
 

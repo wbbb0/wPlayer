@@ -552,7 +552,13 @@ export class MusicLibraryImporter {
           genreId = await this.findId(transaction, 'genre', 'name_key', key);
         }
         if (genreId === undefined) {
-          genreId = await transaction.insert('genre', { name: name, name_key: key });
+          const sort = SortKeyNormalizer.natural(name);
+          genreId = await transaction.insert('genre', {
+            name: name,
+            name_key: key,
+            sort_name_key: sort.key,
+            name_section: sort.section
+          });
         }
         cache?.genreIds.set(key, genreId);
         await transaction.insert('track_genre', {
@@ -826,10 +832,12 @@ export class MusicLibraryImporter {
       return existingId;
     }
     try {
+      const sort = SortKeyNormalizer.natural(name);
       const personId = await transaction.insert('person', {
         name: name,
         name_key: key,
-        sort_name_key: key
+        sort_name_key: sort.key,
+        name_section: sort.section
       });
       cache?.personIds.set(key, personId);
       return personId;

@@ -4,7 +4,7 @@ import { LibraryTrackRow, LibraryTrackRowVariant } from '../../components/librar
 import { LibraryTrackRowPlaceholder } from '../../components/library/LibraryTrackRowPlaceholder';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
 import { LibraryNavigationTarget, TrackListItem } from '../../library/model/LibraryModels';
-import { ArtistTrackCollectionState } from '../../library/store/LibraryCollectionState';
+import { LibraryTrackCollectionState } from '../../library/store/LibraryCollectionState';
 import { LibraryPagingPolicy } from '../../library/store/LibraryPagingPolicy';
 import { LibrarySlot } from '../../library/store/PagedLibraryDataSource';
 import { LibraryStore } from '../../library/store/LibraryStore';
@@ -15,9 +15,9 @@ import {
 } from '../../components/library/DragSelectionController';
 
 @Component
-export struct ArtistTrackCollectionPage {
+export struct LibraryTrackCollectionPage {
   @ObjectLink store: LibraryStore;
-  @ObjectLink state: ArtistTrackCollectionState;
+  @ObjectLink state: LibraryTrackCollectionState;
   @ObjectLink selection: MultiSelectController;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
@@ -69,7 +69,7 @@ export struct ArtistTrackCollectionPage {
       this.selectedItems = tracks;
       this.selection.selectableCount = tracks.length;
       this.selection.replaceSelection(tracks.map((track: TrackListItem): number => track.id));
-    }).catch((error: Object): void => console.warn(`Unable to select artist tracks: ${error}`))
+    }).catch((error: Object): void => console.warn(`Unable to select collection tracks: ${error}`))
       .finally((): void => this.selection.setBusy(false));
   }
 
@@ -108,7 +108,7 @@ export struct ArtistTrackCollectionPage {
       if (current !== undefined) {
         playbackRuntime.playInOrder(current, tracks);
       }
-    }).catch((error: Object): void => console.warn(`Unable to load artist tracks: ${error}`))
+    }).catch((error: Object): void => console.warn(`Unable to load collection tracks: ${error}`))
       .finally((): void => {
         this.snapshotBusy = false;
       });

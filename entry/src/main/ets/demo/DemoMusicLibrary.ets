@@ -6,10 +6,13 @@ import {
   ArtistDetail,
   ArtistDetailOverview,
   ArtistReference,
+  LibraryCategoryKind,
+  LibraryCategoryListItem,
   AvailabilityState,
   LibraryCatalog,
   LibraryIndexPresentation,
   LibraryPage,
+  LibrarySection,
   LibraryStatistics,
   MediaFormat,
   PlaylistDetail,
@@ -26,6 +29,7 @@ import {
   TrackSortField
 } from '../library/model/LibraryModels';
 import { LibraryQueryPagingPolicy } from '../library/data/LibraryQueryPagingPolicy';
+import { SortKeyNormalizer } from '../library/metadata/SortKeyNormalizer';
 import { BundledArtworkCatalog } from '../library/artwork/BundledArtworkCatalog';
 import { PlaybackTrack, QueueTrack, ResumeState } from '../playback/model/PlaybackModels';
 
@@ -256,6 +260,53 @@ function playlistTrackOf(track: TrackListItem, position: number): PlaylistTrackI
 }
 
 export class DemoMusicLibrary {
+  static artistCategories(): Array<LibraryCategoryListItem> {
+    const items = [DEMO_ARTIST_LIN_YU, DEMO_ARTIST_DAYLIGHT, DEMO_ARTIST_NORTH_STATION]
+      .map((artist: ArtistReference): LibraryCategoryListItem => {
+        const tracks = DemoMusicLibrary.artistTracks(artist.id);
+        const albums = DemoMusicLibrary.artistAlbums(artist.id);
+        const sort = SortKeyNormalizer.natural(artist.name);
+        return {
+          id: artist.id,
+          kind: LibraryCategoryKind.ARTIST,
+          name: artist.name,
+          trackCount: tracks.length,
+          albumCount: albums.length,
+          sectionKey: sort.section
+        };
+      });
+    items.sort((left: LibraryCategoryListItem, right: LibraryCategoryListItem): number => {
+      const leftSection = left.sectionKey === '#' ? 'ZZZZ' : left.sectionKey;
+      const rightSection = right.sectionKey === '#' ? 'ZZZZ' : right.sectionKey;
+      return leftSection.localeCompare(rightSection) ||
+        SortKeyNormalizer.natural(left.name).key.localeCompare(SortKeyNormalizer.natural(right.name).key) ||
+        left.id - right.id;
+    });
+    return items;
+  }
+
+  static artistCategoryCatalog(): LibraryCatalog {
+    return DemoMusicLibrary.categoryCatalog(DemoMusicLibrary.artistCategories());
+  }
+
+  static genreCategoryCatalog(): LibraryCatalog {
+    return DemoMusicLibrary.categoryCatalog([]);
+  }
+
+  private static categoryCatalog(items: Array<LibraryCategoryListItem>): LibraryCatalog {
+    const sections: Array<LibrarySection> = [];
+    for (let index = 0; index < items.length; index += 1) {
+      if (index === 0 || items[index].sectionKey !== items[index - 1].sectionKey) {
+        sections.push({ label: items[index].sectionKey, startIndex: index });
+      }
+    }
+    return {
+      totalCount: items.length,
+      sections: sections,
+      indexPresentation: LibraryIndexPresentation.ALPHABET
+    };
+  }
+
   static tracks(field: TrackSortField, direction: SortDirection): Array<TrackListItem> {
     const tracks = DEMO_TRACKS.map((track: TrackListItem): TrackListItem => cloneTrack(track));
     tracks.sort((left: TrackListItem, right: TrackListItem): number => {

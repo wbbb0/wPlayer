@@ -19,6 +19,8 @@ import {
   ImportItemResult,
   LibraryStatistics,
   LibraryCatalog,
+  LibraryCategoryKind,
+  LibraryCategoryListItem,
   LibraryIndexPresentation,
   LibrarySection,
   SortDirection,
@@ -99,6 +101,24 @@ class AlbumPageLoader implements LibraryPageLoader<AlbumListItem> {
   }
 }
 
+class CategoryPageLoader implements LibraryPageLoader<LibraryCategoryListItem> {
+  private readonly repository: MusicRepository;
+  private readonly kind: LibraryCategoryKind;
+  private readonly catalog: LibraryCatalog;
+
+  constructor(repository: MusicRepository, kind: LibraryCategoryKind, catalog: LibraryCatalog) {
+    this.repository = repository;
+    this.kind = kind;
+    this.catalog = catalog;
+  }
+
+  load(offset: number, limit: number): Promise<Array<LibraryCategoryListItem>> {
+    return this.kind === LibraryCategoryKind.ARTIST ?
+      this.repository.getArtistPage(this.catalog, offset, limit) :
+      this.repository.getGenrePage(this.catalog, offset, limit);
+  }
+}
+
 class PaletteRefreshCursor {
   nextIndex: number = 0;
   failed: number = 0;
@@ -126,6 +146,20 @@ export class LibraryStore {
       LibraryPagingPolicy.MAX_CACHED_PAGES,
       (item: AlbumListItem): string => `${item.id}`
     );
+  readonly artistDataSource: PagedLibraryDataSource<LibraryCategoryListItem> =
+    new PagedLibraryDataSource<LibraryCategoryListItem>(
+      LibraryPagingPolicy.TRACK_QUERY_PAGE_SIZE,
+      LibraryPagingPolicy.MAX_CACHED_PAGES,
+      (item: LibraryCategoryListItem): string => `${item.id}`
+    );
+  readonly genreDataSource: PagedLibraryDataSource<LibraryCategoryListItem> =
+    new PagedLibraryDataSource<LibraryCategoryListItem>(
+      LibraryPagingPolicy.TRACK_QUERY_PAGE_SIZE,
+      LibraryPagingPolicy.MAX_CACHED_PAGES,
+      (item: LibraryCategoryListItem): string => `${item.id}`
+    );
+  artistCount: number = 0;
+  genreCount: number = 0;
   readonly uriDuplicateDataSource: LibraryListDataSource<ImportItemResult> =
     new LibraryListDataSource<ImportItemResult>();
   readonly contentDuplicateDataSource: LibraryListDataSource<ImportItemResult> =
@@ -136,6 +170,8 @@ export class LibraryStore {
     new LibraryListDataSource<ImportItemResult>();
   trackSections: Array<LibrarySection> = [];
   albumSections: Array<LibrarySection> = [];
+  artistSections: Array<LibrarySection> = [];
+  genreSections: Array<LibrarySection> = [];
   trackIndexPresentation: LibraryIndexPresentation = LibraryIndexPresentation.ALPHABET;
   albumIndexPresentation: LibraryIndexPresentation = LibraryIndexPresentation.ALPHABET;
   trackSortField: TrackSortField = TrackSortField.TITLE;
@@ -326,7 +362,9 @@ export class LibraryStore {
     const snapshots = await Promise.all([
       this.repository.getTrackCatalog(trackField, trackDirection),
       this.repository.getAlbumCatalog(albumField, albumDirection),
-      this.repository.getStatistics()
+      this.repository.getStatistics(),
+      this.repository.getArtistCatalog(),
+      this.repository.getGenreCatalog()
     ]);
     if (refreshGeneration !== this.refreshGeneration || trackGeneration !== this.trackSortGeneration ||
       albumGeneration !== this.albumSortGeneration) {
@@ -348,6 +386,20 @@ export class LibraryStore {
     this.albumSections = albumSnapshot.sections;
     this.albumIndexPresentation = albumSnapshot.indexPresentation;
     this.statistics = snapshots[2];
+    const artistSnapshot = snapshots[3];
+    const genreSnapshot = snapshots[4];
+    this.artistCount = artistSnapshot.totalCount;
+    this.genreCount = genreSnapshot.totalCount;
+    this.artistSections = artistSnapshot.sections;
+    this.genreSections = genreSnapshot.sections;
+    this.artistDataSource.reset(
+      this.artistCount,
+      new CategoryPageLoader(this.repository, LibraryCategoryKind.ARTIST, artistSnapshot)
+    );
+    this.genreDataSource.reset(
+      this.genreCount,
+      new CategoryPageLoader(this.repository, LibraryCategoryKind.GENRE, genreSnapshot)
+    );
     await Promise.all([
       this.trackDataSource.ensureRange(
         0,
@@ -356,6 +408,14 @@ export class LibraryStore {
       this.albumDataSource.ensureRange(
         0,
         LibraryPagingPolicy.initialPrefetchLastIndex(LibraryPagingPolicy.ALBUM_QUERY_PAGE_SIZE)
+      ),
+      this.artistDataSource.ensureRange(
+        0,
+        LibraryPagingPolicy.initialPrefetchLastIndex(LibraryPagingPolicy.TRACK_QUERY_PAGE_SIZE)
+      ),
+      this.genreDataSource.ensureRange(
+        0,
+        LibraryPagingPolicy.initialPrefetchLastIndex(LibraryPagingPolicy.TRACK_QUERY_PAGE_SIZE)
       )
     ]);
     this.libraryContentRevision += 1;
@@ -914,6 +974,31 @@ export class LibraryStore {
     });
   }
 
+  categoryDataSource(kind: LibraryCategoryKind): PagedLibraryDataSource<LibraryCategoryListItem> {
+    return kind === LibraryCategoryKind.ARTIST ? this.artistDataSource : this.genreDataSource;
+  }
+
+  categoryCount(kind: LibraryCategoryKind): number {
+    return kind === LibraryCategoryKind.ARTIST ? this.artistCount : this.genreCount;
+  }
+
+  categorySections(kind: LibraryCategoryKind): Array<LibrarySection> {
+    return kind === LibraryCategoryKind.ARTIST ? this.artistSections : this.genreSections;
+  }
+
+  ensureCategoryRange(kind: LibraryCategoryKind, firstIndex: number, lastIndex: number): void {
+    const start = LibraryPagingPolicy.prefetchStartForVisibleRange(
+      firstIndex, LibraryPagingPolicy.TRACK_QUERY_PAGE_SIZE
+    );
+    const end = LibraryPagingPolicy.prefetchEndForVisibleRange(
+      lastIndex, LibraryPagingPolicy.TRACK_QUERY_PAGE_SIZE
+    );
+    this.categoryDataSource(kind).ensureRange(start, end, firstIndex).catch((error: Object): void => {
+      this.errorMessage = LibraryStore.errorMessageOf(error);
+      console.warn(`Unable to load visible category range: ${this.errorMessage}`);
+    });
+  }
+
   async loadTrackPlaybackOrder(): Promise<Array<TrackListItem>> {
     for (let attempt = 0; attempt < PLAYBACK_ORDER_STABILITY_ATTEMPTS; attempt += 1) {
       const projection: TrackProjectionSnapshot = this.publishedTrackProjection.snapshot();
@@ -1006,6 +1091,30 @@ export class LibraryStore {
 
   getArtistTracks(artistId: number): Promise<Array<TrackListItem>> {
     return this.repository.getArtistTracks(artistId);
+  }
+
+  getGenreTrackPage(genreId: number, offset: number, limit: number): Promise<Array<TrackListItem>> {
+    return this.repository.getGenreTrackPage(genreId, offset, limit);
+  }
+
+  getGenreTrackCount(genreId: number): Promise<number> {
+    return this.repository.getGenreTrackCount(genreId);
+  }
+
+  getGenreTracks(genreId: number): Promise<Array<TrackListItem>> {
+    return this.repository.getGenreTracks(genreId);
+  }
+
+  async loadGenreTrackPlaybackOrder(genreId: number,
+    expectedCount: number): Promise<Array<TrackListItem>> {
+    for (let attempt = 0; attempt < PLAYBACK_ORDER_STABILITY_ATTEMPTS; attempt += 1) {
+      const revision = this.repository.currentInvalidationRevision();
+      const tracks = await this.repository.getGenreTracks(genreId);
+      if (this.repository.currentInvalidationRevision() === revision && tracks.length === expectedCount) {
+        return tracks;
+      }
+    }
+    throw new Error('流派歌曲正在变化，请稍后重试播放');
   }
 
   async loadArtistTrackPlaybackOrder(artistId: number,

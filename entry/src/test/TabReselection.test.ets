@@ -5,8 +5,10 @@ import { IndexNavigationController } from
   '../main/ets/components/navigation/IndexNavigationController';
 import {
   NavigationRoute,
-  navigationItemIndex
+  navigationItemIndex,
+  normalizeNavigationOrder
 } from '../main/ets/components/navigation/MoreNavigation';
+import { LibraryDetailRoute } from '../main/ets/components/navigation/LibraryNavigation';
 
 export default function tabReselectionTest() {
   describe('Tab reselection policy', () => {
@@ -66,6 +68,28 @@ export default function tabReselectionTest() {
 
       controller.handleExpandedTabBarClick(controller.expandedTabIndex());
       expect(settingsRootStack.getAllPathName().length).assertEqual(0);
+    });
+
+    it('appends new artist and genre roots to an older saved order', 0, () => {
+      const normalized = normalizeNavigationOrder([
+        NavigationRoute.PLAYLISTS,
+        NavigationRoute.SONGS,
+        NavigationRoute.ALBUMS,
+        NavigationRoute.LIBRARY_MANAGEMENT
+      ]);
+      expect(normalized.includes(NavigationRoute.ARTISTS)).assertTrue();
+      expect(normalized.includes(NavigationRoute.GENRES)).assertTrue();
+      expect(normalized.indexOf(NavigationRoute.ARTISTS) > normalized.indexOf(NavigationRoute.ALBUMS)).assertTrue();
+      expect(normalized.indexOf(NavigationRoute.GENRES) > normalized.indexOf(NavigationRoute.ARTISTS)).assertTrue();
+    });
+
+    it('opens a genre collection on the active compact More stack', 0, () => {
+      const controller = new IndexNavigationController();
+      controller.selectRoute(NavigationRoute.GENRES);
+      controller.openGenreTracks(7, '摇滚', false);
+      const names = controller.morePathStack.getAllPathName();
+      expect(names.length).assertEqual(1);
+      expect(names[0]).assertEqual(LibraryDetailRoute.GENRE_TRACKS);
     });
   });
 }

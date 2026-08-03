@@ -6,6 +6,7 @@ import {
   ArtistDetailOverview,
   ArtistReference,
   AvailabilityState,
+  LibraryCategoryListItem,
   LibraryCatalog,
   LibraryPage,
   LibraryStatistics,
@@ -24,6 +25,7 @@ import { MusicLibraryAlbumQueries } from './MusicLibraryAlbumQueries';
 import { MusicLibraryDetailQueries } from './MusicLibraryDetailQueries';
 import { MusicLibraryMaintenanceQueries } from './MusicLibraryMaintenanceQueries';
 import { MusicLibraryTrackQueries } from './MusicLibraryTrackQueries';
+import { MusicLibraryBrowseQueries } from './MusicLibraryBrowseQueries';
 import {
   ArtworkAssetLookup,
   ArtworkCleanupCandidate,
@@ -41,12 +43,14 @@ export class MusicLibraryQueries {
   private readonly album: MusicLibraryAlbumQueries;
   private readonly detail: MusicLibraryDetailQueries;
   private readonly maintenance: MusicLibraryMaintenanceQueries;
+  private readonly browse: MusicLibraryBrowseQueries;
 
   constructor(database: LibraryDatabase) {
     this.track = new MusicLibraryTrackQueries(database);
     this.album = new MusicLibraryAlbumQueries(database);
     this.detail = new MusicLibraryDetailQueries(database);
     this.maintenance = new MusicLibraryMaintenanceQueries(database);
+    this.browse = new MusicLibraryBrowseQueries(database);
   }
 
   getStatistics(): Promise<LibraryStatistics> {
@@ -118,6 +122,36 @@ export class MusicLibraryQueries {
 
   getAlbumArtists(albumId: number): Promise<Array<ArtistReference>> {
     return this.detail.getAlbumArtists(albumId);
+  }
+
+  getArtistCatalog(): Promise<LibraryCatalog> {
+    return this.browse.getArtistCatalog();
+  }
+
+  getArtistPage(catalog: LibraryCatalog, offset: number,
+    limit: number): Promise<Array<LibraryCategoryListItem>> {
+    return this.browse.getArtistPage(catalog, offset, limit);
+  }
+
+  getGenreCatalog(): Promise<LibraryCatalog> {
+    return this.browse.getGenreCatalog();
+  }
+
+  getGenrePage(catalog: LibraryCatalog, offset: number,
+    limit: number): Promise<Array<LibraryCategoryListItem>> {
+    return this.browse.getGenrePage(catalog, offset, limit);
+  }
+
+  getGenreTrackCount(genreId: number): Promise<number> {
+    return this.browse.getGenreTrackCount(genreId);
+  }
+
+  getGenreTrackPage(genreId: number, offset: number, limit: number): Promise<Array<TrackListItem>> {
+    return this.browse.getGenreTrackPage(genreId, offset, limit);
+  }
+
+  getGenreTracks(genreId: number): Promise<Array<TrackListItem>> {
+    return this.browse.getGenreTracks(genreId);
   }
 
   getArtistDetail(artistId: number): Promise<ArtistDetail | undefined> {

@@ -271,6 +271,10 @@ struct Index {
     this.navigationController.openArtistTracks(artistId, artistName, this.usesWideLayout());
   }
 
+  private openGenreTracks(genreId: number, genreName: string): void {
+    this.navigationController.openGenreTracks(genreId, genreName, this.usesWideLayout());
+  }
+
   private openAlbumCollection(scope: AlbumCollectionScope, ownerId: number, title: string): void {
     this.navigationController.openAlbumCollection(scope, ownerId, title, this.usesWideLayout());
   }
@@ -509,6 +513,8 @@ struct Index {
       onNavigateLibrary: (target: LibraryNavigationTarget): void => this.navigateLibrary(target),
       onOpenArtistTracks: (artistId: number, artistName: string): void =>
         this.openArtistTracks(artistId, artistName),
+      onOpenGenreTracks: (genreId: number, genreName: string): void =>
+        this.openGenreTracks(genreId, genreName),
       onOpenAlbumCollection: (scope: AlbumCollectionScope, ownerId: number, title: string): void =>
         this.openAlbumCollection(scope, ownerId, title)
     })

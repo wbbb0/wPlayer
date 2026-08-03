@@ -14,6 +14,7 @@ import {
   AlbumCollectionRouteParams,
   ArtistDetailRouteParams,
   ArtistTrackCollectionRouteParams,
+  GenreTrackCollectionRouteParams,
   LibraryDetailRoute
 } from './LibraryNavigation';
 import { AlbumCollectionScope } from '../../library/store/LibraryCollectionState';
@@ -234,6 +235,13 @@ export class IndexNavigationController {
     this.activeNavigationStack(wideLayout).pushPath({
       name: LibraryDetailRoute.ARTIST_TRACKS,
       param: new ArtistTrackCollectionRouteParams(artistId, artistName)
+    });
+  }
+
+  openGenreTracks(genreId: number, genreName: string, wideLayout: boolean): void {
+    this.activeNavigationStack(wideLayout).pushPath({
+      name: LibraryDetailRoute.GENRE_TRACKS,
+      param: new GenreTrackCollectionRouteParams(genreId, genreName)
     });
   }
 

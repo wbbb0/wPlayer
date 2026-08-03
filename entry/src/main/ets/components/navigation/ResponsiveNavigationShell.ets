@@ -181,6 +181,8 @@ export struct ResponsiveNavigationShell {
     (_target: LibraryNavigationTarget): void => {};
   onOpenArtistTracks: (artistId: number, artistName: string) => void =
     (_artistId: number, _artistName: string): void => {};
+  onOpenGenreTracks: (genreId: number, genreName: string) => void =
+    (_genreId: number, _genreName: string): void => {};
   onOpenAlbumCollection: (scope: AlbumCollectionScope, ownerId: number, title: string) => void =
     (_scope: AlbumCollectionScope, _ownerId: number, _title: string): void => {};
   private readonly miniPlayerBuilder: () => void = (): void => this.MiniPlayer();
@@ -1208,6 +1210,7 @@ export struct ResponsiveNavigationShell {
       onShareTrackFile: this.onShareTrackFile,
       onNavigateLibrary: this.onNavigateLibrary,
       onOpenArtistTracks: this.onOpenArtistTracks,
+      onOpenGenreTracks: this.onOpenGenreTracks,
       onOpenAlbumCollection: this.onOpenAlbumCollection,
       onRequestAddToPlaylist: this.onRequestAddToPlaylist,
       onAlbumAction: (albumId: number, action: AlbumAction): void =>
@@ -1358,6 +1361,7 @@ export struct ResponsiveNavigationShell {
       onPlayerPageKeepScreenOnChange: this.onPlayerPageKeepScreenOnChange,
       onNavigateLibrary: this.onNavigateLibrary,
       onOpenArtistTracks: this.onOpenArtistTracks,
+      onOpenGenreTracks: this.onOpenGenreTracks,
       onOpenAlbumCollection: this.onOpenAlbumCollection,
       onRequestAddToPlaylist: this.onRequestAddToPlaylist,
       onShareTrackFile: this.onShareTrackFile,

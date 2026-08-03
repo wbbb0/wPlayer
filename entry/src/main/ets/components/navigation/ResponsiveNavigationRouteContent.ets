@@ -15,6 +15,8 @@ import {
 } from './MoreNavigation';
 import {
   LibraryEntityIdentity,
+  LibraryCategoryKind,
+  LibraryCategoryListItem,
   LibraryNavigationTarget,
   PlaylistSummary,
   TrackListItem
@@ -28,6 +30,7 @@ import { AlbumAction } from '../library/AlbumGridItem';
 import { PlaylistsPage } from '../../pages/library/PlaylistsPage';
 import { SongsPage } from '../../pages/library/SongsPage';
 import { AlbumsPage } from '../../pages/library/AlbumsPage';
+import { LibraryCategoryPage } from '../../pages/library/LibraryCategoryPage';
 import { LibraryManagementPage } from '../../pages/library/LibraryManagementPage';
 import { SettingsPage } from '../../pages/settings/SettingsPage';
 import { DebugPage } from '../../pages/settings/DebugPage';
@@ -37,7 +40,7 @@ import {
   AlbumDetailPage
 } from '../../pages/library/AlbumDetailPage';
 import { ArtistDetailPage } from '../../pages/library/ArtistDetailPage';
-import { ArtistTrackCollectionPage } from '../../pages/library/ArtistTrackCollectionPage';
+import { LibraryTrackCollectionPage } from '../../pages/library/ArtistTrackCollectionPage';
 import { AlbumCollectionPage } from '../../pages/library/AlbumCollectionPage';
 import { AlbumCollectionScope } from '../../library/store/LibraryCollectionState';
 import { FloatingWindowSettingsPage } from '../../pages/settings/FloatingWindowSettingsPage';
@@ -55,6 +58,7 @@ import {
   AlbumCollectionRouteParams,
   ArtistDetailRouteParams,
   ArtistTrackCollectionRouteParams,
+  GenreTrackCollectionRouteParams,
   LibraryCollectionSelectionParams,
   LibraryDetailRoute,
   albumTarget,
@@ -113,6 +117,8 @@ export struct ResponsiveNavigationRouteContent {
     (_target: LibraryNavigationTarget): void => {};
   onOpenArtistTracks: (artistId: number, artistName: string) => void =
     (_artistId: number, _artistName: string): void => {};
+  onOpenGenreTracks: (genreId: number, genreName: string) => void =
+    (_genreId: number, _genreName: string): void => {};
   onOpenAlbumCollection: (scope: AlbumCollectionScope, ownerId: number, title: string) => void =
     (_scope: AlbumCollectionScope, _ownerId: number, _title: string): void => {};
   onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
@@ -177,6 +183,25 @@ export struct ResponsiveNavigationRouteContent {
         onAlbumAction: (item, action): void => this.onAlbumAction(item.id, action),
         onNavigateAlbumAction: this.onNavigateLibrary,
         onRequestAddToPlaylist: this.onRequestAddToPlaylist
+      })
+    } else if (navigationPageKind(this.routeId) === NavigationPageKind.ARTISTS) {
+      LibraryCategoryPage({
+        store: this.libraryStore,
+        kind: LibraryCategoryKind.ARTIST,
+        topInset: this.topInset,
+        bottomInset: this.bottomInset,
+        scroller: this.scroller,
+        onOpenCategory: (item: LibraryCategoryListItem): void =>
+          this.onNavigateLibrary(artistTarget({ id: item.id, name: item.name }))
+      })
+    } else if (navigationPageKind(this.routeId) === NavigationPageKind.GENRES) {
+      LibraryCategoryPage({
+        store: this.libraryStore,
+        kind: LibraryCategoryKind.GENRE,
+        topInset: this.topInset,
+        bottomInset: this.bottomInset,
+        scroller: this.scroller,
+        onOpenCategory: (item: LibraryCategoryListItem): void => this.onOpenGenreTracks(item.id, item.name)
       })
     } else if (navigationPageKind(this.routeId) === NavigationPageKind.LIBRARY_MANAGEMENT) {
       LibraryManagementPage({
@@ -315,6 +340,8 @@ export struct ResponsiveNavigationDestinationContent {
     (_target: LibraryNavigationTarget): void => {};
   onOpenArtistTracks: (artistId: number, artistName: string) => void =
     (_artistId: number, _artistName: string): void => {};
+  onOpenGenreTracks: (genreId: number, genreName: string) => void =
+    (_genreId: number, _genreName: string): void => {};
   onOpenAlbumCollection: (scope: AlbumCollectionScope, ownerId: number, title: string) => void =
     (_scope: AlbumCollectionScope, _ownerId: number, _title: string): void => {};
   onRequestAddToPlaylist: (items: Array<TrackListItem>) => void =
@@ -354,6 +381,8 @@ export struct ResponsiveNavigationDestinationContent {
       (this.param as ArtistDetailRouteParams).selection.cancel();
     } else if (this.name === LibraryDetailRoute.ARTIST_TRACKS) {
       (this.param as ArtistTrackCollectionRouteParams).selection.cancel();
+    } else if (this.name === LibraryDetailRoute.GENRE_TRACKS) {
+      (this.param as GenreTrackCollectionRouteParams).selection.cancel();
     } else if (this.name === LibraryDetailRoute.ALBUM_COLLECTION) {
       (this.param as AlbumCollectionRouteParams).selection.cancel();
     }
@@ -543,7 +572,7 @@ export struct ResponsiveNavigationDestinationContent {
     } else if (this.name === LibraryDetailRoute.ARTIST_TRACKS) {
       HdsNavDestination() {
         Stack({ alignContent: Alignment.Bottom }) {
-          ArtistTrackCollectionPage({
+          LibraryTrackCollectionPage({
             store: this.libraryStore,
             state: (this.param as ArtistTrackCollectionRouteParams).state,
             selection: (this.param as ArtistTrackCollectionRouteParams).selection,
@@ -574,6 +603,41 @@ export struct ResponsiveNavigationDestinationContent {
         this.playbackChromeBackgroundColor()
       ))
       .bindToScrollable([(this.param as ArtistTrackCollectionRouteParams).scroller])
+      .onBackPressed(this.onDestinationBackPressed)
+    } else if (this.name === LibraryDetailRoute.GENRE_TRACKS) {
+      HdsNavDestination() {
+        Stack({ alignContent: Alignment.Bottom }) {
+          LibraryTrackCollectionPage({
+            store: this.libraryStore,
+            state: (this.param as GenreTrackCollectionRouteParams).state,
+            selection: (this.param as GenreTrackCollectionRouteParams).selection,
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            scroller: (this.param as GenreTrackCollectionRouteParams).scroller,
+            actionAnchorPrefix: (this.param as GenreTrackCollectionRouteParams).anchorPrefix(),
+            onOpenTrackActions: (item: TrackListItem, anchorId: string): void =>
+              this.onOpenTrackActions(item, anchorId),
+            onOpenTrackDetails: this.onOpenTrackDetails,
+            onShareTrackFile: this.onShareTrackFile,
+            onNavigateTrackAction: this.onNavigateLibrary,
+            onRequestAddToPlaylist: this.onRequestAddToPlaylist
+          })
+          PageBottomGradient({ maskColor: this.themePageBackground })
+        }.width('100%').height('100%')
+      }
+      .width('100%').height('100%')
+      .backgroundColor(this.themePageBackground)
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        (this.param as GenreTrackCollectionRouteParams).title,
+        this.collectionTitleMenu(
+          this.param as GenreTrackCollectionRouteParams,
+          this.detailSelectionRevision,
+          (this.param as GenreTrackCollectionRouteParams).state.totalCount
+        ),
+        this.playbackChromeBackgroundColor()
+      ))
+      .bindToScrollable([(this.param as GenreTrackCollectionRouteParams).scroller])
       .onBackPressed(this.onDestinationBackPressed)
     } else if (this.name === LibraryDetailRoute.ALBUM_COLLECTION) {
       HdsNavDestination() {
@@ -885,6 +949,7 @@ export struct ResponsiveNavigationDestinationContent {
             onShareTrackFile: this.onShareTrackFile,
             onNavigateLibrary: this.onNavigateLibrary,
             onOpenArtistTracks: this.onOpenArtistTracks,
+            onOpenGenreTracks: this.onOpenGenreTracks,
             onOpenAlbumCollection: this.onOpenAlbumCollection,
             onRequestAddToPlaylist: this.onRequestAddToPlaylist,
             onAlbumAction: this.onAlbumAction,

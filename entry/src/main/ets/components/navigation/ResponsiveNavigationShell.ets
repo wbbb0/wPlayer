@@ -1188,6 +1188,7 @@ export struct ResponsiveNavigationShell {
         });
       },
       onRequestRenamePlaylist: this.onRequestRenamePlaylist,
+      onExportPlaylist: (playlistId: number): void => this.exportPlaylist(playlistId),
       onPlayTrack: (item: TrackListItem): void => this.playLibraryTrack(item),
       onOpenTrackActions: (item: TrackListItem, anchorId: string): void =>
         this.openTrackActions(item, anchorId),
@@ -1269,6 +1270,7 @@ export struct ResponsiveNavigationShell {
         });
       },
       onRequestRenamePlaylist: this.onRequestRenamePlaylist,
+      onExportPlaylist: (playlistId: number): void => this.exportPlaylist(playlistId),
       onPlayTrack: (item: TrackListItem): void => this.playLibraryTrack(item),
       onOpenNavigationCustomization: this.onOpenNavigationCustomization,
       onOpenFloatingWindowSettings: (): void =>

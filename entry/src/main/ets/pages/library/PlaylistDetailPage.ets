@@ -1,4 +1,3 @@
-import { HdsListItem } from '@kit.UIDesignKit';
 import { PageLayoutSpec } from '../../components/layout/PageLayoutSpec';
 import { PageListBehavior } from '../../components/layout/PageScrollBehavior';
 import {
@@ -426,26 +425,17 @@ export struct PlaylistDetailPage {
           if (this.store.detailOverview?.playlist.id === this.playlistId) {
             LazyForEach(this.store.detailItemDataSource, (slot: LibrarySlot<PlaylistTrackItem>) => {
               if (slot.value !== undefined) {
-                HdsListItem({
-                  customItemBuilder: () => {
-                    this.TrackContent(slot.value!)
-                  },
-                  swipeActionOptions: {
-                    deleteIconOptions: {
-                      onAction: () => this.confirmRemoveTrack(slot.value!)
-                    }
-                  }
-                })
+                ListItem() {
+                  this.TrackContent(slot.value!)
+                }
                   .height(this.isRemovingTrack(slot.value.id) ? 0 : 62)
                   .clip(true)
                   .opacity(this.isRemovingTrack(slot.value.id) ? 0 : 1)
                   .translate({ x: this.isRemovingTrack(slot.value.id) ? -28 : 0 })
               } else {
-                HdsListItem({
-                  customItemBuilder: () => {
-                    this.TrackPlaceholder()
-                  }
-                })
+                ListItem() {
+                  this.TrackPlaceholder()
+                }
                   .height(62)
               }
             }, (slot: LibrarySlot<PlaylistTrackItem>) => slot.key)

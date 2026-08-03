@@ -97,6 +97,7 @@ export struct ResponsiveNavigationRouteContent {
     (_playlist: PlaylistSummary): void => {};
   onRequestRenamePlaylist: (playlist: PlaylistSummary) => void =
     (_playlist: PlaylistSummary): void => {};
+  onExportPlaylist: (playlistId: number) => void = (_playlistId: number): void => {};
   onPlayTrack: (item: TrackListItem) => void = (_item: TrackListItem): void => {};
   onOpenTrackActions: (item: TrackListItem, anchorId: string) => void =
     (_item: TrackListItem, _anchorId: string): void => {};
@@ -132,6 +133,7 @@ export struct ResponsiveNavigationRouteContent {
         scroller: this.scroller,
         onOpenPlaylist: this.onOpenPlaylist,
         onRequestRename: this.onRequestRenamePlaylist,
+        onExportPlaylist: this.onExportPlaylist,
         onRequestAddToPlaylist: this.onRequestAddToPlaylist
       })
     } else if (navigationPageKind(this.routeId) === NavigationPageKind.SONGS) {
@@ -233,6 +235,7 @@ export struct ResponsiveNavigationDestinationContent {
     (_playlist: PlaylistSummary): void => {};
   onRequestRenamePlaylist: (playlist: PlaylistSummary) => void =
     (_playlist: PlaylistSummary): void => {};
+  onExportPlaylist: (playlistId: number) => void = (_playlistId: number): void => {};
   onPlayTrack: (item: TrackListItem) => void = (_item: TrackListItem): void => {};
   onOpenNavigationCustomization: () => void = (): void => {};
   onOpenFloatingWindowSettings: () => void = (): void => {};
@@ -763,6 +766,7 @@ export struct ResponsiveNavigationDestinationContent {
             scroller: this.routeScroller(this.name),
             onOpenPlaylist: this.onOpenPlaylist,
             onRequestRenamePlaylist: this.onRequestRenamePlaylist,
+            onExportPlaylist: this.onExportPlaylist,
             onPlayTrack: this.onPlayTrack,
             onOpenTrackActions: (item: TrackListItem, anchorId: string): void =>
               this.onOpenTrackActions(item, anchorId),

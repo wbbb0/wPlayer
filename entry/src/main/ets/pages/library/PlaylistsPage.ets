@@ -25,6 +25,7 @@ export struct PlaylistsPage {
   scroller: Scroller = new Scroller();
   onOpenPlaylist: (playlist: PlaylistSummary) => void = (_playlist: PlaylistSummary): void => {};
   onRequestRename: (playlist: PlaylistSummary) => void = (_playlist: PlaylistSummary): void => {};
+  onExportPlaylist: (playlistId: number) => void = (_playlistId: number): void => {};
   private readonly scrollBehavior: PageListBehavior = new PageListBehavior();
   @State private removingPlaylistIds: Array<number> = [];
   @State private selectedPlaylists: Array<PlaylistSummary> = [];
@@ -180,6 +181,9 @@ export struct PlaylistsPage {
     Menu() {
       MenuItem({ content: '播放' })
         .onClick(() => this.onOpenPlaylist(playlist))
+      MenuSectionDivider()
+      MenuItem({ content: '导出为 M3U8' })
+        .onClick(() => this.onExportPlaylist(playlist.id))
       if (playlist.kind === PlaylistKind.USER) {
         MenuSectionDivider()
         MenuItem({ content: '改名' })

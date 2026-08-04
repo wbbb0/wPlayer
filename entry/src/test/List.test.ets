@@ -40,6 +40,7 @@ import tabReselectionTest from './TabReselection.test';
 import playerPageKeepScreenOnControllerTest from './PlayerPageKeepScreenOnController.test';
 import musicFileShareCoordinatorTest from './MusicFileShareCoordinator.test';
 import dragSelectionRangePolicyTest from './DragSelectionRangePolicy.test';
+import fullPlayerQueueRefreshStateTest from './FullPlayerQueueRefreshState.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -84,4 +85,5 @@ export default function testsuite() {
   playerPageKeepScreenOnControllerTest();
   musicFileShareCoordinatorTest();
   dragSelectionRangePolicyTest();
+  fullPlayerQueueRefreshStateTest();
 }

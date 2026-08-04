@@ -13,7 +13,8 @@ export class DragSelectionRangePolicy {
 }
 
 class DragSelectionTarget {
-  readonly id: number;
+  readonly key: number;
+  id: number;
   order: number;
   mode: DragSelectionHitMode;
   left: number = 0;
@@ -23,8 +24,9 @@ class DragSelectionTarget {
   isSelected: () => boolean;
   apply: (selected: boolean) => void;
 
-  constructor(id: number, order: number, mode: DragSelectionHitMode,
+  constructor(key: number, id: number, order: number, mode: DragSelectionHitMode,
     isSelected: () => boolean, apply: (selected: boolean) => void) {
+    this.key = key;
     this.id = id;
     this.order = order;
     this.mode = mode;
@@ -66,13 +68,14 @@ export class DragSelectionController {
     this.onActiveChanged = onActiveChanged;
   }
 
-  updateTarget(id: number, order: number, area: Area, mode: DragSelectionHitMode,
+  updateTarget(key: number, id: number, order: number, area: Area, mode: DragSelectionHitMode,
     isSelected: () => boolean, apply: (selected: boolean) => void): void {
-    let target = this.targets.find((item: DragSelectionTarget): boolean => item.id === id);
+    let target = this.targets.find((item: DragSelectionTarget): boolean => item.key === key);
     if (target === undefined) {
-      target = new DragSelectionTarget(id, order, mode, isSelected, apply);
+      target = new DragSelectionTarget(key, id, order, mode, isSelected, apply);
       this.targets.push(target);
     } else {
+      target.id = id;
       target.order = order;
       target.mode = mode;
       target.isSelected = isSelected;
@@ -81,10 +84,11 @@ export class DragSelectionController {
     target.update(area);
     if (this.active) {
       const sessionTarget = this.sessionTargets.find(
-        (item: DragSelectionTarget): boolean => item.id === id);
+        (item: DragSelectionTarget): boolean => item.key === key);
       if (sessionTarget === undefined) {
         this.sessionTargets.push(target);
       } else {
+        sessionTarget.id = id;
         sessionTarget.order = order;
         sessionTarget.mode = mode;
         sessionTarget.isSelected = isSelected;
@@ -95,8 +99,8 @@ export class DragSelectionController {
     }
   }
 
-  removeTarget(id: number): void {
-    this.targets = this.targets.filter((target: DragSelectionTarget): boolean => target.id !== id);
+  removeTarget(key: number): void {
+    this.targets = this.targets.filter((target: DragSelectionTarget): boolean => target.key !== key);
   }
 
   start(id: number): void {
@@ -134,6 +138,14 @@ export class DragSelectionController {
 
   cancel(): void {
     this.reset();
+  }
+
+  remapTargets(resolveOrder: (id: number) => number): void {
+    this.cancel();
+    this.targets.forEach((target: DragSelectionTarget): void => {
+      target.order = resolveOrder(target.id);
+    });
+    this.targets = this.targets.filter((target: DragSelectionTarget): boolean => target.order >= 0);
   }
 
   private reset(): void {

@@ -389,7 +389,7 @@ export struct PlaylistDetailPage {
         this.toggleSelection(track as PlaylistTrackItem),
       onSelectionTargetAreaChange: (track: TrackListItem, area: Area): void => {
         const item = track as PlaylistTrackItem;
-        this.dragSelection.updateTarget(item.id, order, area, DragSelectionHitMode.ROW,
+        this.dragSelection.updateTarget(item.id, item.id, order, area, DragSelectionHitMode.ROW,
           (): boolean => this.selection.isSelected(item.id),
           (selected: boolean): void => this.setSelection(item, selected));
       },

@@ -1,4 +1,3 @@
-import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import { TimedLyricLine } from '../../playback/lyrics/LyricsParser';
 import {
   PlaybackProgressStore,
@@ -105,7 +104,6 @@ export struct PlayerProgressControl {
         .selectedColor(this.primaryContentColor)
         .trackColor(this.secondaryContentColor)
         .blockColor(this.primaryContentColor)
-        .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
         .trackThickness(PlayerLayoutSpec.FULL_PLAYER_PROGRESS_TRACK_THICKNESS)
         .enabled(this.progressStore.durationMs > 0)
         .onChange((value: number, mode: SliderChangeMode) => {
@@ -125,12 +123,10 @@ export struct PlayerProgressControl {
         Text(this.durationLabel(this.displayedPositionMs()))
           .fontSize(11)
           .fontColor(this.secondaryContentColor)
-          .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
         Blank()
         Text(this.durationLabel(this.progressStore.durationMs))
           .fontSize(11)
           .fontColor(this.secondaryContentColor)
-          .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
       }
       .width('100%')
     }

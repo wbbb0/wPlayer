@@ -2,7 +2,7 @@ import { describe, it, expect } from '@ohos/hypium';
 import {
   QueueBuildPhase,
   QueueEntry,
-  QueueEntryPresentation,
+  QueuePositionSlot,
   QueueTrackDataSource,
   QueueTrack,
   PlayerStore,
@@ -124,10 +124,9 @@ export default function playbackQueueRegressionTest() {
       expect(listener.batches.length).assertEqual(0);
     });
 
-    it('projects a stable-entry permutation through disjoint exchange layers', 0, () => {
+    it('projects a stable-entry permutation without touching stable position slots', 0, () => {
       const source = new QueueTrackDataSource();
       const listener = new QueueDataListener();
-      const scheduled: Array<() => void> = [];
       const original: Array<QueueEntry> = [
         { queueEntryId: 10, track: queueTrack(7, 'first duplicate') },
         { queueEntryId: 11, track: queueTrack(8, 'middle') },
@@ -136,56 +135,61 @@ export default function playbackQueueRegressionTest() {
       const reordered: Array<QueueEntry> = [original[2], original[0], original[1]];
       source.registerDataChangeListener(listener);
       source.replace(original);
-      source.setFrameScheduler((task: () => void): void => {
-        scheduled.push(task);
-      });
+      const slots = original.map((_entry: QueueEntry, index: number): QueuePositionSlot =>
+        source.getData(index));
+      const revision = source.projectionState.revision;
       listener.batches = [];
 
       source.applySnapshot(reordered, 0, [0, 2], (_index: number): void => {});
-      expect(listener.batches.length).assertEqual(1);
-      expect(listener.operations.length).assertEqual(1);
-      expect(listener.operations[0].type).assertEqual(DataOperationType.EXCHANGE);
-      expect(scheduled.length).assertEqual(1);
-      scheduled[0]();
-
-      expect(listener.batches.length).assertEqual(2);
-      expect(listener.operations.length).assertEqual(1);
-      expect(listener.operations[0].type).assertEqual(DataOperationType.EXCHANGE);
+      expect(listener.batches.length).assertEqual(0);
+      expect(source.projectionState.revision).assertEqual(revision + 1);
+      slots.forEach((slot: QueuePositionSlot, index: number): void => {
+        expect(source.getData(index) === slot).assertTrue();
+      });
       expect(source.snapshot().map((entry: QueueEntry): number => entry.queueEntryId).join(','))
         .assertEqual('12,10,11');
+      expect(source.projectionState.displayIndex(12)).assertEqual(0);
+      expect(source.projectionState.displayIndex(10)).assertEqual(1);
+      expect(source.projectionState.displayIndex(11)).assertEqual(2);
+      expect(source.projectionState.isActive(12)).assertTrue();
     });
 
-    it('keeps a newer cursor update across the second permutation frame', 0, () => {
+    it('keeps a newer cursor update after a slot projection permutation', 0, () => {
       const store = new PlayerStore();
-      const listener = new QueueDataListener();
-      const scheduled: Array<() => void> = [];
       const focused: Array<number> = [];
       const original: Array<QueueEntry> = [
         { queueEntryId: 10, track: queueTrack(1, 'one') },
         { queueEntryId: 11, track: queueTrack(2, 'two') },
         { queueEntryId: 12, track: queueTrack(3, 'three') }
       ];
-      store.queueDataSource.registerDataChangeListener(listener);
       store.applyQueueSnapshot(original, 0);
-      store.queueDataSource.setFrameScheduler((task: () => void): void => {
-        scheduled.push(task);
-      });
       store.addQueueIndexListener((index: number): void => {
         focused.push(index);
       });
 
       store.applyQueueSnapshot([original[2], original[0], original[1]], 0);
-      expect((store.queueDataSource.getData(0) as QueueEntryPresentation).entry.queueEntryId)
+      expect(store.queueDataSource.projectionState.entryAt(0)?.queueEntryId)
         .assertEqual(12);
-      expect((store.queueDataSource.getData(0) as QueueEntryPresentation).isActive()).assertTrue();
       store.setQueueCurrentIndex(1, original[0].queueEntryId);
-      scheduled[0]();
 
       expect(store.queueCurrentIndex).assertEqual(1);
       expect(focused.join(',')).assertEqual('1');
-      expect((store.queueDataSource.getData(1) as QueueEntryPresentation).entry.queueEntryId)
+      expect(store.queueDataSource.projectionState.entryAt(1)?.queueEntryId)
         .assertEqual(10);
-      expect((store.queueDataSource.getData(1) as QueueEntryPresentation).isActive()).assertTrue();
+      expect(store.queueDataSource.projectionState.isActive(10)).assertTrue();
+    });
+
+    it('notifies queue surfaces before a structural reload', 0, () => {
+      const source = new QueueTrackDataSource();
+      let reloadCount = 0;
+      const onReload = (): void => { reloadCount += 1; };
+      source.addProjectionListener(onReload);
+
+      source.replace([{ queueEntryId: 1, track: queueTrack(1, 'one') }]);
+      source.removeProjectionListener(onReload);
+      source.replace([{ queueEntryId: 2, track: queueTrack(2, 'two') }]);
+
+      expect(reloadCount).assertEqual(1);
     });
 
     it('reloads queue rows when the entry identity set changes', 0, () => {
@@ -341,7 +345,7 @@ export default function playbackQueueRegressionTest() {
       expect(afterEntryIds[1] === afterEntryIds[2]).assertFalse();
     });
 
-    it('projects shuffled playback order without reloading the queue', 0, () => {
+    it('projects shuffled playback order with no data-source operation', 0, () => {
       const queue = new PlaybackQueue();
       const store = new PlayerStore();
       const listener = new QueueDataListener();
@@ -351,15 +355,10 @@ export default function playbackQueueRegressionTest() {
       const before = queue.playbackSnapshot();
       store.queueDataSource.registerDataChangeListener(listener);
       store.applyQueueSnapshot(before.entries, before.currentIndex);
-      listener.operations = [];
-      const scheduled: Array<() => void> = [];
-      store.queueDataSource.setFrameScheduler((task: () => void): void => {
-        scheduled.push(task);
-      });
+      listener.batches = [];
       queue.setShuffle(true);
       const after = queue.playbackSnapshot();
       store.applyQueueSnapshot(after.entries, after.currentIndex);
-      scheduled.forEach((task: () => void): void => task());
 
       expect(after.entries[0].track.id).assertEqual(2);
       expect(after.entries.map((entry: QueueEntry): number => entry.queueEntryId).sort().join(','))
@@ -367,11 +366,44 @@ export default function playbackQueueRegressionTest() {
       expect(after.currentIndex).assertEqual(0);
       expect(queue.currentPlaybackPosition()).assertEqual(0);
       expect(queue.current()?.id).assertEqual(2);
-      expect(listener.batches.some((batch: Array<DataOperation>): boolean =>
-        batch.some((operation: DataOperation): boolean =>
-          operation.type === DataOperationType.EXCHANGE))).assertTrue();
-      expect(listener.operations.some((operation: DataOperation): boolean =>
-        operation.type === DataOperationType.RELOAD)).assertFalse();
+      expect(listener.batches.length).assertEqual(0);
+    });
+
+    it('keeps large shuffle projection slots stable with zero notifications', 0, () => {
+      const queue = new PlaybackQueue();
+      const store = new PlayerStore();
+      const listener = new QueueDataListener();
+      const items: Array<QueueTrack> = [];
+      for (let index = 0; index < 10000; index += 1) {
+        items.push(queueTrack(index + 1, `track-${index + 1}`));
+      }
+      queue.build(items, 5000, false);
+      const before = queue.playbackSnapshot();
+      store.queueDataSource.registerDataChangeListener(listener);
+      store.applyQueueSnapshot(before.entries, before.currentIndex);
+      const slots: Array<QueuePositionSlot> = [];
+      for (let index = 0; index < items.length; index += 1) {
+        slots.push(store.queueDataSource.getData(index));
+      }
+      const revision = store.queueDataSource.projectionState.revision;
+      listener.batches = [];
+
+      queue.setShuffle(true);
+      const after = queue.playbackSnapshot();
+      store.applyQueueSnapshot(after.entries, after.currentIndex);
+
+      expect(listener.batches.length).assertEqual(0);
+      for (let index = 0; index < slots.length; index += 1) {
+        expect(store.queueDataSource.getData(index) === slots[index]).assertTrue();
+      }
+      expect(store.queueDataSource.projectionState.revision).assertEqual(revision + 1);
+      expect(store.queueDataSource.projectionState.entryAt(0)?.queueEntryId)
+        .assertEqual(after.entries[0].queueEntryId);
+      expect(store.queueDataSource.projectionState.entryAt(5000)?.queueEntryId)
+        .assertEqual(after.entries[5000].queueEntryId);
+      expect(store.queueDataSource.projectionState.entryAt(9999)?.queueEntryId)
+        .assertEqual(after.entries[9999].queueEntryId);
+      expect(queue.currentEntryId()).assertEqual(before.entries[before.currentIndex].queueEntryId);
     });
 
     it('restores base order and shuffled playback order as separate state', 0, () => {

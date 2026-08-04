@@ -231,7 +231,7 @@ export struct PlaylistsPage {
       onActivate: this.onOpenPlaylist,
       onToggleSelection: (item: PlaylistSummary): void => this.toggleSelection(item),
       onSelectionTargetAreaChange: (item: PlaylistSummary, area: Area): void =>
-        this.dragSelection.updateTarget(item.id, order, area, DragSelectionHitMode.ROW,
+        this.dragSelection.updateTarget(item.id, item.id, order, area, DragSelectionHitMode.ROW,
           (): boolean => this.selection.isSelected(item.id),
           (selected: boolean): void => this.setSelection(item, selected)),
       onSelectionTargetRemoved: (id: number): void => this.dragSelection.removeTarget(id),

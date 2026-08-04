@@ -147,8 +147,14 @@ suppressing another.
 - “播放所选” follows the manual-play shuffle preference: by default it disables shuffle and preserves selection
   order; when “手动选歌时保持随机” is enabled it builds a matching shuffled traversal and state.
 - The queue page displays active playback order, so shuffle visibly reorders rows and their relative position
-  numbers. Pure permutations use frame-separated disjoint row exchanges rather than a full reload and must not
-  implicitly animate the surrounding navigation tree.
+  numbers. Pure permutations update the order behind stable position slots without RELOAD, EXCHANGE or full-list
+  CHANGE notifications. Slot leaves resolve the current queue entry; shuffle must not open an implicit animation
+  transaction anywhere in the mounted full-player tree.
+- Tapping the queue-page shuffle control removes the complete queue list before changing the permutation. While the
+  ordered database write is pending, the queue content area shows the platform `LoadingProgress` centered in the
+  available space and ignores further queue mode input. After completion or failure, the list is rebuilt with
+  `Visibility.Hidden`, positioned at the current item with non-animated scrolling, and revealed on the following
+  frame. Persistence failure does not roll back the in-memory queue and must not leave the page in loading state.
 
 ## Full-player shared-element morph
 

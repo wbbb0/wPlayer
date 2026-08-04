@@ -19,7 +19,6 @@ import {
 } from './PlayerActionMenus';
 import { LayoutLength } from '../layout/LayoutLength';
 import { ArtworkLayout, ArtworkSize } from '../artwork/ArtworkLayout';
-import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import { DynamicColor, ForegroundEmphasis } from '../../appearance/DynamicColor';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { PlayerTrackMarquee } from './PlayerTrackMarquee';
@@ -250,7 +249,8 @@ export struct FullPlayerCoverPage {
       PlayerImageIcon({
         source: $r('app.media.control_picture_in_picture'),
         iconSize: 20,
-        contentColor: this.contentColor()
+        contentColor: this.contentColor(),
+        animateColor: false
       })
     }
     .width(40)
@@ -271,7 +271,8 @@ export struct FullPlayerCoverPage {
         symbol: page === FullPlayerPage.QUEUE ?
           $r('sys.symbol.music_note_list_fill') : $r('sys.symbol.lyrics_square'),
         iconSize: 22,
-        contentColor: this.contentColor()
+        contentColor: this.contentColor(),
+        animateColor: false
       })
     }
     .width(44)
@@ -340,9 +341,9 @@ export struct FullPlayerCoverPage {
               playerStore: this.playerStore,
               active: this.marqueeActive,
               titleColor: this.contentColor(),
+              animateColor: false,
               titleSize: PlayerLayoutSpec.FULL_PLAYER_TITLE_SIZE,
-              titleWeight: FontWeight.Bold,
-              animateColor: true
+              titleWeight: FontWeight.Bold
             })
               .layoutWeight(1)
           }
@@ -355,7 +356,8 @@ export struct FullPlayerCoverPage {
             PlayerImageIcon({
               source: $r('app.media.control_more'),
               iconSize: 20,
-              contentColor: this.contentColor()
+              contentColor: this.contentColor(),
+              animateColor: false
             })
           }
           .width(40)
@@ -378,7 +380,6 @@ export struct FullPlayerCoverPage {
           Text(this.currentArtistLabel())
             .fontSize(PlayerLayoutSpec.FULL_PLAYER_ARTIST_SIZE)
             .fontColor(this.secondaryContentColor())
-            .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
             .maxLines(1)
             .id('full_player_artist_action')
             .accessibilityText('查看艺术家、专辑艺术家或专辑')
@@ -418,13 +419,15 @@ export struct FullPlayerCoverPage {
             playerStore: this.playerStore,
             action: PlayerTransportAction.PREVIOUS,
             buttonSize: 52,
-            contentColor: this.contentColor()
+            contentColor: this.contentColor(),
+            iconAnimationEnabled: false
           })
           PlayerPlaybackButton({
             playerStore: this.playerStore,
             buttonSize: PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE,
             iconSize: PlayerLayoutSpec.FULL_PLAYBACK_ICON_SIZE,
-            contentColor: this.contentColor()
+            contentColor: this.contentColor(),
+            iconAnimationEnabled: false
           })
             .opacity(this.showPlaybackButton ? 1 : 0)
             .enabled(this.showPlaybackButton)
@@ -434,11 +437,12 @@ export struct FullPlayerCoverPage {
                 PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE
               );
             })
-          PlayerTransportButton({
+        PlayerTransportButton({
             playerStore: this.playerStore,
             action: PlayerTransportAction.NEXT,
             buttonSize: 52,
-            contentColor: this.contentColor()
+          contentColor: this.contentColor(),
+          iconAnimationEnabled: false
           })
         }
         .align(Alignment.Center)
@@ -472,15 +476,14 @@ export struct FullPlayerCoverPage {
             playerStore: this.playerStore,
             active: this.marqueeActive,
             titleColor: this.contentColor(),
+            animateColor: false,
             titleSize: PlayerLayoutSpec.FULL_PLAYER_TITLE_SIZE,
-            titleWeight: FontWeight.Bold,
-            animateColor: true
+            titleWeight: FontWeight.Bold
           })
         }
         Text(this.currentArtistLabel())
           .fontSize(PlayerLayoutSpec.FULL_PLAYER_ARTIST_SIZE)
           .fontColor(this.secondaryContentColor())
-          .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .id('ultra_compact_player_artist_action')
@@ -515,13 +518,15 @@ export struct FullPlayerCoverPage {
         playerStore: this.playerStore,
         action: PlayerTransportAction.PREVIOUS,
         buttonSize: PlayerLayoutSpec.ULTRA_COMPACT_TRANSPORT_BUTTON_SIZE,
-        contentColor: this.contentColor()
+        contentColor: this.contentColor(),
+        iconAnimationEnabled: false
       })
       PlayerPlaybackButton({
         playerStore: this.playerStore,
         buttonSize: PlayerLayoutSpec.ULTRA_COMPACT_PLAYBACK_BUTTON_SIZE,
         iconSize: PlayerLayoutSpec.ULTRA_COMPACT_PLAYBACK_ICON_SIZE,
-        contentColor: this.contentColor()
+        contentColor: this.contentColor(),
+        iconAnimationEnabled: false
       })
         .opacity(this.showPlaybackButton ? 1 : 0)
         .enabled(this.showPlaybackButton)
@@ -535,7 +540,8 @@ export struct FullPlayerCoverPage {
         playerStore: this.playerStore,
         action: PlayerTransportAction.NEXT,
         buttonSize: PlayerLayoutSpec.ULTRA_COMPACT_TRANSPORT_BUTTON_SIZE,
-        contentColor: this.contentColor()
+        contentColor: this.contentColor(),
+        iconAnimationEnabled: false
       })
     }
     .alignItems(HorizontalAlign.Center)

@@ -62,102 +62,89 @@ export interface QueueEntry {
 }
 
 @Observed
-export class QueueEntryPresentation {
-  entry: QueueEntry;
-  displayIndex: number;
-  currentDisplayIndex: number;
+export class QueuePositionSlot {
+  readonly index: number;
 
-  constructor(entry: QueueEntry, displayIndex: number, currentDisplayIndex: number) {
-    this.entry = entry;
-    this.displayIndex = displayIndex;
-    this.currentDisplayIndex = currentDisplayIndex;
-  }
-
-  isActive(): boolean {
-    return this.displayIndex === this.currentDisplayIndex;
+  constructor(index: number) {
+    this.index = index;
   }
 }
 
-export interface QueueIndexExchange {
-  start: number;
-  end: number;
-}
+@Observed
+export class QueueProjectionState {
+  revision: number = 0;
+  private entries: Array<QueueEntry> = [];
+  private currentIndex: number = -1;
+  private indexByEntryId: Map<number, number> = new Map<number, number>();
 
-export class QueuePermutationLayers {
-  readonly first: Array<QueueIndexExchange>;
-  readonly second: Array<QueueIndexExchange>;
-
-  constructor(first: Array<QueueIndexExchange>, second: Array<QueueIndexExchange>) {
-    this.first = first;
-    this.second = second;
-  }
-}
-
-export class QueuePermutationPolicy {
-  static project(currentEntryIds: Array<number>, targetEntryIds: Array<number>): QueuePermutationLayers {
-    const first: Array<QueueIndexExchange> = [];
-    const second: Array<QueueIndexExchange> = [];
-    const targetIndexById = new Map<number, number>();
-    targetEntryIds.forEach((entryId: number, index: number): void => {
-      targetIndexById.set(entryId, index);
+  replace(entries: Array<QueueEntry>, currentIndex: number): void {
+    const nextIndexByEntryId = new Map<number, number>();
+    entries.forEach((entry: QueueEntry, index: number): void => {
+      nextIndexByEntryId.set(entry.queueEntryId, index);
     });
-    const destinationBySource: Array<number> = currentEntryIds.map((entryId: number): number =>
-      targetIndexById.get(entryId) as number);
-    const visited = new Set<number>();
-    for (let source = 0; source < destinationBySource.length; source += 1) {
-      if (visited.has(source) || destinationBySource[source] === source) {
-        visited.add(source);
-        continue;
-      }
-      const cycle: Array<number> = [];
-      let cursor = source;
-      while (!visited.has(cursor)) {
-        visited.add(cursor);
-        cycle.push(cursor);
-        cursor = destinationBySource[cursor];
-      }
-      for (let left = 0; left < Math.floor(cycle.length / 2); left += 1) {
-        first.push({ start: cycle[left], end: cycle[cycle.length - 1 - left] });
-      }
-      for (let left = 1; left <= Math.floor((cycle.length - 1) / 2); left += 1) {
-        second.push({ start: cycle[left], end: cycle[cycle.length - left] });
-      }
+    this.entries = entries.slice();
+    this.indexByEntryId = nextIndexByEntryId;
+    this.currentIndex = currentIndex;
+    this.revision += 1;
+  }
+
+  entryAt(index: number): QueueEntry | undefined {
+    if (this.revision < 0) {
+      return undefined;
     }
-    return new QueuePermutationLayers(first, second);
-  }
-}
-
-export type QueueFrameScheduler = (task: () => void) => void;
-export type QueueProjectionComplete = (currentIndex: number) => void;
-
-export class QueueTrackDataSource implements IDataSource {
-  private items: Array<QueueEntryPresentation> = [];
-  private readonly listeners: Array<DataChangeListener> = [];
-  private frameScheduler?: QueueFrameScheduler;
-  private projectionEpoch: number = 0;
-  private projectionPending: boolean = false;
-  private targetCurrentEntryId: number = -1;
-  private targetCurrentIndex: number = -1;
-  private projectionCompletion?: QueueProjectionComplete;
-
-  totalCount(): number {
-    return this.items.length;
-  }
-
-  getData(index: number): QueueEntryPresentation {
-    return this.items[index];
+    return this.entries[index];
   }
 
   snapshot(): Array<QueueEntry> {
-    return this.items.map((item: QueueEntryPresentation): QueueEntry => item.entry);
+    return this.entries.slice();
   }
 
-  setFrameScheduler(scheduler: QueueFrameScheduler | undefined): void {
-    this.frameScheduler = scheduler;
+  setCurrentIndex(currentIndex: number): void {
+    if (this.currentIndex === currentIndex) {
+      return;
+    }
+    this.currentIndex = currentIndex;
+    this.revision += 1;
   }
 
-  hasPendingProjection(): boolean {
-    return this.projectionPending;
+  displayIndex(entryId: number): number {
+    if (this.revision < 0) {
+      return -1;
+    }
+    return this.indexByEntryId.get(entryId) ?? -1;
+  }
+
+  activeIndex(): number {
+    if (this.revision < 0) {
+      return -1;
+    }
+    return this.currentIndex;
+  }
+
+  isActive(entryId: number): boolean {
+    const displayIndex = this.displayIndex(entryId);
+    return displayIndex >= 0 && displayIndex === this.activeIndex();
+  }
+}
+export type QueueProjectionComplete = (currentIndex: number) => void;
+export type QueueProjectionListener = () => void;
+
+export class QueueTrackDataSource implements IDataSource {
+  readonly projectionState: QueueProjectionState = new QueueProjectionState();
+  private slots: Array<QueuePositionSlot> = [];
+  private readonly listeners: Array<DataChangeListener> = [];
+  private readonly projectionListeners: Array<QueueProjectionListener> = [];
+
+  totalCount(): number {
+    return this.slots.length;
+  }
+
+  getData(index: number): QueuePositionSlot {
+    return this.slots[index];
+  }
+
+  snapshot(): Array<QueueEntry> {
+    return this.projectionState.snapshot();
   }
 
   registerDataChangeListener(listener: DataChangeListener): void {
@@ -173,14 +160,24 @@ export class QueueTrackDataSource implements IDataSource {
     }
   }
 
+  addProjectionListener(listener: QueueProjectionListener): void {
+    if (this.projectionListeners.indexOf(listener) < 0) {
+      this.projectionListeners.push(listener);
+    }
+  }
+
+  removeProjectionListener(listener: QueueProjectionListener): void {
+    const index = this.projectionListeners.indexOf(listener);
+    if (index >= 0) {
+      this.projectionListeners.splice(index, 1);
+    }
+  }
+
   replace(items: Array<QueueEntry>, currentIndex: number = -1): void {
-    this.projectionEpoch += 1;
-    this.projectionPending = false;
-    this.projectionCompletion = undefined;
-    this.items = items.map((entry: QueueEntry, index: number): QueueEntryPresentation =>
-      new QueueEntryPresentation(entry, index, currentIndex));
-    const operations: Array<DataOperation> = [{ type: DataOperationType.RELOAD }];
-    this.listeners.forEach((listener: DataChangeListener) => listener.onDatasetChange(operations));
+    this.slots = items.map((_entry: QueueEntry, index: number): QueuePositionSlot =>
+      new QueuePositionSlot(index));
+    this.projectionState.replace(items, currentIndex);
+    this.notifyReloaded();
   }
 
   applySnapshot(
@@ -189,53 +186,33 @@ export class QueueTrackDataSource implements IDataSource {
     changedIndices: Array<number>,
     onComplete: QueueProjectionComplete
   ): void {
-    this.targetCurrentIndex = currentIndex;
-    this.targetCurrentEntryId = currentIndex >= 0 && currentIndex < items.length ?
-      items[currentIndex].queueEntryId : -1;
-    this.projectionCompletion = onComplete;
     if (!this.hasSameUniqueIdentities(items)) {
       this.replace(items, currentIndex);
       onComplete(currentIndex);
       return;
     }
-    const epoch = ++this.projectionEpoch;
-    const currentIds = this.items.map((item: QueueEntryPresentation): number =>
-      item.entry.queueEntryId);
+    const currentItems = this.projectionState.snapshot();
+    const currentIds = currentItems.map((entry: QueueEntry): number => entry.queueEntryId);
     const targetIds = items.map((entry: QueueEntry): number => entry.queueEntryId);
-    const layers = QueuePermutationPolicy.project(currentIds, targetIds);
-    if (layers.first.length === 0 && layers.second.length === 0) {
-      this.updatePresentation(items, this.targetCurrentEntryId);
-      this.notifyChanged(changedIndices);
-      this.completeProjection();
-      return;
-    }
-    if (this.listeners.length === 0 || this.frameScheduler === undefined) {
-      this.items = items.map((entry: QueueEntry, index: number): QueueEntryPresentation =>
-        new QueueEntryPresentation(entry, index, currentIndex));
-      this.completeProjection();
-      return;
-    }
-    this.applyExchangeLayer(layers.first, this.targetCurrentEntryId);
-    if (layers.second.length === 0) {
-      this.updatePresentation(items, this.targetCurrentEntryId);
-      this.completeProjection();
-      return;
-    }
-    this.projectionPending = true;
-    this.frameScheduler((): void => {
-      if (epoch !== this.projectionEpoch) {
-        return;
+    if (QueueTrackDataSource.sameOrder(currentIds, targetIds)) {
+      if (this.entriesChanged(currentItems, items)) {
+        this.projectionState.replace(items, currentIndex);
+      } else {
+        this.projectionState.setCurrentIndex(currentIndex);
       }
-      this.applyExchangeLayer(layers.second, this.targetCurrentEntryId);
-      this.updatePresentation(items, this.targetCurrentEntryId);
-      this.completeProjection();
-    });
+      this.notifyChanged(changedIndices);
+      onComplete(currentIndex);
+      return;
+    }
+    this.projectionState.replace(items, currentIndex);
+    this.notifyProjectionChanged();
+    onComplete(currentIndex);
   }
 
   notifyChanged(indices: Array<number>): void {
     const unique = new Set<number>();
     indices.forEach((index: number): void => {
-      if (index >= 0 && index < this.items.length) {
+      if (index >= 0 && index < this.slots.length) {
         unique.add(index);
       }
     });
@@ -251,30 +228,25 @@ export class QueueTrackDataSource implements IDataSource {
 
   applyCurrentIndex(
     currentIndex: number,
-    currentEntryId: number,
+    _currentEntryId: number,
     changedIndices: Array<number>,
     onComplete: QueueProjectionComplete
   ): void {
-    this.targetCurrentIndex = currentIndex;
-    this.targetCurrentEntryId = currentEntryId;
-    this.projectionCompletion = onComplete;
-    this.updatePresentationIndices(currentEntryId);
-    if (this.projectionPending) {
-      return;
-    }
+    this.projectionState.setCurrentIndex(currentIndex);
     this.notifyChanged(changedIndices);
-    this.completeProjection();
+    onComplete(currentIndex);
   }
 
   private hasSameUniqueIdentities(items: Array<QueueEntry>): boolean {
-    if (items.length !== this.items.length) {
+    const currentItems = this.projectionState.snapshot();
+    if (items.length !== currentItems.length) {
       return false;
     }
     const identities = new Set<number>();
-    this.items.forEach((item: QueueEntryPresentation): void => {
-      identities.add(item.entry.queueEntryId);
+    currentItems.forEach((entry: QueueEntry): void => {
+      identities.add(entry.queueEntryId);
     });
-    if (identities.size !== this.items.length) {
+    if (identities.size !== currentItems.length) {
       return false;
     }
     const targetIdentities = new Set<number>();
@@ -288,51 +260,36 @@ export class QueueTrackDataSource implements IDataSource {
     return true;
   }
 
-  private applyExchangeLayer(exchanges: Array<QueueIndexExchange>, currentEntryId: number): void {
-    if (exchanges.length === 0) {
-      return;
+  private entriesChanged(current: Array<QueueEntry>, target: Array<QueueEntry>): boolean {
+    for (let index = 0; index < current.length; index += 1) {
+      if (current[index] !== target[index]) {
+        return true;
+      }
     }
-    exchanges.forEach((exchange: QueueIndexExchange): void => {
-      const startItem = this.items[exchange.start];
-      this.items[exchange.start] = this.items[exchange.end];
-      this.items[exchange.end] = startItem;
-    });
-    this.updatePresentationIndices(currentEntryId);
-    const operations: Array<DataOperation> = exchanges.map((exchange: QueueIndexExchange): DataOperation => ({
-      type: DataOperationType.EXCHANGE,
-      index: { start: exchange.start, end: exchange.end }
-    }));
+    return false;
+  }
+
+  private notifyProjectionChanged(): void {
+    this.projectionListeners.slice().forEach((listener: QueueProjectionListener): void => listener());
+  }
+
+  private notifyReloaded(): void {
+    this.notifyProjectionChanged();
+    const operations: Array<DataOperation> = [{ type: DataOperationType.RELOAD }];
     this.listeners.forEach((listener: DataChangeListener): void =>
       listener.onDatasetChange(operations));
   }
 
-  private updatePresentation(items: Array<QueueEntry>, currentEntryId: number): void {
-    const entriesById = new Map<number, QueueEntry>();
-    items.forEach((entry: QueueEntry): void => {
-      entriesById.set(entry.queueEntryId, entry);
-    });
-    this.items.forEach((item: QueueEntryPresentation): void => {
-      item.entry = entriesById.get(item.entry.queueEntryId) as QueueEntry;
-    });
-    this.updatePresentationIndices(currentEntryId);
-  }
-
-  private updatePresentationIndices(currentEntryId: number): void {
-    const currentIndex = this.items.findIndex((item: QueueEntryPresentation): boolean =>
-      item.entry.queueEntryId === currentEntryId);
-    this.items.forEach((item: QueueEntryPresentation, index: number): void => {
-      item.displayIndex = index;
-      item.currentDisplayIndex = currentIndex;
-    });
-  }
-
-  private completeProjection(): void {
-    this.projectionPending = false;
-    const completion = this.projectionCompletion;
-    this.projectionCompletion = undefined;
-    if (completion !== undefined) {
-      completion(this.targetCurrentIndex);
+  private static sameOrder(currentIds: Array<number>, targetIds: Array<number>): boolean {
+    if (currentIds.length !== targetIds.length) {
+      return false;
     }
+    for (let index = 0; index < currentIds.length; index += 1) {
+      if (currentIds[index] !== targetIds[index]) {
+        return false;
+      }
+    }
+    return true;
   }
 }
 
@@ -500,7 +457,7 @@ export class PlayerStore {
   }
 
   setQueueCurrentIndex(index: number, currentEntryId: number = -1): void {
-    if (this.queueCurrentIndex === index && !this.queueDataSource.hasPendingProjection()) {
+    if (this.queueCurrentIndex === index) {
       return;
     }
     const previousIndex = this.queueCurrentIndex;

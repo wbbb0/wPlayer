@@ -7,7 +7,6 @@ import {
 } from './PlayerMotion';
 import { PlayerImageIcon } from './PlayerControls';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
-import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import { DynamicColor, ForegroundEmphasis } from '../../appearance/DynamicColor';
 import { PageLayoutSpec } from '../layout/PageLayoutSpec';
 import { LibraryStore } from '../../library/store/LibraryStore';
@@ -23,6 +22,7 @@ import {
   FullPlayerQueueSelectionStore
 } from './FullPlayerQueuePage';
 import { AppShellLayoutSpec } from '../layout/AppShellLayoutSpec';
+import { FullPlayerQueueRefreshState } from './FullPlayerQueueRefreshState';
 
 @Component
 export struct FullPlayerContent {
@@ -79,6 +79,8 @@ export struct FullPlayerContent {
   onPlaybackButtonTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
   @State private queueSelectionStore: FullPlayerQueueSelectionStore =
     new FullPlayerQueueSelectionStore();
+  @State private queueRefreshState: FullPlayerQueueRefreshState =
+    new FullPlayerQueueRefreshState();
 
   private pageWidth(): number {
     return FullPlayerPagerSpec.pageSpan(this.rootFrame.width, this.paneCount);
@@ -167,7 +169,8 @@ export struct FullPlayerContent {
           PlayerImageIcon({
             source: $r('app.media.control_chevron_down'),
             iconSize: PlayerLayoutSpec.FULL_PLAYER_CLOSE_ICON_SIZE,
-            contentColor: this.contentColor()
+            contentColor: this.contentColor(),
+            animateColor: false
           })
         }
         .width(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE)
@@ -197,6 +200,7 @@ export struct FullPlayerContent {
     FullPlayerQueueHeader({
       playerStore: this.playerStore,
       selectionStore: this.queueSelectionStore,
+      refreshState: this.queueRefreshState,
       selectionEnabled: AppShellLayoutSpec.supportsTitleSearchAndSelection(this.rootFrame.width),
       pageWidth: this.pageWidth(),
       leadingInset: this.headerTextInset(FullPlayerPage.QUEUE),
@@ -214,12 +218,10 @@ export struct FullPlayerContent {
           .fontSize(18)
           .fontWeight(FontWeight.Bold)
           .fontColor(this.contentColor())
-          .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
           .maxLines(1)
         Text(this.currentArtistLabel())
           .fontSize(12)
           .fontColor(this.secondaryContentColor())
-          .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
           .maxLines(1)
       }
     }
@@ -239,6 +241,7 @@ export struct FullPlayerContent {
       playerStore: this.playerStore,
       libraryStore: this.libraryStore,
       selectionStore: this.queueSelectionStore,
+      refreshState: this.queueRefreshState,
       pageWidth: this.pageWidth(),
       paneCount: this.paneCount,
       bottomInset: this.bottomInset,
@@ -354,14 +357,12 @@ export struct FullPlayerContent {
         .fontSize(20)
         .fontWeight(FontWeight.Bold)
         .fontColor(this.contentColor())
-        .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .layoutWeight(1)
       Text(`${this.playerStore.queueSize} 首`)
         .fontSize(13)
         .fontColor(this.secondaryContentColor())
-        .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
     }
     .width(this.pageWidth())
     .height(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE)

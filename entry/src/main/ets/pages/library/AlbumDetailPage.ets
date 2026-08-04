@@ -588,7 +588,7 @@ export struct AlbumDetailPage {
                 onRequestAddToPlaylist: this.onRequestAddToPlaylist,
                 onToggleSelection: (item: TrackListItem): void => this.toggleSelection(item),
                 onSelectionTargetAreaChange: (item: TrackListItem, area: Area): void =>
-                  this.dragSelection.updateTarget(item.id, index, area,
+                  this.dragSelection.updateTarget(item.id, item.id, index, area,
                     DragSelectionHitMode.ROW,
                     (): boolean => this.selection.isSelected(item.id),
                     (selected: boolean): void => this.setSelection(item, selected)),

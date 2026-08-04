@@ -175,7 +175,7 @@ export struct AlbumsPage {
                   onToggleSelection: (selectedAlbum: AlbumListItem): void =>
                     this.toggleSelection(selectedAlbum),
                   onSelectionTargetAreaChange: (album: AlbumListItem, area: Area): void =>
-                    this.dragSelection.updateTarget(album.id, slot.index, area,
+                    this.dragSelection.updateTarget(album.id, album.id, slot.index, area,
                       DragSelectionHitMode.RECTANGLE,
                       (): boolean => this.selection.isSelected(album.id),
                       (selected: boolean): void => this.setSelection(album, selected)),

@@ -28,10 +28,21 @@ export struct PlayerTrackMarquee {
       .fontSize(this.titleSize)
       .fontWeight(this.titleWeight)
       .fontColor(this.titleColor)
-      .animation(this.animateColor ? {
+      .maxLines(1)
+      .textOverflow({ overflow: TextOverflow.Clip })
+  }
+
+  @Builder
+  private AnimatedStaticTitle() {
+    Text(this.currentTitle())
+      .width('100%')
+      .fontSize(this.titleSize)
+      .fontWeight(this.titleWeight)
+      .fontColor(this.titleColor)
+      .animation({
         duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION,
         curve: Curve.EaseInOut
-      } : { duration: 0 })
+      })
       .maxLines(1)
       .textOverflow({ overflow: TextOverflow.Clip })
   }
@@ -43,10 +54,32 @@ export struct PlayerTrackMarquee {
       .fontSize(this.titleSize)
       .fontWeight(this.titleWeight)
       .fontColor(this.titleColor)
-      .animation(this.animateColor ? {
+      .maxLines(1)
+      .textOverflow({ overflow: TextOverflow.MARQUEE })
+      .marqueeOptions({
+        start: true,
+        step: PlayerMarqueeMotionSpec.STEP,
+        spacing: LengthMetrics.vp(PlayerMarqueeMotionSpec.CONTENT_GAP),
+        loop: -1,
+        fromStart: true,
+        delay: PlayerMarqueeMotionSpec.START_DELAY,
+        fadeout: false,
+        marqueeStartPolicy: MarqueeStartPolicy.DEFAULT,
+        marqueeUpdatePolicy: MarqueeUpdatePolicy.DEFAULT
+      })
+  }
+
+  @Builder
+  private AnimatedScrollingTitle() {
+    Text(this.currentTitle())
+      .width('100%')
+      .fontSize(this.titleSize)
+      .fontWeight(this.titleWeight)
+      .fontColor(this.titleColor)
+      .animation({
         duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION,
         curve: Curve.EaseInOut
-      } : { duration: 0 })
+      })
       .maxLines(1)
       .textOverflow({ overflow: TextOverflow.MARQUEE })
       .marqueeOptions({
@@ -64,9 +97,17 @@ export struct PlayerTrackMarquee {
 
   build() {
     if (this.active) {
-      this.ScrollingTitle()
+      if (this.animateColor) {
+        this.AnimatedScrollingTitle()
+      } else {
+        this.ScrollingTitle()
+      }
     } else {
-      this.StaticTitle()
+      if (this.animateColor) {
+        this.AnimatedStaticTitle()
+      } else {
+        this.StaticTitle()
+      }
     }
   }
 }

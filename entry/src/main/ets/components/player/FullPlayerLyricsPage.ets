@@ -1,4 +1,3 @@
-import { PaletteMotionSpec } from '../../appearance/PaletteMotionSpec';
 import { TimedLyricLine } from '../../playback/lyrics/LyricsParser';
 import {
   LyricIndexListener,
@@ -217,7 +216,6 @@ export struct FullPlayerLyricsPage {
             .lineHeight(34)
             .fontWeight(FontWeight.Medium)
             .fontColor(this.primaryContentColor)
-            .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
             .textAlign(TextAlign.Start)
         }
         .width('100%')
@@ -232,11 +230,9 @@ export struct FullPlayerLyricsPage {
             .fontSize(22)
             .fontWeight(FontWeight.Medium)
             .fontColor(this.primaryContentColor)
-            .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
           Text('当前仅读取音乐文件内部的歌词文本')
             .fontSize(14)
             .fontColor(this.secondaryContentColor)
-            .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
             .textAlign(TextAlign.Center)
         }
         .justifyContent(FlexAlign.Center)

@@ -20,10 +20,12 @@ Before changing playback behavior, read:
 - PlaybackQueue owns stable base-entry order, the active playback permutation, exact-entry cursor identity, repeat
   and shuffle invariants.
 - PlayerStore exposes observable UI state and does not own AVPlayer operations.
-- PlayerStore publishes the active playback order. Pure permutations preserve `queueEntryId` keys and are projected
-  as at most two frame-separated layers of disjoint LazyForEach exchanges; never combine overlapping exchanges in
-  one dataset batch.
-  Structural queue changes use a keyed reload, while cursor-only changes update only affected rows.
+- PlayerStore publishes the active playback order behind stable position slots. Pure permutations replace only the
+  slot-to-entry projection and publish no LazyForEach operation; never publish reload or exchange storms for order
+  changes. Structural queue changes use one slot reload, while cursor-only changes update only affected slots.
+- Queue-page shuffle uses an exact immutable persistence request after the UI has acknowledged list unmount. Keep
+  ordinary snapshot writes latest-wins, but preserve FIFO ordering around exact requests and resolve each exact
+  receipt as persisted, failed or unavailable. Do not model this barrier as a general `flush()`.
 
 ## Stable state
 

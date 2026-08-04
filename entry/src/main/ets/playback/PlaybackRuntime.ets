@@ -46,6 +46,7 @@ import {
 } from './pip/PlaybackPictureInPicture';
 import { PlaybackPictureInPicturePolicy } from './pip/PlaybackPictureInPicturePolicy';
 import {
+  ExactQueuePersistenceResult,
   PlaybackPersistenceCoordinator,
   PlaybackRestorePlan
 } from './coordinator/PlaybackPersistenceCoordinator';
@@ -429,6 +430,27 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       return;
     }
     this.setShuffleEnabled(enabled);
+  }
+
+  async toggleShuffleAndPersistExact(): Promise<ExactQueuePersistenceResult> {
+    const enabled = !this.playerStore.shuffleEnabled;
+    if (this.playerStore.currentTrack === undefined ||
+      this.playerStore.queuePhase !== QueueBuildPhase.READY || !this.queue.setShuffle(enabled)) {
+      this.setShuffleEnabled(enabled);
+      return ExactQueuePersistenceResult.UNAVAILABLE;
+    }
+    this.setShuffleEnabled(enabled);
+    this.syncQueueSnapshot(false);
+    this.prefetchCurrentWindow();
+    if (DemoLibraryMode.isEnabled()) {
+      return ExactQueuePersistenceResult.UNAVAILABLE;
+    }
+    const state = this.queue.stateSnapshot();
+    return this.persistence.persistQueueExact({
+      items: state.items,
+      currentPosition: state.currentPosition,
+      shuffleEnabled: enabled
+    });
   }
 
   cycleRepeatMode(): void {

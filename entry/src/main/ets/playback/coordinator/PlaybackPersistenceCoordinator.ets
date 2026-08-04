@@ -18,6 +18,32 @@ export interface PersistedPlaybackQueueSnapshot {
   shuffleEnabled: boolean;
 }
 
+export enum ExactQueuePersistenceResult {
+  PERSISTED,
+  FAILED,
+  UNAVAILABLE
+}
+
+class ExactQueuePersistenceRequest {
+  readonly sequence: number;
+  readonly snapshot: PersistedPlaybackQueueSnapshot;
+  readonly completion: Promise<ExactQueuePersistenceResult>;
+  private resolveCompletion?: (result: ExactQueuePersistenceResult) => void;
+
+  constructor(sequence: number, snapshot: PersistedPlaybackQueueSnapshot) {
+    this.sequence = sequence;
+    this.snapshot = snapshot;
+    this.completion = new Promise<ExactQueuePersistenceResult>((resolve) => {
+      this.resolveCompletion = resolve;
+    });
+  }
+
+  resolve(result: ExactQueuePersistenceResult): void {
+    this.resolveCompletion?.(result);
+    this.resolveCompletion = undefined;
+  }
+}
+
 export interface PlaybackPersistenceSettings {
   getPlaybackLastTrackId(defaultValue?: number): number;
   getPlaybackLastPositionMs(defaultValue?: number): number;
@@ -64,7 +90,11 @@ export class PlaybackPersistenceCoordinator {
   private lastPersistedTrackId: number = -2;
   private lastPersistedPositionMs: number = -1;
   private pendingSnapshot?: PersistedPlaybackQueueSnapshot;
+  private pendingSnapshotSequence: number = -1;
   private pendingCurrentPosition?: number;
+  private pendingCurrentPositionSequence: number = -1;
+  private readonly exactQueueRequests: Array<ExactQueuePersistenceRequest> = [];
+  private nextWriteSequence: number = 0;
   private writePumpRunning: boolean = false;
   private writePump: Promise<void> = Promise.resolve();
   private legacyQueueCleared: boolean = false;
@@ -83,7 +113,9 @@ export class PlaybackPersistenceCoordinator {
     this.settings = undefined;
     this.repository = undefined;
     this.pendingSnapshot = undefined;
+    this.pendingSnapshotSequence = -1;
     this.pendingCurrentPosition = undefined;
+    this.pendingCurrentPositionSequence = -1;
     this.legacyQueueCleared = false;
     this.cursorWritesBlocked = false;
     this.resetWriteCache();
@@ -94,19 +126,34 @@ export class PlaybackPersistenceCoordinator {
       return;
     }
     this.pendingSnapshot = PlaybackPersistenceCoordinator.copySnapshot(snapshot);
+    this.pendingSnapshotSequence = ++this.nextWriteSequence;
     this.pendingCurrentPosition = undefined;
     this.cursorWritesBlocked = false;
     this.ensureWritePump();
+  }
+
+  persistQueueExact(snapshot: PersistedPlaybackQueueSnapshot): Promise<ExactQueuePersistenceResult> {
+    if (this.repository === undefined || this.settings === undefined) {
+      return Promise.resolve(ExactQueuePersistenceResult.UNAVAILABLE);
+    }
+    const request = new ExactQueuePersistenceRequest(
+      ++this.nextWriteSequence,
+      PlaybackPersistenceCoordinator.copySnapshot(snapshot)
+    );
+    this.exactQueueRequests.push(request);
+    this.ensureWritePump();
+    return request.completion;
   }
 
   persistQueueCurrentPosition(currentPosition: number): void {
     if (this.repository === undefined) {
       return;
     }
-    if (this.pendingSnapshot !== undefined) {
+    if (this.pendingSnapshot !== undefined && this.exactQueueRequests.length === 0) {
       this.pendingSnapshot.currentPosition = currentPosition;
     } else if (!this.cursorWritesBlocked) {
       this.pendingCurrentPosition = currentPosition;
+      this.pendingCurrentPositionSequence = ++this.nextWriteSequence;
     }
     this.ensureWritePump();
   }
@@ -118,7 +165,7 @@ export class PlaybackPersistenceCoordinator {
 
   async flush(): Promise<void> {
     while (this.writePumpRunning || this.pendingSnapshot !== undefined ||
-      this.pendingCurrentPosition !== undefined) {
+      this.pendingCurrentPosition !== undefined || this.exactQueueRequests.length > 0) {
       this.ensureWritePump();
       const currentPump = this.writePump;
       await currentPump;
@@ -291,7 +338,8 @@ export class PlaybackPersistenceCoordinator {
 
   private ensureWritePump(): void {
     if (this.writePumpRunning || this.repository === undefined ||
-      (this.pendingSnapshot === undefined && this.pendingCurrentPosition === undefined)) {
+      (this.pendingSnapshot === undefined && this.pendingCurrentPosition === undefined &&
+        this.exactQueueRequests.length === 0)) {
       return;
     }
     this.writePumpRunning = true;
@@ -302,38 +350,92 @@ export class PlaybackPersistenceCoordinator {
   }
 
   private async drainWrites(): Promise<void> {
-    while (this.pendingSnapshot !== undefined || this.pendingCurrentPosition !== undefined) {
+    while (this.pendingSnapshot !== undefined || this.pendingCurrentPosition !== undefined ||
+      this.exactQueueRequests.length > 0) {
       const repository = this.repository;
       if (repository === undefined) {
+        this.resolveExactRequestsUnavailable();
+        this.pendingSnapshot = undefined;
+        this.pendingSnapshotSequence = -1;
+        this.pendingCurrentPosition = undefined;
+        this.pendingCurrentPositionSequence = -1;
         return;
       }
-      if (this.pendingSnapshot !== undefined) {
+      const exactRequest = this.exactQueueRequests[0];
+      const exactSequence = exactRequest?.sequence ?? Number.MAX_SAFE_INTEGER;
+      const snapshotSequence = this.pendingSnapshot === undefined ?
+        Number.MAX_SAFE_INTEGER : this.pendingSnapshotSequence;
+      const cursorSequence = this.pendingCurrentPosition === undefined ?
+        Number.MAX_SAFE_INTEGER : this.pendingCurrentPositionSequence;
+      if (exactRequest !== undefined && exactSequence < snapshotSequence &&
+        exactSequence < cursorSequence) {
+        this.exactQueueRequests.shift();
+        try {
+          await repository.replacePersistedPlaybackQueue(exactRequest.snapshot);
+          exactRequest.resolve(ExactQueuePersistenceResult.PERSISTED);
+          this.cursorWritesBlocked = false;
+          this.clearLegacyQueueAfterSnapshot();
+        } catch (error) {
+          PlaybackPersistenceCoordinator.logWriteFailure(error);
+          exactRequest.resolve(ExactQueuePersistenceResult.FAILED);
+          this.handleStructuralWriteFailure();
+        }
+        continue;
+      }
+      if (this.pendingSnapshot !== undefined && snapshotSequence < cursorSequence) {
         const snapshot = this.pendingSnapshot;
         this.pendingSnapshot = undefined;
+        this.pendingSnapshotSequence = -1;
         try {
           await repository.replacePersistedPlaybackQueue(snapshot);
           this.cursorWritesBlocked = false;
-          if (!this.legacyQueueCleared && this.settings !== undefined) {
-            this.settings.clearLegacyPlaybackQueue();
-            this.legacyQueueCleared = true;
-          }
+          this.clearLegacyQueueAfterSnapshot();
         } catch (error) {
           PlaybackPersistenceCoordinator.logWriteFailure(error);
-          this.cursorWritesBlocked = this.pendingSnapshot === undefined;
-          if (this.pendingSnapshot === undefined) {
-            this.pendingCurrentPosition = undefined;
-          }
+          this.handleStructuralWriteFailure();
         }
         continue;
       }
       const currentPosition = this.pendingCurrentPosition as number;
       this.pendingCurrentPosition = undefined;
+      this.pendingCurrentPositionSequence = -1;
       try {
         await repository.updatePersistedPlaybackQueuePosition(currentPosition);
       } catch (error) {
         PlaybackPersistenceCoordinator.logWriteFailure(error);
       }
     }
+  }
+
+  private clearLegacyQueueAfterSnapshot(): void {
+    if (!this.legacyQueueCleared && this.settings !== undefined) {
+      this.settings.clearLegacyPlaybackQueue();
+      this.legacyQueueCleared = true;
+    }
+  }
+
+  private resolveExactRequestsUnavailable(): void {
+    while (this.exactQueueRequests.length > 0) {
+      this.exactQueueRequests.shift()?.resolve(ExactQueuePersistenceResult.UNAVAILABLE);
+    }
+  }
+
+  private handleStructuralWriteFailure(): void {
+    if (this.pendingCurrentPosition !== undefined &&
+      !this.hasQueuedFullWriteBefore(this.pendingCurrentPositionSequence)) {
+      this.pendingCurrentPosition = undefined;
+      this.pendingCurrentPositionSequence = -1;
+    }
+    this.cursorWritesBlocked = this.pendingSnapshot === undefined &&
+      this.exactQueueRequests.length === 0;
+  }
+
+  private hasQueuedFullWriteBefore(sequence: number): boolean {
+    if (this.pendingSnapshot !== undefined && this.pendingSnapshotSequence < sequence) {
+      return true;
+    }
+    return this.exactQueueRequests.some((request: ExactQueuePersistenceRequest): boolean =>
+      request.sequence < sequence);
   }
 
   private static copySnapshot(snapshot: PersistedPlaybackQueueSnapshot): PersistedPlaybackQueueSnapshot {
@@ -383,5 +485,6 @@ export class PlaybackPersistenceCoordinator {
   private resetWriteCache(): void {
     this.lastPersistedTrackId = -2;
     this.lastPersistedPositionMs = -1;
+    this.nextWriteSequence = 0;
   }
 }

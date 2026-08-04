@@ -22,14 +22,21 @@ export struct PlayerSymbolIcon {
 
   build() {
     Stack() {
-      SymbolGlyph(this.symbol)
-        .fontSize(this.iconSize)
-        .fontColor([this.contentColor])
-        .renderingStrategy(SymbolRenderingStrategy.MULTIPLE_OPACITY)
-        .animation(this.animateColor ? {
+      if (this.animateColor) {
+        SymbolGlyph(this.symbol)
+          .fontSize(this.iconSize)
+          .fontColor([this.contentColor])
+          .renderingStrategy(SymbolRenderingStrategy.MULTIPLE_OPACITY)
+          .animation({
           duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION,
           curve: Curve.EaseInOut
-        } : undefined)
+          })
+      } else {
+        SymbolGlyph(this.symbol)
+          .fontSize(this.iconSize)
+          .fontColor([this.contentColor])
+          .renderingStrategy(SymbolRenderingStrategy.MULTIPLE_OPACITY)
+      }
     }
   }
 }
@@ -43,14 +50,21 @@ export struct PlayerImageIcon {
 
   build() {
     Stack() {
-      Image(this.source)
-        .width(this.iconSize)
-        .height(this.iconSize)
-        .fillColor(this.contentColor)
-        .animation(this.animateColor ? {
+      if (this.animateColor) {
+        Image(this.source)
+          .width(this.iconSize)
+          .height(this.iconSize)
+          .fillColor(this.contentColor)
+          .animation({
           duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION,
           curve: Curve.EaseInOut
-        } : undefined)
+          })
+      } else {
+        Image(this.source)
+          .width(this.iconSize)
+          .height(this.iconSize)
+          .fillColor(this.contentColor)
+      }
     }
   }
 }
@@ -105,6 +119,7 @@ export struct PlayerTransportButton {
   @ObjectLink playerStore: PlayerStore;
   @Prop action: PlayerTransportAction = PlayerTransportAction.NEXT;
   @Prop buttonSize: number = 54;
+  @Prop iconAnimationEnabled: boolean = true;
   @Prop contentColor: string = '';
 
   private icon(): Resource {
@@ -125,7 +140,8 @@ export struct PlayerTransportButton {
       PlayerImageIcon({
         source: this.icon(),
         iconSize: this.buttonSize * 0.45,
-        contentColor: this.iconColor()
+        contentColor: this.iconColor(),
+        animateColor: this.iconAnimationEnabled
       })
     }
     .width(this.buttonSize)
@@ -151,6 +167,8 @@ export struct PlayerModeButton {
   @Prop buttonSize: number = 44;
   @Prop iconSize: number = 0;
   @Prop contentColor: string = '#FFFFFFFF';
+  @Prop interactionEnabled: boolean = true;
+  onAction: (action: PlayerModeAction) => boolean = (_action: PlayerModeAction): boolean => false;
 
   private symbol(): Resource {
     if (this.action === PlayerModeAction.SHUFFLE) {
@@ -185,7 +203,8 @@ export struct PlayerModeButton {
       PlayerSymbolIcon({
         symbol: this.symbol(),
         iconSize: this.resolvedIconSize(),
-        contentColor: this.modeForegroundColor()
+        contentColor: this.modeForegroundColor(),
+        animateColor: false
       })
 
       if (!this.active()) {
@@ -194,7 +213,6 @@ export struct PlayerModeButton {
           .height(2)
           .borderRadius(1)
           .backgroundColor(this.modeForegroundColor())
-          .animation({ duration: PaletteMotionSpec.COLOR_TRANSITION_DURATION, curve: Curve.EaseInOut })
           .rotate({ angle: -45 })
       }
     }
@@ -203,9 +221,13 @@ export struct PlayerModeButton {
     .borderRadius(this.buttonSize / 2)
     .backgroundColor(Color.Transparent)
     .opacity(this.active() ? 1 : 0.72)
+    .enabled(this.interactionEnabled)
     .clickEffect({ level: ClickEffectLevel.LIGHT })
     .accessibilityText(this.accessibilityLabel())
     .onClick(() => {
+      if (this.onAction(this.action)) {
+        return;
+      }
       if (this.action === PlayerModeAction.SHUFFLE) {
         playbackRuntime.toggleShuffle();
       } else {

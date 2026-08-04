@@ -83,13 +83,19 @@ internals. Do not perform a repository-wide dependency-injection rewrite solely 
 - PlaybackPictureInPicture owns system PiP nodes, lifecycle callbacks and control-event adaptation.
 - PlayerStore is observable UI state, not a command service and not an AVPlayer state machine.
 - PlayerStore owns the ArkUI queue-projection notification policy and exposes active playback order: identical
-  snapshots are a no-op, permutations use at most two frame-separated layers of disjoint keyed exchanges, cursor
-  changes update only affected rows, and structural changes retain stable keys through a reload.
+  snapshots are a no-op, pure permutations atomically replace the order behind stable position slots without any
+  LazyForEach data operation, cursor changes update only affected slots, and structural changes use one reload.
+  Queue entry identity is resolved inside each instantiated slot leaf so order revisions do not dirty the page root.
   Navigation containers do not receive PlayerStore; leaf playback surfaces reference the application PlayerStore
   directly and own the deep observation boundary.
 - PlaybackQueue owns stable base-entry identity, the active playback permutation, shuffle and exact-entry cursor
   invariants. The UI projects playback order while persistence records both base and playback positions. Insert,
   append and removal operations update both orders without collapsing shuffled order into the natural base order.
+- A queue-page shuffle refresh is a coordinated presentation and persistence transaction. The page first unmounts
+  the queue projection, waits for an ArkUI frame acknowledgement, then asks PlaybackRuntime to change the
+  PlaybackQueue permutation and submit an immutable snapshot through PlaybackPersistenceCoordinator's exact-write
+  receipt. Ordinary queue persistence remains latest-wins; the exact receipt is an ordered barrier and is not
+  implemented by flushing or observing an ordinary coalesced write.
 - Support policies own independently testable decisions such as power, reconnect and state reduction.
 
 Use request epochs or equivalent invalidation for asynchronous work that can be superseded. A stale completion must

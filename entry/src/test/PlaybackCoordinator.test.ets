@@ -8,6 +8,7 @@ import {
   ArtworkPrefetchCoordinator
 } from '../main/ets/playback/coordinator/ArtworkPrefetchCoordinator';
 import {
+  ExactQueuePersistenceResult,
   PlaybackPersistenceCoordinator,
   PlaybackPersistenceSettings,
   PersistedPlaybackQueueItem,
@@ -386,6 +387,113 @@ export default function playbackCoordinatorTest() {
 
       expect(repository.cursorWrites[0]).assertEqual(8);
       expect(repository.queueWrites.length).assertEqual(0);
+    });
+
+    it('returns an exact receipt for an immutable queue snapshot', 0, async () => {
+      const coordinator = new PlaybackPersistenceCoordinator();
+      const settings = new FakePlaybackSettings();
+      const repository = new StaticRestoreRepository();
+      coordinator.bind(settings, repository);
+      const snapshot = persistedQueue([1, 2], [1, 0], 0, true);
+
+      const receipt = coordinator.persistQueueExact(snapshot);
+      snapshot.items[0].trackId = 99;
+
+      expect(await receipt).assertEqual(ExactQueuePersistenceResult.PERSISTED);
+      expect(repository.queueWrites[0].items[0].trackId).assertEqual(1);
+      expect(settings.legacyClearCount).assertEqual(1);
+    });
+
+    it('keeps a cursor submitted after an exact barrier in FIFO order', 0, async () => {
+      const coordinator = new PlaybackPersistenceCoordinator();
+      const settings = new FakePlaybackSettings();
+      const repository = new DeferredWriteRepository();
+      coordinator.bind(settings, repository);
+
+      coordinator.persistQueue(persistedQueue([1], [0], 0, false));
+      coordinator.persistQueue(persistedQueue([2], [0], 0, false));
+      const exactReceipt = coordinator.persistQueueExact(
+        persistedQueue([3, 4], [1, 0], 0, true)
+      );
+      coordinator.persistQueueCurrentPosition(1);
+
+      repository.completeNext();
+      await Promise.resolve();
+      await Promise.resolve();
+      repository.completeNext();
+      await Promise.resolve();
+      await Promise.resolve();
+      repository.completeNext();
+      expect(await exactReceipt).assertEqual(ExactQueuePersistenceResult.PERSISTED);
+      await coordinator.flush();
+
+      expect(repository.queueWrites.length).assertEqual(3);
+      expect(repository.queueWrites[0].items[0].trackId).assertEqual(1);
+      expect(repository.queueWrites[1].items[0].trackId).assertEqual(2);
+      expect(repository.queueWrites[2].items[0].trackId).assertEqual(3);
+      expect(repository.cursorWrites[0]).assertEqual(1);
+    });
+
+    it('retains a cursor behind an exact recovery after a normal write fails', 0, async () => {
+      const coordinator = new PlaybackPersistenceCoordinator();
+      const settings = new FakePlaybackSettings();
+      const repository = new FailFirstWriteRepository();
+      coordinator.bind(settings, repository);
+
+      coordinator.persistQueue(persistedQueue([1], [0], 0, false));
+      const exactReceipt = coordinator.persistQueueExact(
+        persistedQueue([2, 3], [1, 0], 0, true)
+      );
+      coordinator.persistQueueCurrentPosition(1);
+      await coordinator.flush();
+
+      expect(await exactReceipt).assertEqual(ExactQueuePersistenceResult.PERSISTED);
+      expect(repository.queueWrites.length).assertEqual(2);
+      expect(repository.cursorWrites[0]).assertEqual(1);
+    });
+
+    it('retains a cursor behind a later exact recovery after exact failure', 0, async () => {
+      const coordinator = new PlaybackPersistenceCoordinator();
+      const settings = new FakePlaybackSettings();
+      const repository = new FailFirstWriteRepository();
+      coordinator.bind(settings, repository);
+
+      const failedReceipt = coordinator.persistQueueExact(
+        persistedQueue([1], [0], 0, false)
+      );
+      const recoveredReceipt = coordinator.persistQueueExact(
+        persistedQueue([2, 3], [1, 0], 0, true)
+      );
+      coordinator.persistQueueCurrentPosition(1);
+      await coordinator.flush();
+
+      expect(await failedReceipt).assertEqual(ExactQueuePersistenceResult.FAILED);
+      expect(await recoveredReceipt).assertEqual(ExactQueuePersistenceResult.PERSISTED);
+      expect(repository.cursorWrites[0]).assertEqual(1);
+    });
+
+    it('reports exact queue persistence failure without throwing', 0, async () => {
+      const coordinator = new PlaybackPersistenceCoordinator();
+      const settings = new FakePlaybackSettings();
+      const repository = new FailFirstWriteRepository();
+      coordinator.bind(settings, repository);
+
+      const result = await coordinator.persistQueueExact(
+        persistedQueue([1, 2], [1, 0], 0, true)
+      );
+
+      expect(result).assertEqual(ExactQueuePersistenceResult.FAILED);
+      expect(settings.legacyClearCount).assertEqual(0);
+    });
+
+    it('reports exact persistence as unavailable while unbound', 0, async () => {
+      const coordinator = new PlaybackPersistenceCoordinator();
+
+      const result = await coordinator.persistQueueExact(
+        persistedQueue([1], [0], 0, false)
+      );
+
+      expect(result).assertEqual(ExactQueuePersistenceResult.UNAVAILABLE);
     });
 
     it('coalesces writes during an in-flight snapshot to the latest complete state', 0, async () => {

@@ -42,6 +42,7 @@ import playerPageKeepScreenOnControllerTest from './PlayerPageKeepScreenOnContro
 import musicFileShareCoordinatorTest from './MusicFileShareCoordinator.test';
 import dragSelectionRangePolicyTest from './DragSelectionRangePolicy.test';
 import fullPlayerQueueRefreshStateTest from './FullPlayerQueueRefreshState.test';
+import importUriTreeTest from './ImportUriTree.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -88,4 +89,5 @@ export default function testsuite() {
   musicFileShareCoordinatorTest();
   dragSelectionRangePolicyTest();
   fullPlayerQueueRefreshStateTest();
+  importUriTreeTest();
 }

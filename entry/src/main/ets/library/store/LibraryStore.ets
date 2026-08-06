@@ -1,6 +1,7 @@
 import { common } from '@kit.AbilityKit';
 import { MusicRepository } from '../data/MusicRepository';
 import { ImportRefreshPhase, MediaImporter } from '../importer/MediaImporter';
+import { ImportUriTree } from '../importer/ImportUriTree';
 import { ArtworkCache } from '../artwork/ArtworkCache';
 import { BundledArtworkCatalog } from '../artwork/BundledArtworkCatalog';
 import {
@@ -131,6 +132,7 @@ interface PaletteRefreshResult {
 
 export type ArtworkChangeListener = () => void;
 export type LibraryContentChangeListener = () => void;
+export type ImportTreeRequestListener = (tree: ImportUriTree) => void;
 
 @Observed
 export class LibraryStore {
@@ -238,6 +240,10 @@ export class LibraryStore {
   failedImportCount: number = 0;
   sortIndexResult: string = '';
   sortIndexError: string = '';
+  // Session-only import range selection state. Set while the import session
+  // waits for the user to pick directories from a multi-location selection.
+  pendingImportTree?: ImportUriTree;
+  private importTreeSelectionResolver?: (selected: Array<string> | undefined) => void;
   private readonly repository: MusicRepository;
   private readonly playbackBridge?: LibraryPlaybackBridge;
   private readonly removalService: LibraryRemovalService;
@@ -266,6 +272,7 @@ export class LibraryStore {
     new Map<number, TrackNavigationTargets>();
   private readonly artworkChangeListeners: Array<ArtworkChangeListener> = [];
   private readonly contentChangeListeners: Array<LibraryContentChangeListener> = [];
+  private readonly importTreeListeners: Array<ImportTreeRequestListener> = [];
 
   constructor(repository?: MusicRepository, playbackBridge?: LibraryPlaybackBridge) {
     this.repository = repository === undefined ? new MusicRepository() : repository;
@@ -276,6 +283,19 @@ export class LibraryStore {
   addArtworkChangeListener(listener: ArtworkChangeListener): void {
     if (!this.artworkChangeListeners.includes(listener)) {
       this.artworkChangeListeners.push(listener);
+    }
+  }
+
+  addImportTreeListener(listener: ImportTreeRequestListener): void {
+    if (!this.importTreeListeners.includes(listener)) {
+      this.importTreeListeners.push(listener);
+    }
+  }
+
+  removeImportTreeListener(listener: ImportTreeRequestListener): void {
+    const index = this.importTreeListeners.indexOf(listener);
+    if (index >= 0) {
+      this.importTreeListeners.splice(index, 1);
     }
   }
 
@@ -493,6 +513,7 @@ export class LibraryStore {
     this.errorMessage = '';
     this.lastMessage = '';
     this.lastImportResult = undefined;
+    this.pendingImportTree = undefined;
     this.clearImportDetails();
     try {
       const result = await this.importer.selectAndImport((progress: ImportProgress) => {
@@ -500,7 +521,8 @@ export class LibraryStore {
       }, onStarted, undefined, async (phase: ImportRefreshPhase): Promise<void> => {
         await this.synchronizeCommittedChanges();
         ImportPerformanceTrace.event('library_refresh_completed', 0, `phase=${phase}`);
-      });
+      }, (tree: ImportUriTree): Promise<Array<string> | undefined> =>
+        this.requestImportTreeSelection(tree));
       this.lastImportResult = result;
       this.replaceImportDetails(result.items);
       this.lastMessage = LibraryStore.importSummary(result);
@@ -515,7 +537,39 @@ export class LibraryStore {
   }
 
   cancelImport(): void {
+    this.cancelImportTreeSelection();
     this.importer?.cancel();
+  }
+
+  confirmImportTreeSelection(): void {
+    const tree = this.pendingImportTree;
+    const resolver = this.importTreeSelectionResolver;
+    this.pendingImportTree = undefined;
+    this.importTreeSelectionResolver = undefined;
+    if (resolver !== undefined) {
+      resolver(tree === undefined ? undefined : tree.selectedUris());
+    }
+  }
+
+  cancelImportTreeSelection(): void {
+    const resolver = this.importTreeSelectionResolver;
+    this.pendingImportTree = undefined;
+    this.importTreeSelectionResolver = undefined;
+    if (resolver !== undefined) {
+      resolver(undefined);
+    }
+  }
+
+  private requestImportTreeSelection(tree: ImportUriTree): Promise<Array<string> | undefined> {
+    // A new request supersedes any unresolved one so the session never waits
+    // on a stale tree.
+    this.cancelImportTreeSelection();
+    return new Promise<Array<string> | undefined>(
+      (resolve: (selected: Array<string> | undefined) => void): void => {
+        this.importTreeSelectionResolver = resolve;
+        this.pendingImportTree = tree;
+        this.importTreeListeners.forEach((listener: ImportTreeRequestListener): void => listener(tree));
+      });
   }
 
   private clearImportDetails(): void {
@@ -585,6 +639,7 @@ export class LibraryStore {
   }
 
   dispose(): void {
+    this.cancelImportTreeSelection();
     this.active = false;
     this.needsActivationRefresh = true;
     ++this.refreshGeneration;

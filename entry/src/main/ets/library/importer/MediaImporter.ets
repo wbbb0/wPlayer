@@ -9,7 +9,8 @@ import {
   ImportItemCallback,
   ImportLibraryChangedCallback,
   ImportProgressCallback,
-  ImportStartedCallback
+  ImportStartedCallback,
+  ImportTreeSelectionCallback
 } from './MediaImportCallbacks';
 import { MediaImportOperation } from './MediaImportOperation';
 import { MediaArtworkPipeline } from './MediaArtworkPipeline';
@@ -22,7 +23,8 @@ export type {
   ImportItemCallback,
   ImportLibraryChangedCallback,
   ImportProgressCallback,
-  ImportStartedCallback
+  ImportStartedCallback,
+  ImportTreeSelectionCallback
 } from './MediaImportCallbacks';
 
 export class MediaImporter {
@@ -53,11 +55,13 @@ export class MediaImporter {
 
   async selectAndImport(onProgress?: ImportProgressCallback,
     onStarted?: ImportStartedCallback, onItem?: ImportItemCallback,
-    onLibraryChanged?: ImportLibraryChangedCallback): Promise<ImportResult> {
+    onLibraryChanged?: ImportLibraryChangedCallback,
+    onTreeSelection?: ImportTreeSelectionCallback): Promise<ImportResult> {
     const operation = this.beginOperation('An import is already running');
     const session = this.createSession(operation);
     try {
-      return await session.selectAndImport(onProgress, onStarted, onItem, onLibraryChanged);
+      return await session.selectAndImport(onProgress, onStarted, onItem, onLibraryChanged,
+        onTreeSelection);
     } finally {
       await operation.cancelAndWait();
       this.finishOperation(operation);

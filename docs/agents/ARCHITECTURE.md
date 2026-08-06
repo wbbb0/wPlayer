@@ -104,6 +104,8 @@ not publish state, release a resource now owned by newer work, or clear a curren
 ## Library ownership
 
 - MediaPickerService owns Picker interaction and documented URI authorization.
+- ImportUriTree owns picker-URI path-segment grouping, the import-range selection tree and its tri-state
+  selection derivation. Path segments are presentation-only and never used for file access.
 - MediaImporter is the stable library-facing façade and owns the single active MediaImportOperation.
 - MediaImportSession owns one Picker import session and its per-item outcomes; MediaFileChecker owns file-check
   orchestration; MediaDuplicateProof owns full-fingerprint duplicate proof; MediaArtworkPipeline owns bounded

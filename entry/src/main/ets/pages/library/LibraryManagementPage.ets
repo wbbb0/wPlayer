@@ -1,6 +1,6 @@
 import { PageLayoutSpec } from '../../components/layout/PageLayoutSpec';
 import { PageScrollBehavior, PageScrollContentBehavior } from '../../components/layout/PageScrollBehavior';
-import { LibraryStore } from '../../library/store/LibraryStore';
+import { ImportTreeRequestListener, LibraryStore } from '../../library/store/LibraryStore';
 import {
   ImportItemDetailKind,
   ImportItemOutcome,
@@ -16,6 +16,15 @@ import {
   TaskResultDetailSection,
   TaskResultTone
 } from '../../components/library/TaskResultDetails';
+import {
+  ImportTreeCheckState,
+  ImportTreeDirNode,
+  ImportTreeFileNode,
+  ImportTreeRow,
+  ImportTreeRowKind,
+  ImportUriTree
+} from '../../library/importer/ImportUriTree';
+import { LibraryListDataSource } from '../../library/store/LibraryListDataSource';
 
 class TaskReportLayoutSpec {
   static readonly TOP_PADDING: number = 20;
@@ -25,7 +34,8 @@ class TaskReportLayoutSpec {
 
 enum LibraryManagementSheet {
   TASK_REPORT = 0,
-  UNAVAILABLE_FILES = 1
+  UNAVAILABLE_FILES = 1,
+  TREE_SELECTION = 2
 }
 
 @Component
@@ -37,7 +47,11 @@ export struct LibraryManagementPage {
   @State activeSheet: LibraryManagementSheet = LibraryManagementSheet.TASK_REPORT;
   @State performanceExpanded: boolean = false;
   @State selectedUnavailableIds: Array<number> = [];
+  @State treeSelectedCount: number = 0;
+  @State treeTotalCount: number = 0;
   scroller: Scroller = new Scroller();
+  private readonly treeDataSource: LibraryListDataSource<ImportTreeRow> =
+    new LibraryListDataSource<ImportTreeRow>();
   private readonly scrollBehavior: PageScrollBehavior = new PageScrollBehavior();
   private readonly contentBehavior: PageScrollContentBehavior = new PageScrollContentBehavior();
 
@@ -98,6 +112,99 @@ export struct LibraryManagementPage {
     this.activeSheet = LibraryManagementSheet.TASK_REPORT;
     this.performanceExpanded = false;
     this.showPageSheet = true;
+  }
+
+  private confirmStartImport(): void {
+    this.getUIContext().showAlertDialog({
+      title: '导入本地音乐',
+      message: '受系统限制，无法直接按文件夹导入。请在文件选择器中全选音乐文件，' +
+        '随后在导入范围页面勾选要导入的目录或文件；未选中的文件不会保留读取授权。',
+      primaryButton: {
+        value: '取消',
+        action: () => {}
+      },
+      secondaryButton: {
+        value: '继续选择',
+        action: () => {
+          this.store.selectAndImport(() => {
+            this.openTaskReport();
+          });
+        }
+      }
+    });
+  }
+
+  private readonly importTreeListener: ImportTreeRequestListener = (tree: ImportUriTree): void => {
+    this.treeDataSource.replace(tree.visibleRows());
+    this.treeSelectedCount = tree.selectedCount;
+    this.treeTotalCount = tree.totalCount;
+    this.activeSheet = LibraryManagementSheet.TREE_SELECTION;
+    this.showPageSheet = true;
+  }
+
+  aboutToAppear(): void {
+    this.store.addImportTreeListener(this.importTreeListener);
+  }
+
+  aboutToDisappear(): void {
+    this.store.removeImportTreeListener(this.importTreeListener);
+  }
+
+  private closeImportTreeSheet(confirmed: boolean): void {
+    if (confirmed) {
+      this.store.confirmImportTreeSelection();
+    } else {
+      this.store.cancelImportTreeSelection();
+    }
+    this.activeSheet = LibraryManagementSheet.TASK_REPORT;
+    this.showPageSheet = this.hasTaskReport();
+  }
+
+  private refreshImportTreeRows(): void {
+    const tree = this.store.pendingImportTree;
+    if (tree === undefined) {
+      return;
+    }
+    this.treeDataSource.replace(tree.visibleRows());
+    this.treeSelectedCount = tree.selectedCount;
+    this.treeTotalCount = tree.totalCount;
+  }
+
+  private toggleImportTreeDir(dir: ImportTreeDirNode): void {
+    const tree = this.store.pendingImportTree;
+    if (tree === undefined) {
+      return;
+    }
+    tree.toggleDir(dir);
+    this.refreshImportTreeRows();
+  }
+
+  private toggleImportTreeFile(file: ImportTreeFileNode): void {
+    const tree = this.store.pendingImportTree;
+    if (tree === undefined) {
+      return;
+    }
+    tree.toggleFile(file);
+    this.refreshImportTreeRows();
+  }
+
+  private toggleImportTreeExpand(dir: ImportTreeDirNode): void {
+    dir.expanded = !dir.expanded;
+    this.refreshImportTreeRows();
+  }
+
+  private importTreeCheckState(row: ImportTreeRow): ImportTreeCheckState {
+    const tree = this.store.pendingImportTree;
+    if (tree === undefined) {
+      return ImportTreeCheckState.NONE;
+    }
+    if (row.kind === ImportTreeRowKind.DIR && row.dir !== undefined) {
+      return tree.checkStateOf(row.dir);
+    }
+    if (row.file !== undefined && row.file.selected) {
+      return ImportTreeCheckState.ALL;
+    }
+    return ImportTreeCheckState.NONE;
   }
 
   private importDetailSections(): Array<TaskResultDetailSection> {
@@ -536,11 +643,7 @@ export struct LibraryManagementPage {
           .width('100%')
           .height(52)
           .enabled(!this.store.importing && !this.store.loading)
-          .onClick(() => {
-            this.store.selectAndImport(() => {
-              this.openTaskReport();
-            });
-          })
+          .onClick(() => this.confirmStartImport())
 
         Button(this.store.checkingFiles ? '正在检查音乐文件…' : '检查音乐文件')
           .width('100%')
@@ -606,7 +709,18 @@ export struct LibraryManagementPage {
     .bindSheet($$this.showPageSheet, this.ActiveSheet(), {
       height: SheetSize.LARGE,
       showClose: true,
-      dragBar: true
+      dragBar: true,
+      onDisappear: () => {
+        // Closing the sheet while a range selection is pending abandons the
+        // import before any read permission is persisted.
+        if (this.activeSheet === LibraryManagementSheet.TREE_SELECTION &&
+          this.store.pendingImportTree !== undefined) {
+          this.store.cancelImportTreeSelection();
+        }
+        if (this.activeSheet === LibraryManagementSheet.TREE_SELECTION) {
+          this.activeSheet = LibraryManagementSheet.TASK_REPORT;
+        }
+      }
     })
   }
 
@@ -628,9 +742,136 @@ export struct LibraryManagementPage {
   private ActiveSheet() {
     if (this.activeSheet === LibraryManagementSheet.UNAVAILABLE_FILES) {
       this.UnavailableFilesSheet()
+    } else if (this.activeSheet === LibraryManagementSheet.TREE_SELECTION) {
+      this.TreeSelectionSheet()
     } else {
       this.TaskReportSheet()
     }
+  }
+
+  @Builder
+  private TreeSelectionSheet() {
+    Column({ space: 14 }) {
+      Row({ space: 10 }) {
+        Text('选择导入范围')
+          .fontSize(24)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+          .layoutWeight(1)
+        Button('取消')
+          .buttonStyle(ButtonStyleMode.TEXTUAL)
+          .onClick(() => this.closeImportTreeSheet(false))
+      }
+      .width('100%')
+      Text(`所选文件分布在多个位置，仅导入选中的项目；未选中的 ${this.treeTotalCount - this.treeSelectedCount} 个文件不会保留读取授权`)
+        .fontSize(12)
+        .fontColor($r('app.color.text_secondary'))
+        .width('100%')
+      List() {
+        LazyForEach(this.treeDataSource, (row: ImportTreeRow) => {
+          ListItem() {
+            this.ImportTreeRowView(row)
+          }
+        }, (row: ImportTreeRow) => row.key)
+      }
+      .width('100%')
+      .layoutWeight(1)
+      .edgeEffect(EdgeEffect.Spring)
+      Row({ space: 12 }) {
+        Column({ space: 2 }) {
+          Text(`已选 ${this.treeSelectedCount} / ${this.treeTotalCount} 首`)
+            .fontSize(14)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.text_primary'))
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+        Button('导入所选')
+          .enabled(this.treeSelectedCount > 0)
+          .onClick(() => this.closeImportTreeSheet(true))
+      }
+      .width('100%')
+    }
+    .width('100%')
+    .height('100%')
+    .padding({ left: 20, right: 20, top: 20, bottom: 24 })
+  }
+
+  @Builder
+  private ImportTreeRowView(row: ImportTreeRow) {
+    Row({ space: 10 }) {
+      if (row.kind === ImportTreeRowKind.DIR && row.dir !== undefined) {
+        SymbolGlyph(row.dir.expanded ? $r('sys.symbol.chevron_down') : $r('sys.symbol.chevron_right'))
+          .fontSize(13)
+          .fontColor([$r('app.color.text_tertiary')])
+          .width(16)
+      } else {
+        Blank().width(16)
+      }
+      this.ImportTreeCheckSlot(row)
+      if (row.kind === ImportTreeRowKind.DIR && row.dir !== undefined) {
+        Text(row.dir.name)
+          .fontSize(15)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_primary'))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .layoutWeight(1)
+        Text(`${row.dir.selectedCount}/${row.dir.fileCount}`)
+          .fontSize(12)
+          .fontColor($r('app.color.text_tertiary'))
+      } else if (row.file !== undefined) {
+        Text(row.file.name)
+          .fontSize(14)
+          .fontColor($r('app.color.text_primary'))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .layoutWeight(1)
+      }
+    }
+    .width('100%')
+    .padding({ left: 12 + row.depth * 18, right: 12, top: 9, bottom: 9 })
+    .borderRadius(12)
+    .onClick(() => {
+      if (row.kind === ImportTreeRowKind.DIR && row.dir !== undefined) {
+        this.toggleImportTreeExpand(row.dir);
+      } else if (row.file !== undefined) {
+        this.toggleImportTreeFile(row.file);
+      }
+    })
+  }
+
+  @Builder
+  private ImportTreeCheckSlot(row: ImportTreeRow) {
+    Stack() {
+      if (this.importTreeCheckState(row) === ImportTreeCheckState.ALL) {
+        SymbolGlyph($r('sys.symbol.checkmark_circle_fill'))
+          .fontSize(22)
+          .fontColor([$r('app.color.theme_accent')])
+      } else if (this.importTreeCheckState(row) === ImportTreeCheckState.PARTIAL) {
+        SymbolGlyph($r('sys.symbol.circle'))
+          .fontSize(22)
+          .fontColor([$r('app.color.theme_accent')])
+        Row()
+          .width(10)
+          .height(2.5)
+          .borderRadius(1.25)
+          .backgroundColor($r('app.color.theme_accent'))
+      } else {
+        SymbolGlyph($r('sys.symbol.circle'))
+          .fontSize(22)
+          .fontColor([$r('app.color.text_tertiary')])
+      }
+    }
+    .width(28)
+    .height(28)
+    .onClick(() => {
+      if (row.kind === ImportTreeRowKind.DIR && row.dir !== undefined) {
+        this.toggleImportTreeDir(row.dir);
+      } else if (row.file !== undefined) {
+        this.toggleImportTreeFile(row.file);
+      }
+    })
   }
 
   @Builder

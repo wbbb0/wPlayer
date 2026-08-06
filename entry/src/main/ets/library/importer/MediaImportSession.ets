@@ -25,8 +25,10 @@ import {
   ImportLibraryChangedCallback,
   ImportProgressCallback,
   ImportRefreshPhase,
-  ImportStartedCallback
+  ImportStartedCallback,
+  ImportTreeSelectionCallback
 } from './MediaImportCallbacks';
+import { ImportUriTree } from './ImportUriTree';
 import { ImportPerformanceTrace } from './ImportPerformanceTrace';
 import { RepositoryContentChangeKind } from '../data/RepositoryInvalidation';
 import { DuplicatePolicy } from './DuplicatePolicy';
@@ -114,7 +116,8 @@ export class MediaImportSession {
 
   async selectAndImport(onProgress?: ImportProgressCallback,
     onStarted?: ImportStartedCallback, onItem?: ImportItemCallback,
-    onLibraryChanged?: ImportLibraryChangedCallback): Promise<ImportResult> {
+    onLibraryChanged?: ImportLibraryChangedCallback,
+    onTreeSelection?: ImportTreeSelectionCallback): Promise<ImportResult> {
     this.artworkPipeline.clearOperationContext();
     let completedResult: ImportResult | undefined;
     let traceStarted = false;
@@ -138,7 +141,7 @@ export class MediaImportSession {
       ImportPerformanceTrace.start(uris.length);
       traceStarted = true;
       completedResult = await this.importUris(
-        uris, artworkSession, onProgress, onItem, onLibraryChanged
+        uris, artworkSession, onProgress, onItem, onLibraryChanged, onTreeSelection
       );
       return completedResult;
     } finally {
@@ -180,7 +183,8 @@ export class MediaImportSession {
   private async importUris(uris: Array<string>, artworkSession: ArtworkWorkSession,
     onProgress?: ImportProgressCallback,
     onItem?: ImportItemCallback,
-    onLibraryChanged?: ImportLibraryChangedCallback): Promise<ImportResult> {
+    onLibraryChanged?: ImportLibraryChangedCallback,
+    onTreeSelection?: ImportTreeSelectionCallback): Promise<ImportResult> {
     const itemResults: Array<ImportItemResult> = [];
     const artworkWorks: Array<PendingArtworkWork> = [];
     const progress: ImportProgress = {
@@ -206,14 +210,35 @@ export class MediaImportSession {
     const pendingUris = await this.preflightUris(
       uris, itemResults, progress, progressGate, onProgress, onItem
     );
-    for (let batchOffset = 0; batchOffset < pendingUris.length;
+    // Range selection happens after preflight so the tree only contains
+    // importable files, and before any permission is persisted so unselected
+    // URIs never gain lasting authorization.
+    let selectionCancelled = false;
+    let effectiveUris = pendingUris;
+    if (!this.cancelRequested && pendingUris.length > 0 && onTreeSelection !== undefined) {
+      const tree = ImportUriTree.build(pendingUris);
+      if (!tree.flat) {
+        progress.currentName = '等待选择导入范围';
+        this.notify(onProgress, progress, progressGate, true);
+        const selected = await onTreeSelection(tree);
+        if (selected === undefined) {
+          selectionCancelled = true;
+        } else {
+          effectiveUris = selected;
+        }
+        progress.currentName = '正在处理音乐文件';
+        this.notify(onProgress, progress, progressGate, true);
+      }
+    }
+    const importableUris = selectionCancelled ? [] : effectiveUris;
+    for (let batchOffset = 0; batchOffset < importableUris.length;
       batchOffset += ImportConcurrencyPolicy.IMPORT_WORK_BATCH_SIZE) {
       if (this.cancelRequested) {
         break;
       }
-      const uriBatch = pendingUris.slice(
+      const uriBatch = importableUris.slice(
         batchOffset,
-        Math.min(batchOffset + ImportConcurrencyPolicy.IMPORT_WORK_BATCH_SIZE, pendingUris.length)
+        Math.min(batchOffset + ImportConcurrencyPolicy.IMPORT_WORK_BATCH_SIZE, importableUris.length)
       );
       const permissionStartedAt = Date.now();
       const permissionResult = await persistReadPermissions(uriBatch);
@@ -381,7 +406,7 @@ export class MediaImportSession {
     }
     const artworkPendingAtMetadataRefresh = artworkWorks.length > 0;
     progress.metadataCompleted = true;
-    progress.cancelled = this.cancelRequested;
+    progress.cancelled = this.cancelRequested || selectionCancelled;
     progress.currentName = artworkPendingAtMetadataRefresh ?
       '正在处理封面' : '';
     this.notify(onProgress, progress, progressGate, true);

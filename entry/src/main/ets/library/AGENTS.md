@@ -10,6 +10,8 @@ Before changing library behavior, read:
 ## Ownership
 
 - Picker interaction and URI authorization belong to MediaPickerService.
+- Import-range tree grouping and tri-state selection derivation belong to ImportUriTree; decoded URI path
+  segments are presentation-only and must never be used for file access.
 - MediaImporter is the stable façade and owns the active MediaImportOperation. Import-session outcomes,
   file checking, duplicate proof and artwork work belong to their dedicated importer collaborators.
 - Committed library deletion and post-commit URI authorization cleanup belong to LibraryRemovalService.

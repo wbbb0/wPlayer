@@ -136,6 +136,18 @@ suppressing another.
 - Missing tracks, unavailable original URIs and revoked authorization fail without opening an invalid share panel
   and provide a concise user-facing message.
 
+## Import range selection
+
+- When the picked URIs all share one parent directory, import proceeds directly without a range-selection step.
+- Otherwise the import session pauses after preflight and presents a directory tree rooted at the earliest
+  diverging directory. Directories use a tri-state indicator (all, partial, none) derived from descendant file
+  selection; the tree starts fully selected.
+- Read permission is persisted only for the URIs the user confirms. Unselected URIs are never persisted, and
+  cancelling the tree abandons the import before any permission is persisted.
+- Exception to the opaque-URI rule: URI path segments may be decoded and grouped only to build this
+  presentation tree. They must never be used to access the file system, and file metadata continues to come from
+  the metadata reader, not from URI parsing.
+
 ## Playback queue and shuffle
 
 - Enabling or disabling shuffle keeps the exact current queue entry active, including when the same track appears

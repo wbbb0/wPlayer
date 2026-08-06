@@ -903,16 +903,10 @@ export class MusicRepository implements LibraryRemovalRepository {
   }
 
   getUnreferencedArtworkAssets(): Promise<Array<ArtworkCleanupCandidate>> {
-    if (DemoLibraryMode.isEnabled()) {
-      return Promise.resolve([]);
-    }
     return this.queries.getUnreferencedArtworkAssets();
   }
 
   getReferencedArtworkPaths(): Promise<Array<string>> {
-    if (DemoLibraryMode.isEnabled()) {
-      return Promise.resolve([]);
-    }
     return this.queries.getReferencedArtworkPaths();
   }
 

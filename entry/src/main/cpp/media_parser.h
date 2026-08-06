@@ -56,9 +56,6 @@ bool ReadArtworkBytesDirect(int fd, uint64_t fileSize, uint64_t byteOffset,
     uint64_t byteLength, uint64_t payloadOffset, uint8_t *target,
     size_t targetLength, std::string &error);
 
-bool FlattenArtworkPixels(const uint8_t *source, size_t sourceLength, int32_t width,
-    int32_t height, bool premultiplied, uint8_t *target, std::string &error);
-
 } // namespace wplayer::media
 
 #endif

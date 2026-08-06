@@ -674,6 +674,7 @@ export class MusicLibraryImporter {
           large_width: artwork.largeWidth === undefined ? 0 : artwork.largeWidth,
           large_height: artwork.largeHeight === undefined ? 0 : artwork.largeHeight,
           large_byte_size: artwork.largeByteSize === undefined ? 0 : artwork.largeByteSize,
+          encoding_version: artwork.encodingVersion === undefined ? 0 : artwork.encodingVersion,
           palette_primary: artwork.palettePrimary ?? '#FF7C4DFF',
           palette_secondary: artwork.paletteSecondary ?? '#FFFF4D8D',
           palette_accent: artwork.paletteAccent ?? '#FFFFB347',
@@ -684,6 +685,17 @@ export class MusicLibraryImporter {
         });
       } catch (error) {
         throw RelationalStoreSafety.operationError('Unable to create artwork asset', error);
+      }
+    }
+    if (artwork.encodingVersion !== undefined) {
+      try {
+        await transaction.execute(
+          `UPDATE artwork_asset SET encoding_version = ?
+           WHERE id = ? AND encoding_version != ?`,
+          [artwork.encodingVersion, assetId, artwork.encodingVersion]
+        );
+      } catch (error) {
+        throw RelationalStoreSafety.operationError('Unable to update artwork encoding version', error);
       }
     }
     if (artwork.sourceHash === undefined || artwork.sourceHash.length === 0) {

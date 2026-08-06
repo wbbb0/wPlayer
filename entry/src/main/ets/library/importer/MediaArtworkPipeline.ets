@@ -12,7 +12,7 @@ import {
   ArtworkWorkSession
 } from '../artwork/ArtworkWorkSession';
 import { MusicRepository } from '../data/MusicRepository';
-import { ArtworkImportInput } from '../data/MusicRepository';
+import { ArtworkCleanupCandidate, ArtworkImportInput } from '../data/MusicRepository';
 import { MetadataReader } from '../metadata/MetadataReader';
 import {
   inspectMediaFiles,
@@ -135,6 +135,7 @@ export class MediaArtworkPipeline {
       largeWidth: cached.large.width,
       largeHeight: cached.large.height,
       largeByteSize: cached.large.byteSize,
+      encodingVersion: cached.encodingVersion,
       palettePrimary: cached.palette.primary,
       paletteSecondary: cached.palette.secondary,
       paletteAccent: cached.palette.accent,
@@ -249,6 +250,9 @@ export class MediaArtworkPipeline {
       await this.artworkCache.existsAsync(existing.largePath) : false;
     MediaArtworkPipeline.throwIfCancelled(cancellation);
     if (existing !== undefined && smallExists && largeExists &&
+      !ArtworkRepairPolicy.hasOutdatedEncoding(
+        existing.encodingVersion, existing.smallFormat, existing.largeFormat
+      ) &&
       !ArtworkRepairPolicy.hasSuspiciousLargeVariant(
         existing.smallWidth, existing.smallHeight, existing.smallByteSize,
         existing.largeWidth, existing.largeHeight, existing.largeByteSize
@@ -279,6 +283,7 @@ export class MediaArtworkPipeline {
       );
       return {
         sourceHash: sourceHash,
+        encodingVersion: existing.encodingVersion,
         small: {
           hash: existing.smallHash,
           relativePath: existing.smallPath,
@@ -376,12 +381,12 @@ export class MediaArtworkPipeline {
     return error instanceof Error ? error.message : `${error}`;
   }
 
-  scheduleCleanup(shouldContinue: () => boolean = (): boolean => true): void {
+  scheduleCleanup(shouldContinue: () => boolean = (): boolean => true): Promise<void> {
     const cleanup = this.cleanupTail.then(async (): Promise<void> => {
       if (!shouldContinue()) {
         return;
       }
-      const referencedPaths = await this.repository.getReferencedArtworkPaths();
+      await this.cleanupUnreferencedAssets(shouldContinue);
       if (!shouldContinue()) {
         return;
       }
@@ -389,11 +394,43 @@ export class MediaArtworkPipeline {
       if (!shouldContinue()) {
         return;
       }
+      const referencedPaths = await this.repository.getReferencedArtworkPaths();
+      if (!shouldContinue()) {
+        return;
+      }
       await this.artworkCache.cleanupOrphans(referencedPaths, shouldContinue);
+      if (!shouldContinue()) {
+        return;
+      }
+      await this.artworkCache.cleanupEmptyDirectories(shouldContinue);
     });
     this.cleanupTail = cleanup.catch((error: Object): void => {
       const message = error instanceof Error ? error.message : `${error}`;
       console.warn(`Artwork orphan cleanup failed: ${message}`);
     });
+    return this.cleanupTail;
+  }
+
+  private async cleanupUnreferencedAssets(shouldContinue: () => boolean): Promise<void> {
+    const assets = await this.repository.getUnreferencedArtworkAssets();
+    for (let index = 0; index < assets.length && shouldContinue(); index += 1) {
+      const asset = assets[index];
+      try {
+        await this.deleteUnreferencedAsset(asset);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : `${error}`;
+        console.warn(`Artwork asset cleanup skipped ${asset.assetId}: ${message}`);
+      }
+    }
+  }
+
+  private async deleteUnreferencedAsset(asset: ArtworkCleanupCandidate): Promise<void> {
+    if (asset.deleteSmall) {
+      await this.artworkCache.deleteAsync(asset.smallPath);
+    }
+    if (asset.deleteLarge && asset.largePath !== asset.smallPath) {
+      await this.artworkCache.deleteAsync(asset.largePath);
+    }
+    await this.repository.removeUnreferencedArtwork(asset.assetId);
   }
 }

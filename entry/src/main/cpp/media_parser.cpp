@@ -930,43 +930,4 @@ bool ReadArtworkBytesDirect(int fd, uint64_t fileSize, uint64_t byteOffset,
     return ReadExactInto(fd, fileSize, byteOffset + payloadOffset, target, targetLength, error);
 }
 
-bool FlattenArtworkPixels(const uint8_t *source, size_t sourceLength, int32_t width,
-    int32_t height, bool premultiplied, uint8_t *target, std::string &error)
-{
-    if (source == nullptr || target == nullptr || width <= 0 || height <= 0) {
-        error = "Invalid artwork pixel buffer";
-        return false;
-    }
-    const size_t widthValue = static_cast<size_t>(width);
-    const size_t heightValue = static_cast<size_t>(height);
-    if (widthValue > std::numeric_limits<size_t>::max() / heightValue) {
-        error = "Artwork pixel dimensions overflow";
-        return false;
-    }
-    const size_t pixelCount = widthValue * heightValue;
-    if (pixelCount > std::numeric_limits<size_t>::max() / 4 ||
-        sourceLength != pixelCount * 4) {
-        error = "Artwork pixel buffer size does not match dimensions";
-        return false;
-    }
-    for (size_t pixel = 0; pixel < pixelCount; ++pixel) {
-        const size_t offset = pixel * 4;
-        const uint32_t alpha = source[offset + 3];
-        const uint32_t white = 255 - alpha;
-        const uint32_t blue = source[offset];
-        const uint32_t green = source[offset + 1];
-        const uint32_t red = source[offset + 2];
-        const auto flatten = [alpha, white, premultiplied](uint32_t color) -> uint8_t {
-            const uint32_t value = premultiplied ?
-                color + white : (color * alpha + 127) / 255 + white;
-            return static_cast<uint8_t>(std::min<uint32_t>(255, value));
-        };
-        target[offset] = flatten(red);
-        target[offset + 1] = flatten(green);
-        target[offset + 2] = flatten(blue);
-        target[offset + 3] = 255;
-    }
-    return true;
-}
-
 } // namespace wplayer::media

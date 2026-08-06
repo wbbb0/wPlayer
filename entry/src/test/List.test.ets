@@ -2,6 +2,7 @@ import localUnitTest from './LocalUnit.test';
 import riskRegressionTest from './RiskRegression.test';
 import libraryPagingTest from './LibraryPaging.test';
 import librarySchemaMigrationPolicyTest from './LibrarySchemaMigrationPolicy.test';
+import libraryMaintenancePromptPolicyTest from './LibraryMaintenancePromptPolicy.test';
 import libraryAlphabetIndexLayoutTest from './LibraryAlphabetIndexLayout.test';
 import albumPreviewLayoutTest from './AlbumPreviewLayout.test';
 import libraryCollectionPolicyTest from './LibraryCollectionPolicy.test';
@@ -47,6 +48,7 @@ export default function testsuite() {
   riskRegressionTest();
   libraryPagingTest();
   librarySchemaMigrationPolicyTest();
+  libraryMaintenancePromptPolicyTest();
   libraryAlphabetIndexLayoutTest();
   albumPreviewLayoutTest();
   libraryCollectionPolicyTest();

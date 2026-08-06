@@ -15,7 +15,6 @@ import { ImportPreparationPolicy, PreparedItemState } from
   '../../../main/ets/library/importer/ImportPreparationPolicy';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import {
-  flattenArtworkPixels,
   probeMediaFile,
   calculateFullFingerprint
 } from '../../../main/ets/library/metadata/MediaFileTasks';
@@ -230,11 +229,12 @@ export default function riskRegressionTest() {
       expect(ImportDetailPolicy.shouldRetain(imported)).assertFalse();
     });
 
-    it('usesJpegForPersistentArtworkVariants', 0, () => {
-      expect(ArtworkEncodingPolicy.MIME_TYPE).assertEqual('image/jpeg');
-      expect(ArtworkEncodingPolicy.EXTENSION).assertEqual('jpg');
+    it('usesWebPForPersistentArtworkVariants', 0, () => {
+      expect(ArtworkEncodingPolicy.MIME_TYPE).assertEqual('image/webp');
+      expect(ArtworkEncodingPolicy.EXTENSION).assertEqual('webp');
       expect(ArtworkEncodingPolicy.QUALITY).assertLarger(0);
       expect(ArtworkEncodingPolicy.QUALITY).assertLess(101);
+      expect(ArtworkEncodingPolicy.ALPHA_QUALITY).assertEqual(100);
     });
 
     it('classifiesEarlyDuplicateWithoutInputAsDuplicate', 0, () => {
@@ -242,7 +242,7 @@ export default function riskRegressionTest() {
         .assertEqual(PreparedItemState.DUPLICATE);
     });
 
-    it('probesMediaAndFlattensArtworkOffMainThread', 0, async () => {
+    it('probesMediaOffMainThread', 0, async () => {
       const path = '/data/storage/el2/base/files/taskpool-probe.mp3';
       const file = fs.openSync(path, fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
       try {
@@ -258,14 +258,6 @@ export default function riskRegressionTest() {
         expect(probe.fileSize).assertEqual(11);
         expect(probe.quickFingerprint.length).assertEqual(64);
         expect(probe.metadata.rawTags.size).assertEqual(0);
-
-        const bgraBuffer = new ArrayBuffer(4);
-        new Uint8Array(bgraBuffer).set([0, 0, 255, 255]);
-        const rgba = new Uint8Array(await flattenArtworkPixels(bgraBuffer, 1, 1, false));
-        expect(rgba[0]).assertEqual(255);
-        expect(rgba[1]).assertEqual(0);
-        expect(rgba[2]).assertEqual(0);
-        expect(rgba[3]).assertEqual(255);
       } finally {
         fs.unlinkSync(path);
       }

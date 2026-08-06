@@ -82,6 +82,7 @@ export class MediaFileChecker {
 
   async checkLibrary(onProgress?: FileCheckProgressCallback,
     onLibraryChanged?: ImportLibraryChangedCallback): Promise<FileCheckResult> {
+    await this.artworkPipeline.waitForCleanup();
     this.artworkPipeline.clearOperationContext();
     const artworkSession = this.createArtworkSession();
     const progress: FileCheckProgress = {
@@ -595,6 +596,11 @@ export class MediaFileChecker {
       return true;
     }
     return candidate.artworkState === ArtworkState.READY && filesAvailable && (
+      ArtworkRepairPolicy.hasOutdatedEncoding(
+        candidate.artworkEncodingVersion,
+        candidate.artworkSmallFormat,
+        candidate.artworkLargeFormat
+      ) ||
       ArtworkRepairPolicy.hasSuspiciousLargeVariant(
         candidate.artworkSmallWidth, candidate.artworkSmallHeight, candidate.artworkSmallByteSize,
         candidate.artworkLargeWidth, candidate.artworkLargeHeight, candidate.artworkLargeByteSize

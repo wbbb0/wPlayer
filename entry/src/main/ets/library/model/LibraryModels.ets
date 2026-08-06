@@ -425,6 +425,9 @@ export interface MediaFileCheckCandidate {
   artworkLargeWidth: number;
   artworkLargeHeight: number;
   artworkLargeByteSize: number;
+  artworkSmallFormat: string;
+  artworkLargeFormat: string;
+  artworkEncodingVersion: number;
   artworkSourceWidth: number;
   artworkSourceHeight: number;
 }

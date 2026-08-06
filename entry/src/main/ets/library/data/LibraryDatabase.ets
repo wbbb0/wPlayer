@@ -2,6 +2,7 @@ import { relationalStore } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { SortKeyNormalizer } from '../metadata/SortKeyNormalizer';
 import { ARTWORK_PALETTE_VERSION } from '../artwork/ArtworkPaletteExtractor';
+import { ArtworkEncodingPolicy } from '../artwork/ArtworkEncodingPolicy';
 import { RelationalStoreSafety } from './RelationalStoreSafety';
 import {
   LibrarySchemaMigrationAction,
@@ -76,6 +77,7 @@ const CURRENT_SCHEMA: Array<string> = [
     palette_secondary TEXT NOT NULL DEFAULT '#FFFF4D8D',
     palette_accent TEXT NOT NULL DEFAULT '#FFFFB347',
     palette_version INTEGER NOT NULL DEFAULT ${ARTWORK_PALETTE_VERSION},
+    encoding_version INTEGER NOT NULL DEFAULT ${ArtworkEncodingPolicy.VERSION},
     ref_count INTEGER NOT NULL DEFAULT 0 CHECK (ref_count >= 0),
     unreferenced_at INTEGER,
     created_at INTEGER NOT NULL,
@@ -319,6 +321,11 @@ export class LibraryDatabase {
   private store?: relationalStore.RdbStore;
   private initializePromise?: Promise<boolean>;
   private writeTail: Promise<void> = Promise.resolve();
+  private readonly storeConfig: relationalStore.StoreConfig;
+
+  constructor(storeConfig: relationalStore.StoreConfig = STORE_CONFIG) {
+    this.storeConfig = storeConfig;
+  }
 
   initialize(context: common.Context): Promise<boolean> {
     if (this.store !== undefined) {
@@ -381,7 +388,7 @@ export class LibraryDatabase {
   private async openAndMigrate(context: common.Context): Promise<boolean> {
     let store: relationalStore.RdbStore | undefined;
     try {
-      store = await relationalStore.getRdbStore(context, STORE_CONFIG);
+      store = await relationalStore.getRdbStore(context, this.storeConfig);
       await store.execute('PRAGMA foreign_keys = ON');
       const rebuilt = await this.migrate(store);
       this.store = store;
@@ -433,8 +440,8 @@ export class LibraryDatabase {
 
     const version = await this.readSchemaVersion(store);
     const action = LibrarySchemaMigrationPolicy.actionFor(version);
-    if (action === LibrarySchemaMigrationAction.MIGRATE_PRODUCTION) {
-      await this.migrateVersion12To13(store);
+    if (action === LibrarySchemaMigrationAction.MIGRATE) {
+      await this.migrateToCurrent(store, version);
       return false;
     }
     if (action === LibrarySchemaMigrationAction.REJECT) {
@@ -444,6 +451,21 @@ export class LibraryDatabase {
       store.version = DATABASE_VERSION;
     }
     return false;
+  }
+
+  private async migrateToCurrent(store: relationalStore.RdbStore, version: number): Promise<void> {
+    let current = version;
+    if (current === 12) {
+      await this.migrateVersion12To13(store);
+      current = 13;
+    }
+    if (current === 13) {
+      await this.migrateVersion13To14(store);
+      current = 14;
+    }
+    if (current !== DATABASE_VERSION) {
+      throw new Error(`No library migration path from version ${version} to ${DATABASE_VERSION}`);
+    }
   }
 
   private async migrateVersion12To13(store: relationalStore.RdbStore): Promise<void> {
@@ -467,10 +489,10 @@ export class LibraryDatabase {
       );
       await transaction.execute(
         'UPDATE schema_meta SET version = ?, migrated_at = ? WHERE singleton = 1',
-        [DATABASE_VERSION, Date.now()]
+        [13, Date.now()]
       );
       await transaction.commit();
-      store.version = DATABASE_VERSION;
+      store.version = 13;
     } catch (error) {
       if (transaction !== undefined) {
         try {
@@ -479,6 +501,32 @@ export class LibraryDatabase {
         }
       }
       throw RelationalStoreSafety.operationError('Unable to migrate library database to version 13', error);
+    }
+  }
+
+  private async migrateVersion13To14(store: relationalStore.RdbStore): Promise<void> {
+    let transaction: relationalStore.Transaction | undefined;
+    try {
+      transaction = await store.createTransaction({
+        transactionType: relationalStore.TransactionType.IMMEDIATE
+      });
+      await transaction.execute(
+        'ALTER TABLE artwork_asset ADD COLUMN encoding_version INTEGER NOT NULL DEFAULT 1'
+      );
+      await transaction.execute(
+        'UPDATE schema_meta SET version = ?, migrated_at = ? WHERE singleton = 1',
+        [14, Date.now()]
+      );
+      await transaction.commit();
+      store.version = 14;
+    } catch (error) {
+      if (transaction !== undefined) {
+        try {
+          await transaction.rollback();
+        } catch (_) {
+        }
+      }
+      throw RelationalStoreSafety.operationError('Unable to migrate library database to version 14', error);
     }
   }
 

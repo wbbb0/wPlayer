@@ -336,7 +336,7 @@ export class LibraryStore {
         this.artworkCache,
         this.removalService
       );
-      await this.importer.cleanupArtworkStorage();
+      this.importer.scheduleArtworkStorageCleanup();
       this.lastSeenInvalidationRevision = this.repository.currentInvalidationRevision();
       await this.refresh();
       this.initialized = true;

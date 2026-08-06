@@ -51,8 +51,10 @@ import { PaletteMotionSpec } from '../appearance/PaletteMotionSpec';
 import { DynamicColor } from '../appearance/DynamicColor';
 import { LibraryMaintenanceSheet } from '../components/library/LibraryMaintenanceSheet';
 import {
-  LibraryMaintenanceStatus
-} from '../library/data/MusicRepositoryTypes';
+  LibraryMaintenanceAction,
+  LibraryMaintenancePrompt,
+  LibraryMaintenancePromptPolicy
+} from '../library/maintenance/LibraryMaintenancePromptPolicy';
 import { NavigationRoute } from '../components/navigation/MoreNavigation';
 import { playerPageKeepScreenOnController } from
   '../application/window/PlayerPageKeepScreenOnController';
@@ -98,7 +100,8 @@ struct Index {
   @State settingsStore: AppSettingsStore = appSettings;
   @State playlistSheetVisible: boolean = false;
   @State maintenanceSheetVisible: boolean = false;
-  @State maintenanceStatus: LibraryMaintenanceStatus = { items: [], total: 0 };
+  @State maintenancePrompt: LibraryMaintenancePrompt =
+    LibraryMaintenancePromptPolicy.fromStatus({ items: [], total: 0 });
   @State animatedThemePrimary: string = this.playerStore.themePrimary();
   private readonly appearanceListener: AppAppearanceListener = (_epoch: number): void => {
     this.refreshAppearance();
@@ -186,7 +189,7 @@ struct Index {
       ]);
       const maintenanceStatus = await this.libraryStore.checkLibraryMaintenance();
       if (maintenanceStatus.total > 0) {
-        this.maintenanceStatus = maintenanceStatus;
+        this.maintenancePrompt = LibraryMaintenancePromptPolicy.fromStatus(maintenanceStatus);
         this.maintenanceSheetVisible = true;
       }
     } catch (error) {
@@ -345,6 +348,12 @@ struct Index {
     });
   }
 
+  private performLibraryMaintenance(action: LibraryMaintenanceAction): void {
+    if (action === LibraryMaintenanceAction.CHECK_MUSIC_FILES) {
+      this.startLibraryMaintenance();
+    }
+  }
+
   private pageThemeTintOpacity(): number {
     return this.appearancePalette.windowBackground.toUpperCase() === '#FF000000' ? 0.24 : 0.16;
   }
@@ -415,8 +424,8 @@ struct Index {
   @Builder
   private MaintenanceSheet() {
     LibraryMaintenanceSheet({
-      status: this.maintenanceStatus,
-      onStart: (): void => this.startLibraryMaintenance(),
+      prompt: this.maintenancePrompt,
+      onStart: (action: LibraryMaintenanceAction): void => this.performLibraryMaintenance(action),
       onLater: (): void => {
         this.maintenanceSheetVisible = false;
       }

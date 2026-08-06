@@ -56,6 +56,10 @@ export class ArtworkRepairPolicy {
       largeWidth !== expectedLarge.width || largeHeight !== expectedLarge.height;
   }
 
+  static hasOutdatedEncoding(version: number, smallFormat: string, largeFormat: string): boolean {
+    return !ArtworkEncodingPolicy.isCurrent(version, smallFormat, largeFormat);
+  }
+
   static shouldRebindSource(existingAssetId: number, preparedAssetId: number): boolean {
     return existingAssetId !== preparedAssetId;
   }

@@ -448,11 +448,13 @@ export default function riskRegressionTest() {
       expect(ImportDetailPolicy.shouldRetain(imported)).assertFalse();
     });
 
-    it('uses broadly supported JPEG files for persistent artwork variants', 0, () => {
-      expect(ArtworkEncodingPolicy.MIME_TYPE).assertEqual('image/jpeg');
-      expect(ArtworkEncodingPolicy.EXTENSION).assertEqual('jpg');
+    it('uses versioned lossy WebP files for transparent persistent artwork variants', 0, () => {
+      expect(ArtworkEncodingPolicy.MIME_TYPE).assertEqual('image/webp');
+      expect(ArtworkEncodingPolicy.EXTENSION).assertEqual('webp');
+      expect(ArtworkEncodingPolicy.VERSION).assertLarger(1);
       expect(ArtworkEncodingPolicy.QUALITY).assertLarger(0);
       expect(ArtworkEncodingPolicy.QUALITY).assertLess(101);
+      expect(ArtworkEncodingPolicy.ALPHA_QUALITY).assertEqual(100);
     });
 
     it('repairs incomplete artwork without retrying confirmed absent sources', 0, () => {
@@ -487,6 +489,21 @@ export default function riskRegressionTest() {
       )).assertFalse();
       expect(ArtworkRepairPolicy.hasOutdatedVariantDimensions(
         640, 640, 192, 192, 640, 640
+      )).assertTrue();
+      expect(ArtworkRepairPolicy.hasOutdatedEncoding(
+        ArtworkEncodingPolicy.VERSION - 1, 'image/jpeg', 'image/jpeg'
+      )).assertTrue();
+      expect(ArtworkRepairPolicy.hasOutdatedEncoding(
+        ArtworkEncodingPolicy.VERSION, 'image/webp', 'webp'
+      )).assertTrue();
+      expect(ArtworkRepairPolicy.hasOutdatedEncoding(
+        ArtworkEncodingPolicy.VERSION, 'IMAGE/WEBP', 'image/webp'
+      )).assertFalse();
+      expect(ArtworkRepairPolicy.hasOutdatedEncoding(
+        ArtworkEncodingPolicy.VERSION, 'image/webp ', 'image/webp'
+      )).assertTrue();
+      expect(ArtworkRepairPolicy.hasOutdatedEncoding(
+        ArtworkEncodingPolicy.VERSION + 1, 'image/webp', 'webp'
       )).assertTrue();
       expect(ArtworkRepairPolicy.shouldRebindSource(7, 8)).assertTrue();
       expect(ArtworkRepairPolicy.shouldRebindSource(7, 7)).assertFalse();

@@ -1,3 +1,6 @@
 [submodule "tools/harmony-agent-tools"]
 	path = tools/harmony-agent-tools
 	url = https://github.com/wbbb0/harmony-agent-tools.git
+[submodule "entry/src/main/cpp/third_party/libwebp"]
+	path = entry/src/main/cpp/third_party/libwebp
+	url = https://chromium.googlesource.com/webm/libwebp

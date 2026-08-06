@@ -163,18 +163,7 @@ export class MediaImportSession {
   async clearLibrary(): Promise<void> {
     await this.artworkPipeline.waitForCleanup();
     await this.removalService.clearLibrary();
-    const assets = await this.repository.getUnreferencedArtworkAssets();
-    for (let index = 0; index < assets.length; index += 1) {
-      const asset = assets[index];
-      if (asset.deleteSmall) {
-        await this.artworkCache.deleteAsync(asset.smallPath);
-      }
-      if (asset.deleteLarge) {
-        await this.artworkCache.deleteAsync(asset.largePath);
-      }
-      await this.repository.removeUnreferencedArtwork(asset.assetId);
-    }
-    this.artworkPipeline.scheduleCleanup();
+    await this.artworkPipeline.scheduleCleanup();
   }
 
   async checkLibrary(onProgress?: FileCheckProgressCallback,

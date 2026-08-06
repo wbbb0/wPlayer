@@ -2,7 +2,7 @@ import { taskpool } from '@kit.ArkTS';
 import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import {
-  flattenArtworkPixels as flattenArtworkPixelsNative,
+  encodeArtworkWebP as encodeArtworkWebPNative,
   parseMediaFile as parseMediaFileNative,
   readArtworkBytes as readArtworkBytesNative
 } from 'libwplayermedia.so';
@@ -226,9 +226,11 @@ function readArtworkBytesFromFdTask(fd: number, byteOffset: number, byteLength: 
 }
 
 @Concurrent
-function flattenArtworkPixelsTask(sourceBuffer: ArrayBuffer, width: number, height: number,
-  premultiplied: boolean): ArrayBuffer {
-  return flattenArtworkPixelsNative(sourceBuffer, width, height, premultiplied);
+function encodeArtworkWebPTask(bgraSourceBuffer: ArrayBuffer, width: number, height: number,
+  premultiplied: boolean, quality: number, method: number, alphaQuality: number): ArrayBuffer {
+  return encodeArtworkWebPNative(
+    bgraSourceBuffer, width, height, premultiplied, quality, method, alphaQuality
+  );
 }
 
 export function calculateFullFingerprint(uri: string): Promise<string> {
@@ -312,13 +314,21 @@ export async function readAuthorizedArtworkBytesAsync(
   }
 }
 
-export function flattenArtworkPixels(sourceBuffer: ArrayBuffer, width: number, height: number,
-  premultiplied: boolean): Promise<ArrayBuffer> {
+export function encodeArtworkWebP(bgraSourceBuffer: ArrayBuffer, width: number, height: number,
+  premultiplied: boolean, quality: number, method: number,
+  alphaQuality: number): Promise<ArrayBuffer> {
   try {
     return taskpool.execute(
-      flattenArtworkPixelsTask, sourceBuffer, width, height, premultiplied
+      encodeArtworkWebPTask,
+      bgraSourceBuffer,
+      width,
+      height,
+      premultiplied,
+      quality,
+      method,
+      alphaQuality
     ) as Promise<ArrayBuffer>;
   } catch (error) {
-    return Promise.reject(operationError('Unable to submit artwork flattening task', error));
+    return Promise.reject(operationError('Unable to submit artwork WebP encoding task', error));
   }
 }

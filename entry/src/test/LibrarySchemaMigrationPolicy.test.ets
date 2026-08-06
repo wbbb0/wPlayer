@@ -6,20 +6,22 @@ import {
 
 export default function librarySchemaMigrationPolicyTest() {
   describe('Library schema migration policy', () => {
-    it('keeps schema 13 current', 0, () => {
-      expect(LibrarySchemaMigrationPolicy.actionFor(13))
+    it('keeps schema 14 current', 0, () => {
+      expect(LibrarySchemaMigrationPolicy.actionFor(14))
         .assertEqual(LibrarySchemaMigrationAction.CURRENT);
     });
 
-    it('supports the production schema 12 migration', 0, () => {
+    it('supports each retained production migration entry', 0, () => {
       expect(LibrarySchemaMigrationPolicy.actionFor(12))
-        .assertEqual(LibrarySchemaMigrationAction.MIGRATE_PRODUCTION);
+        .assertEqual(LibrarySchemaMigrationAction.MIGRATE);
+      expect(LibrarySchemaMigrationPolicy.actionFor(13))
+        .assertEqual(LibrarySchemaMigrationAction.MIGRATE);
     });
 
     it('rejects unknown older and newer schemas', 0, () => {
       expect(LibrarySchemaMigrationPolicy.actionFor(11))
         .assertEqual(LibrarySchemaMigrationAction.REJECT);
-      expect(LibrarySchemaMigrationPolicy.actionFor(14))
+      expect(LibrarySchemaMigrationPolicy.actionFor(15))
         .assertEqual(LibrarySchemaMigrationAction.REJECT);
     });
   });

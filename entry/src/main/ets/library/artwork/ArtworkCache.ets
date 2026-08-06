@@ -2,7 +2,7 @@ import { fileIo as fs, hash } from '@kit.CoreFileKit';
 import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import { image } from '@kit.ImageKit';
 import { SuppressWarnings, SuppressWarningsType } from '@ohos.annotation';
-import { flattenArtworkPixels } from '../metadata/MediaFileTasks';
+import { encodeArtworkWebP } from '../metadata/MediaFileTasks';
 import { ImportPerformanceTrace } from '../importer/ImportPerformanceTrace';
 import { ArtworkEncodingPolicy } from './ArtworkEncodingPolicy';
 import { ArtworkCleanupPolicy } from './ArtworkCleanupPolicy';
@@ -28,6 +28,7 @@ export interface ArtworkCacheVariantResult {
 
 export interface ArtworkCacheResult {
   sourceHash: string;
+  encodingVersion: number;
   small: ArtworkCacheVariantResult;
   large: ArtworkCacheVariantResult;
   palette: ArtworkPalette;
@@ -54,7 +55,6 @@ export class ArtworkCache {
     ArtworkCache.ensureContinues(shouldContinue);
     const sourceBuffer = ArtworkCache.toExactArrayBuffer(sourceBytes);
     const imageSource = image.createImageSource(sourceBuffer);
-    const imagePacker = image.createImagePacker();
     try {
       const imageInfoStartedAt = Date.now();
       const imageInfo = await imageSource.getImageInfo();
@@ -62,19 +62,14 @@ export class ArtworkCache {
       ImportPerformanceTrace.mark('artwork_info', imageInfoStartedAt, traceFileId,
         `source_bytes=${sourceBytes.byteLength} width=${imageInfo.size.width} height=${imageInfo.size.height}`);
       ArtworkCache.validateSourceDimensions(imageInfo.size.width, imageInfo.size.height);
-      if (!ArtworkCache.supportsFormat(imagePacker.supportedFormats, 'jpeg')) {
-        throw new Error('JPEG encoding is not supported on this device');
-      }
       const large = await this.encodeVariant(
-        sourceBuffer, imagePacker, sourceHash, imageInfo.size, ArtworkEncodingPolicy.LARGE_MAX_EDGE,
-        ArtworkEncodingPolicy.MIME_TYPE, ArtworkEncodingPolicy.QUALITY,
-        ArtworkEncodingPolicy.EXTENSION, 'large', traceFileId
+        sourceBuffer, sourceHash, imageInfo.size, ArtworkEncodingPolicy.LARGE_MAX_EDGE,
+        'large', traceFileId
       );
       ArtworkCache.ensureContinues(shouldContinue);
       const small = await this.encodeVariant(
-        sourceBuffer, imagePacker, sourceHash, imageInfo.size, ArtworkEncodingPolicy.SMALL_MAX_EDGE,
-        ArtworkEncodingPolicy.MIME_TYPE, ArtworkEncodingPolicy.QUALITY,
-        ArtworkEncodingPolicy.EXTENSION, 'small', traceFileId
+        sourceBuffer, sourceHash, imageInfo.size, ArtworkEncodingPolicy.SMALL_MAX_EDGE,
+        'small', traceFileId
       );
       ArtworkCache.ensureContinues(shouldContinue);
       const paletteSource = image.createImageSource(ArtworkCache.copyArrayBuffer(sourceBuffer));
@@ -86,13 +81,15 @@ export class ArtworkCache {
       }
       ArtworkCache.ensureContinues(shouldContinue);
       const palette = await extractArtworkPaletteAsync(palettePixels);
-      return { sourceHash: sourceHash, small: small, large: large, palette: palette };
+      return {
+        sourceHash: sourceHash,
+        encodingVersion: ArtworkEncodingPolicy.VERSION,
+        small: small,
+        large: large,
+        palette: palette
+      };
     } finally {
-      try {
-        await imagePacker.release();
-      } finally {
-        await imageSource.release();
-      }
+      await imageSource.release();
     }
   }
 
@@ -168,6 +165,12 @@ export class ArtworkCache {
     });
   }
 
+  cleanupEmptyDirectories(shouldContinue?: () => boolean): Promise<number> {
+    return this.enqueueMaintenance(async (): Promise<number> => {
+      return this.cleanupEmptyDirectoriesNow(shouldContinue);
+    });
+  }
+
   private async cleanupEntries(shouldDelete: (entry: string, isFile: boolean) => boolean,
     shouldContinue?: () => boolean): Promise<number> {
     try {
@@ -224,15 +227,68 @@ export class ArtworkCache {
     return result;
   }
 
+  private async cleanupEmptyDirectoriesNow(shouldContinue?: () => boolean): Promise<number> {
+    const artworkRoot = ArtworkCache.resolveContextPath(this.context, ARTWORK_DIRECTORY);
+    if (!await ArtworkCache.pathExists(artworkRoot)) {
+      return 0;
+    }
+    const directories: Array<string> = [];
+    const pending: Array<string> = [artworkRoot];
+    while (pending.length > 0) {
+      if (shouldContinue !== undefined && !shouldContinue()) {
+        return 0;
+      }
+      const directory = pending.pop();
+      if (directory === undefined) {
+        break;
+      }
+      const entries = await ArtworkCache.listDirectory(directory);
+      for (let index = 0; index < entries.length; index += 1) {
+        const entry = ArtworkCleanupPolicy.normalizedEntry(entries[index]);
+        if (entry.length === 0 || entry.includes('/')) {
+          continue;
+        }
+        const path = `${directory}/${entry}`;
+        if (await ArtworkCache.isDirectory(path)) {
+          directories.push(path);
+          pending.push(path);
+        }
+      }
+    }
+    directories.sort((left: string, right: string): number => right.length - left.length);
+    let deletedCount = 0;
+    for (let index = 0; index < directories.length; index += 1) {
+      if (shouldContinue !== undefined && !shouldContinue()) {
+        break;
+      }
+      try {
+        // HarmonyOS rmdir removes a directory tree even when it is not empty.
+        // Only invoke it after a fresh emptiness check so referenced artwork is
+        // never treated as collateral directory contents.
+        const remainingEntries = await ArtworkCache.listDirectory(directories[index]);
+        if (remainingEntries.length > 0) {
+          continue;
+        }
+        await fs.rmdir(directories[index]);
+        deletedCount += 1;
+      } catch (error) {
+        if (!await ArtworkCache.pathExists(directories[index])) {
+          continue;
+        }
+        const remainingEntries = await ArtworkCache.listDirectory(directories[index]);
+        if (remainingEntries.length === 0) {
+          throw new Error(`Unable to remove empty artwork directory: ${ArtworkCache.errorMessage(error)}`);
+        }
+      }
+    }
+    return deletedCount;
+  }
+
   private async encodeVariant(
     sourceBuffer: ArrayBuffer,
-    imagePacker: image.ImagePacker,
     sourceHash: string,
     sourceSize: image.Size,
     maxEdge: number,
-    format: string,
-    quality: number,
-    extension: string,
     variantName: string,
     traceFileId: number
   ): Promise<ArtworkCacheVariantResult> {
@@ -240,15 +296,33 @@ export class ArtworkCache {
     const targetSize = ArtworkEncodingPolicy.targetSize(sourceSize.width, sourceSize.height, maxEdge);
     const imageSource = image.createImageSource(ArtworkCache.copyArrayBuffer(sourceBuffer));
     let pixelMap: image.PixelMap | undefined;
-    let opaquePixelMap: image.PixelMap | undefined;
     let temporaryPath = '';
     try {
       pixelMap = await imageSource.createPixelMap({
         desiredSize: targetSize,
         desiredPixelFormat: image.PixelMapFormat.RGBA_8888
       });
-      opaquePixelMap = await ArtworkCache.flattenOntoWhite(pixelMap);
-      const actualInfo = await opaquePixelMap.getImageInfo();
+      const actualInfo = await pixelMap.getImageInfo();
+      if (actualInfo.pixelFormat !== image.PixelMapFormat.RGBA_8888) {
+        throw new Error(`Unexpected artwork pixel format: ${actualInfo.pixelFormat}`);
+      }
+      const stride = actualInfo.size.width * 4;
+      const pixels = new ArrayBuffer(stride * actualInfo.size.height);
+      await pixelMap.readPixels({
+        pixels: pixels,
+        offset: 0,
+        stride: stride,
+        region: { x: 0, y: 0, size: actualInfo.size }
+      });
+      const encoded = await encodeArtworkWebP(
+        pixels,
+        actualInfo.size.width,
+        actualInfo.size.height,
+        actualInfo.alphaType === image.AlphaType.PREMUL,
+        ArtworkEncodingPolicy.QUALITY,
+        ArtworkEncodingPolicy.METHOD,
+        ArtworkEncodingPolicy.ALPHA_QUALITY
+      );
       const artworkRoot = ArtworkCache.resolveContextPath(this.context, ARTWORK_DIRECTORY);
       await ArtworkCache.ensureDirectoryAsync(artworkRoot);
       temporaryPath = `${artworkRoot}/.${sourceHash}.${variantName}.` +
@@ -256,10 +330,7 @@ export class ArtworkCache {
       const temporaryFile = await fs.open(temporaryPath,
         fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
       try {
-        await imagePacker.packToFile(opaquePixelMap, temporaryFile.fd, {
-          format: format,
-          quality: quality
-        });
+        await ArtworkCache.writeAll(temporaryFile.fd, encoded);
       } finally {
         try {
           await fs.close(temporaryFile);
@@ -269,7 +340,9 @@ export class ArtworkCache {
       }
 
       const contentHash = await hash.hash(temporaryPath, 'sha256');
-      const relativePath = ArtworkCache.variantRelativePath(contentHash, extension);
+      const relativePath = ArtworkCache.variantRelativePath(
+        contentHash, ArtworkEncodingPolicy.EXTENSION
+      );
       const finalPath = ArtworkCache.resolveContextPath(this.context, relativePath);
       await ArtworkCache.ensureDirectoryAsync(ArtworkCache.parentDirectory(finalPath));
       if (await fs.access(finalPath)) {
@@ -290,7 +363,7 @@ export class ArtworkCache {
       const result: ArtworkCacheVariantResult = {
         hash: contentHash,
         relativePath: relativePath,
-        format: format,
+        format: ArtworkEncodingPolicy.MIME_TYPE,
         width: actualInfo.size.width,
         height: actualInfo.size.height,
         byteSize: (await fs.stat(finalPath)).size
@@ -306,44 +379,12 @@ export class ArtworkCache {
           await ArtworkCache.deleteIfPresentAsync(temporaryPath);
         }
       } finally {
-        try {
-          if (opaquePixelMap !== undefined) {
-            await opaquePixelMap.release();
-          }
-        } finally {
-          if (pixelMap !== undefined) {
-            await pixelMap.release();
-          }
+        if (pixelMap !== undefined) {
+          await pixelMap.release();
         }
       }
       await imageSource.release();
     }
-  }
-
-  private static async flattenOntoWhite(pixelMap: image.PixelMap): Promise<image.PixelMap> {
-    const info = await pixelMap.getImageInfo();
-    if (info.pixelFormat !== image.PixelMapFormat.RGBA_8888) {
-      throw new Error(`Unexpected artwork pixel format: ${info.pixelFormat}`);
-    }
-    const packedStride = info.size.width * 4;
-    const sourceBuffer = new ArrayBuffer(packedStride * info.size.height);
-    await pixelMap.readPixels({
-      pixels: sourceBuffer,
-      offset: 0,
-      stride: packedStride,
-      region: { x: 0, y: 0, size: info.size }
-    });
-    const premultiplied = info.alphaType === image.AlphaType.PREMUL;
-    const opaqueBuffer = await flattenArtworkPixels(
-      sourceBuffer, info.size.width, info.size.height, premultiplied
-    );
-    return image.createPixelMap(opaqueBuffer, {
-      size: info.size,
-      srcPixelFormat: image.PixelMapFormat.RGBA_8888,
-      pixelFormat: image.PixelMapFormat.RGBA_8888,
-      alphaType: image.AlphaType.OPAQUE,
-      editable: false
-    });
   }
 
   @SuppressWarnings({ rules: [SuppressWarningsType.SYSCAP] })
@@ -378,19 +419,6 @@ export class ArtworkCache {
       width > Math.floor(MAX_SOURCE_PIXELS / height)) {
       throw new Error(`Artwork dimensions exceed the import budget: ${width}x${height}`);
     }
-  }
-
-  private static supportsFormat(formats: Array<string>, expected: string): boolean {
-    return formats.some((format: string) => {
-      const normalized = format.toLowerCase().replace('image/', '');
-      if (expected === 'heif') {
-        return normalized === 'heif' || normalized === 'heic';
-      }
-      if (expected === 'jpeg') {
-        return normalized === 'jpeg' || normalized === 'jpg';
-      }
-      return normalized === expected;
-    });
   }
 
   private static variantRelativePath(contentHash: string, extension: string): string {
@@ -458,6 +486,31 @@ export class ArtworkCache {
     }
   }
 
+  private static async isDirectory(path: string): Promise<boolean> {
+    try {
+      const stat = await fs.stat(path);
+      return stat.isDirectory();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  private static async pathExists(path: string): Promise<boolean> {
+    try {
+      return await fs.access(path);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  private static async listDirectory(path: string): Promise<Array<string>> {
+    try {
+      return await fs.listFile(path);
+    } catch (error) {
+      throw new Error(`Unable to list artwork directory: ${ArtworkCache.errorMessage(error)}`);
+    }
+  }
+
   private static errorMessage(error: Object): string {
     return error instanceof Error ? error.message : `${error}`;
   }
@@ -465,6 +518,23 @@ export class ArtworkCache {
   private static nextTemporaryId(): string {
     temporaryFileSequence++;
     return `${Date.now()}.${temporaryFileSequence}`;
+  }
+
+  private static async writeAll(fd: number, buffer: ArrayBuffer): Promise<void> {
+    try {
+      let offset = 0;
+      while (offset < buffer.byteLength) {
+        // WriteOptions.offset moves the file position, not the source-buffer start.
+        const remaining = offset === 0 ? buffer : buffer.slice(offset);
+        const written = await fs.write(fd, remaining);
+        if (written <= 0) {
+          throw new Error(`Unable to write artwork cache at offset ${offset}`);
+        }
+        offset += written;
+      }
+    } catch (error) {
+      throw new Error(`Unable to write artwork cache: ${ArtworkCache.errorMessage(error)}`);
+    }
   }
 
   private static ensureContinues(shouldContinue?: () => boolean): void {

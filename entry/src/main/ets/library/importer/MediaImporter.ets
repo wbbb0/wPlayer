@@ -84,7 +84,7 @@ export class MediaImporter {
     await this.createSession(operation).clearLibrary();
   }
 
-  async cleanupArtworkStorage(): Promise<void> {
+  scheduleArtworkStorageCleanup(): void {
     this.artworkPipeline.scheduleCleanup(
       (): boolean => this.activeOperation === undefined
     );

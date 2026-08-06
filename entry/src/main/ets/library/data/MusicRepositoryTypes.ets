@@ -14,7 +14,8 @@ export interface ArtworkPaletteUpdate {
 }
 
 export enum LibraryMaintenanceKind {
-  ARTWORK_COLORS = 0
+  ARTWORK_COLORS = 0,
+  ARTWORK_VARIANTS = 1
 }
 
 export interface LibraryMaintenanceItem {
@@ -64,6 +65,7 @@ export interface ArtworkImportInput {
   largeWidth?: number;
   largeHeight?: number;
   largeByteSize?: number;
+  encodingVersion?: number;
   palettePrimary?: string;
   paletteSecondary?: string;
   paletteAccent?: string;
@@ -108,6 +110,7 @@ export interface ArtworkAssetLookup {
   largeWidth: number;
   largeHeight: number;
   largeByteSize: number;
+  encodingVersion: number;
   palettePrimary: string;
   paletteSecondary: string;
   paletteAccent: string;

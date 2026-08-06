@@ -7,6 +7,19 @@ if(DEFINED PACKAGE_FIND_FILE)
     include(${PACKAGE_FIND_FILE})
 endif()
 
+set(WEBP_BUILD_ANIM_UTILS OFF CACHE BOOL "" FORCE)
+set(WEBP_BUILD_CWEBP OFF CACHE BOOL "" FORCE)
+set(WEBP_BUILD_DWEBP OFF CACHE BOOL "" FORCE)
+set(WEBP_BUILD_GIF2WEBP OFF CACHE BOOL "" FORCE)
+set(WEBP_BUILD_IMG2WEBP OFF CACHE BOOL "" FORCE)
+set(WEBP_BUILD_VWEBP OFF CACHE BOOL "" FORCE)
+set(WEBP_BUILD_WEBPINFO OFF CACHE BOOL "" FORCE)
+set(WEBP_BUILD_LIBWEBPMUX OFF CACHE BOOL "" FORCE)
+set(WEBP_BUILD_WEBPMUX OFF CACHE BOOL "" FORCE)
+set(WEBP_BUILD_EXTRAS OFF CACHE BOOL "" FORCE)
+set(WEBP_USE_THREAD OFF CACHE BOOL "" FORCE)
+add_subdirectory(third_party/libwebp EXCLUDE_FROM_ALL)
+
 add_library(wplayerbackground SHARED
     apple_music_renderer.cpp
     plugin_manager.cpp
@@ -14,6 +27,7 @@ add_library(wplayerbackground SHARED
 )
 
 add_library(wplayermedia SHARED
+    artwork_webp_encoder.cpp
     media_parser.cpp
     media_napi.cpp
 )
@@ -38,6 +52,7 @@ target_link_libraries(wplayerbackground PUBLIC
     libnative_window.so
 )
 
-target_link_libraries(wplayermedia PUBLIC
+target_link_libraries(wplayermedia PRIVATE
     ${NAPI_LIB}
+    webp
 )

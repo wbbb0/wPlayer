@@ -1,4 +1,5 @@
 #include "media_parser.h"
+#include "artwork_webp_encoder.h"
 
 #include <cstring>
 #include <exception>
@@ -232,56 +233,58 @@ napi_value ReadArtwork(napi_env env, napi_callback_info info)
     }
 }
 
-napi_value FlattenPixelsImpl(napi_env env, napi_callback_info info)
+napi_value EncodeArtworkWebPImpl(napi_env env, napi_callback_info info)
 {
-    size_t argumentCount = 4;
-    napi_value arguments[4] = {};
+    size_t argumentCount = 7;
+    napi_value arguments[7] = {};
     void *source = nullptr;
     size_t sourceLength = 0;
     int32_t width = 0;
     int32_t height = 0;
     bool premultiplied = false;
+    double quality = 0.0;
+    int32_t method = 0;
+    int32_t alphaQuality = 0;
     if (napi_get_cb_info(env, info, &argumentCount, arguments, nullptr, nullptr) != napi_ok ||
-        argumentCount < 4 ||
+        argumentCount < 7 ||
         napi_get_arraybuffer_info(env, arguments[0], &source, &sourceLength) != napi_ok ||
         napi_get_value_int32(env, arguments[1], &width) != napi_ok ||
         napi_get_value_int32(env, arguments[2], &height) != napi_ok ||
         napi_get_value_bool(env, arguments[3], &premultiplied) != napi_ok ||
-        width <= 0 || height <= 0) {
-        return Throw(env, "Invalid native artwork flatten arguments");
+        napi_get_value_double(env, arguments[4], &quality) != napi_ok ||
+        napi_get_value_int32(env, arguments[5], &method) != napi_ok ||
+        napi_get_value_int32(env, arguments[6], &alphaQuality) != napi_ok) {
+        return Throw(env, "Invalid native artwork WebP arguments");
     }
-    const size_t widthValue = static_cast<size_t>(width);
-    const size_t heightValue = static_cast<size_t>(height);
-    if (widthValue > std::numeric_limits<size_t>::max() / heightValue ||
-        widthValue * heightValue > std::numeric_limits<size_t>::max() / 4) {
-        return Throw(env, "Native artwork dimensions overflow");
-    }
-    const size_t targetLength = widthValue * heightValue * 4;
-    if (sourceLength != targetLength) {
-        return Throw(env, "Artwork pixel buffer size does not match dimensions");
+    const ArtworkWebPEncodeOptions options = {
+        static_cast<float>(quality), method, alphaQuality
+    };
+    std::vector<uint8_t> encoded;
+    std::string error;
+    if (!EncodeArtworkWebP(static_cast<const uint8_t *>(source), sourceLength,
+        width, height, premultiplied, options, encoded, error)) {
+        return Throw(env, error);
     }
     void *target = nullptr;
     napi_value output = nullptr;
-    if (napi_create_arraybuffer(env, targetLength, &target, &output) != napi_ok ||
-        target == nullptr) {
-        return Throw(env, "Unable to allocate native flattened artwork");
+    if (napi_create_arraybuffer(env, encoded.size(), &target, &output) != napi_ok ||
+        (encoded.size() > 0 && target == nullptr)) {
+        return Throw(env, "Unable to allocate native artwork WebP result");
     }
-    std::string error;
-    if (!FlattenArtworkPixels(static_cast<const uint8_t *>(source), sourceLength,
-        width, height, premultiplied, static_cast<uint8_t *>(target), error)) {
-        return Throw(env, error);
+    if (!encoded.empty()) {
+        std::memcpy(target, encoded.data(), encoded.size());
     }
     return output;
 }
 
-napi_value FlattenPixels(napi_env env, napi_callback_info info)
+napi_value EncodeArtworkWebPValue(napi_env env, napi_callback_info info)
 {
     try {
-        return FlattenPixelsImpl(env, info);
+        return EncodeArtworkWebPImpl(env, info);
     } catch (const std::bad_alloc &) {
-        return ThrowLiteral(env, "Native artwork flatten ran out of memory");
+        return ThrowLiteral(env, "Native artwork WebP encoding ran out of memory");
     } catch (...) {
-        return ThrowLiteral(env, "Native artwork flatten failed");
+        return ThrowLiteral(env, "Native artwork WebP encoding failed");
     }
 }
 
@@ -290,7 +293,7 @@ napi_value Init(napi_env env, napi_value exports)
     const napi_property_descriptor properties[] = {
         { "parseMediaFile", nullptr, ParseMedia, nullptr, nullptr, nullptr, napi_default, nullptr },
         { "readArtworkBytes", nullptr, ReadArtwork, nullptr, nullptr, nullptr, napi_default, nullptr },
-        { "flattenArtworkPixels", nullptr, FlattenPixels, nullptr, nullptr, nullptr, napi_default, nullptr }
+        { "encodeArtworkWebP", nullptr, EncodeArtworkWebPValue, nullptr, nullptr, nullptr, napi_default, nullptr }
     };
     if (napi_define_properties(env, exports,
         sizeof(properties) / sizeof(properties[0]), properties) != napi_ok) {

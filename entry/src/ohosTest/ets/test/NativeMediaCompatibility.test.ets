@@ -1,11 +1,11 @@
 import { describe, it, expect } from '@ohos/hypium';
 import { fileIo as fs } from '@kit.CoreFileKit';
+import { image } from '@kit.ImageKit';
 import {
-  flattenArtworkPixels,
+  encodeArtworkWebP,
   probeMediaFile,
   readArtworkBytesAsync
 } from '../../../main/ets/library/metadata/MediaFileTasks';
-import { flattenArtworkPixels as flattenArtworkPixelsNative } from 'libwplayermedia.so';
 import { ArtworkPictureType, MediaFormat } from
   '../../../main/ets/library/model/LibraryModels';
 
@@ -450,44 +450,58 @@ export default function nativeMediaCompatibilityTest() {
       }
     });
 
-    it('preservesStraightAndPremultipliedWhiteFlattening', 0, async () => {
-      const source = new Uint8Array([
-        10, 20, 30, 128,
-        90, 80, 70, 0
-      ]);
-      const straightInput = source.buffer.slice(0);
-      const straightOriginal = new Uint8Array(straightInput.slice(0));
-      const straight = new Uint8Array(flattenArtworkPixelsNative(
-        straightInput, 2, 1, false
-      ));
-      expect(straight[0]).assertEqual(142);
-      expect(straight[1]).assertEqual(137);
-      expect(straight[2]).assertEqual(132);
-      expect(straight[3]).assertEqual(255);
-      expect(straight[4]).assertEqual(255);
-      expect(straight[5]).assertEqual(255);
-      expect(straight[6]).assertEqual(255);
-      expect(straight[7]).assertEqual(255);
-      const straightAfter = new Uint8Array(straightInput);
-      expect(straightAfter[0]).assertEqual(straightOriginal[0]);
-      expect(straightAfter[1]).assertEqual(straightOriginal[1]);
-      expect(straightAfter[2]).assertEqual(straightOriginal[2]);
-      expect(straightAfter[3]).assertEqual(straightOriginal[3]);
+    it('encodesLossyWebPWithTransparentPixels', 0, async () => {
+      const width = 16;
+      const bgra = new Uint8Array(width * 4);
+      for (let pixel = 0; pixel < width / 2; pixel += 1) {
+        bgra.set([0, 0, 255, 255], pixel * 4);
+      }
+      for (let pixel = width / 2; pixel < width; pixel += 1) {
+        bgra.set([128, 0, 0, 128], pixel * 4);
+      }
+      const input: ArrayBuffer = bgra.buffer.slice(0);
+      const encoded = await encodeArtworkWebP(input, width, 1, true, 84, 4, 100);
+      const header = new Uint8Array(encoded);
+      expect(String.fromCharCode(header[0], header[1], header[2], header[3])).assertEqual('RIFF');
+      expect(String.fromCharCode(header[8], header[9], header[10], header[11])).assertEqual('WEBP');
 
-      const premultipliedInput = source.buffer.slice(0);
-      const premultipliedOriginal = new Uint8Array(premultipliedInput.slice(0));
-      const premultiplied = new Uint8Array(flattenArtworkPixelsNative(
-        premultipliedInput, 2, 1, true
-      ));
-      expect(premultiplied[0]).assertEqual(157);
-      expect(premultiplied[1]).assertEqual(147);
-      expect(premultiplied[2]).assertEqual(137);
-      expect(premultiplied[3]).assertEqual(255);
-      const premultipliedAfter = new Uint8Array(premultipliedInput);
-      expect(premultipliedAfter[0]).assertEqual(premultipliedOriginal[0]);
-      expect(premultipliedAfter[1]).assertEqual(premultipliedOriginal[1]);
-      expect(premultipliedAfter[2]).assertEqual(premultipliedOriginal[2]);
-      expect(premultipliedAfter[3]).assertEqual(premultipliedOriginal[3]);
+      const source = image.createImageSource(encoded);
+      let pixelMap: image.PixelMap | undefined;
+      try {
+        const info = await source.getImageInfo();
+        expect(info.size.width).assertEqual(width);
+        expect(info.size.height).assertEqual(1);
+        pixelMap = await source.createPixelMap({
+          desiredPixelFormat: image.PixelMapFormat.RGBA_8888
+        });
+        const decoded = new ArrayBuffer(width * 4);
+        await pixelMap.readPixels({
+          pixels: decoded,
+          offset: 0,
+          stride: width * 4,
+          region: { x: 0, y: 0, size: info.size }
+        });
+        const decodedBytes = new Uint8Array(decoded);
+        expect(decodedBytes[2]).assertLarger(decodedBytes[0]);
+        const lastPixel = (width - 1) * 4;
+        expect(decodedBytes[lastPixel]).assertLarger(decodedBytes[lastPixel + 2]);
+        expect(decodedBytes[lastPixel + 3]).assertEqual(128);
+      } finally {
+        if (pixelMap !== undefined) {
+          await pixelMap.release();
+        }
+        await source.release();
+      }
+    });
+
+    it('rejectsWebPPixelBuffersWhoseDimensionsDoNotMatch', 0, async () => {
+      let rejected = false;
+      try {
+        await encodeArtworkWebP(new ArrayBuffer(4), 2, 1, false, 84, 4, 100);
+      } catch (_) {
+        rejected = true;
+      }
+      expect(rejected).assertTrue();
     });
 
     it('preservesUnconditionalId3UnsynchronizationRemoval', 0, async () => {
@@ -530,16 +544,6 @@ export default function nativeMediaCompatibilityTest() {
       } finally {
         removeFixture(path);
       }
-    });
-
-    it('rejectsPixelBuffersWhoseDimensionsDoNotMatch', 0, async () => {
-      let rejected = false;
-      try {
-        await flattenArtworkPixels(new ArrayBuffer(4), 2, 1, false);
-      } catch (_) {
-        rejected = true;
-      }
-      expect(rejected).assertTrue();
     });
 
     it('rejectsTruncatedMetadataInsteadOfReadingPastTheFile', 0, async () => {

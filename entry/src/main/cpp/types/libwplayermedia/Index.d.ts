@@ -38,9 +38,12 @@ export function readArtworkBytes(
   unsynchronized: boolean
 ): ArrayBuffer;
 
-export function flattenArtworkPixels(
-  source: ArrayBuffer,
+export function encodeArtworkWebP(
+  bgraSource: ArrayBuffer,
   width: number,
   height: number,
-  premultiplied: boolean
+  premultiplied: boolean,
+  quality: number,
+  method: number,
+  alphaQuality: number
 ): ArrayBuffer;

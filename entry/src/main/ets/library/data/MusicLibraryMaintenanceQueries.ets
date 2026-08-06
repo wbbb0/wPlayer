@@ -4,6 +4,7 @@ import {
   LibraryStatistics
 } from '../model/LibraryModels';
 import { ARTWORK_PALETTE_VERSION } from '../artwork/ArtworkPaletteExtractor';
+import { ArtworkEncodingPolicy } from '../artwork/ArtworkEncodingPolicy';
 import { LibraryDatabase } from './LibraryDatabase';
 import {
   ArtworkAssetLookup,
@@ -131,7 +132,8 @@ export class MusicLibraryMaintenanceQueries {
       resultSet = await this.database.getStore().querySql(
         `SELECT a.small_hash, a.small_path, a.small_format, a.small_width, a.small_height, a.small_byte_size,
           a.large_hash, a.large_path, a.large_format, a.large_width, a.large_height, a.large_byte_size,
-          a.palette_primary, a.palette_secondary, a.palette_accent, a.palette_version, s.width, s.height, a.id
+          a.palette_primary, a.palette_secondary, a.palette_accent, a.palette_version,
+          s.width, s.height, a.id, a.encoding_version
          FROM artwork_source s JOIN artwork_asset a ON a.id = s.asset_id
          WHERE s.source_hash = ? LIMIT 1`,
         [sourceHash]
@@ -158,7 +160,8 @@ export class MusicLibraryMaintenanceQueries {
         paletteAccent: resultSet.getString(14),
         paletteVersion: resultSet.getLong(15),
         sourceWidth: resultSet.getLong(16),
-        sourceHeight: resultSet.getLong(17)
+        sourceHeight: resultSet.getLong(17),
+        encodingVersion: resultSet.getLong(19)
       };
     } catch (error) {
       throw RelationalStoreSafety.operationError(`Unable to find artwork source ${sourceHash}`, error);
@@ -312,6 +315,23 @@ export class MusicLibraryMaintenanceQueries {
         const count = resultSet.getLong(0);
         if (count > 0) {
           items.push({ kind: LibraryMaintenanceKind.ARTWORK_COLORS, count: count });
+          total += count;
+        }
+      }
+      RelationalStoreSafety.closeResultSet(resultSet, 'library artwork color maintenance status');
+      resultSet = undefined;
+      resultSet = await this.database.getStore().querySql(
+        `SELECT COUNT(*) FROM artwork_asset
+         WHERE ref_count > 0 AND (
+           encoding_version != ? OR LOWER(small_format) != ? OR LOWER(large_format) != ?
+         )`,
+        [ArtworkEncodingPolicy.VERSION, ArtworkEncodingPolicy.MIME_TYPE,
+          ArtworkEncodingPolicy.MIME_TYPE]
+      );
+      if (resultSet.goToNextRow()) {
+        const count = resultSet.getLong(0);
+        if (count > 0) {
+          items.push({ kind: LibraryMaintenanceKind.ARTWORK_VARIANTS, count: count });
           total += count;
         }
       }

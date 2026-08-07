@@ -40,29 +40,23 @@ after an externally terminated process is not the underlying build result.
 
 - Local Hypium tests are registered in `entry/src/test/List.test.ets`.
 - Device tests are registered in `entry/src/ohosTest/ets/test/List.test.ets`.
-- The current repository does not yet provide a single command-line wrapper for these suites.
-- Run the corresponding DevEco Studio test target when available and report the exact suite and target used.
+- Prefer the externally registered Harmony Agent Tools MCP `harmony_project_run` operation `test-local` or
+  `test-device`. Its result includes the actual Hypium summary; report the exact suite and target used.
+- If MCP is unavailable, use `$env:HARMONY_AGENT_TOOLS_HOME\hdc-agent.cmd` from a separately installed checkout, or
+  run the corresponding DevEco Studio test target.
 - Do not substitute `devecocli build` for test execution.
 
 ### Device smoke test
 
 With an already configured signed build and an authorized connected target:
 
-```powershell
-./tools/harmony-agent-tools/hdc-agent.cmd doctor -ProjectRoot .
-./tools/harmony-agent-tools/hdc-agent.cmd emulators
-./tools/harmony-agent-tools/hdc-agent.cmd packages -ProjectRoot .
-./tools/harmony-agent-tools/hdc-agent.cmd install -Target <target> `
-  -PackagePath entry/build/default/outputs/default/entry-default-signed.hap
-./tools/harmony-agent-tools/hdc-agent.cmd start -Target <target> `
-  -Bundle com.wabebabo.wplayer -Ability EntryAbility
-./tools/harmony-agent-tools/hdc-agent.cmd logs -Target <target> `
-  -Bundle com.wabebabo.wplayer -Level E -Tail 200
-```
+Use the externally registered MCP: inspect the target/project with `harmony_inspect`, deploy with
+`harmony_project_run`, capture with `harmony_capture`, and collect bounded diagnostics with `harmony_logs`. Select the
+target explicitly when several devices are usable. The separately installed CLI fallback is
+`$env:HARMONY_AGENT_TOOLS_HOME\hdc-agent.cmd`; it emits JSON and follows the same target-selection rules.
 
-The wrapper emits JSON, requires explicit selection when several targets exist and never uninstalls automatically.
-Raw `hdc` remains a fallback when an operation is not exposed. Do not uninstall an application to resolve signing
-mismatch without approval.
+Raw `hdc` remains a fallback when an operation is not exposed. Neither MCP nor CLI uninstalls automatically. Do not
+uninstall an application to resolve signing mismatch without approval.
 
 ## Required gates by change
 

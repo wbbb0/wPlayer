@@ -35,7 +35,7 @@ git clone --recurse-submodules https://github.com/wbbb0/wPlayer.git
 Set-Location wPlayer
 ```
 
-已有检出在首次使用设备工具前执行：
+已有检出在首次构建前初始化 libwebp 子模块：
 
 ```powershell
 git submodule update --init --recursive
@@ -102,25 +102,29 @@ Remove-Item $signingBackup
 
 ## 安装与启动
 
-Agent 优先使用仓库内的结构化封装检查环境、模拟器端口和构建产物：
+Agent 优先使用用户环境中统一注册的 Harmony Agent Tools MCP：`harmony_inspect` 用于环境、目标与项目检查，
+`harmony_project_run` 用于构建、测试和部署，`harmony_device_run`、`harmony_capture` 与 `harmony_logs` 用于
+设备操作、截图和有界日志。该工具独立于 wPlayer 维护，仓库不再固定其版本。
+
+MCP 不可用时，可将独立检出路径配置到 `HARMONY_AGENT_TOOLS_HOME`，再使用 JSON CLI：
 
 ```powershell
-./tools/harmony-agent-tools/hdc-agent.cmd doctor -ProjectRoot .
-./tools/harmony-agent-tools/hdc-agent.cmd emulators
-./tools/harmony-agent-tools/hdc-agent.cmd packages -ProjectRoot .
+& "$env:HARMONY_AGENT_TOOLS_HOME\hdc-agent.cmd" doctor -ProjectRoot .
+& "$env:HARMONY_AGENT_TOOLS_HOME\hdc-agent.cmd" emulators
+& "$env:HARMONY_AGENT_TOOLS_HOME\hdc-agent.cmd" packages -ProjectRoot .
 ```
 
 安装签名 HAP：
 
 ```powershell
-./tools/harmony-agent-tools/hdc-agent.cmd install -Target <target> `
+& "$env:HARMONY_AGENT_TOOLS_HOME\hdc-agent.cmd" install -Target <target> `
   -PackagePath entry/build/default/outputs/default/entry-default-signed.hap
 ```
 
 启动主 Ability：
 
 ```powershell
-./tools/harmony-agent-tools/hdc-agent.cmd start -Target <target> `
+& "$env:HARMONY_AGENT_TOOLS_HOME\hdc-agent.cmd" start -Target <target> `
   -Bundle com.wabebabo.wplayer -Ability EntryAbility
 ```
 
@@ -131,7 +135,8 @@ Agent 优先使用仓库内的结构化封装检查环境、模拟器端口和�
 
 - 本地单元测试位于 `entry/src/test`。
 - 设备测试位于 `entry/src/ohosTest`。
-- 可在 DevEco Studio 中运行对应测试目标。
+- 优先通过外部 MCP 的 `harmony_project_run` 执行 `test-local` 或 `test-device`；也可在 DevEco Studio 中运行
+  对应测试目标。
 - 提交代码前至少运行一次 `devecocli build`。
 
 音频格式、后台播放、系统媒体控制、文件授权以及不同设备形态仍需要在真实目标设备上验证。构建成功不能替代实际播放测试。

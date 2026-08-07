@@ -126,8 +126,10 @@ Minimum rules:
   format or device scenario works unless it was actually tested there.
 - If a required device, emulator, SDK tool or test runner is unavailable, report that limitation rather than
   implying success.
-- Prefer `tools/harmony-agent-tools/hdc-agent.cmd` for structured target discovery, touch, screenshots, build
-  artifacts, install/start/stop and bounded logs; use raw HDC only when the wrapper does not expose the operation.
+- Prefer the externally registered Harmony Agent Tools MCP (`harmony_inspect`, `harmony_device_run`,
+  `harmony_project_run`, `harmony_capture` and `harmony_logs`) for structured project/device work. If MCP is
+  unavailable, use `$env:HARMONY_AGENT_TOOLS_HOME\hdc-agent.cmd` from a separately installed checkout. Use raw HDC
+  only when neither interface exposes the operation.
 
 ## Git and signing safety
 

@@ -23,7 +23,6 @@ import {
 } from '../../library/model/LibraryModels';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { PlaylistStore } from '../../playlist/store/PlaylistStore';
-import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { AppSettingsStore } from '../../settings/AppSettingsStore';
 import { MultiSelectController } from '../library/MultiSelectController';
 import { AlbumAction } from '../library/AlbumGridItem';
@@ -45,9 +44,6 @@ import { AlbumCollectionPage } from '../../pages/library/AlbumCollectionPage';
 import { AlbumCollectionScope } from '../../library/store/LibraryCollectionState';
 import { FloatingWindowSettingsPage } from '../../pages/settings/FloatingWindowSettingsPage';
 import { PlayerPageSettingsPage } from '../../pages/settings/PlayerPageSettingsPage';
-import { DynamicBackgroundDebugPage } from '../../pages/settings/DynamicBackgroundDebugPage';
-import { DynamicBackgroundV2DebugPage } from '../../pages/settings/DynamicBackgroundV2DebugPage';
-import { DynamicBackgroundV3DebugPage } from '../../pages/settings/DynamicBackgroundV3DebugPage';
 import { NavigationCustomizationPage } from '../../pages/settings/NavigationCustomizationPage';
 import { AboutPage } from '../../pages/settings/AboutPage';
 import { PrivacyPolicyPage } from '../../pages/settings/PrivacyPolicyPage';
@@ -65,7 +61,6 @@ import {
   artistTarget
 } from './LibraryNavigation';
 import { NavigationChromeController } from './NavigationChromeController';
-import { systemBarStyleController } from '../../appearance/SystemBarStyleController';
 import {
   DynamicColor,
   DynamicContainerRole
@@ -134,9 +129,6 @@ export struct ResponsiveNavigationRouteContent {
   onOpenOpenSourceLicenses: () => void = (): void => {};
   onRememberLastTabChange: (value: boolean) => void = (_value: boolean): void => {};
   onRememberSortChange: (value: boolean) => void = (_value: boolean): void => {};
-  onOpenDynamicBackgroundV1: () => void = (): void => {};
-  onOpenDynamicBackgroundV2: () => void = (): void => {};
-  onOpenDynamicBackgroundV3: () => void = (): void => {};
   onDemoLibraryChange: (value: boolean) => void = (_value: boolean): void => {};
 
   build() {
@@ -232,9 +224,6 @@ export struct ResponsiveNavigationRouteContent {
         topInset: this.topInset,
         bottomInset: this.bottomInset,
         scroller: this.scroller,
-        openDynamicBackgroundV1: this.onOpenDynamicBackgroundV1,
-        openDynamicBackgroundV2: this.onOpenDynamicBackgroundV2,
-        openDynamicBackgroundV3: this.onOpenDynamicBackgroundV3,
         onDemoLibraryChange: this.onDemoLibraryChange
       })
     }
@@ -281,9 +270,6 @@ export struct ResponsiveNavigationDestinationContent {
   onOpenOpenSourceLicenses: () => void = (): void => {};
   onRememberLastTabChange: (value: boolean) => void = (_value: boolean): void => {};
   onRememberSortChange: (value: boolean) => void = (_value: boolean): void => {};
-  onOpenDynamicBackgroundV1: () => void = (): void => {};
-  onOpenDynamicBackgroundV2: () => void = (): void => {};
-  onOpenDynamicBackgroundV3: () => void = (): void => {};
   onDemoLibraryChange: (value: boolean) => void = (_value: boolean): void => {};
   playlistDetailTitleMenu: (
     params: PlaylistDetailRouteParams,
@@ -750,85 +736,6 @@ export struct ResponsiveNavigationDestinationContent {
       ))
       .bindToScrollable([this.playerPageSettingsScroller])
       .onBackPressed(this.onDestinationBackPressed)
-    } else if (this.name === NavigationRoute.DYNAMIC_BACKGROUND_DEBUG) {
-      HdsNavDestination() {
-        DynamicBackgroundDebugPage({
-          playerStore: playbackRuntime.playerStore,
-          bottomInset: this.bottomInset
-        })
-      }
-      .width('100%')
-      .height('100%')
-      .backgroundColor('#FF000000')
-      .titleMode(HdsNavDestinationTitleMode.MINI)
-      .titleBar(AppNavigationStyle.secondaryTitleBar(
-        '动态背景',
-        undefined,
-        '#FF000000',
-        {
-          backgroundColor: '#FF000000',
-          contentColor: '#FFFFFFFF',
-          controlBackgroundColor: '#24FFFFFF'
-        }
-      ))
-      .onShown((): void => {
-        systemBarStyleController.submitContentColor(
-          NavigationRoute.DYNAMIC_BACKGROUND_DEBUG,
-          '#FFFFFFFF'
-        );
-      })
-      .onHidden((): void => {
-        systemBarStyleController.removeContentColor(NavigationRoute.DYNAMIC_BACKGROUND_DEBUG);
-      })
-      .onBackPressed(this.onDestinationBackPressed)
-    } else if (this.name === NavigationRoute.DYNAMIC_BACKGROUND_V2_DEBUG) {
-      HdsNavDestination() {
-        DynamicBackgroundV2DebugPage({
-          playerStore: playbackRuntime.playerStore,
-          bottomInset: this.bottomInset
-        })
-      }
-      .width('100%')
-      .height('100%')
-      .backgroundColor('#FF000000')
-      .titleMode(HdsNavDestinationTitleMode.MINI)
-      .titleBar(AppNavigationStyle.secondaryTitleBar(
-        '动态背景 v2',
-        undefined,
-        '#FF000000',
-        {
-          backgroundColor: '#FF000000',
-          contentColor: '#FFFFFFFF',
-          controlBackgroundColor: '#24FFFFFF'
-        }
-      ))
-      .onShown((): void => {
-        systemBarStyleController.submitContentColor(
-          NavigationRoute.DYNAMIC_BACKGROUND_V2_DEBUG,
-          '#FFFFFFFF'
-        );
-      })
-      .onHidden((): void => {
-        systemBarStyleController.removeContentColor(NavigationRoute.DYNAMIC_BACKGROUND_V2_DEBUG);
-      })
-      .onBackPressed(this.onDestinationBackPressed)
-    } else if (this.name === NavigationRoute.DYNAMIC_BACKGROUND_V3_DEBUG) {
-      HdsNavDestination() {
-        DynamicBackgroundV3DebugPage({
-          playerStore: playbackRuntime.playerStore,
-          bottomInset: this.bottomInset
-        })
-      }
-      .width('100%')
-      .height('100%')
-      .backgroundColor(this.themePageBackground)
-      .titleMode(HdsNavDestinationTitleMode.MINI)
-      .titleBar(AppNavigationStyle.secondaryTitleBar(
-        '动态背景 v3',
-        undefined,
-        this.playbackChromeBackgroundColor()
-      ))
-      .onBackPressed(this.onDestinationBackPressed)
     } else if (this.name === NavigationRoute.ABOUT) {
       HdsNavDestination() {
         Stack({ alignContent: Alignment.Bottom }) {
@@ -962,9 +869,6 @@ export struct ResponsiveNavigationDestinationContent {
             onOpenOpenSourceLicenses: this.onOpenOpenSourceLicenses,
             onRememberLastTabChange: this.onRememberLastTabChange,
             onRememberSortChange: this.onRememberSortChange,
-            onOpenDynamicBackgroundV1: this.onOpenDynamicBackgroundV1,
-            onOpenDynamicBackgroundV2: this.onOpenDynamicBackgroundV2,
-            onOpenDynamicBackgroundV3: this.onOpenDynamicBackgroundV3,
             onDemoLibraryChange: this.onDemoLibraryChange
           })
           PageBottomGradient({ maskColor: this.themePageBackground })

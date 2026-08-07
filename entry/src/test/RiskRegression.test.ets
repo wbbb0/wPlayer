@@ -37,8 +37,6 @@ import {
 import {
   NavigationChromeController
 } from '../main/ets/components/navigation/NavigationChromeController';
-import { DynamicBackgroundDebugSpec } from
-  '../main/ets/components/player/DynamicBackgroundDebugSpec';
 import { DynamicBackgroundTextureAlgorithm } from
   '../main/ets/components/player/DynamicBackgroundTextureAlgorithm';
 import { DynamicBackgroundV2Spec } from
@@ -229,23 +227,6 @@ export default function riskRegressionTest() {
     });
 
     it('keeps dynamic background layers asynchronous and bounded', 0, () => {
-      const firstPhase = DynamicBackgroundDebugSpec.phase(
-        12,
-        DynamicBackgroundDebugSpec.LAYER_ONE_PERIOD_SECONDS,
-        1
-      );
-      const secondPhase = DynamicBackgroundDebugSpec.phase(
-        12,
-        DynamicBackgroundDebugSpec.LAYER_TWO_PERIOD_SECONDS,
-        1
-      );
-      expect(firstPhase === secondPhase).assertFalse();
-      expect(Math.abs(DynamicBackgroundDebugSpec.layerOneX(12, 1, 22)) <= 22).assertTrue();
-      expect(Math.abs(DynamicBackgroundDebugSpec.layerTwoY(12, 1, 22)) <= 22).assertTrue();
-      expect(DynamicBackgroundDebugSpec.layerOneX(12, 0, 22)).assertEqual(0);
-      expect(DynamicBackgroundDebugSpec.LAYER_ONE_PERIOD_SECONDS).assertEqual(24);
-      expect(DynamicBackgroundDebugSpec.LAYER_TWO_PERIOD_SECONDS).assertEqual(31.5);
-      expect(DynamicBackgroundDebugSpec.DEFAULT_TEXTURE_SCALE).assertEqual(1.25);
       expect(DynamicBackgroundTextureAlgorithm.WARP_AMOUNT).assertEqual(0.12);
       expect(DynamicBackgroundTextureAlgorithm.BLUR_RADIUS > 0).assertTrue();
       expect(DynamicBackgroundV2Spec.LARGE_SPRITE_SIZE_RATIO).assertEqual(1.25);

@@ -1238,18 +1238,6 @@ export struct ResponsiveNavigationShell {
       }),
       onRememberLastTabChange: this.onRememberLastTabChange,
       onRememberSortChange: this.onRememberSortChange,
-      onOpenDynamicBackgroundV1: (): void =>
-        this.routePathStack(NavigationRoute.DEBUG).pushPath({
-          name: NavigationRoute.DYNAMIC_BACKGROUND_DEBUG
-        }),
-      onOpenDynamicBackgroundV2: (): void =>
-        this.routePathStack(NavigationRoute.DEBUG).pushPath({
-          name: NavigationRoute.DYNAMIC_BACKGROUND_V2_DEBUG
-        }),
-      onOpenDynamicBackgroundV3: (): void =>
-        this.routePathStack(NavigationRoute.DEBUG).pushPath({
-          name: NavigationRoute.DYNAMIC_BACKGROUND_V3_DEBUG
-        }),
       onDemoLibraryChange: this.onDemoLibraryChange
     })
   }
@@ -1312,18 +1300,6 @@ export struct ResponsiveNavigationShell {
       }),
       onRememberLastTabChange: this.onRememberLastTabChange,
       onRememberSortChange: this.onRememberSortChange,
-      onOpenDynamicBackgroundV1: (): void =>
-        this.routePathStack(NavigationRoute.DEBUG).pushPath({
-          name: NavigationRoute.DYNAMIC_BACKGROUND_DEBUG
-        }),
-      onOpenDynamicBackgroundV2: (): void =>
-        this.routePathStack(NavigationRoute.DEBUG).pushPath({
-          name: NavigationRoute.DYNAMIC_BACKGROUND_V2_DEBUG
-        }),
-      onOpenDynamicBackgroundV3: (): void =>
-        this.routePathStack(NavigationRoute.DEBUG).pushPath({
-          name: NavigationRoute.DYNAMIC_BACKGROUND_V3_DEBUG
-        }),
       onDemoLibraryChange: this.onDemoLibraryChange,
       playlistDetailTitleMenu: (
         params: PlaylistDetailRouteParams,

@@ -12,9 +12,6 @@ export class NavigationRoute {
   static readonly PLAYER_PAGE_SETTINGS: string = 'playerPageSettings';
   static readonly NAVIGATION_CUSTOMIZATION: string = 'navigationCustomization';
   static readonly DEBUG: string = 'debug';
-  static readonly DYNAMIC_BACKGROUND_DEBUG: string = 'dynamicBackgroundDebug';
-  static readonly DYNAMIC_BACKGROUND_V2_DEBUG: string = 'dynamicBackgroundV2Debug';
-  static readonly DYNAMIC_BACKGROUND_V3_DEBUG: string = 'dynamicBackgroundV3Debug';
   static readonly ABOUT: string = 'about';
   static readonly PRIVACY_POLICY: string = 'privacyPolicy';
   static readonly DATA_AND_PERMISSIONS: string = 'dataAndPermissions';

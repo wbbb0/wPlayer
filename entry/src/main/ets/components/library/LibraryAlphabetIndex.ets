@@ -11,6 +11,7 @@ export struct LibraryAlphabetIndex {
   @Prop sections: Array<LibrarySection> = [];
   @Prop selectedIndex: number = 0;
   @State indexerHeight: number = 0;
+  @State touchActive: boolean = false;
   onSelect: (itemIndex: number, sectionIndex: number) => void = () => {};
 
   static contentGutter(visible: boolean): number {
@@ -39,13 +40,21 @@ export struct LibraryAlphabetIndex {
       .width(LibraryAlphabetIndex.INDEX_WIDTH)
       .height('90%')
       .itemSize(LibraryAlphabetIndex.ITEM_SIZE)
-      .usingPopup(true)
+      .usingPopup(this.touchActive)
       .popupPosition({ x: LibraryAlphabetIndex.POPUP_X, y: this.popupY() })
       .alignStyle(IndexerAlign.END)
       .autoCollapse(true)
       .enableHapticFeedback(true)
       .onAreaChange((_oldValue: Area, newValue: Area) => {
         this.indexerHeight = LayoutLength.toNumber(newValue.height, this.indexerHeight);
+      })
+      .onTouch((event: TouchEvent) => {
+        // 仅当用户直接触摸索引条时显示提示弹窗；页面滚动驱动 selected() 更新时不弹气泡。
+        if (event.type === TouchType.Down || event.type === TouchType.Move) {
+          this.touchActive = true;
+        } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+          this.touchActive = false;
+        }
       })
       .onSelect((index: number) => {
         if (index >= 0 && index < this.sections.length) {

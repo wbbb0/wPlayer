@@ -43,6 +43,7 @@ import musicFileShareCoordinatorTest from './MusicFileShareCoordinator.test';
 import dragSelectionRangePolicyTest from './DragSelectionRangePolicy.test';
 import fullPlayerQueueRefreshStateTest from './FullPlayerQueueRefreshState.test';
 import importUriTreeTest from './ImportUriTree.test';
+import thumbnailBenchmarkPolicyTest from './ThumbnailBenchmarkPolicy.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -90,4 +91,5 @@ export default function testsuite() {
   dragSelectionRangePolicyTest();
   fullPlayerQueueRefreshStateTest();
   importUriTreeTest();
+  thumbnailBenchmarkPolicyTest();
 }

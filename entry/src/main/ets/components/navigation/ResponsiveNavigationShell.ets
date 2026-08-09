@@ -99,6 +99,11 @@ import {
   ResponsiveNavigationDestinationContent,
   ResponsiveNavigationRouteContent
 } from './ResponsiveNavigationRouteContent';
+import { ThumbnailBenchmarkOptions } from '../../library/artwork/ThumbnailBenchmarkPolicy';
+import {
+  ThumbnailBenchmarkProgress,
+  ThumbnailBenchmarkReport
+} from '../../library/artwork/ThumbnailBenchmarkRunner';
 
 const TRACK_SORT_LABELS: Array<string> = ['名称', '专辑', '艺术家', '发行日期', '添加时间'];
 const ALBUM_SORT_LABELS: Array<string> = ['名称', '艺术家', '发行日期', '添加时间'];
@@ -139,6 +144,13 @@ export struct ResponsiveNavigationShell {
   onMiniPlayerGestureUpdate: (event: GestureEvent) => void = (_event: GestureEvent): void => {};
   onMiniPlayerGestureFinish: () => void = (): void => {};
   onDemoLibraryChange: (value: boolean) => void = (_value: boolean): void => {};
+  onRunThumbnailBenchmark: (
+    options: ThumbnailBenchmarkOptions,
+    onProgress: (progress: ThumbnailBenchmarkProgress) => void
+  ) => Promise<ThumbnailBenchmarkReport> = (
+    _options: ThumbnailBenchmarkOptions,
+    _onProgress: (progress: ThumbnailBenchmarkProgress) => void
+  ): Promise<ThumbnailBenchmarkReport> => Promise.reject(new Error('Benchmark runner unavailable'));
 
   compactTabsController: HdsTabsController = new HdsTabsController();
   condensedCompactTabsController: HdsTabsController = new HdsTabsController();
@@ -158,6 +170,7 @@ export struct ResponsiveNavigationShell {
   privacyPolicyScroller: Scroller = new Scroller();
   dataAndPermissionsScroller: Scroller = new Scroller();
   openSourceLicensesScroller: Scroller = new Scroller();
+  thumbnailBenchmarkScroller: Scroller = new Scroller();
 
   onCompactTabChange: (index: number) => void = (_index: number): void => {};
   onCompactTabClick: (index: number) => void = (_index: number): void => {};
@@ -1238,7 +1251,11 @@ export struct ResponsiveNavigationShell {
       }),
       onRememberLastTabChange: this.onRememberLastTabChange,
       onRememberSortChange: this.onRememberSortChange,
-      onDemoLibraryChange: this.onDemoLibraryChange
+      onDemoLibraryChange: this.onDemoLibraryChange,
+      onOpenThumbnailBenchmark: (): void =>
+        this.routePathStack(routeId).pushPath({
+          name: NavigationRoute.THUMBNAIL_BENCHMARK
+        })
     })
   }
 
@@ -1267,6 +1284,7 @@ export struct ResponsiveNavigationShell {
       privacyPolicyScroller: this.privacyPolicyScroller,
       dataAndPermissionsScroller: this.dataAndPermissionsScroller,
       openSourceLicensesScroller: this.openSourceLicensesScroller,
+      thumbnailBenchmarkScroller: this.thumbnailBenchmarkScroller,
       routeScroller: (routeId: string): Scroller => this.routeScroller(routeId),
       onOpenPlaylist: (playlist: PlaylistSummary): void => {
         this.routePathStack(name).pushPath({
@@ -1301,6 +1319,11 @@ export struct ResponsiveNavigationShell {
       onRememberLastTabChange: this.onRememberLastTabChange,
       onRememberSortChange: this.onRememberSortChange,
       onDemoLibraryChange: this.onDemoLibraryChange,
+      onOpenThumbnailBenchmark: (): void =>
+        this.routePathStack(NavigationRoute.DEBUG).pushPath({
+          name: NavigationRoute.THUMBNAIL_BENCHMARK
+        }),
+      onRunThumbnailBenchmark: this.onRunThumbnailBenchmark,
       playlistDetailTitleMenu: (
         params: PlaylistDetailRouteParams,
         revision: number,

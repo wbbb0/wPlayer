@@ -38,7 +38,7 @@ export class EmbeddedArtworkService {
     artwork: EmbeddedArtwork,
     maxEdge: number
   ): Promise<image.PixelMap> {
-    const buffer = await this.read(detail, artwork);
+    const buffer = await this.readOriginal(detail, artwork);
     const source = image.createImageSource(buffer);
     try {
       const info = await source.getImageInfo();
@@ -69,7 +69,7 @@ export class EmbeddedArtworkService {
   ): Promise<ExportedEmbeddedArtwork> {
     let file: fs.File | undefined;
     try {
-      const buffer = await this.read(detail, artwork);
+      const buffer = await this.readOriginal(detail, artwork);
       const extension = EmbeddedArtworkService.extensionOf(artwork.mimeType, buffer);
       const directory = `${this.context.cacheDir.replace(/\\/g, '/')}/embedded_artwork_exports`;
       if (!await fs.access(directory)) {
@@ -188,7 +188,7 @@ export class EmbeddedArtworkService {
     };
   }
 
-  private read(detail: TrackDetail, artwork: EmbeddedArtwork): Promise<ArrayBuffer> {
+  readOriginal(detail: TrackDetail, artwork: EmbeddedArtwork): Promise<ArrayBuffer> {
     if (detail.uri.length === 0 || artwork.byteLength <= 0) {
       return Promise.reject(new Error('这张封面没有可读取的原始图片数据'));
     }

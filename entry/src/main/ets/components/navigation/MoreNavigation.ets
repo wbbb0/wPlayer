@@ -12,6 +12,7 @@ export class NavigationRoute {
   static readonly PLAYER_PAGE_SETTINGS: string = 'playerPageSettings';
   static readonly NAVIGATION_CUSTOMIZATION: string = 'navigationCustomization';
   static readonly DEBUG: string = 'debug';
+  static readonly THUMBNAIL_BENCHMARK: string = 'thumbnailBenchmark';
   static readonly ABOUT: string = 'about';
   static readonly PRIVACY_POLICY: string = 'privacyPolicy';
   static readonly DATA_AND_PERMISSIONS: string = 'dataAndPermissions';

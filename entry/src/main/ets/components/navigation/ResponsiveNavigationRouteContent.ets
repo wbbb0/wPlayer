@@ -32,7 +32,15 @@ import { AlbumsPage } from '../../pages/library/AlbumsPage';
 import { LibraryCategoryPage } from '../../pages/library/LibraryCategoryPage';
 import { LibraryManagementPage } from '../../pages/library/LibraryManagementPage';
 import { SettingsPage } from '../../pages/settings/SettingsPage';
-import { DebugPage } from '../../pages/settings/DebugPage';
+import {
+  DebugPage,
+  ThumbnailBenchmarkPage
+} from '../../pages/settings/DebugPage';
+import { ThumbnailBenchmarkOptions } from '../../library/artwork/ThumbnailBenchmarkPolicy';
+import {
+  ThumbnailBenchmarkProgress,
+  ThumbnailBenchmarkReport
+} from '../../library/artwork/ThumbnailBenchmarkRunner';
 import { PlaylistDetailPage } from '../../pages/library/PlaylistDetailPage';
 import {
   AlbumDetailColorPolicy,
@@ -130,6 +138,7 @@ export struct ResponsiveNavigationRouteContent {
   onRememberLastTabChange: (value: boolean) => void = (_value: boolean): void => {};
   onRememberSortChange: (value: boolean) => void = (_value: boolean): void => {};
   onDemoLibraryChange: (value: boolean) => void = (_value: boolean): void => {};
+  onOpenThumbnailBenchmark: () => void = (): void => {};
 
   build() {
     if (navigationPageKind(this.routeId) === NavigationPageKind.PLAYLISTS) {
@@ -224,7 +233,8 @@ export struct ResponsiveNavigationRouteContent {
         topInset: this.topInset,
         bottomInset: this.bottomInset,
         scroller: this.scroller,
-        onDemoLibraryChange: this.onDemoLibraryChange
+        onDemoLibraryChange: this.onDemoLibraryChange,
+        onOpenThumbnailBenchmark: this.onOpenThumbnailBenchmark
       })
     }
   }
@@ -254,6 +264,7 @@ export struct ResponsiveNavigationDestinationContent {
   privacyPolicyScroller: Scroller = new Scroller();
   dataAndPermissionsScroller: Scroller = new Scroller();
   openSourceLicensesScroller: Scroller = new Scroller();
+  thumbnailBenchmarkScroller: Scroller = new Scroller();
   routeScroller: (routeId: string) => Scroller = (_routeId: string): Scroller => new Scroller();
   onOpenPlaylist: (playlist: PlaylistSummary) => void =
     (_playlist: PlaylistSummary): void => {};
@@ -271,6 +282,14 @@ export struct ResponsiveNavigationDestinationContent {
   onRememberLastTabChange: (value: boolean) => void = (_value: boolean): void => {};
   onRememberSortChange: (value: boolean) => void = (_value: boolean): void => {};
   onDemoLibraryChange: (value: boolean) => void = (_value: boolean): void => {};
+  onOpenThumbnailBenchmark: () => void = (): void => {};
+  onRunThumbnailBenchmark: (
+    options: ThumbnailBenchmarkOptions,
+    onProgress: (progress: ThumbnailBenchmarkProgress) => void
+  ) => Promise<ThumbnailBenchmarkReport> = (
+    _options: ThumbnailBenchmarkOptions,
+    _onProgress: (progress: ThumbnailBenchmarkProgress) => void
+  ): Promise<ThumbnailBenchmarkReport> => Promise.reject(new Error('Benchmark runner unavailable'));
   playlistDetailTitleMenu: (
     params: PlaylistDetailRouteParams,
     revision: number,
@@ -736,6 +755,31 @@ export struct ResponsiveNavigationDestinationContent {
       ))
       .bindToScrollable([this.playerPageSettingsScroller])
       .onBackPressed(this.onDestinationBackPressed)
+    } else if (this.name === NavigationRoute.THUMBNAIL_BENCHMARK) {
+      HdsNavDestination() {
+        Stack({ alignContent: Alignment.Bottom }) {
+          ThumbnailBenchmarkPage({
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            scroller: this.thumbnailBenchmarkScroller,
+            onRunThumbnailBenchmark: this.onRunThumbnailBenchmark
+          })
+          PageBottomGradient({ maskColor: this.themePageBackground })
+        }
+        .width('100%')
+        .height('100%')
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(this.themePageBackground)
+      .titleMode(HdsNavDestinationTitleMode.MINI)
+      .titleBar(AppNavigationStyle.secondaryTitleBar(
+        'Thumbnail 生成速度测试',
+        undefined,
+        this.playbackChromeBackgroundColor()
+      ))
+      .bindToScrollable([this.thumbnailBenchmarkScroller])
+      .onBackPressed(this.onDestinationBackPressed)
     } else if (this.name === NavigationRoute.ABOUT) {
       HdsNavDestination() {
         Stack({ alignContent: Alignment.Bottom }) {
@@ -869,7 +913,8 @@ export struct ResponsiveNavigationDestinationContent {
             onOpenOpenSourceLicenses: this.onOpenOpenSourceLicenses,
             onRememberLastTabChange: this.onRememberLastTabChange,
             onRememberSortChange: this.onRememberSortChange,
-            onDemoLibraryChange: this.onDemoLibraryChange
+            onDemoLibraryChange: this.onDemoLibraryChange,
+            onOpenThumbnailBenchmark: this.onOpenThumbnailBenchmark
           })
           PageBottomGradient({ maskColor: this.themePageBackground })
         }

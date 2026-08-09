@@ -63,6 +63,13 @@ import { PickerMusicFileUriAccessActivator } from
   '../library/share/PickerMusicFileUriAccessActivator';
 import { SystemMusicFileSharePresenter } from '../library/share/SystemMusicFileSharePresenter';
 import { RepositoryTrackShareSource } from '../library/share/RepositoryTrackShareSource';
+import { EmbeddedArtworkService } from '../library/artwork/EmbeddedArtworkService';
+import { ThumbnailBenchmarkOptions } from '../library/artwork/ThumbnailBenchmarkPolicy';
+import {
+  ThumbnailBenchmarkProgress,
+  ThumbnailBenchmarkReport,
+  ThumbnailBenchmarkRunner
+} from '../library/artwork/ThumbnailBenchmarkRunner';
 
 @Entry
 @Component
@@ -511,6 +518,10 @@ struct Index {
       onDemoLibraryChange: (value: boolean): void => {
         this.setDemoLibraryEnabled(value);
       },
+      onRunThumbnailBenchmark: (
+        options: ThumbnailBenchmarkOptions,
+        onProgress: (progress: ThumbnailBenchmarkProgress) => void
+      ): Promise<ThumbnailBenchmarkReport> => this.runThumbnailBenchmark(options, onProgress),
       onNavigationItemMove: (from: number, to: number): void =>
         this.navigationController.moveNavigationItem(from, to),
       onRequestCreatePlaylist: (): void => this.playlistController.openCreator(),
@@ -555,6 +566,19 @@ struct Index {
     } catch (error) {
       console.warn(`Unable to switch demo library: ${error instanceof Error ? error.message : error}`);
     }
+  }
+
+  private runThumbnailBenchmark(options: ThumbnailBenchmarkOptions,
+    onProgress: (progress: ThumbnailBenchmarkProgress) => void
+  ): Promise<ThumbnailBenchmarkReport> {
+    const context = this.getUIContext().getHostContext();
+    if (context === undefined) {
+      return Promise.reject(new Error('无法获取应用上下文'));
+    }
+    return new ThumbnailBenchmarkRunner(
+      playbackRuntime.repository,
+      new EmbeddedArtworkService(context as common.UIAbilityContext)
+    ).run(options, onProgress);
   }
 
   @Builder

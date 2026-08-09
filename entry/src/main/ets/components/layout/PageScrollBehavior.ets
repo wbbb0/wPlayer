@@ -4,7 +4,7 @@ export class PageScrollBehavior implements AttributeModifier<ScrollAttribute> {
   applyNormalAttribute(instance: ScrollAttribute): void {
     instance
       .clip(false)
-      .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: false })
+      .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
       .scrollBar(BarState.Auto);
   }
 }
@@ -39,7 +39,7 @@ export class PageListBehavior implements AttributeModifier<ListAttribute> {
   applyNormalAttribute(instance: ListAttribute): void {
     instance
       .clip(false)
-      .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: false })
+      .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
       .cachedCount(this.cacheCount, true);
   }
 }
@@ -54,7 +54,7 @@ export class PageGridBehavior implements AttributeModifier<GridAttribute> {
   applyNormalAttribute(instance: GridAttribute): void {
     instance
       .clip(false)
-      .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: false })
+      .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
       .cachedCount(this.cacheCount, true);
   }
 }

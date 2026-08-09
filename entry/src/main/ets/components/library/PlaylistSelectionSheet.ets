@@ -143,6 +143,7 @@ export struct PlaylistSelectionSheet {
         }
         .width('100%')
         .layoutWeight(1)
+        .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
         .cachedCount(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT, true)
       }
 

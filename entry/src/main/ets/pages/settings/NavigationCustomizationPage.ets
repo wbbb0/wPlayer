@@ -51,7 +51,7 @@ export struct NavigationCustomizationPage {
       top: PageLayoutSpec.secondaryContentStart(this.topInset),
       bottom: PageLayoutSpec.contentEnd(this.bottomInset)
     })
-    .edgeEffect(EdgeEffect.Spring)
+    .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
     .backgroundColor(Color.Transparent)
   }
 }

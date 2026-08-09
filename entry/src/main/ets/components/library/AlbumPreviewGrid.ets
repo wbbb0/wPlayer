@@ -73,7 +73,7 @@ export struct AlbumPreviewGrid {
     .height(AlbumPreviewLayoutPolicy.viewportHeight(this.containerWidth))
     .padding({ left: PageLayoutSpec.HORIZONTAL_INSET, right: PageLayoutSpec.HORIZONTAL_INSET })
     .scrollBar(BarState.Off)
-    .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: false })
+    .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
     .cachedCount(2, true)
   }
 }

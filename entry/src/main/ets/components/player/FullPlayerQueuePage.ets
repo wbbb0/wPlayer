@@ -769,7 +769,7 @@ export struct FullPlayerQueuePage {
               }
               .width('100%')
               .height('100%')
-              .edgeEffect(EdgeEffect.Spring)
+              .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
               .enableScrollInteraction(this.pageScrollingEnabled &&
                 this.refreshState.canInteract() && !this.selectionDragActive)
               .cachedCount(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT, true)

@@ -190,7 +190,7 @@ export struct TaskResultDetails {
         }
         .width('100%')
         .layoutWeight(1)
-        .edgeEffect(EdgeEffect.Spring)
+        .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
         .sticky(StickyStyle.Header)
         .cachedCount(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT, true)
       } else if (this.emptyText.length > 0) {

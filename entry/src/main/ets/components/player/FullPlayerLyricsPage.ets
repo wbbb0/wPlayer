@@ -193,7 +193,7 @@ export struct FullPlayerLyricsPage {
         }
         .width('100%')
         .layoutWeight(1)
-        .edgeEffect(EdgeEffect.Spring)
+        .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
         .enableScrollInteraction(this.pageScrollingEnabled)
         .cachedCount(LibraryPagingPolicy.TRACK_UI_CACHE_COUNT, true)
         .scrollBar(BarState.Off)
@@ -220,7 +220,7 @@ export struct FullPlayerLyricsPage {
         }
         .width('100%')
         .layoutWeight(1)
-        .edgeEffect(EdgeEffect.Spring)
+        .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
         .enableScrollInteraction(this.pageScrollingEnabled)
         .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) =>
           this.blockVerticalPlayerGesture(recognizers))

@@ -293,7 +293,7 @@ export struct TrackDetailPage {
       .width('100%')
       .height(252)
       .listDirection(Axis.Horizontal)
-      .edgeEffect(EdgeEffect.Spring)
+      .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
       .scrollBar(BarState.Off)
     } else {
       Text('这首歌曲没有可导出的内嵌封面。')

@@ -520,7 +520,7 @@ export struct LibraryManagementPage {
               }
               .width('100%')
               .constraintSize({ maxHeight: 180 })
-              .edgeEffect(EdgeEffect.Spring)
+              .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
             }
           }
           .width('100%')
@@ -776,7 +776,7 @@ export struct LibraryManagementPage {
       }
       .width('100%')
       .layoutWeight(1)
-      .edgeEffect(EdgeEffect.Spring)
+      .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
       Row({ space: 12 }) {
         Column({ space: 2 }) {
           Text(`已选 ${this.treeSelectedCount} / ${this.treeTotalCount} 首`)
@@ -938,7 +938,7 @@ export struct LibraryManagementPage {
         }
         .width('100%')
         .layoutWeight(1)
-        .edgeEffect(EdgeEffect.Spring)
+        .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
         Button('一键清理所有失效记录')
           .width('100%')
           .fontColor($r('app.color.destructive'))

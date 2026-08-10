@@ -44,6 +44,7 @@ import {
 } from './MediaImportCallbacks';
 import { MediaArtworkPipeline } from './MediaArtworkPipeline';
 import { MediaImportOperation } from './MediaImportOperation';
+import { BoundedAsyncWorkQueue } from './BoundedAsyncWorkQueue';
 import { CommittedChangeRefreshCoordinator } from './CommittedChangeRefreshCoordinator';
 
 interface ProgressNotificationGate {
@@ -135,14 +136,9 @@ export class MediaFileChecker {
         new Array<Promise<void> | undefined>(
           ImportConcurrencyPolicy.FILE_CHECK_PIPELINE_CONCURRENCY
         );
-      const artworkSlots: Array<Promise<void> | undefined> =
-        new Array<Promise<void> | undefined>(
-          ImportConcurrencyPolicy.FILE_CHECK_ARTWORK_QUEUE_CAPACITY
-        );
       const sharedArtworkGroups: Map<string, Array<PendingArtworkWork>> =
         new Map<string, Array<PendingArtworkWork>>();
       let nextScanSlot = 0;
-      let nextArtworkSlot = 0;
       let lastArtworkProgressAt = 0;
       const artworkRefresh = new CommittedChangeRefreshCoordinator(
         (): Promise<void> => this.notifyLibraryChanged(
@@ -152,36 +148,35 @@ export class MediaFileChecker {
       );
 
       artworkSession.startProcessing();
+      const artworkQueue = new BoundedAsyncWorkQueue<Array<PendingArtworkWork>>(
+        ImportConcurrencyPolicy.FILE_CHECK_ARTWORK_QUEUE_CAPACITY,
+        async (works: Array<PendingArtworkWork>): Promise<void> => {
+          const attempt = await this.processSharedArtworkGroup(works, artworkSession);
+          if (attempt === undefined) {
+            return;
+          }
+          this.applyFileCheckArtworkResult(
+            attempt.work, attempt.result, progress, itemResults
+          );
+          if (attempt.result.outcome === ArtworkWorkOutcome.COMPLETED &&
+            attempt.result.sourceHasArtwork) {
+            artworkRefresh.recordCommitted();
+          }
+          const now = Date.now();
+          if (now - lastArtworkProgressAt >=
+            ImportConcurrencyPolicy.IMPORT_PROGRESS_INTERVAL_MS ||
+            progress.artworkProcessed >= progress.artworkTotal) {
+            lastArtworkProgressAt = now;
+            this.notifyFileCheck(onProgress, progress, progressGate, true);
+          }
+        }
+      );
       const scheduleArtwork = async (work: PendingArtworkWork): Promise<void> => {
         if (this.cancelRequested) {
           return;
         }
-        const slot = nextArtworkSlot;
-        nextArtworkSlot = (nextArtworkSlot + 1) % artworkSlots.length;
-        const previous = artworkSlots[slot];
-        if (previous !== undefined) {
-          await previous;
-        }
-        if (this.cancelRequested) {
-          return;
-        }
         progress.artworkTotal += 1;
-        const operation = artworkSession.enqueue(work.request).then(
-          (result: ArtworkWorkResult): void => {
-            this.applyFileCheckArtworkResult(work, result, progress, itemResults);
-            if (result.outcome === ArtworkWorkOutcome.COMPLETED && result.sourceHasArtwork) {
-              artworkRefresh.recordCommitted();
-            }
-            const now = Date.now();
-            if (now - lastArtworkProgressAt >=
-              ImportConcurrencyPolicy.IMPORT_PROGRESS_INTERVAL_MS ||
-              progress.artworkProcessed >= progress.artworkTotal) {
-              lastArtworkProgressAt = now;
-              this.notifyFileCheck(onProgress, progress, progressGate, true);
-            }
-          }
-        );
-        artworkSlots[slot] = operation;
+        await artworkQueue.enqueue([work]);
       };
       const routeArtwork = async (work: PendingArtworkWork): Promise<void> => {
         const key = work.sharedSourceKey ?? '';
@@ -197,39 +192,10 @@ export class MediaFileChecker {
         }
       };
       const scheduleArtworkGroup = async (works: Array<PendingArtworkWork>): Promise<void> => {
-        if (this.cancelRequested || works.length === 0) {
+        if (works.length === 0) {
           return;
         }
-        const slot = nextArtworkSlot;
-        nextArtworkSlot = (nextArtworkSlot + 1) % artworkSlots.length;
-        const previous = artworkSlots[slot];
-        if (previous !== undefined) {
-          await previous;
-        }
-        if (this.cancelRequested) {
-          return;
-        }
-        const operation = this.processSharedArtworkGroup(works, artworkSession).then(
-          (attempt: ArtworkRepairAttempt<PendingArtworkWork> | undefined): void => {
-            if (attempt !== undefined) {
-              this.applyFileCheckArtworkResult(
-                attempt.work, attempt.result, progress, itemResults
-              );
-              if (attempt.result.outcome === ArtworkWorkOutcome.COMPLETED &&
-                attempt.result.sourceHasArtwork) {
-                artworkRefresh.recordCommitted();
-              }
-              const now = Date.now();
-              if (now - lastArtworkProgressAt >=
-                ImportConcurrencyPolicy.IMPORT_PROGRESS_INTERVAL_MS ||
-                progress.artworkProcessed >= progress.artworkTotal) {
-                lastArtworkProgressAt = now;
-                this.notifyFileCheck(onProgress, progress, progressGate, true);
-              }
-            }
-          }
-        );
-        artworkSlots[slot] = operation;
+        await artworkQueue.enqueue(works);
       };
 
       progress.currentName = '正在激活文件访问权限';
@@ -339,12 +305,7 @@ export class MediaFileChecker {
       for (let index = 0; index < sharedGroups.length; index += 1) {
         await scheduleArtworkGroup(sharedGroups[index]);
       }
-      for (let index = 0; index < artworkSlots.length; index += 1) {
-        const operation = artworkSlots[index];
-        if (operation !== undefined) {
-          await operation;
-        }
-      }
+      await artworkQueue.closeAndWait();
       await artworkSession.waitForIdle();
       progress.cancelled = progress.cancelled || this.cancelRequested ||
         artworkSession.isCancelled();

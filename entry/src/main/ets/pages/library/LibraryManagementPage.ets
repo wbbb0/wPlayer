@@ -40,6 +40,40 @@ enum LibraryManagementSheet {
 }
 
 @Component
+struct TaskArtworkProgressView {
+  @Prop total: number = 0;
+  @Prop processed: number = 0;
+  @Prop skipped: number = 0;
+  @Prop failed: number = 0;
+
+  build() {
+    Column({ space: 10 }) {
+      Divider()
+        .color($r('app.color.text_secondary'))
+        .opacity(0.2)
+      Progress({
+        value: this.processed,
+        total: Math.max(1, this.total),
+        type: ProgressType.Linear
+      }).width('100%')
+      Text(this.processed < this.total ? '正在处理封面' :
+        (this.failed > 0 ? '封面处理完成，但有失败项目' : '封面处理完成'))
+        .fontSize(13)
+        .fontColor($r('app.color.text_secondary'))
+        .width('100%')
+      Text(`${this.processed} / ${this.total}` +
+        (this.skipped > 0 ? `  ·  跳过 ${this.skipped}` : '') +
+        (this.failed > 0 ? `  ·  失败 ${this.failed}` : ''))
+        .fontSize(12)
+        .fontColor($r('app.color.text_secondary'))
+        .fontFeature('tnum')
+        .width('100%')
+    }
+    .width('100%')
+  }
+}
+
+@Component
 export struct LibraryManagementPage {
   @ObjectLink store: LibraryStore;
   @Prop topInset: number = 0;
@@ -359,31 +393,12 @@ export struct LibraryManagementPage {
             .width('100%')
           if (this.store.importProgress.metadataCompleted &&
             this.store.importProgress.artworkTotal > 0) {
-            Divider()
-              .color($r('app.color.text_secondary'))
-              .opacity(0.2)
-            Progress({
-              value: this.store.importProgress.artworkProcessed,
-              total: Math.max(1, this.store.importProgress.artworkTotal),
-              type: ProgressType.Linear
-            }).width('100%')
-            Text(this.store.importProgress.artworkProcessed <
-              this.store.importProgress.artworkTotal ? '正在处理封面' :
-              (this.store.importProgress.artworkFailed > 0 ?
-                '封面处理完成，但有失败项目' : '封面处理完成'))
-              .fontSize(13)
-              .fontColor($r('app.color.text_secondary'))
-              .width('100%')
-            Text(`${this.store.importProgress.artworkProcessed} / ` +
-              `${this.store.importProgress.artworkTotal}` +
-              (this.store.importProgress.artworkSkipped > 0 ?
-                `  ·  跳过 ${this.store.importProgress.artworkSkipped}` : '') +
-              (this.store.importProgress.artworkFailed > 0 ?
-                `  ·  失败 ${this.store.importProgress.artworkFailed}` : ''))
-              .fontSize(12)
-              .fontColor($r('app.color.text_secondary'))
-              .fontFeature('tnum')
-              .width('100%')
+            TaskArtworkProgressView({
+              total: this.store.importProgress.artworkTotal,
+              processed: this.store.importProgress.artworkProcessed,
+              skipped: this.store.importProgress.artworkSkipped,
+              failed: this.store.importProgress.artworkFailed
+            })
           }
           Button('停止导入')
             .buttonStyle(ButtonStyleMode.TEXTUAL)
@@ -419,31 +434,12 @@ export struct LibraryManagementPage {
             .width('100%')
           if (this.store.fileCheckProgress.phase !== FileCheckPhase.SCANNING &&
             this.store.fileCheckProgress.artworkTotal > 0) {
-            Divider()
-              .color($r('app.color.text_secondary'))
-              .opacity(0.2)
-            Progress({
-              value: this.store.fileCheckProgress.artworkProcessed,
-              total: Math.max(1, this.store.fileCheckProgress.artworkTotal),
-              type: ProgressType.Linear
-            }).width('100%')
-            Text(this.store.fileCheckProgress.artworkProcessed <
-              this.store.fileCheckProgress.artworkTotal ? '正在处理封面' :
-              (this.store.fileCheckProgress.artworkFailed > 0 ?
-                '封面处理完成，但有失败项目' : '封面处理完成'))
-              .fontSize(13)
-              .fontColor($r('app.color.text_secondary'))
-              .width('100%')
-            Text(`${this.store.fileCheckProgress.artworkProcessed} / ` +
-              `${this.store.fileCheckProgress.artworkTotal}` +
-              (this.store.fileCheckProgress.artworkSkipped > 0 ?
-                `  ·  跳过 ${this.store.fileCheckProgress.artworkSkipped}` : '') +
-              (this.store.fileCheckProgress.artworkFailed > 0 ?
-                `  ·  失败 ${this.store.fileCheckProgress.artworkFailed}` : ''))
-              .fontSize(12)
-              .fontColor($r('app.color.text_secondary'))
-              .fontFeature('tnum')
-              .width('100%')
+            TaskArtworkProgressView({
+              total: this.store.fileCheckProgress.artworkTotal,
+              processed: this.store.fileCheckProgress.artworkProcessed,
+              skipped: this.store.fileCheckProgress.artworkSkipped,
+              failed: this.store.fileCheckProgress.artworkFailed
+            })
           }
           if (this.store.fileCheckProgress.phase === FileCheckPhase.PALETTE &&
             this.store.fileCheckProgress.paletteTotal > 0) {

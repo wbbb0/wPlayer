@@ -39,6 +39,32 @@ target_compile_features(wplayerbackground PUBLIC cxx_std_17)
 target_compile_features(wplayermedia PUBLIC cxx_std_17)
 target_compile_options(wplayermedia PRIVATE -Wall -Wextra)
 
+# Native media and rendering code is exercised heavily by debug device builds.
+# Keep debug symbols, but use the same optimization level as release so codec
+# and pixel-processing performance remains representative.
+function(wplayer_optimize_debug_target target_name)
+    if(TARGET ${target_name})
+        target_compile_options(${target_name} PRIVATE $<$<CONFIG:Debug>:-O2>)
+        target_compile_definitions(${target_name} PRIVATE $<$<CONFIG:Debug>:NDEBUG>)
+    endif()
+endfunction()
+
+set(WPLAYER_OPTIMIZED_DEBUG_TARGETS
+    wplayerbackground
+    wplayermedia
+    sharpyuv
+    webpdecode
+    webpdspdecode
+    webputilsdecode
+    webpencode
+    webpdsp
+    webputils
+    webp
+)
+foreach(target_name IN LISTS WPLAYER_OPTIMIZED_DEBUG_TARGETS)
+    wplayer_optimize_debug_target(${target_name})
+endforeach()
+
 find_library(EGL_LIB EGL)
 find_library(GLES_LIB GLESv3)
 find_library(HILOG_LIB hilog_ndk.z)

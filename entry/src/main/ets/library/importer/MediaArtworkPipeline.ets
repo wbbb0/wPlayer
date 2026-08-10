@@ -59,37 +59,6 @@ export class MediaArtworkPipeline {
     this.preparations.clear();
   }
 
-  async processWorks(session: ArtworkWorkSession,
-    works: Array<ArtworkWorkRequest>,
-    onResult: (request: ArtworkWorkRequest, result: ArtworkWorkResult) => void): Promise<void> {
-    let offset = 0;
-    while (offset < works.length) {
-      if (session.isCancelled()) {
-        const skipped = MediaArtworkPipeline.result(ArtworkWorkOutcome.SKIPPED);
-        for (let index = offset; index < works.length; index += 1) {
-          onResult(works[index], skipped);
-        }
-        return;
-      }
-      const batch = works.slice(
-        offset,
-        Math.min(offset + ImportConcurrencyPolicy.ARTWORK_PROCESS_BATCH_SIZE, works.length)
-      );
-      const tasks = batch.map(
-        (request: ArtworkWorkRequest): Promise<ArtworkWorkResult> =>
-          session.enqueue(request)
-      );
-      const results = await Promise.all(tasks);
-      for (let index = 0; index < batch.length; index += 1) {
-        onResult(batch[index], results[index]);
-      }
-      offset += batch.length;
-      await new Promise<void>((resolve: () => void): void => {
-        setTimeout(resolve, 0);
-      });
-    }
-  }
-
   async prepareArtworks(uri: string, metadata: ParsedMetadata,
     cancellation: ArtworkWorkCancellation,
     expectedSourceHash: string = ''): Promise<Array<ArtworkImportInput>> {

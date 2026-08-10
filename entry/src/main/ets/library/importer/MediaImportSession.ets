@@ -15,6 +15,7 @@ import {
 import { MetadataReader } from '../metadata/MetadataReader';
 import { calculateFullFingerprint } from '../metadata/MediaFileTasks';
 import { ImportConcurrencyPolicy } from './ImportConcurrencyPolicy';
+import { BoundedAsyncWorkQueue } from './BoundedAsyncWorkQueue';
 import { MediaImportOperation } from './MediaImportOperation';
 import { BatchDuplicateMatch, BatchDuplicatePartition, MediaDuplicateProof } from './MediaDuplicateProof';
 import { MediaArtworkPipeline } from './MediaArtworkPipeline';
@@ -416,30 +417,23 @@ export class MediaImportSession {
       await this.notifyLibraryChanged(onLibraryChanged, ImportRefreshPhase.METADATA);
     }
     artworkSession.startProcessing();
-    const artworkWorkByTrackId = new Map<number, PendingArtworkWork>();
-    artworkWorks.forEach((work: PendingArtworkWork): void => {
-      artworkWorkByTrackId.set(work.request.trackId, work);
-    });
     let lastArtworkProgressAt = 0;
-    await this.artworkPipeline.processWorks(
-      artworkSession,
-      artworkWorks.map((work: PendingArtworkWork): ArtworkWorkRequest => work.request),
-      (request: ArtworkWorkRequest, result: ArtworkWorkResult): void => {
+    const artworkQueue = new BoundedAsyncWorkQueue<PendingArtworkWork>(
+      ImportConcurrencyPolicy.ARTWORK_PROCESS_BATCH_SIZE,
+      async (work: PendingArtworkWork): Promise<void> => {
+        const result = await artworkSession.enqueue(work.request);
         progress.artworkProcessed += 1;
         if (result.outcome === ArtworkWorkOutcome.SKIPPED) {
           progress.artworkSkipped += 1;
         } else if (result.outcome === ArtworkWorkOutcome.FAILED) {
           progress.artworkFailed += 1;
-          const work = artworkWorkByTrackId.get(request.trackId);
-          if (work !== undefined) {
-            this.recordItem(itemResults, {
-              uri: request.uri,
-              displayName: work.displayName,
-              outcome: ImportItemOutcome.ARTWORK_FAILED,
-              reason: result.errorMessage.length > 0 ? result.errorMessage : '封面处理失败',
-              detailKind: ImportItemDetailKind.ARTWORK_FAILED
-            }, onItem);
-          }
+          this.recordItem(itemResults, {
+            uri: work.request.uri,
+            displayName: work.displayName,
+            outcome: ImportItemOutcome.ARTWORK_FAILED,
+            reason: result.errorMessage.length > 0 ? result.errorMessage : '封面处理失败',
+            detailKind: ImportItemDetailKind.ARTWORK_FAILED
+          }, onItem);
         }
         const now = Date.now();
         if (now - lastArtworkProgressAt >= ImportConcurrencyPolicy.IMPORT_PROGRESS_INTERVAL_MS ||
@@ -449,6 +443,10 @@ export class MediaImportSession {
         }
       }
     );
+    for (let index = 0; index < artworkWorks.length; index += 1) {
+      await artworkQueue.enqueue(artworkWorks[index]);
+    }
+    await artworkQueue.closeAndWait();
     await artworkSession.waitForIdle();
     progress.cancelled = progress.cancelled || this.cancelRequested ||
       artworkSession.isCancelled();

@@ -91,7 +91,8 @@ export class MediaArtworkPipeline {
   }
 
   async prepareArtworks(uri: string, metadata: ParsedMetadata,
-    cancellation: ArtworkWorkCancellation): Promise<Array<ArtworkImportInput>> {
+    cancellation: ArtworkWorkCancellation,
+    expectedSourceHash: string = ''): Promise<Array<ArtworkImportInput>> {
     const parsed = metadata.artworks;
     const inputs = parsed.map((artwork: ParsedArtwork): ArtworkImportInput => {
       return { metadata: artwork };
@@ -117,6 +118,10 @@ export class MediaArtworkPipeline {
       'artwork_hash', hashStartedAt, fileId, `bytes=${bytes.byteLength}`
     );
     MediaArtworkPipeline.throwIfCancelled(cancellation);
+    if (expectedSourceHash.length > 0 &&
+      !await ArtworkCache.matchesSourceIdentity(bytes, sourceHash, expectedSourceHash)) {
+      throw new Error('Artwork source changed without a matching file snapshot');
+    }
     const cached = await this.loadOrCache(
       sourceHash, bytes, fileId, cancellation
     );
@@ -168,7 +173,9 @@ export class MediaArtworkPipeline {
       if (!accepted) {
         return MediaArtworkPipeline.result(ArtworkWorkOutcome.STALE);
       }
-      const artworks = await this.prepareArtworks(item.uri, metadata, cancellation);
+      const artworks = await this.prepareArtworks(
+        item.uri, metadata, cancellation, item.expectedArtworkSourceHash ?? ''
+      );
       if (cancellation.isCancelled()) {
         await this.repository.deferArtwork(item.trackId, item.fileSize, item.modifiedAt);
         return MediaArtworkPipeline.result(ArtworkWorkOutcome.SKIPPED);
@@ -182,7 +189,8 @@ export class MediaArtworkPipeline {
         return MediaArtworkPipeline.result(ArtworkWorkOutcome.SKIPPED);
       }
       const completed = await this.repository.completeArtwork(
-        item.trackId, item.fileSize, item.modifiedAt, artworks
+        item.trackId, item.fileSize, item.modifiedAt, artworks,
+        item.replacingArtworkSourceId
       );
       ImportPerformanceTrace.mark(
         'artwork_total', startedAt, ImportPerformanceTrace.fileId(item.uri),

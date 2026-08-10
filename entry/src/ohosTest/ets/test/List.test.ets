@@ -4,6 +4,7 @@ import artworkWorkSessionTest from './ArtworkWorkSession.test';
 import nativeMediaCompatibilityTest from './NativeMediaCompatibility.test';
 import libraryDatabaseMigrationTest from './LibraryDatabaseMigration.test';
 import artworkCacheCleanupTest from './ArtworkCacheCleanup.test';
+import musicLibraryArtworkCandidateTest from './MusicLibraryArtworkCandidate.test';
 
 export default function testsuite() {
   abilityTest();
@@ -12,4 +13,5 @@ export default function testsuite() {
   nativeMediaCompatibilityTest();
   libraryDatabaseMigrationTest();
   artworkCacheCleanupTest();
+  musicLibraryArtworkCandidateTest();
 }

@@ -35,7 +35,7 @@ git clone --recurse-submodules https://github.com/wbbb0/wPlayer.git
 Set-Location wPlayer
 ```
 
-已有检出在首次构建前初始化 libwebp 子模块：
+已有检出在首次构建前初始化 libwebp 和 xxHash 子模块：
 
 ```powershell
 git submodule update --init --recursive

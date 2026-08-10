@@ -337,10 +337,17 @@ export class MusicLibraryTrackQueries {
            COALESCE(a.small_width, 0), COALESCE(a.small_height, 0), COALESCE(a.small_byte_size, 0),
            COALESCE(a.large_width, 0), COALESCE(a.large_height, 0), COALESCE(a.large_byte_size, 0),
            COALESCE(a.small_format, ''), COALESCE(a.large_format, ''),
-           COALESCE(a.encoding_version, 0), COALESCE(s.width, 0), COALESCE(s.height, 0)
+           COALESCE(a.encoding_version, 0), COALESCE(a.id, 0), COALESCE(s.id, 0),
+           COALESCE(s.source_hash, ''), COALESCE(s.width, 0), COALESCE(s.height, 0)
          FROM media_file f JOIN track t ON t.media_file_id = f.id
          LEFT JOIN artwork_asset a ON a.id = t.primary_artwork_id
-         LEFT JOIN artwork_source s ON s.asset_id = a.id
+         LEFT JOIN track_artwork ta ON ta.id = (
+           SELECT candidate.id FROM track_artwork candidate
+           WHERE candidate.track_id = t.id AND candidate.asset_id = t.primary_artwork_id
+             AND candidate.source_id IS NOT NULL
+           ORDER BY candidate.ordinal LIMIT 1
+         )
+         LEFT JOIN artwork_source s ON s.id = ta.source_id
          ORDER BY t.id`
       );
       while (resultSet.goToNextRow()) {
@@ -365,8 +372,11 @@ export class MusicLibraryTrackQueries {
           artworkSmallFormat: resultSet.getString(17),
           artworkLargeFormat: resultSet.getString(18),
           artworkEncodingVersion: resultSet.getLong(19),
-          artworkSourceWidth: resultSet.getLong(20),
-          artworkSourceHeight: resultSet.getLong(21)
+          artworkAssetId: resultSet.getLong(20),
+          artworkSourceId: resultSet.getLong(21),
+          artworkSourceHash: resultSet.getString(22),
+          artworkSourceWidth: resultSet.getLong(23),
+          artworkSourceHeight: resultSet.getLong(24)
         });
       }
       return items;

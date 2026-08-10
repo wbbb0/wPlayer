@@ -628,7 +628,7 @@ export class ArtworkPaletteExtractor {
     return rgb[0] >= 0 && rgb[0] <= 1 && rgb[1] >= 0 && rgb[1] <= 1 && rgb[2] >= 0 && rgb[2] <= 1;
   }
 
-  private static sampleSize(size: image.Size): image.Size {
+  static sampleSize(size: image.Size): image.Size {
     const scale = Math.min(1, SAMPLE_EDGE / Math.max(size.width, size.height));
     return {
       width: Math.max(1, Math.round(size.width * scale)),

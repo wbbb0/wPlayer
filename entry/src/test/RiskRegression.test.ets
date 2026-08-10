@@ -427,6 +427,15 @@ export default function riskRegressionTest() {
         reason: 'imported'
       };
       expect(ImportDetailPolicy.shouldRetain(imported)).assertFalse();
+      const artworkFailure: ImportItemResult = {
+        uri: 'artwork',
+        displayName: 'artwork',
+        outcome: ImportItemOutcome.ARTWORK_FAILED,
+        reason: 'artwork failed'
+      };
+      expect(ImportDetailPolicy.kindOf(artworkFailure))
+        .assertEqual(ImportItemDetailKind.ARTWORK_FAILED);
+      expect(ImportDetailPolicy.shouldRetain(artworkFailure)).assertTrue();
     });
 
     it('uses versioned lossy WebP files for transparent persistent artwork variants', 0, () => {
@@ -448,11 +457,17 @@ export default function riskRegressionTest() {
         ArtworkState.PROCESSING, false, false, 1, now - 1000, now
       )).assertFalse();
       expect(ArtworkRepairPolicy.needsRepair(
+        ArtworkState.PROCESSING, false, false, 1, now - 1000, now, true
+      )).assertTrue();
+      expect(ArtworkRepairPolicy.needsRepair(
         ArtworkState.PROCESSING, false, false, 1, 0, now
       )).assertTrue();
       expect(ArtworkRepairPolicy.needsRepair(
         ArtworkState.FAILED, false, false, 3, now - 1000, now
       )).assertFalse();
+      expect(ArtworkRepairPolicy.needsRepair(
+        ArtworkState.FAILED, false, false, 3, now - 1000, now, true
+      )).assertTrue();
       expect(ArtworkRepairPolicy.needsRepair(
         ArtworkState.FAILED, false, false, 3, now - 25 * 60 * 60 * 1000, now
       )).assertTrue();

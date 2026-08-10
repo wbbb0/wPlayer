@@ -11,14 +11,17 @@ export default function libraryMaintenancePromptPolicyTest() {
       const prompt = LibraryMaintenancePromptPolicy.fromStatus({
         items: [
           { kind: LibraryMaintenanceKind.ARTWORK_COLORS, count: 3 },
-          { kind: LibraryMaintenanceKind.ARTWORK_VARIANTS, count: 5 }
+          { kind: LibraryMaintenanceKind.ARTWORK_VARIANTS, count: 5 },
+          { kind: LibraryMaintenanceKind.ARTWORK_SOURCE_IDENTITIES, count: 2 }
         ],
-        total: 8
+        total: 10
       });
       expect(prompt.message.includes('WebP 封面缓存')).assertTrue();
       expect(prompt.message.includes('封面色彩')).assertTrue();
+      expect(prompt.message.includes('封面去重信息')).assertTrue();
       expect(prompt.detail.includes('WebP 封面缓存 5 项')).assertTrue();
       expect(prompt.detail.includes('封面色彩 3 项')).assertTrue();
+      expect(prompt.detail.includes('封面去重信息 2 项')).assertTrue();
       expect(prompt.primaryAction).assertEqual(LibraryMaintenanceAction.CHECK_MUSIC_FILES);
     });
 

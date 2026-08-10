@@ -124,8 +124,10 @@ export class ImportPerformanceTrace {
       ['artwork_hash', '封面哈希'],
       ['artwork_cache_lookup', '封面缓存查询'],
       ['artwork_info', '封面信息解析'],
-      ['artwork_small', '生成小封面'],
-      ['artwork_large', '生成大封面'],
+      ['artwork_decode', '封面单次解码'],
+      ['artwork_encode_variants', '封面双尺寸编码'],
+      ['artwork_small', '写入小封面'],
+      ['artwork_large', '写入大封面'],
       ['artwork_total', '封面处理总计'],
       ['database_commit_per_file', '数据库写入']
     ]);

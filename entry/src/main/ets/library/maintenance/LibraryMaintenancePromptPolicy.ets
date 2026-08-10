@@ -25,6 +25,7 @@ export interface LibraryMaintenancePrompt {
 export class LibraryMaintenancePromptPolicy {
   private static readonly DESCRIPTORS: Array<LibraryMaintenancePromptDescriptor> = [
     { kind: LibraryMaintenanceKind.ARTWORK_VARIANTS, label: 'WebP 封面缓存' },
+    { kind: LibraryMaintenanceKind.ARTWORK_SOURCE_IDENTITIES, label: '封面去重信息' },
     { kind: LibraryMaintenanceKind.ARTWORK_COLORS, label: '封面色彩' }
   ];
 

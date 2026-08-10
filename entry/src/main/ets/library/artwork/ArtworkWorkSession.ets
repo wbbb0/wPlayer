@@ -10,6 +10,8 @@ export interface ArtworkWorkRequest {
   fileSize: number;
   modifiedAt: number;
   metadata?: ParsedMetadata;
+  expectedArtworkSourceHash?: string;
+  replacingArtworkSourceId?: number;
 }
 
 export enum ArtworkWorkOutcome {

@@ -15,7 +15,8 @@ export interface ArtworkPaletteUpdate {
 
 export enum LibraryMaintenanceKind {
   ARTWORK_COLORS = 0,
-  ARTWORK_VARIANTS = 1
+  ARTWORK_VARIANTS = 1,
+  ARTWORK_SOURCE_IDENTITIES = 2
 }
 
 export interface LibraryMaintenanceItem {

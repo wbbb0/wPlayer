@@ -3,11 +3,16 @@ import { fileIo as fs } from '@kit.CoreFileKit';
 import { image } from '@kit.ImageKit';
 import {
   encodeArtworkWebP,
+  encodeArtworkWebPVariants,
+  hashArtworkSourceXXH3_128,
   probeMediaFile,
   readArtworkBytesAsync
 } from '../../../main/ets/library/metadata/MediaFileTasks';
 import { ArtworkPictureType, MediaFormat } from
   '../../../main/ets/library/model/LibraryModels';
+import { ArtworkCache } from '../../../main/ets/library/artwork/ArtworkCache';
+import { ArtworkSourceIdentityPolicy } from
+  '../../../main/ets/library/artwork/ArtworkSourceIdentityPolicy';
 
 const TEST_DIRECTORY = '/data/storage/el2/base/files';
 
@@ -491,6 +496,50 @@ export default function nativeMediaCompatibilityTest() {
           await pixelMap.release();
         }
         await source.release();
+      }
+    });
+
+    it('hashesArtworkSourcesWithCanonicalXXH3_128', 0, async () => {
+      const bytes = ascii('abc');
+      const digest = await hashArtworkSourceXXH3_128(bytes.buffer.slice(0));
+      expect(digest).assertEqual('06b05ab6733a618578af5f94892f3950');
+      const current = ArtworkSourceIdentityPolicy.fromCurrentDigest(digest);
+      const cacheIdentity = await ArtworkCache.hashSource(bytes);
+      expect(bytes.byteLength).assertEqual(3);
+      expect(bytes[0]).assertEqual('a'.charCodeAt(0));
+      expect(cacheIdentity).assertEqual(current);
+      expect(await ArtworkCache.matchesSourceIdentity(bytes, current, current)).assertTrue();
+      expect(await ArtworkCache.matchesSourceIdentity(
+        bytes, current,
+        'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
+      )).assertTrue();
+    });
+
+    it('derivesBothWebPVariantsAndPaletteFromOneDecodedBuffer', 0, async () => {
+      const width = 16;
+      const height = 16;
+      const bgra = new Uint8Array(width * height * 4);
+      for (let pixel = 0; pixel < width * height; pixel += 1) {
+        const alpha = pixel % 2 === 0 ? 255 : 128;
+        bgra.set([32, 64, alpha === 255 ? 192 : 96, alpha], pixel * 4);
+      }
+      const variants = await encodeArtworkWebPVariants(
+        bgra.buffer.slice(0), width, height, true,
+        8, 8, 4, 4, 84, 4, 100
+      );
+      expect(variants.paletteBgra.byteLength).assertEqual(4 * 4 * 4);
+      const largeSource = image.createImageSource(variants.large);
+      const smallSource = image.createImageSource(variants.small);
+      try {
+        const largeInfo = await largeSource.getImageInfo();
+        const smallInfo = await smallSource.getImageInfo();
+        expect(largeInfo.size.width).assertEqual(16);
+        expect(largeInfo.size.height).assertEqual(16);
+        expect(smallInfo.size.width).assertEqual(8);
+        expect(smallInfo.size.height).assertEqual(8);
+      } finally {
+        await smallSource.release();
+        await largeSource.release();
       }
     });
 

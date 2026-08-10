@@ -47,3 +47,25 @@ export function encodeArtworkWebP(
   method: number,
   alphaQuality: number
 ): ArrayBuffer;
+
+export interface NativeArtworkWebPVariants {
+  large: ArrayBuffer;
+  small: ArrayBuffer;
+  paletteBgra: ArrayBuffer;
+}
+
+export function encodeArtworkWebPVariants(
+  bgraSource: ArrayBuffer,
+  width: number,
+  height: number,
+  premultiplied: boolean,
+  smallWidth: number,
+  smallHeight: number,
+  paletteWidth: number,
+  paletteHeight: number,
+  quality: number,
+  method: number,
+  alphaQuality: number
+): NativeArtworkWebPVariants;
+
+export function hashArtworkSourceXXH3_128(source: ArrayBuffer): string;

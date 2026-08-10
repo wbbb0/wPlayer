@@ -428,6 +428,9 @@ export interface MediaFileCheckCandidate {
   artworkSmallFormat: string;
   artworkLargeFormat: string;
   artworkEncodingVersion: number;
+  artworkAssetId: number;
+  artworkSourceId: number;
+  artworkSourceHash: string;
   artworkSourceWidth: number;
   artworkSourceHeight: number;
 }
@@ -451,7 +454,17 @@ export interface UnavailableTrackItem {
   availability: AvailabilityState;
 }
 
+export enum FileCheckPhase {
+  SCANNING = 'scanning',
+  ARTWORK = 'artwork',
+  PALETTE = 'palette',
+  FINALIZING = 'finalizing',
+  CANCELLING = 'cancelling',
+  COMPLETED = 'completed'
+}
+
 export interface FileCheckProgress {
+  phase: FileCheckPhase;
   total: number;
   processed: number;
   updated: number;
@@ -462,6 +475,9 @@ export interface FileCheckProgress {
   artworkProcessed: number;
   artworkSkipped: number;
   artworkFailed: number;
+  paletteTotal: number;
+  paletteProcessed: number;
+  paletteFailed: number;
   metadataCompleted: boolean;
   cancelled: boolean;
   currentName: string;
@@ -544,14 +560,16 @@ export interface ImportPerformanceSummary {
 export enum ImportItemOutcome {
   IMPORTED = 'imported',
   DUPLICATE = 'duplicate',
-  FAILED = 'failed'
+  FAILED = 'failed',
+  ARTWORK_FAILED = 'artwork_failed'
 }
 
 export enum ImportItemDetailKind {
   URI_DUPLICATE = 'uri_duplicate',
   CONTENT_DUPLICATE = 'content_duplicate',
   BATCH_DUPLICATE = 'batch_duplicate',
-  FAILED = 'failed'
+  FAILED = 'failed',
+  ARTWORK_FAILED = 'artwork_failed'
 }
 
 export interface ImportItemResult {

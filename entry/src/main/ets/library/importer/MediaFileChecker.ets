@@ -1,5 +1,10 @@
 import { ArtworkCache } from '../artwork/ArtworkCache';
 import { ArtworkRepairPolicy } from '../artwork/ArtworkRepairPolicy';
+import { ArtworkSourceIdentityPolicy } from '../artwork/ArtworkSourceIdentityPolicy';
+import {
+  ArtworkRepairAttempt,
+  ArtworkRepairWorkGroupPolicy
+} from '../artwork/ArtworkRepairWorkGroupPolicy';
 import {
   ArtworkWorkOutcome,
   ArtworkWorkRequest,
@@ -19,6 +24,7 @@ import {
   AvailabilityState,
   FileCheckItemOutcome,
   FileCheckItemResult,
+  FileCheckPhase,
   FileCheckProgress,
   FileCheckResult,
   MediaFileCheckCandidate,
@@ -38,6 +44,7 @@ import {
 } from './MediaImportCallbacks';
 import { MediaArtworkPipeline } from './MediaArtworkPipeline';
 import { MediaImportOperation } from './MediaImportOperation';
+import { CommittedChangeRefreshCoordinator } from './CommittedChangeRefreshCoordinator';
 
 interface ProgressNotificationGate {
   lastAt: number;
@@ -53,11 +60,15 @@ interface FileCheckWorkResult {
   availabilityUpdate?: TrackAvailabilityUpdate;
   artworkRequest?: ArtworkWorkRequest;
   artworkItem?: FileCheckItemResult;
+  artworkSharedSourceId?: number;
+  artworkSharedSourceKey?: string;
 }
 
 interface PendingArtworkWork {
   request: ArtworkWorkRequest;
   item?: FileCheckItemResult;
+  sharedSourceId?: number;
+  sharedSourceKey?: string;
 }
 
 type FileCheckArtworkScheduler = (work: PendingArtworkWork) => Promise<void>;
@@ -86,6 +97,7 @@ export class MediaFileChecker {
     this.artworkPipeline.clearOperationContext();
     const artworkSession = this.createArtworkSession();
     const progress: FileCheckProgress = {
+      phase: FileCheckPhase.SCANNING,
       total: 0,
       processed: 0,
       updated: 0,
@@ -96,6 +108,9 @@ export class MediaFileChecker {
       artworkProcessed: 0,
       artworkSkipped: 0,
       artworkFailed: 0,
+      paletteTotal: 0,
+      paletteProcessed: 0,
+      paletteFailed: 0,
       metadataCompleted: false,
       cancelled: false,
       currentName: ''
@@ -124,9 +139,17 @@ export class MediaFileChecker {
         new Array<Promise<void> | undefined>(
           ImportConcurrencyPolicy.FILE_CHECK_ARTWORK_QUEUE_CAPACITY
         );
+      const sharedArtworkGroups: Map<string, Array<PendingArtworkWork>> =
+        new Map<string, Array<PendingArtworkWork>>();
       let nextScanSlot = 0;
       let nextArtworkSlot = 0;
       let lastArtworkProgressAt = 0;
+      const artworkRefresh = new CommittedChangeRefreshCoordinator(
+        (): Promise<void> => this.notifyLibraryChanged(
+          onLibraryChanged, ImportRefreshPhase.ARTWORK
+        ),
+        ImportConcurrencyPolicy.FILE_CHECK_ARTWORK_REFRESH_BATCH_SIZE
+      );
 
       artworkSession.startProcessing();
       const scheduleArtwork = async (work: PendingArtworkWork): Promise<void> => {
@@ -146,12 +169,63 @@ export class MediaFileChecker {
         const operation = artworkSession.enqueue(work.request).then(
           (result: ArtworkWorkResult): void => {
             this.applyFileCheckArtworkResult(work, result, progress, itemResults);
+            if (result.outcome === ArtworkWorkOutcome.COMPLETED && result.sourceHasArtwork) {
+              artworkRefresh.recordCommitted();
+            }
             const now = Date.now();
             if (now - lastArtworkProgressAt >=
               ImportConcurrencyPolicy.IMPORT_PROGRESS_INTERVAL_MS ||
               progress.artworkProcessed >= progress.artworkTotal) {
               lastArtworkProgressAt = now;
               this.notifyFileCheck(onProgress, progress, progressGate, true);
+            }
+          }
+        );
+        artworkSlots[slot] = operation;
+      };
+      const routeArtwork = async (work: PendingArtworkWork): Promise<void> => {
+        const key = work.sharedSourceKey ?? '';
+        if (key.length === 0) {
+          await scheduleArtwork(work);
+          return;
+        }
+        const group = sharedArtworkGroups.get(key);
+        if (group === undefined) {
+          sharedArtworkGroups.set(key, [work]);
+        } else {
+          group.push(work);
+        }
+      };
+      const scheduleArtworkGroup = async (works: Array<PendingArtworkWork>): Promise<void> => {
+        if (this.cancelRequested || works.length === 0) {
+          return;
+        }
+        const slot = nextArtworkSlot;
+        nextArtworkSlot = (nextArtworkSlot + 1) % artworkSlots.length;
+        const previous = artworkSlots[slot];
+        if (previous !== undefined) {
+          await previous;
+        }
+        if (this.cancelRequested) {
+          return;
+        }
+        const operation = this.processSharedArtworkGroup(works, artworkSession).then(
+          (attempt: ArtworkRepairAttempt<PendingArtworkWork> | undefined): void => {
+            if (attempt !== undefined) {
+              this.applyFileCheckArtworkResult(
+                attempt.work, attempt.result, progress, itemResults
+              );
+              if (attempt.result.outcome === ArtworkWorkOutcome.COMPLETED &&
+                attempt.result.sourceHasArtwork) {
+                artworkRefresh.recordCommitted();
+              }
+              const now = Date.now();
+              if (now - lastArtworkProgressAt >=
+                ImportConcurrencyPolicy.IMPORT_PROGRESS_INTERVAL_MS ||
+                progress.artworkProcessed >= progress.artworkTotal) {
+                lastArtworkProgressAt = now;
+                this.notifyFileCheck(onProgress, progress, progressGate, true);
+              }
             }
           }
         );
@@ -216,7 +290,7 @@ export class MediaFileChecker {
                 progress,
                 availabilityUpdates,
                 itemResults,
-                scheduleArtwork,
+                routeArtwork,
                 onProgress,
                 progressGate
               );
@@ -244,19 +318,26 @@ export class MediaFileChecker {
           await operation;
         }
       }
+      const sharedGroups = Array.from(sharedArtworkGroups.values());
       progress.currentName = '正在保存检查结果';
       this.notifyFileCheck(onProgress, progress, progressGate, true);
       if (!this.cancelRequested) {
         await this.repository.setTrackAvailabilities(availabilityUpdates);
       }
+      progress.artworkTotal += sharedGroups.length;
       const artworkWasScheduled = progress.artworkTotal > 0;
       progress.metadataCompleted = true;
       progress.cancelled = this.cancelRequested || permissions.cancelled;
+      progress.phase = progress.cancelled ? FileCheckPhase.CANCELLING :
+        (artworkWasScheduled ? FileCheckPhase.ARTWORK : FileCheckPhase.FINALIZING);
       progress.currentName = artworkWasScheduled && !progress.cancelled ?
         '正在处理封面' : (progress.cancelled ? '音乐文件检查已停止' : '');
       this.notifyFileCheck(onProgress, progress, progressGate, true);
       if (availabilityUpdates.length > 0 || progress.updated > 0) {
         await this.notifyLibraryChanged(onLibraryChanged, ImportRefreshPhase.METADATA);
+      }
+      for (let index = 0; index < sharedGroups.length; index += 1) {
+        await scheduleArtworkGroup(sharedGroups[index]);
       }
       for (let index = 0; index < artworkSlots.length; index += 1) {
         const operation = artworkSlots[index];
@@ -268,9 +349,11 @@ export class MediaFileChecker {
       progress.cancelled = progress.cancelled || this.cancelRequested ||
         artworkSession.isCancelled();
       if (artworkWasScheduled) {
+        await artworkRefresh.flush();
         await this.notifyLibraryChanged(onLibraryChanged, ImportRefreshPhase.ARTWORK);
       }
-      progress.currentName = '';
+      progress.phase = progress.cancelled ? FileCheckPhase.CANCELLING : FileCheckPhase.FINALIZING;
+      progress.currentName = progress.cancelled ? '音乐文件检查已停止' : '正在完成封面维护';
       this.notifyFileCheck(onProgress, progress, progressGate, true);
       console.info(`[FileCheck] completed ${progress.processed}/${progress.total} in ` +
         `${Date.now() - startedAt}ms, updated=${progress.updated}, unavailable=${progress.unavailable}, ` +
@@ -320,7 +403,9 @@ export class MediaFileChecker {
       if (outcome.artworkRequest !== undefined && !this.cancelRequested) {
         await scheduleArtwork({
           request: outcome.artworkRequest,
-          item: outcome.artworkItem
+          item: outcome.artworkItem,
+          sharedSourceId: outcome.artworkSharedSourceId,
+          sharedSourceKey: outcome.artworkSharedSourceKey
         });
       }
       progress.processed += 1;
@@ -390,6 +475,36 @@ export class MediaFileChecker {
             artworkResult.errorMessage : '封面处理失败'
         });
       }
+    }
+  }
+
+  private async processSharedArtworkGroup(works: Array<PendingArtworkWork>,
+    session: ArtworkWorkSession): Promise<ArtworkRepairAttempt<PendingArtworkWork> | undefined> {
+    const attempt = await ArtworkRepairWorkGroupPolicy.run(
+      works,
+      async (work: PendingArtworkWork): Promise<ArtworkWorkResult> => session.enqueue(work.request)
+    );
+    if (attempt === undefined || attempt.result.outcome !== ArtworkWorkOutcome.COMPLETED ||
+      attempt.attemptCount <= 1) {
+      return attempt;
+    }
+    const sourceId = attempt.work.sharedSourceId ?? 0;
+    if (sourceId <= 0) {
+      return attempt;
+    }
+    try {
+      await this.repository.markArtworkSourceReferencesReady(sourceId);
+      return attempt;
+    } catch (error) {
+      return {
+        work: attempt.work,
+        attemptCount: attempt.attemptCount,
+        result: {
+          outcome: ArtworkWorkOutcome.FAILED,
+          sourceHasArtwork: true,
+          errorMessage: `Unable to finalize shared artwork repair: ${MediaFileChecker.errorMessage(error)}`
+        }
+      };
     }
   }
 
@@ -591,11 +706,13 @@ export class MediaFileChecker {
   private needsArtworkRepair(candidate: MediaFileCheckCandidate, filesAvailable: boolean): boolean {
     if (ArtworkRepairPolicy.needsRepair(
       candidate.artworkState, filesAvailable, filesAvailable,
-      candidate.artworkAttemptCount, candidate.artworkLastAttemptAt
+      candidate.artworkAttemptCount, candidate.artworkLastAttemptAt, Date.now(), true
     )) {
       return true;
     }
     return candidate.artworkState === ArtworkState.READY && filesAvailable && (
+      (candidate.artworkSourceId > 0 &&
+        !ArtworkSourceIdentityPolicy.isCurrent(candidate.artworkSourceHash)) ||
       ArtworkRepairPolicy.hasOutdatedEncoding(
         candidate.artworkEncodingVersion,
         candidate.artworkSmallFormat,
@@ -630,6 +747,9 @@ export class MediaFileChecker {
   }
 
   private repairArtwork(candidate: MediaFileCheckCandidate): FileCheckWorkResult {
+    const sharedSourceKey = ArtworkRepairWorkGroupPolicy.sharedSourceKey(
+      candidate.artworkState, candidate.artworkSourceId, candidate.artworkSourceHash
+    );
     return {
       updated: false,
       unavailable: false,
@@ -639,7 +759,11 @@ export class MediaFileChecker {
         trackId: candidate.trackId,
         uri: candidate.uri,
         fileSize: candidate.fileSize,
-        modifiedAt: candidate.modifiedAt
+        modifiedAt: candidate.modifiedAt,
+        expectedArtworkSourceHash: sharedSourceKey.length > 0 ?
+          candidate.artworkSourceHash : undefined,
+        replacingArtworkSourceId: sharedSourceKey.length > 0 ?
+          candidate.artworkSourceId : undefined
       },
       artworkItem: {
         trackId: candidate.trackId,
@@ -647,7 +771,9 @@ export class MediaFileChecker {
         uri: candidate.uri,
         outcome: FileCheckItemOutcome.ARTWORK_REBUILT,
         reason: '缺失封面已重建'
-      }
+      },
+      artworkSharedSourceId: sharedSourceKey.length > 0 ? candidate.artworkSourceId : undefined,
+      artworkSharedSourceKey: sharedSourceKey.length > 0 ? sharedSourceKey : undefined
     };
   }
 
@@ -662,6 +788,7 @@ export class MediaFileChecker {
       return false;
     }
     callback({
+      phase: this.cancelRequested ? FileCheckPhase.CANCELLING : progress.phase,
       total: progress.total,
       processed: progress.processed,
       updated: progress.updated,
@@ -672,6 +799,9 @@ export class MediaFileChecker {
       artworkProcessed: progress.artworkProcessed,
       artworkSkipped: progress.artworkSkipped,
       artworkFailed: progress.artworkFailed,
+      paletteTotal: progress.paletteTotal,
+      paletteProcessed: progress.paletteProcessed,
+      paletteFailed: progress.paletteFailed,
       metadataCompleted: progress.metadataCompleted,
       cancelled: progress.cancelled || this.cancelRequested,
       currentName: this.cancelRequested && !progress.metadataCompleted ?

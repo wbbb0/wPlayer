@@ -11,6 +11,7 @@ export class ImportConcurrencyPolicy {
   static readonly ARTWORK_PROCESS_CONCURRENCY: number = 6;
   static readonly ARTWORK_PROCESS_BATCH_SIZE: number = 12;
   static readonly FILE_CHECK_ARTWORK_QUEUE_CAPACITY: number = 12;
+  static readonly FILE_CHECK_ARTWORK_REFRESH_BATCH_SIZE: number = 128;
 
   static needsFullFingerprint(candidateCount: number, currentBatchGroupSize: number): boolean {
     return candidateCount > 0 || currentBatchGroupSize > 1;

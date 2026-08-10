@@ -16,6 +16,9 @@ export class ImportDetailPolicy {
     if (item.outcome === ImportItemOutcome.FAILED) {
       return ImportItemDetailKind.FAILED;
     }
+    if (item.outcome === ImportItemOutcome.ARTWORK_FAILED) {
+      return ImportItemDetailKind.ARTWORK_FAILED;
+    }
     if (item.outcome === ImportItemOutcome.DUPLICATE) {
       return ImportItemDetailKind.CONTENT_DUPLICATE;
     }

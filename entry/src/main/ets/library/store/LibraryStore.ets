@@ -12,6 +12,7 @@ import {
   ArtistDetail,
   ArtistDetailOverview,
   FileCheckProgress,
+  FileCheckPhase,
   FileCheckResult,
   FileCheckItemResult,
   ImportProgress,
@@ -56,6 +57,7 @@ import {
 } from '../data/RepositoryInvalidation';
 
 const PALETTE_REFRESH_CONCURRENCY: number = 4;
+const PALETTE_REFRESH_PROGRESS_BATCH_SIZE: number = 16;
 const PLAYBACK_ORDER_STABILITY_ATTEMPTS: number = 3;
 
 class TrackPageLoader implements LibraryPageLoader<TrackListItem> {
@@ -187,6 +189,7 @@ export class LibraryStore {
     unavailableTrackCount: 0
   };
   fileCheckProgress: FileCheckProgress = {
+    phase: FileCheckPhase.SCANNING,
     total: 0,
     processed: 0,
     updated: 0,
@@ -197,6 +200,9 @@ export class LibraryStore {
     artworkProcessed: 0,
     artworkSkipped: 0,
     artworkFailed: 0,
+    paletteTotal: 0,
+    paletteProcessed: 0,
+    paletteFailed: 0,
     metadataCompleted: false,
     cancelled: false,
     currentName: ''
@@ -602,6 +608,7 @@ export class LibraryStore {
           batchDuplicates.push(item);
           break;
         case ImportItemDetailKind.FAILED:
+        case ImportItemDetailKind.ARTWORK_FAILED:
           failures.push(item);
           break;
         default:
@@ -804,14 +811,27 @@ export class LibraryStore {
       );
       let paletteResult: PaletteRefreshResult = { updated: 0, failed: 0 };
       if (!result.cancelled) {
-        this.fileCheckProgress.currentName = '正在更新封面色彩';
         const assets = await this.repository.getOutdatedPaletteAssets();
-        paletteResult = await this.processArtworkPalettes(assets);
+        this.updateFileCheckPaletteProgress(
+          FileCheckPhase.PALETTE, assets.length, 0, 0, '正在更新封面色彩'
+        );
+        paletteResult = await this.processArtworkPalettes(
+          assets,
+          (processed: number, failed: number): void => {
+            this.updateFileCheckPaletteProgress(
+              FileCheckPhase.PALETTE, assets.length, processed, failed, '正在更新封面色彩'
+            );
+          }
+        );
         if (paletteResult.updated > 0) {
           await this.playbackBridge?.refreshCurrentTrackPalette();
         }
         await this.synchronizeCommittedChanges();
-        this.maintenanceStatus = { items: [], total: 0 };
+        await this.checkLibraryMaintenance();
+        this.updateFileCheckPaletteProgress(
+          FileCheckPhase.COMPLETED, assets.length, assets.length,
+          paletteResult.failed, '音乐文件检查完成'
+        );
       }
       this.fileCheckItems = result.items;
       const paletteSummary = paletteResult.updated > 0 ?
@@ -833,6 +853,7 @@ export class LibraryStore {
   cancelFileCheck(): void {
     if (this.checkingFiles) {
       this.fileCheckProgress = {
+        phase: FileCheckPhase.CANCELLING,
         total: this.fileCheckProgress.total,
         processed: this.fileCheckProgress.processed,
         updated: this.fileCheckProgress.updated,
@@ -843,6 +864,9 @@ export class LibraryStore {
         artworkProcessed: this.fileCheckProgress.artworkProcessed,
         artworkSkipped: this.fileCheckProgress.artworkSkipped,
         artworkFailed: this.fileCheckProgress.artworkFailed,
+        paletteTotal: this.fileCheckProgress.paletteTotal,
+        paletteProcessed: this.fileCheckProgress.paletteProcessed,
+        paletteFailed: this.fileCheckProgress.paletteFailed,
         metadataCompleted: this.fileCheckProgress.metadataCompleted,
         cancelled: true,
         currentName: '正在停止音乐文件检查'
@@ -947,7 +971,8 @@ export class LibraryStore {
   }
 
   private async processArtworkPalettes(
-    assets: Array<PaletteRefreshAsset>
+    assets: Array<PaletteRefreshAsset>,
+    onProgress?: (processed: number, failed: number) => void
   ): Promise<PaletteRefreshResult> {
     this.paletteRefreshProcessed = 0;
     this.paletteRefreshTotal = assets.length;
@@ -956,7 +981,7 @@ export class LibraryStore {
     const workers: Array<Promise<void>> = [];
     const workerCount = Math.min(PALETTE_REFRESH_CONCURRENCY, assets.length);
     for (let index = 0; index < workerCount; index += 1) {
-      workers.push(this.runPaletteRefreshWorker(assets, updates, cursor));
+      workers.push(this.runPaletteRefreshWorker(assets, updates, cursor, onProgress));
     }
     await Promise.all(workers);
     if (updates.length > 0) {
@@ -966,7 +991,8 @@ export class LibraryStore {
   }
 
   private async runPaletteRefreshWorker(assets: Array<PaletteRefreshAsset>,
-    updates: Array<ArtworkPaletteUpdate>, cursor: PaletteRefreshCursor): Promise<void> {
+    updates: Array<ArtworkPaletteUpdate>, cursor: PaletteRefreshCursor,
+    onProgress?: (processed: number, failed: number) => void): Promise<void> {
     while (cursor.nextIndex < assets.length) {
       const index = cursor.nextIndex;
       cursor.nextIndex += 1;
@@ -986,7 +1012,34 @@ export class LibraryStore {
         console.warn(`Palette refresh failed for artwork ${asset.id}: ${LibraryStore.errorMessageOf(error)}`);
       }
       this.paletteRefreshProcessed += 1;
+      if (this.paletteRefreshProcessed >= assets.length ||
+        this.paletteRefreshProcessed % PALETTE_REFRESH_PROGRESS_BATCH_SIZE === 0) {
+        onProgress?.(this.paletteRefreshProcessed, cursor.failed);
+      }
     }
+  }
+
+  private updateFileCheckPaletteProgress(phase: FileCheckPhase, total: number,
+    processed: number, failed: number, currentName: string): void {
+    this.fileCheckProgress = {
+      phase: phase,
+      total: this.fileCheckProgress.total,
+      processed: this.fileCheckProgress.processed,
+      updated: this.fileCheckProgress.updated,
+      unavailable: this.fileCheckProgress.unavailable,
+      recovered: this.fileCheckProgress.recovered,
+      artworkRebuilt: this.fileCheckProgress.artworkRebuilt,
+      artworkTotal: this.fileCheckProgress.artworkTotal,
+      artworkProcessed: this.fileCheckProgress.artworkProcessed,
+      artworkSkipped: this.fileCheckProgress.artworkSkipped,
+      artworkFailed: this.fileCheckProgress.artworkFailed,
+      paletteTotal: total,
+      paletteProcessed: processed,
+      paletteFailed: failed,
+      metadataCompleted: this.fileCheckProgress.metadataCompleted,
+      cancelled: this.fileCheckProgress.cancelled,
+      currentName: currentName
+    };
   }
 
   resolveArtworkPath(relativePath: string): string {

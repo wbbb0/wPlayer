@@ -3,6 +3,8 @@ import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import {
   encodeArtworkWebP as encodeArtworkWebPNative,
+  encodeArtworkWebPVariants as encodeArtworkWebPVariantsNative,
+  hashArtworkSourceXXH3_128 as hashArtworkSourceXXH3_128Native,
   parseMediaFile as parseMediaFileNative,
   readArtworkBytes as readArtworkBytesNative
 } from 'libwplayermedia.so';
@@ -17,6 +19,12 @@ export interface MediaProbeResult {
   modifiedAt: number;
   quickFingerprint: string;
   workerDurationMs: number;
+}
+
+export interface ArtworkWebPVariantsResult {
+  large: ArrayBuffer;
+  small: ArrayBuffer;
+  paletteBgra: ArrayBuffer;
 }
 
 export interface MediaFileInspectionInput {
@@ -233,6 +241,23 @@ function encodeArtworkWebPTask(bgraSourceBuffer: ArrayBuffer, width: number, hei
   );
 }
 
+@Concurrent
+function encodeArtworkWebPVariantsTask(bgraSourceBuffer: ArrayBuffer, width: number, height: number,
+  premultiplied: boolean, smallWidth: number, smallHeight: number,
+  paletteWidth: number, paletteHeight: number, quality: number, method: number,
+  alphaQuality: number): ArtworkWebPVariantsResult {
+  return encodeArtworkWebPVariantsNative(
+    bgraSourceBuffer, width, height, premultiplied,
+    smallWidth, smallHeight, paletteWidth, paletteHeight,
+    quality, method, alphaQuality
+  );
+}
+
+@Concurrent
+function hashArtworkSourceXXH3_128Task(sourceBuffer: ArrayBuffer): string {
+  return hashArtworkSourceXXH3_128Native(sourceBuffer);
+}
+
 export function calculateFullFingerprint(uri: string): Promise<string> {
   try {
     return taskpool.execute(calculateFullFingerprintTask, uri) as Promise<string>;
@@ -330,5 +355,29 @@ export function encodeArtworkWebP(bgraSourceBuffer: ArrayBuffer, width: number, 
     ) as Promise<ArrayBuffer>;
   } catch (error) {
     return Promise.reject(operationError('Unable to submit artwork WebP encoding task', error));
+  }
+}
+
+export function encodeArtworkWebPVariants(bgraSourceBuffer: ArrayBuffer,
+  width: number, height: number, premultiplied: boolean,
+  smallWidth: number, smallHeight: number, paletteWidth: number, paletteHeight: number,
+  quality: number, method: number, alphaQuality: number): Promise<ArtworkWebPVariantsResult> {
+  try {
+    return taskpool.execute(
+      encodeArtworkWebPVariantsTask,
+      bgraSourceBuffer, width, height, premultiplied,
+      smallWidth, smallHeight, paletteWidth, paletteHeight,
+      quality, method, alphaQuality
+    ) as Promise<ArtworkWebPVariantsResult>;
+  } catch (error) {
+    return Promise.reject(operationError('Unable to submit artwork WebP variant task', error));
+  }
+}
+
+export function hashArtworkSourceXXH3_128(sourceBuffer: ArrayBuffer): Promise<string> {
+  try {
+    return taskpool.execute(hashArtworkSourceXXH3_128Task, sourceBuffer) as Promise<string>;
+  } catch (error) {
+    return Promise.reject(operationError('Unable to submit artwork source hash task', error));
   }
 }

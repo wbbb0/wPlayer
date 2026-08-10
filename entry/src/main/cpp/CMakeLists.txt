@@ -27,12 +27,14 @@ add_library(wplayerbackground SHARED
 )
 
 add_library(wplayermedia SHARED
+    artwork_source_hash.cpp
     artwork_webp_encoder.cpp
     media_parser.cpp
     media_napi.cpp
 )
 
 target_include_directories(wplayerbackground PUBLIC ${RENDERER_ROOT})
+target_include_directories(wplayermedia PRIVATE third_party/xxhash)
 target_compile_features(wplayerbackground PUBLIC cxx_std_17)
 target_compile_features(wplayermedia PUBLIC cxx_std_17)
 target_compile_options(wplayermedia PRIVATE -Wall -Wextra)

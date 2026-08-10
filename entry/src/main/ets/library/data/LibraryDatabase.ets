@@ -24,6 +24,8 @@ const PLAYBACK_QUEUE_ITEM_SCHEMA: string = `CREATE TABLE playback_queue_item (
 )`;
 const ALBUM_CREDIT_PERSON_INDEX_SCHEMA: string =
   'CREATE INDEX idx_album_credit_person_album ON album_credit(person_id, album_id)';
+const TRACK_ARTWORK_SOURCE_INDEX_SCHEMA: string =
+  'CREATE INDEX idx_track_artwork_source ON track_artwork(source_id, asset_id, track_id)';
 const SORT_REBUILD_BATCH_SIZE = 500;
 
 const STORE_CONFIG: relationalStore.StoreConfig = {
@@ -285,6 +287,7 @@ const CURRENT_SCHEMA: Array<string> = [
   'CREATE INDEX idx_track_genre_genre ON track_genre(genre_id, track_id)',
   'CREATE INDEX idx_genre_name_natural ON genre(name_section, sort_name_key, id)',
   'CREATE INDEX idx_track_artwork_fallback ON track_artwork(track_id, picture_type, ordinal)',
+  TRACK_ARTWORK_SOURCE_INDEX_SCHEMA,
   'CREATE INDEX idx_artwork_asset_gc ON artwork_asset(ref_count, unreferenced_at)',
   `CREATE UNIQUE INDEX idx_playlist_fixed_key ON playlist(fixed_key)
    WHERE fixed_key <> ''`,
@@ -512,6 +515,9 @@ export class LibraryDatabase {
       });
       await transaction.execute(
         'ALTER TABLE artwork_asset ADD COLUMN encoding_version INTEGER NOT NULL DEFAULT 1'
+      );
+      await transaction.execute(
+        TRACK_ARTWORK_SOURCE_INDEX_SCHEMA
       );
       await transaction.execute(
         'UPDATE schema_meta SET version = ?, migrated_at = ? WHERE singleton = 1',

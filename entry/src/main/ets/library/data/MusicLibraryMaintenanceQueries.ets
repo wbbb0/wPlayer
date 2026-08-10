@@ -5,6 +5,7 @@ import {
 } from '../model/LibraryModels';
 import { ARTWORK_PALETTE_VERSION } from '../artwork/ArtworkPaletteExtractor';
 import { ArtworkEncodingPolicy } from '../artwork/ArtworkEncodingPolicy';
+import { ArtworkSourceIdentityPolicy } from '../artwork/ArtworkSourceIdentityPolicy';
 import { LibraryDatabase } from './LibraryDatabase';
 import {
   ArtworkAssetLookup,
@@ -319,6 +320,28 @@ export class MusicLibraryMaintenanceQueries {
         }
       }
       RelationalStoreSafety.closeResultSet(resultSet, 'library artwork color maintenance status');
+      resultSet = undefined;
+      resultSet = await this.database.getStore().querySql(
+        `SELECT COUNT(*) FROM artwork_source s
+         WHERE EXISTS (SELECT 1 FROM track_artwork ta WHERE ta.source_id = s.id)
+           AND NOT (
+             LENGTH(s.source_hash) = ? AND
+             SUBSTR(s.source_hash, 1, ?) = ? AND
+             LOWER(SUBSTR(s.source_hash, ?)) NOT GLOB '*[^0-9a-f]*'
+           )`,
+        [ArtworkSourceIdentityPolicy.IDENTITY_LENGTH,
+          ArtworkSourceIdentityPolicy.PREFIX.length,
+          ArtworkSourceIdentityPolicy.PREFIX,
+          ArtworkSourceIdentityPolicy.PREFIX.length + 1]
+      );
+      if (resultSet.goToNextRow()) {
+        const count = resultSet.getLong(0);
+        if (count > 0) {
+          items.push({ kind: LibraryMaintenanceKind.ARTWORK_SOURCE_IDENTITIES, count: count });
+          total += count;
+        }
+      }
+      RelationalStoreSafety.closeResultSet(resultSet, 'library artwork identity maintenance status');
       resultSet = undefined;
       resultSet = await this.database.getStore().querySql(
         `SELECT COUNT(*) FROM artwork_asset

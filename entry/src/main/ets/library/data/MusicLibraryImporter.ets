@@ -232,7 +232,7 @@ export class MusicLibraryImporter {
   }
 
   completeArtwork(trackId: number, fileSize: number, modifiedAt: number,
-    artworks: Array<ArtworkImportInput>): Promise<boolean> {
+    artworks: Array<ArtworkImportInput>, replacingSourceId?: number): Promise<boolean> {
     return this.database.enqueueWrite(async (transaction: relationalStore.Transaction): Promise<boolean> => {
       const current = await transaction.querySql(
         `SELECT t.album_id FROM track t JOIN media_file f ON f.id = t.media_file_id
@@ -249,6 +249,24 @@ export class MusicLibraryImporter {
       await this.releaseTrackArtworkReferences(transaction, trackId, now);
       await transaction.execute('DELETE FROM track_artwork WHERE track_id = ?', [trackId]);
       const primaryArtworkId = await this.insertArtworks(transaction, trackId, artworks, now);
+      if (replacingSourceId !== undefined && replacingSourceId > 0 &&
+        primaryArtworkId !== undefined) {
+        const primaryArtwork = artworks.find((artwork: ArtworkImportInput): boolean =>
+          artwork.primary === true && artwork.sourceHash !== undefined &&
+          artwork.sourceHash.length > 0
+        );
+        if (primaryArtwork?.sourceHash !== undefined) {
+          const currentSource = await this.findArtworkSource(
+            transaction, primaryArtwork.sourceHash
+          );
+          if (currentSource?.sourceId !== undefined && currentSource.assetId !== undefined) {
+            await this.replaceArtworkSourceIdentity(
+              transaction, replacingSourceId,
+              currentSource.sourceId, currentSource.assetId, now
+            );
+          }
+        }
+      }
       await transaction.execute(
         'UPDATE track SET primary_artwork_id = ?, updated_at = ? WHERE id = ?',
         [primaryArtworkId === undefined ? null : primaryArtworkId, now, trackId]
@@ -268,6 +286,21 @@ export class MusicLibraryImporter {
         );
       }
       return true;
+    });
+  }
+
+  markArtworkSourceReferencesReady(sourceId: number): Promise<void> {
+    return this.database.enqueueWrite(async (transaction: relationalStore.Transaction): Promise<void> => {
+      const now = Date.now();
+      await transaction.execute(
+        `UPDATE media_file SET artwork_state = ?, artwork_last_error = '', updated_at = ?
+         WHERE id IN (
+           SELECT t.media_file_id FROM track t
+           JOIN track_artwork ta ON ta.track_id = t.id
+           WHERE ta.source_id = ?
+         )`,
+        [ArtworkState.READY, now, sourceId]
+      );
     });
   }
 
@@ -828,6 +861,91 @@ export class MusicLibraryImporter {
       );
     } finally {
       RelationalStoreSafety.closeResultSet(countResult, 'artwork source reference count');
+    }
+  }
+
+  private async replaceArtworkSourceIdentity(transaction: relationalStore.Transaction,
+    oldSourceId: number, newSourceId: number, newAssetId: number, now: number): Promise<void> {
+    if (oldSourceId === newSourceId) {
+      return;
+    }
+    let sourceResult: relationalStore.ResultSet | undefined;
+    let countResult: relationalStore.ResultSet | undefined;
+    try {
+      sourceResult = await transaction.querySql(
+        'SELECT asset_id FROM artwork_source WHERE id = ? LIMIT 1', [oldSourceId]
+      );
+      if (!sourceResult.goToNextRow()) {
+        return;
+      }
+      const oldAssetId = sourceResult.getLong(0);
+      RelationalStoreSafety.closeResultSet(sourceResult, 'legacy artwork source lookup');
+      sourceResult = undefined;
+      countResult = await transaction.querySql(
+        'SELECT COUNT(*) FROM track_artwork WHERE source_id = ?', [oldSourceId]
+      );
+      const referenceCount = countResult.goToNextRow() ? countResult.getLong(0) : 0;
+      RelationalStoreSafety.closeResultSet(countResult, 'legacy artwork source reference count');
+      countResult = undefined;
+      if (referenceCount > 0) {
+        await transaction.execute(
+          `UPDATE media_file SET artwork_state = ?, artwork_last_error = '', updated_at = ?
+           WHERE id IN (
+             SELECT t.media_file_id FROM track t
+             JOIN track_artwork ta ON ta.track_id = t.id
+             WHERE ta.source_id = ?
+           )`,
+          [ArtworkState.READY, now, oldSourceId]
+        );
+        await transaction.execute(
+          `UPDATE track SET primary_artwork_id = ?, updated_at = ?
+           WHERE primary_artwork_id = ? AND id IN (
+             SELECT track_id FROM track_artwork WHERE source_id = ?
+           )`,
+          [newAssetId, now, oldAssetId, oldSourceId]
+        );
+        await transaction.execute(
+          `UPDATE album SET primary_artwork_id = (
+             SELECT primary_artwork_id FROM track
+             WHERE album_id = album.id AND primary_artwork_id IS NOT NULL ORDER BY id LIMIT 1
+           ), updated_at = ?
+           WHERE id IN (
+             SELECT DISTINCT t.album_id FROM track t
+             JOIN track_artwork ta ON ta.track_id = t.id
+             WHERE ta.source_id = ? AND t.album_id IS NOT NULL
+           )`,
+          [now, oldSourceId]
+        );
+        await transaction.execute(
+          'UPDATE track_artwork SET source_id = ?, asset_id = ? WHERE source_id = ?',
+          [newSourceId, newAssetId, oldSourceId]
+        );
+        if (oldAssetId !== newAssetId) {
+          await transaction.execute(
+            `UPDATE artwork_asset SET ref_count = MAX(0, ref_count - ?),
+              unreferenced_at = CASE WHEN ref_count - ? <= 0 THEN ? ELSE unreferenced_at END
+             WHERE id = ?`,
+            [referenceCount, referenceCount, now, oldAssetId]
+          );
+          await transaction.execute(
+            `UPDATE artwork_asset SET ref_count = ref_count + ?, unreferenced_at = NULL
+             WHERE id = ?`,
+            [referenceCount, newAssetId]
+          );
+        }
+      }
+      await transaction.execute(
+        `DELETE FROM artwork_source WHERE id = ?
+         AND NOT EXISTS (SELECT 1 FROM track_artwork WHERE source_id = ?)`,
+        [oldSourceId, oldSourceId]
+      );
+    } catch (error) {
+      throw RelationalStoreSafety.operationError(
+        `Unable to replace artwork source identity ${oldSourceId}`, error
+      );
+    } finally {
+      RelationalStoreSafety.closeResultSet(sourceResult, 'legacy artwork source lookup');
+      RelationalStoreSafety.closeResultSet(countResult, 'legacy artwork source reference count');
     }
   }
 

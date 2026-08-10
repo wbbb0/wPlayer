@@ -1,7 +1,7 @@
 import { image } from '@kit.ImageKit';
 
 export class ArtworkEncodingPolicy {
-  static readonly VERSION: number = 2;
+  static readonly VERSION: number = 4;
   static readonly MIME_TYPE: string = 'image/webp';
   static readonly EXTENSION: string = 'webp';
   static readonly QUALITY: number = 84;

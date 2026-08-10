@@ -1016,8 +1016,14 @@ export class MusicRepository implements LibraryRemovalRepository {
   }
 
   completeArtwork(trackId: number, fileSize: number, modifiedAt: number,
-    artworks: Array<ArtworkImportInput>): Promise<boolean> {
-    return this.importer.completeArtwork(trackId, fileSize, modifiedAt, artworks);
+    artworks: Array<ArtworkImportInput>, replacingSourceId?: number): Promise<boolean> {
+    return this.importer.completeArtwork(
+      trackId, fileSize, modifiedAt, artworks, replacingSourceId
+    );
+  }
+
+  markArtworkSourceReferencesReady(sourceId: number): Promise<void> {
+    return this.importer.markArtworkSourceReferencesReady(sourceId);
   }
 
   failArtwork(trackId: number, fileSize: number, modifiedAt: number, message: string): Promise<void> {

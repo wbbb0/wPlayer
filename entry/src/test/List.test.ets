@@ -43,6 +43,9 @@ import musicFileShareCoordinatorTest from './MusicFileShareCoordinator.test';
 import dragSelectionRangePolicyTest from './DragSelectionRangePolicy.test';
 import fullPlayerQueueRefreshStateTest from './FullPlayerQueueRefreshState.test';
 import importUriTreeTest from './ImportUriTree.test';
+import artworkRepairWorkGroupPolicyTest from './ArtworkRepairWorkGroupPolicy.test';
+import artworkSourceIdentityPolicyTest from './ArtworkSourceIdentityPolicy.test';
+import committedChangeRefreshCoordinatorTest from './CommittedChangeRefreshCoordinator.test';
 import thumbnailBenchmarkPolicyTest from './ThumbnailBenchmarkPolicy.test';
 
 export default function testsuite() {
@@ -91,5 +94,8 @@ export default function testsuite() {
   dragSelectionRangePolicyTest();
   fullPlayerQueueRefreshStateTest();
   importUriTreeTest();
+  artworkRepairWorkGroupPolicyTest();
+  artworkSourceIdentityPolicyTest();
+  committedChangeRefreshCoordinatorTest();
   thumbnailBenchmarkPolicyTest();
 }

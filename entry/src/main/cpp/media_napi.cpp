@@ -1,5 +1,6 @@
 #include "media_parser.h"
 #include "artwork_webp_encoder.h"
+#include "artwork_source_hash.h"
 
 #include <cstring>
 #include <exception>
@@ -68,6 +69,19 @@ bool SetBool(napi_env env, napi_value object, const char *name, bool boolean)
 {
     napi_value value = nullptr;
     return BoolValue(env, boolean, value) && SetNamed(env, object, name, value);
+}
+
+bool ArrayBufferValue(napi_env env, const std::vector<uint8_t> &bytes, napi_value &value)
+{
+    void *target = nullptr;
+    if (napi_create_arraybuffer(env, bytes.size(), &target, &value) != napi_ok ||
+        (bytes.size() > 0 && target == nullptr)) {
+        return false;
+    }
+    if (!bytes.empty()) {
+        std::memcpy(target, bytes.data(), bytes.size());
+    }
+    return true;
 }
 
 bool BuildTags(napi_env env, const ParsedMedia &parsed, napi_value &tags)
@@ -288,12 +302,115 @@ napi_value EncodeArtworkWebPValue(napi_env env, napi_callback_info info)
     }
 }
 
+napi_value EncodeArtworkWebPVariantsImpl(napi_env env, napi_callback_info info)
+{
+    size_t argumentCount = 11;
+    napi_value arguments[11] = {};
+    void *source = nullptr;
+    size_t sourceLength = 0;
+    int32_t width = 0;
+    int32_t height = 0;
+    bool premultiplied = false;
+    int32_t smallWidth = 0;
+    int32_t smallHeight = 0;
+    int32_t paletteWidth = 0;
+    int32_t paletteHeight = 0;
+    double quality = 0.0;
+    int32_t method = 0;
+    int32_t alphaQuality = 0;
+    if (napi_get_cb_info(env, info, &argumentCount, arguments, nullptr, nullptr) != napi_ok ||
+        argumentCount < 11 ||
+        napi_get_arraybuffer_info(env, arguments[0], &source, &sourceLength) != napi_ok ||
+        napi_get_value_int32(env, arguments[1], &width) != napi_ok ||
+        napi_get_value_int32(env, arguments[2], &height) != napi_ok ||
+        napi_get_value_bool(env, arguments[3], &premultiplied) != napi_ok ||
+        napi_get_value_int32(env, arguments[4], &smallWidth) != napi_ok ||
+        napi_get_value_int32(env, arguments[5], &smallHeight) != napi_ok ||
+        napi_get_value_int32(env, arguments[6], &paletteWidth) != napi_ok ||
+        napi_get_value_int32(env, arguments[7], &paletteHeight) != napi_ok ||
+        napi_get_value_double(env, arguments[8], &quality) != napi_ok ||
+        napi_get_value_int32(env, arguments[9], &method) != napi_ok ||
+        napi_get_value_int32(env, arguments[10], &alphaQuality) != napi_ok) {
+        return Throw(env, "Invalid native artwork WebP variant arguments");
+    }
+    ArtworkWebPVariants encoded;
+    std::string error;
+    const ArtworkWebPEncodeOptions options = {
+        static_cast<float>(quality), method, alphaQuality
+    };
+    if (!EncodeArtworkWebPVariants(static_cast<const uint8_t *>(source), sourceLength,
+        width, height, premultiplied, smallWidth, smallHeight, paletteWidth, paletteHeight,
+        options, encoded, error)) {
+        return Throw(env, error);
+    }
+    napi_value result = nullptr;
+    napi_value large = nullptr;
+    napi_value small = nullptr;
+    napi_value palette = nullptr;
+    if (napi_create_object(env, &result) != napi_ok ||
+        !ArrayBufferValue(env, encoded.large, large) || !SetNamed(env, result, "large", large) ||
+        !ArrayBufferValue(env, encoded.small, small) || !SetNamed(env, result, "small", small) ||
+        !ArrayBufferValue(env, encoded.paletteBgra, palette) ||
+        !SetNamed(env, result, "paletteBgra", palette)) {
+        return Throw(env, "Unable to allocate native artwork WebP variant result");
+    }
+    return result;
+}
+
+napi_value EncodeArtworkWebPVariantsValue(napi_env env, napi_callback_info info)
+{
+    try {
+        return EncodeArtworkWebPVariantsImpl(env, info);
+    } catch (const std::bad_alloc &) {
+        return ThrowLiteral(env, "Native artwork WebP variant encoding ran out of memory");
+    } catch (...) {
+        return ThrowLiteral(env, "Native artwork WebP variant encoding failed");
+    }
+}
+
+napi_value HashArtworkSourceImpl(napi_env env, napi_callback_info info)
+{
+    size_t argumentCount = 1;
+    napi_value argument = nullptr;
+    void *source = nullptr;
+    size_t sourceLength = 0;
+    if (napi_get_cb_info(env, info, &argumentCount, &argument, nullptr, nullptr) != napi_ok ||
+        argumentCount < 1 ||
+        napi_get_arraybuffer_info(env, argument, &source, &sourceLength) != napi_ok ||
+        (source == nullptr && sourceLength > 0)) {
+        return Throw(env, "Invalid native artwork hash arguments");
+    }
+    napi_value result = nullptr;
+    const std::string hash = HashArtworkSourceXXH3_128(
+        static_cast<const uint8_t *>(source), sourceLength
+    );
+    if (!StringValue(env, hash, result)) {
+        return Throw(env, "Unable to create native artwork hash result");
+    }
+    return result;
+}
+
+napi_value HashArtworkSourceValue(napi_env env, napi_callback_info info)
+{
+    try {
+        return HashArtworkSourceImpl(env, info);
+    } catch (const std::bad_alloc &) {
+        return ThrowLiteral(env, "Native artwork hash ran out of memory");
+    } catch (...) {
+        return ThrowLiteral(env, "Native artwork hash failed");
+    }
+}
+
 napi_value Init(napi_env env, napi_value exports)
 {
     const napi_property_descriptor properties[] = {
         { "parseMediaFile", nullptr, ParseMedia, nullptr, nullptr, nullptr, napi_default, nullptr },
         { "readArtworkBytes", nullptr, ReadArtwork, nullptr, nullptr, nullptr, napi_default, nullptr },
-        { "encodeArtworkWebP", nullptr, EncodeArtworkWebPValue, nullptr, nullptr, nullptr, napi_default, nullptr }
+        { "encodeArtworkWebP", nullptr, EncodeArtworkWebPValue, nullptr, nullptr, nullptr, napi_default, nullptr },
+        { "encodeArtworkWebPVariants", nullptr, EncodeArtworkWebPVariantsValue,
+            nullptr, nullptr, nullptr, napi_default, nullptr },
+        { "hashArtworkSourceXXH3_128", nullptr, HashArtworkSourceValue, nullptr, nullptr, nullptr,
+            napi_default, nullptr }
     };
     if (napi_define_properties(env, exports,
         sizeof(properties) / sizeof(properties[0]), properties) != napi_ok) {

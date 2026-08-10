@@ -14,6 +14,8 @@ const LICENSE_SECTIONS: Array<ComplianceSection> = [
   new ComplianceSection('第三方软件', [
     '本应用随原生库分发 libwebp 1.6.0，用于将缩放后的封面缓存编码为有损 WebP 并保留透明度。libwebp 源码来自 WebM Project：https://chromium.googlesource.com/webm/libwebp/',
     'libwebp 依据 BSD 3-Clause 许可证提供，并包含附加专利授权。本应用对 libwebp 的使用不表示 Google 或其贡献者对 wPlayer 的认可或推广。',
+    '本应用随原生库分发 xxHash 0.8.3，用于在设备本地计算封面来源的 XXH3-128 非加密内容标识。源码来自：https://github.com/Cyan4973/xxHash',
+    'xxHash 依据 BSD 2-Clause 许可证提供。',
     'HarmonyOS 系统组件和系统能力由设备系统提供，并遵循其各自的许可条款。'
   ]),
   new ComplianceSection('libwebp — Copyright and license', [
@@ -27,6 +29,13 @@ const LICENSE_SECTIONS: Array<ComplianceSection> = [
   new ComplianceSection('libwebp — Additional IP Rights Grant (Patents)', [
     '"These implementations" means the copyrightable works that implement the WebM codecs distributed by Google as part of the WebM Project.',
     'Google hereby grants to you a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable (except as stated in this section) patent license to make, have made, use, offer to sell, sell, import, transfer, and otherwise run, modify and propagate the contents of these implementations of WebM, where such license applies only to those patent claims, both currently owned by Google and acquired in the future, licensable by Google that are necessarily infringed by these implementations of WebM. This grant does not include claims that would be infringed only as a consequence of further modification of these implementations. If you or your agent or exclusive licensee institute or order or agree to the institution of patent litigation or any other patent enforcement activity against any entity (including a cross-claim or counterclaim in a lawsuit) alleging that any of these implementations of WebM or any code incorporated within any of these implementations of WebM constitutes direct or contributory patent infringement, or inducement of patent infringement, then any patent rights granted to you under this License for these implementations of WebM shall terminate as of the date such litigation is filed.'
+  ]),
+  new ComplianceSection('xxHash — Copyright and BSD 2-Clause License', [
+    'Copyright (c) 2012-2021 Yann Collet. All rights reserved.',
+    'Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:',
+    'Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.',
+    'Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.',
+    'THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.'
   ]),
   new ComplianceSection('无担保声明', [
     '本项目按 GNU GPL 第 3 版所述方式提供，不附带任何明示或默示担保。完整权利与义务以许可证正文为准。'

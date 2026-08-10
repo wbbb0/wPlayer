@@ -1,3 +1,6 @@
 [submodule "entry/src/main/cpp/third_party/libwebp"]
 	path = entry/src/main/cpp/third_party/libwebp
 	url = https://chromium.googlesource.com/webm/libwebp
+[submodule "entry/src/main/cpp/third_party/xxhash"]
+	path = entry/src/main/cpp/third_party/xxhash
+	url = https://github.com/Cyan4973/xxHash.git

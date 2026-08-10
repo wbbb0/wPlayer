@@ -46,6 +46,14 @@ async function createVersion13Fixture(context: common.Context,
       )`
     );
     await store.execute(
+      `CREATE TABLE track_artwork (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        track_id INTEGER NOT NULL,
+        source_id INTEGER,
+        asset_id INTEGER
+      )`
+    );
+    await store.execute(
       'INSERT INTO schema_meta(singleton, version, migrated_at) VALUES(1, 13, 1)'
     );
     await store.execute(
@@ -92,6 +100,10 @@ export default function libraryDatabaseMigrationTest() {
         expect(await readFirstLong(
           store,
           "SELECT COUNT(*) FROM pragma_table_info('artwork_asset') WHERE name = 'encoding_version'"
+        )).assertEqual(1);
+        expect(await readFirstLong(
+          store,
+          "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_track_artwork_source'"
         )).assertEqual(1);
         expect(await readFirstLong(
           store,

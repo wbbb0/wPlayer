@@ -45,17 +45,37 @@ uint8_t Unpremultiply(uint8_t value, uint8_t alpha)
     return static_cast<uint8_t>(std::min(restored, 255U));
 }
 
-void CopyStraightBgra(const uint8_t *source, size_t sourceLength,
-    std::vector<uint8_t> &straight)
+std::string EncodingError(WebPEncodingError code);
+
+bool ImportBgra(const uint8_t *source, int32_t width, int32_t height,
+    bool premultiplied, WebPPicture &picture, std::string &error)
 {
-    straight.resize(sourceLength);
-    for (size_t offset = 0; offset < sourceLength; offset += 4) {
-        const uint8_t alpha = source[offset + 3];
-        straight[offset] = Unpremultiply(source[offset], alpha);
-        straight[offset + 1] = Unpremultiply(source[offset + 1], alpha);
-        straight[offset + 2] = Unpremultiply(source[offset + 2], alpha);
-        straight[offset + 3] = alpha;
+    if (!WebPPictureInit(&picture)) {
+        error = "Unable to initialize WebP picture";
+        return false;
     }
+    picture.width = width;
+    picture.height = height;
+    picture.use_argb = 1;
+    if (!WebPPictureAlloc(&picture)) {
+        error = EncodingError(picture.error_code);
+        return false;
+    }
+    for (int32_t y = 0; y < height; ++y) {
+        uint32_t *target = picture.argb + static_cast<size_t>(y) * picture.argb_stride;
+        const uint8_t *row = source + static_cast<size_t>(y) * width * 4;
+        for (int32_t x = 0; x < width; ++x) {
+            const uint8_t *pixel = row + static_cast<size_t>(x) * 4;
+            const uint8_t alpha = pixel[3];
+            const uint8_t red = premultiplied ? Unpremultiply(pixel[2], alpha) : pixel[2];
+            const uint8_t green = premultiplied ? Unpremultiply(pixel[1], alpha) : pixel[1];
+            const uint8_t blue = premultiplied ? Unpremultiply(pixel[0], alpha) : pixel[0];
+            target[x] = (static_cast<uint32_t>(alpha) << 24U) |
+                (static_cast<uint32_t>(red) << 16U) |
+                (static_cast<uint32_t>(green) << 8U) | blue;
+        }
+    }
+    return true;
 }
 
 std::string EncodingError(WebPEncodingError code)
@@ -63,17 +83,9 @@ std::string EncodingError(WebPEncodingError code)
     return "WebP encoder failed with code " + std::to_string(static_cast<int>(code));
 }
 
-} // namespace
-
-bool EncodeArtworkWebP(const uint8_t *bgraSource, size_t sourceLength, int32_t width,
-    int32_t height, bool premultiplied, const ArtworkWebPEncodeOptions &options,
+bool EncodePicture(WebPPicture &picture, const ArtworkWebPEncodeOptions &options,
     std::vector<uint8_t> &result, std::string &error)
 {
-    result.clear();
-    if (!ValidateInput(bgraSource, sourceLength, width, height, options, error)) {
-        return false;
-    }
-
     WebPConfig config;
     if (!WebPConfigPreset(&config, WEBP_PRESET_PICTURE, options.quality)) {
         error = "Unable to initialize WebP encoder configuration";
@@ -87,28 +99,6 @@ bool EncodeArtworkWebP(const uint8_t *bgraSource, size_t sourceLength, int32_t w
         error = "Invalid WebP encoder configuration";
         return false;
     }
-
-    WebPPicture picture;
-    if (!WebPPictureInit(&picture)) {
-        error = "Unable to initialize WebP picture";
-        return false;
-    }
-    picture.width = width;
-    picture.height = height;
-    picture.use_argb = 1;
-
-    std::vector<uint8_t> straight;
-    const uint8_t *input = bgraSource;
-    if (premultiplied) {
-        CopyStraightBgra(bgraSource, sourceLength, straight);
-        input = straight.data();
-    }
-    if (!WebPPictureImportBGRA(&picture, input, width * 4)) {
-        error = EncodingError(picture.error_code);
-        WebPPictureFree(&picture);
-        return false;
-    }
-
     WebPMemoryWriter writer;
     WebPMemoryWriterInit(&writer);
     picture.writer = WebPMemoryWrite;
@@ -122,8 +112,94 @@ bool EncodeArtworkWebP(const uint8_t *bgraSource, size_t sourceLength, int32_t w
         result.assign(writer.mem, writer.mem + writer.size);
     }
     WebPMemoryWriterClear(&writer);
-    WebPPictureFree(&picture);
     return encoded != 0 && !result.empty();
+}
+
+bool CopyAndRescale(const WebPPicture &source, int32_t width, int32_t height,
+    WebPPicture &target, std::string &error)
+{
+    if (!WebPPictureInit(&target) || !WebPPictureCopy(&source, &target)) {
+        error = "Unable to copy WebP picture";
+        return false;
+    }
+    if (!WebPPictureRescale(&target, width, height)) {
+        error = EncodingError(target.error_code);
+        return false;
+    }
+    return true;
+}
+
+void ExportBgra(const WebPPicture &picture, std::vector<uint8_t> &result)
+{
+    result.resize(static_cast<size_t>(picture.width) * picture.height * 4);
+    for (int32_t y = 0; y < picture.height; ++y) {
+        const uint32_t *row = picture.argb + static_cast<size_t>(y) * picture.argb_stride;
+        uint8_t *target = result.data() + static_cast<size_t>(y) * picture.width * 4;
+        for (int32_t x = 0; x < picture.width; ++x) {
+            const uint32_t pixel = row[x];
+            target[x * 4] = static_cast<uint8_t>(pixel & 0xffU);
+            target[x * 4 + 1] = static_cast<uint8_t>((pixel >> 8U) & 0xffU);
+            target[x * 4 + 2] = static_cast<uint8_t>((pixel >> 16U) & 0xffU);
+            target[x * 4 + 3] = static_cast<uint8_t>((pixel >> 24U) & 0xffU);
+        }
+    }
+}
+
+} // namespace
+
+bool EncodeArtworkWebP(const uint8_t *bgraSource, size_t sourceLength, int32_t width,
+    int32_t height, bool premultiplied, const ArtworkWebPEncodeOptions &options,
+    std::vector<uint8_t> &result, std::string &error)
+{
+    result.clear();
+    if (!ValidateInput(bgraSource, sourceLength, width, height, options, error)) {
+        return false;
+    }
+
+    WebPPicture picture = {};
+    if (!ImportBgra(bgraSource, width, height, premultiplied, picture, error)) {
+        WebPPictureFree(&picture);
+        return false;
+    }
+    const bool encoded = EncodePicture(picture, options, result, error);
+    WebPPictureFree(&picture);
+    return encoded;
+}
+
+bool EncodeArtworkWebPVariants(const uint8_t *bgraSource, size_t sourceLength,
+    int32_t width, int32_t height, bool premultiplied,
+    int32_t smallWidth, int32_t smallHeight,
+    int32_t paletteWidth, int32_t paletteHeight,
+    const ArtworkWebPEncodeOptions &options, ArtworkWebPVariants &result, std::string &error)
+{
+    result = {};
+    if (!ValidateInput(bgraSource, sourceLength, width, height, options, error) ||
+        smallWidth <= 0 || smallHeight <= 0 || smallWidth > width || smallHeight > height ||
+        paletteWidth <= 0 || paletteHeight <= 0 || paletteWidth > width || paletteHeight > height) {
+        if (error.empty()) {
+            error = "Invalid artwork WebP variant dimensions";
+        }
+        return false;
+    }
+    WebPPicture large = {};
+    WebPPicture small = {};
+    WebPPicture palette = {};
+    if (!ImportBgra(bgraSource, width, height, premultiplied, large, error)) {
+        WebPPictureFree(&large);
+        return false;
+    }
+    bool success = CopyAndRescale(large, smallWidth, smallHeight, small, error) &&
+        CopyAndRescale(small, paletteWidth, paletteHeight, palette, error) &&
+        EncodePicture(large, options, result.large, error) &&
+        EncodePicture(small, options, result.small, error);
+    if (success) {
+        ExportBgra(palette, result.paletteBgra);
+        success = !result.paletteBgra.empty();
+    }
+    WebPPictureFree(&palette);
+    WebPPictureFree(&small);
+    WebPPictureFree(&large);
+    return success;
 }
 
 } // namespace wplayer::media

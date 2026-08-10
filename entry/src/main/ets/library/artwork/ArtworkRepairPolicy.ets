@@ -9,7 +9,8 @@ export class ArtworkRepairPolicy {
   private static readonly SUSPICIOUS_LARGE_BYTE_RATIO: number = 2.0;
 
   static needsRepair(state: ArtworkState, smallAvailable: boolean, largeAvailable: boolean,
-    attemptCount: number = 0, lastAttemptAt: number = 0, now: number = Date.now()): boolean {
+    attemptCount: number = 0, lastAttemptAt: number = 0, now: number = Date.now(),
+    retryIncompleteImmediately: boolean = false): boolean {
     if (state === ArtworkState.ABSENT) {
       return false;
     }
@@ -17,11 +18,17 @@ export class ArtworkRepairPolicy {
       return !smallAvailable || !largeAvailable;
     }
     if (state === ArtworkState.PROCESSING) {
+      if (retryIncompleteImmediately) {
+        return true;
+      }
       return ArtworkRepairPolicy.retryDue(
         lastAttemptAt, now, ArtworkRepairPolicy.PROCESSING_STALE_MS
       );
     }
     if (state === ArtworkState.FAILED) {
+      if (retryIncompleteImmediately) {
+        return true;
+      }
       return ArtworkRepairPolicy.retryDue(
         lastAttemptAt, now, ArtworkRepairPolicy.failedRetryDelay(attemptCount)
       );

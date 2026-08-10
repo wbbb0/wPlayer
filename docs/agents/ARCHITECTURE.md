@@ -115,10 +115,10 @@ not publish state, release a resource now owned by newer work, or clear a curren
   Picker-URI-access and system-share-presenter ports. Index owns the coordinator and supplies the current ability
   context; adapters never copy the audio file, derive a physical path or retain the context.
 - MetadataReader owns documented media metadata and artwork extraction.
-- `libwplayermedia.so` implements the MP3/FLAC fallback parser and bounded WebP artwork encoding behind
-  MediaFileTasks. It synchronously borrows caller-owned file descriptors on taskpool workers, uses positioned reads
-  and never closes or retains those descriptors. NativeMediaMetadataAdapter keeps tag normalization in the library
-  domain; pages and other callers do not import the native module directly.
+- `libwplayermedia.so` implements the MP3/FLAC fallback parser, XXH3-128 artwork-source identity and bounded WebP
+  artwork encoding behind MediaFileTasks. It synchronously borrows caller-owned file descriptors and buffers on
+  taskpool workers, uses positioned reads and never closes or retains those descriptors. NativeMediaMetadataAdapter
+  keeps tag normalization in the library domain; pages and other callers do not import the native module directly.
 - MusicRepository is the library facade used by stores and playback coordination.
 - LibraryDatabase owns schema creation, versioning and relational-store lifecycle.
 - MusicLibraryQueries is the stable repository-facing query facade. Track, album, detail/navigation and maintenance

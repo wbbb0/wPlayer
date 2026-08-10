@@ -1,13 +1,17 @@
-import { fileIo as fs, hash } from '@kit.CoreFileKit';
+import { fileIo as fs } from '@kit.CoreFileKit';
 import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import { image } from '@kit.ImageKit';
 import { SuppressWarnings, SuppressWarningsType } from '@ohos.annotation';
-import { encodeArtworkWebP } from '../metadata/MediaFileTasks';
+import {
+  encodeArtworkWebPVariants,
+  hashArtworkSourceXXH3_128
+} from '../metadata/MediaFileTasks';
 import { ImportPerformanceTrace } from '../importer/ImportPerformanceTrace';
 import { ArtworkEncodingPolicy } from './ArtworkEncodingPolicy';
 import { ArtworkCleanupPolicy } from './ArtworkCleanupPolicy';
 import { ArtworkPalette, ArtworkPaletteExtractor } from './ArtworkPaletteExtractor';
 import { extractArtworkPaletteAsync } from './ArtworkPaletteTasks';
+import { ArtworkSourceIdentityPolicy } from './ArtworkSourceIdentityPolicy';
 
 const ARTWORK_DIRECTORY = 'artwork';
 const TEMP_FILE_SUFFIX = '.tmp';
@@ -51,7 +55,7 @@ export class ArtworkCache {
       throw new Error(`Artwork source is too large: ${sourceBytes.byteLength}`);
     }
 
-    const sourceHash = knownSourceHash ?? await ArtworkCache.sha256(sourceBytes);
+    const sourceHash = knownSourceHash ?? await ArtworkCache.hashSource(sourceBytes);
     ArtworkCache.ensureContinues(shouldContinue);
     const sourceBuffer = ArtworkCache.toExactArrayBuffer(sourceBytes);
     const imageSource = image.createImageSource(sourceBuffer);
@@ -62,32 +66,74 @@ export class ArtworkCache {
       ImportPerformanceTrace.mark('artwork_info', imageInfoStartedAt, traceFileId,
         `source_bytes=${sourceBytes.byteLength} width=${imageInfo.size.width} height=${imageInfo.size.height}`);
       ArtworkCache.validateSourceDimensions(imageInfo.size.width, imageInfo.size.height);
-      const large = await this.encodeVariant(
-        sourceBuffer, sourceHash, imageInfo.size, ArtworkEncodingPolicy.LARGE_MAX_EDGE,
-        'large', traceFileId
+      const decodeStartedAt = Date.now();
+      const largeTarget = ArtworkEncodingPolicy.targetSize(
+        imageInfo.size.width, imageInfo.size.height, ArtworkEncodingPolicy.LARGE_MAX_EDGE
       );
-      ArtworkCache.ensureContinues(shouldContinue);
-      const small = await this.encodeVariant(
-        sourceBuffer, sourceHash, imageInfo.size, ArtworkEncodingPolicy.SMALL_MAX_EDGE,
-        'small', traceFileId
-      );
-      ArtworkCache.ensureContinues(shouldContinue);
-      const paletteSource = image.createImageSource(ArtworkCache.copyArrayBuffer(sourceBuffer));
-      let palettePixels: ArrayBuffer;
+      let pixelMap: image.PixelMap | undefined;
       try {
-        palettePixels = await ArtworkPaletteExtractor.readPixelBuffer(paletteSource, imageInfo.size);
+        pixelMap = await imageSource.createPixelMap({
+          desiredSize: largeTarget,
+          desiredPixelFormat: image.PixelMapFormat.RGBA_8888
+        });
+        const actualInfo = await pixelMap.getImageInfo();
+        if (actualInfo.pixelFormat !== image.PixelMapFormat.RGBA_8888) {
+          throw new Error(`Unexpected artwork pixel format: ${actualInfo.pixelFormat}`);
+        }
+        const stride = actualInfo.size.width * 4;
+        const pixels = new ArrayBuffer(stride * actualInfo.size.height);
+        await pixelMap.readPixels({
+          pixels: pixels,
+          offset: 0,
+          stride: stride,
+          region: { x: 0, y: 0, size: actualInfo.size }
+        });
+        ImportPerformanceTrace.mark('artwork_decode', decodeStartedAt, traceFileId,
+          `width=${actualInfo.size.width} height=${actualInfo.size.height}`);
+        ArtworkCache.ensureContinues(shouldContinue);
+        const smallTarget = ArtworkEncodingPolicy.targetSize(
+          actualInfo.size.width, actualInfo.size.height, ArtworkEncodingPolicy.SMALL_MAX_EDGE
+        );
+        const paletteTarget = ArtworkPaletteExtractor.sampleSize(actualInfo.size);
+        const encodeStartedAt = Date.now();
+        const encoded = await encodeArtworkWebPVariants(
+          pixels, actualInfo.size.width, actualInfo.size.height,
+          actualInfo.alphaType === image.AlphaType.PREMUL,
+          smallTarget.width, smallTarget.height,
+          paletteTarget.width, paletteTarget.height,
+          ArtworkEncodingPolicy.QUALITY, ArtworkEncodingPolicy.METHOD,
+          ArtworkEncodingPolicy.ALPHA_QUALITY
+        );
+        ImportPerformanceTrace.mark('artwork_encode_variants', encodeStartedAt, traceFileId,
+          `large_bytes=${encoded.large.byteLength} small_bytes=${encoded.small.byteLength}`);
+        ArtworkCache.ensureContinues(shouldContinue);
+        const finalDirectory = ArtworkCache.parentDirectory(ArtworkCache.resolveContextPath(
+          this.context,
+          ArtworkCache.variantRelativePath(
+            sourceHash, ArtworkEncodingPolicy.VERSION, 'large', ArtworkEncodingPolicy.EXTENSION
+          )
+        ));
+        await ArtworkCache.ensureDirectoryAsync(finalDirectory);
+        const results = await Promise.all([
+          this.persistVariant(encoded.large, sourceHash, 'large',
+            actualInfo.size.width, actualInfo.size.height, traceFileId),
+          this.persistVariant(encoded.small, sourceHash, 'small',
+            smallTarget.width, smallTarget.height, traceFileId),
+          extractArtworkPaletteAsync(encoded.paletteBgra)
+        ]);
+        ArtworkCache.ensureContinues(shouldContinue);
+        return {
+          sourceHash: sourceHash,
+          encodingVersion: ArtworkEncodingPolicy.VERSION,
+          small: results[1] as ArtworkCacheVariantResult,
+          large: results[0] as ArtworkCacheVariantResult,
+          palette: results[2] as ArtworkPalette
+        };
       } finally {
-        await paletteSource.release();
+        if (pixelMap !== undefined) {
+          await pixelMap.release();
+        }
       }
-      ArtworkCache.ensureContinues(shouldContinue);
-      const palette = await extractArtworkPaletteAsync(palettePixels);
-      return {
-        sourceHash: sourceHash,
-        encodingVersion: ArtworkEncodingPolicy.VERSION,
-        small: small,
-        large: large,
-        palette: palette
-      };
     } finally {
       await imageSource.release();
     }
@@ -97,7 +143,22 @@ export class ArtworkCache {
     if (sourceBytes.byteLength === 0) {
       throw new Error('Artwork source is empty');
     }
-    return ArtworkCache.sha256(sourceBytes);
+    return hashArtworkSourceXXH3_128(
+      // taskpool may transfer the argument ArrayBuffer. Hash an owned copy so callers can
+      // continue decoding and, for legacy rows, validating the original artwork bytes.
+      ArtworkCache.copyArrayBuffer(ArtworkCache.toExactArrayBuffer(sourceBytes))
+    ).then((digest: string): string => ArtworkSourceIdentityPolicy.fromCurrentDigest(digest));
+  }
+
+  static async matchesSourceIdentity(sourceBytes: Uint8Array, currentIdentity: string,
+    expectedIdentity: string): Promise<boolean> {
+    if (ArtworkSourceIdentityPolicy.isCurrent(expectedIdentity)) {
+      return currentIdentity === expectedIdentity;
+    }
+    if (ArtworkSourceIdentityPolicy.isLegacySha256(expectedIdentity)) {
+      return await ArtworkCache.sha256(sourceBytes) === expectedIdentity.toLowerCase();
+    }
+    return false;
   }
 
   async extractPalette(relativePath: string): Promise<ArtworkPalette> {
@@ -284,49 +345,26 @@ export class ArtworkCache {
     return deletedCount;
   }
 
-  private async encodeVariant(
-    sourceBuffer: ArrayBuffer,
+  private async persistVariant(
+    encoded: ArrayBuffer,
     sourceHash: string,
-    sourceSize: image.Size,
-    maxEdge: number,
     variantName: string,
+    width: number,
+    height: number,
     traceFileId: number
   ): Promise<ArtworkCacheVariantResult> {
     const variantStartedAt = Date.now();
-    const targetSize = ArtworkEncodingPolicy.targetSize(sourceSize.width, sourceSize.height, maxEdge);
-    const imageSource = image.createImageSource(ArtworkCache.copyArrayBuffer(sourceBuffer));
-    let pixelMap: image.PixelMap | undefined;
     let temporaryPath = '';
     try {
-      pixelMap = await imageSource.createPixelMap({
-        desiredSize: targetSize,
-        desiredPixelFormat: image.PixelMapFormat.RGBA_8888
-      });
-      const actualInfo = await pixelMap.getImageInfo();
-      if (actualInfo.pixelFormat !== image.PixelMapFormat.RGBA_8888) {
-        throw new Error(`Unexpected artwork pixel format: ${actualInfo.pixelFormat}`);
-      }
-      const stride = actualInfo.size.width * 4;
-      const pixels = new ArrayBuffer(stride * actualInfo.size.height);
-      await pixelMap.readPixels({
-        pixels: pixels,
-        offset: 0,
-        stride: stride,
-        region: { x: 0, y: 0, size: actualInfo.size }
-      });
-      const encoded = await encodeArtworkWebP(
-        pixels,
-        actualInfo.size.width,
-        actualInfo.size.height,
-        actualInfo.alphaType === image.AlphaType.PREMUL,
-        ArtworkEncodingPolicy.QUALITY,
-        ArtworkEncodingPolicy.METHOD,
-        ArtworkEncodingPolicy.ALPHA_QUALITY
+      const cacheKey = ArtworkSourceIdentityPolicy.cacheKey(
+        sourceHash, ArtworkEncodingPolicy.VERSION, variantName
       );
-      const artworkRoot = ArtworkCache.resolveContextPath(this.context, ARTWORK_DIRECTORY);
-      await ArtworkCache.ensureDirectoryAsync(artworkRoot);
-      temporaryPath = `${artworkRoot}/.${sourceHash}.${variantName}.` +
-        `${ArtworkCache.nextTemporaryId()}${TEMP_FILE_SUFFIX}`;
+      const relativePath = ArtworkCache.variantRelativePath(
+        sourceHash, ArtworkEncodingPolicy.VERSION, variantName,
+        ArtworkEncodingPolicy.EXTENSION
+      );
+      const finalPath = ArtworkCache.resolveContextPath(this.context, relativePath);
+      temporaryPath = `${finalPath}.${ArtworkCache.nextTemporaryId()}${TEMP_FILE_SUFFIX}`;
       const temporaryFile = await fs.open(temporaryPath,
         fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
       try {
@@ -339,12 +377,6 @@ export class ArtworkCache {
         }
       }
 
-      const contentHash = await hash.hash(temporaryPath, 'sha256');
-      const relativePath = ArtworkCache.variantRelativePath(
-        contentHash, ArtworkEncodingPolicy.EXTENSION
-      );
-      const finalPath = ArtworkCache.resolveContextPath(this.context, relativePath);
-      await ArtworkCache.ensureDirectoryAsync(ArtworkCache.parentDirectory(finalPath));
       if (await fs.access(finalPath)) {
         await ArtworkCache.deleteIfPresentAsync(temporaryPath);
         temporaryPath = '';
@@ -354,36 +386,29 @@ export class ArtworkCache {
           temporaryPath = '';
         } catch (_) {
           if (!await fs.access(finalPath)) {
-            throw new Error(`Failed to commit ${variantName} artwork cache: ${contentHash}`);
+            throw new Error(`Failed to commit ${variantName} artwork cache: ${cacheKey}`);
           }
           await ArtworkCache.deleteIfPresentAsync(temporaryPath);
           temporaryPath = '';
         }
       }
       const result: ArtworkCacheVariantResult = {
-        hash: contentHash,
+        hash: cacheKey,
         relativePath: relativePath,
         format: ArtworkEncodingPolicy.MIME_TYPE,
-        width: actualInfo.size.width,
-        height: actualInfo.size.height,
-        byteSize: (await fs.stat(finalPath)).size
+        width: width,
+        height: height,
+        byteSize: encoded.byteLength
       };
       ImportPerformanceTrace.mark(`artwork_${variantName}`, variantStartedAt, traceFileId,
         `width=${result.width} height=${result.height} bytes=${result.byteSize}`);
       return result;
     } catch (error) {
-      throw new Error(`Unable to encode ${variantName} artwork: ${ArtworkCache.errorMessage(error)}`);
+      throw new Error(`Unable to persist ${variantName} artwork: ${ArtworkCache.errorMessage(error)}`);
     } finally {
-      try {
-        if (temporaryPath.length > 0) {
-          await ArtworkCache.deleteIfPresentAsync(temporaryPath);
-        }
-      } finally {
-        if (pixelMap !== undefined) {
-          await pixelMap.release();
-        }
+      if (temporaryPath.length > 0) {
+        await ArtworkCache.deleteIfPresentAsync(temporaryPath);
       }
-      await imageSource.release();
     }
   }
 
@@ -421,9 +446,11 @@ export class ArtworkCache {
     }
   }
 
-  private static variantRelativePath(contentHash: string, extension: string): string {
-    return `${ARTWORK_DIRECTORY}/${contentHash.substring(0, 2)}/` +
-      `${contentHash.substring(2, 4)}/${contentHash}.${extension}`;
+  private static variantRelativePath(sourceIdentity: string, encodingVersion: number,
+    variant: string, extension: string): string {
+    const digest = ArtworkSourceIdentityPolicy.currentDigest(sourceIdentity);
+    return `${ARTWORK_DIRECTORY}/${digest.substring(0, 2)}/${digest.substring(2, 4)}/` +
+      `${digest}.v${encodingVersion}.${variant}.${extension}`;
   }
 
   private static validateRelativePath(relativePath: string): string {

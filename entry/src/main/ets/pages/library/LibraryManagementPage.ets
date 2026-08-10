@@ -7,6 +7,7 @@ import {
   ImportItemResult,
   ImportStagePerformance,
   FileCheckItemOutcome,
+  FileCheckPhase,
   UnavailableTrackItem
 } from '../../library/model/LibraryModels';
 import { LibraryItemAvailability } from '../../components/library/LibraryItemAvailability';
@@ -212,7 +213,8 @@ export struct LibraryManagementPage {
       this.importDetailSection('uri_duplicate', 'URI 已存在', ImportItemDetailKind.URI_DUPLICATE),
       this.importDetailSection('content_duplicate', '文件内容重复', ImportItemDetailKind.CONTENT_DUPLICATE),
       this.importDetailSection('batch_duplicate', '本次选择中重复', ImportItemDetailKind.BATCH_DUPLICATE),
-      this.importDetailSection('failed', '导入失败', ImportItemDetailKind.FAILED)
+      this.importDetailSection('failed', '导入失败', ImportItemDetailKind.FAILED),
+      this.importDetailSection('artwork_failed', '封面失败', ImportItemDetailKind.ARTWORK_FAILED)
     ];
   }
 
@@ -227,14 +229,16 @@ export struct LibraryManagementPage {
       }
       items.push({
         key: `${key}:${index}:${item.uri}`,
-        status: item.outcome === ImportItemOutcome.DUPLICATE ? '重复' : '失败',
+        status: item.outcome === ImportItemOutcome.DUPLICATE ? '重复' :
+          (item.outcome === ImportItemOutcome.ARTWORK_FAILED ? '封面失败' : '失败'),
         title: item.displayName,
         reason: item.reason,
         uri: item.uri,
         secondaryUri: item.duplicateSourceUri,
         recordLabel: item.duplicateTrackId !== undefined ?
           `已有音乐库记录：#${item.duplicateTrackId}` : undefined,
-        tone: item.outcome === ImportItemOutcome.FAILED ? TaskResultTone.ERROR : TaskResultTone.NORMAL
+        tone: item.outcome === ImportItemOutcome.FAILED ||
+          item.outcome === ImportItemOutcome.ARTWORK_FAILED ? TaskResultTone.ERROR : TaskResultTone.NORMAL
       });
     }
     return {
@@ -242,7 +246,8 @@ export struct LibraryManagementPage {
       title: title,
       emptyText: '',
       items: items,
-      tone: kind === ImportItemDetailKind.FAILED ? TaskResultTone.ERROR : TaskResultTone.NORMAL
+      tone: kind === ImportItemDetailKind.FAILED || kind === ImportItemDetailKind.ARTWORK_FAILED ?
+        TaskResultTone.ERROR : TaskResultTone.NORMAL
     };
   }
 
@@ -397,11 +402,8 @@ export struct LibraryManagementPage {
             total: Math.max(1, this.store.fileCheckProgress.total),
             type: ProgressType.Linear
           }).width('100%')
-          Text(this.store.fileCheckProgress.metadataCompleted ?
-            (this.store.fileCheckProgress.cancelled ?
-              '音乐文件检查已停止' : '音乐文件检查完成') :
-            (this.store.fileCheckProgress.currentName.length > 0 ?
-              this.store.fileCheckProgress.currentName : '正在检查音乐文件'))
+          Text(this.store.fileCheckProgress.currentName.length > 0 ?
+            this.store.fileCheckProgress.currentName : '正在检查音乐文件')
             .fontSize(13)
             .fontColor($r('app.color.text_secondary'))
             .maxLines(2)
@@ -415,7 +417,7 @@ export struct LibraryManagementPage {
             .fontColor($r('app.color.text_secondary'))
             .fontFeature('tnum')
             .width('100%')
-          if (this.store.fileCheckProgress.metadataCompleted &&
+          if (this.store.fileCheckProgress.phase !== FileCheckPhase.SCANNING &&
             this.store.fileCheckProgress.artworkTotal > 0) {
             Divider()
               .color($r('app.color.text_secondary'))
@@ -438,6 +440,29 @@ export struct LibraryManagementPage {
                 `  ·  跳过 ${this.store.fileCheckProgress.artworkSkipped}` : '') +
               (this.store.fileCheckProgress.artworkFailed > 0 ?
                 `  ·  失败 ${this.store.fileCheckProgress.artworkFailed}` : ''))
+              .fontSize(12)
+              .fontColor($r('app.color.text_secondary'))
+              .fontFeature('tnum')
+              .width('100%')
+          }
+          if (this.store.fileCheckProgress.phase === FileCheckPhase.PALETTE &&
+            this.store.fileCheckProgress.paletteTotal > 0) {
+            Divider()
+              .color($r('app.color.text_secondary'))
+              .opacity(0.2)
+            Progress({
+              value: this.store.fileCheckProgress.paletteProcessed,
+              total: Math.max(1, this.store.fileCheckProgress.paletteTotal),
+              type: ProgressType.Linear
+            }).width('100%')
+            Text('正在更新无需重建图片的旧封面配色')
+              .fontSize(13)
+              .fontColor($r('app.color.text_secondary'))
+              .width('100%')
+            Text(`${this.store.fileCheckProgress.paletteProcessed} / ` +
+              `${this.store.fileCheckProgress.paletteTotal}` +
+              (this.store.fileCheckProgress.paletteFailed > 0 ?
+                `  ·  失败 ${this.store.fileCheckProgress.paletteFailed}` : ''))
               .fontSize(12)
               .fontColor($r('app.color.text_secondary'))
               .fontFeature('tnum')

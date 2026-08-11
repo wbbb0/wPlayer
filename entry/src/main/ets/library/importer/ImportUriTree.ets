@@ -88,10 +88,11 @@ export class ImportUriTree {
     }
 
     const trieRoot = new ImportTreeDirNode('', '');
+    const childIndexes: Map<ImportTreeDirNode, Map<string, ImportTreeDirNode>> = new Map();
     for (const entry of entries) {
       let node = trieRoot;
       for (let depth = 0; depth < entry.parentSegments.length; depth += 1) {
-        node = ImportUriTree.childDir(node, entry.parentSegments, depth);
+        node = ImportUriTree.childDir(node, entry.parentSegments, depth, childIndexes);
       }
       const file = new ImportTreeFileNode(entry.uri, entry.fileName);
       file.parent = node;
@@ -207,17 +208,22 @@ export class ImportUriTree {
   }
 
   private static childDir(parent: ImportTreeDirNode, segments: Array<string>,
-    depth: number): ImportTreeDirNode {
+    depth: number, childIndexes: Map<ImportTreeDirNode, Map<string, ImportTreeDirNode>>): ImportTreeDirNode {
     const name = segments[depth];
-    const pathKey = segments.slice(0, depth + 1).join('/');
-    for (const child of parent.dirs) {
-      if (child.name === name && child.pathKey === pathKey) {
-        return child;
-      }
+    let childIndex = childIndexes.get(parent);
+    if (childIndex === undefined) {
+      childIndex = new Map<string, ImportTreeDirNode>();
+      childIndexes.set(parent, childIndex);
     }
+    const existing = childIndex.get(name);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const pathKey = segments.slice(0, depth + 1).join('/');
     const created = new ImportTreeDirNode(name, pathKey);
     created.parent = parent;
     parent.dirs.push(created);
+    childIndex.set(name, created);
     return created;
   }
 

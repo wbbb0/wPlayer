@@ -2,9 +2,9 @@ import { MiniPlayerClickSuppressor, PlayerLayoutSpec, PlayerMotionSpec } from '.
 import { MiniPlayerBinding } from './MiniPlayerBinding';
 import { PlayerMiniArtwork } from './PlayerArtworkViews';
 import { PlayerPlaybackButton } from './PlayerControls';
-import { PlayerTrackMarquee } from './PlayerTrackMarquee';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { LayoutLength } from '../layout/LayoutLength';
+import { MiniPlayerTrackPager } from './MiniPlayerTrackPager';
 
 export class MiniPlayerHostParams {
   playerStore: PlayerStore;
@@ -66,23 +66,13 @@ export struct MiniPlayerContent {
       })
 
       if (this.binding.expanded) {
-        Column({ space: 2 }) {
-          PlayerTrackMarquee({
-            playerStore: this.playerStore,
-            active: this.marqueeActive,
-            titleColor: $r('app.color.text_primary'),
-            titleSize: 15,
-            titleWeight: FontWeight.Medium
-          })
-
-          Text(this.playerStore.currentTrack?.artistDisplay || '选择一首音乐')
-            .fontSize(11)
-            .fontColor($r('app.color.text_secondary'))
-            .maxLines(1)
-        }
-        .alignItems(HorizontalAlign.Start)
+        MiniPlayerTrackPager({
+          playerStore: this.playerStore,
+          binding: this.binding,
+          marqueeActive: this.marqueeActive,
+          followsSwipeOffset: this.followsSwipeOffset
+        })
         .layoutWeight(1)
-        .translate({ x: this.followsSwipeOffset ? this.binding.offsetX : 0 })
         .onClick(() => {
           this.onShowFullPlayer();
         })

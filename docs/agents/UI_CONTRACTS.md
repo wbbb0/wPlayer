@@ -107,11 +107,12 @@ directly; do not add wrapper margins, borders or replacement backgrounds.
 
 Horizontal dragging:
 
-- moves only track text;
+- pages the track-information region through the previous, current and next entries in active playback order;
 - keeps album artwork and playback controls fixed;
-- clips translated content to the rounded parent;
+- clips adjacent track information to the rounded parent;
 - may provide light threshold haptics;
-- must not change tracks until that playback behavior is intentionally implemented.
+- changes tracks only after an available adjacent page completes its settle; an unavailable edge returns with
+  resistance and does not change playback.
 
 Vertical dragging:
 

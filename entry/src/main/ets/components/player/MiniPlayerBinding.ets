@@ -1,9 +1,15 @@
 import { PlayerFrame, PlayerLayoutSpec } from './PlayerMotion';
+import { QueueEntry } from '../../playback/model/PlaybackModels';
 
 @Observed
 export class MiniPlayerBinding {
   expanded: boolean = false;
   offsetX: number = 0;
+  trackPagerActive: boolean = false;
+  trackPagerViewportWidth: number = 0;
+  trackPagerPrevious?: QueueEntry;
+  trackPagerCurrent?: QueueEntry;
+  trackPagerNext?: QueueEntry;
   sourceVisible: boolean = true;
   sourceMarqueeActive: boolean = true;
   measuredFrame: PlayerFrame = {

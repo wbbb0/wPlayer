@@ -34,6 +34,11 @@ import {
 } from './PlayerMorphGesturePolicy';
 import { PlayerMorphTransitionCoordinator } from './PlayerMorphTransitionCoordinator';
 import { InterruptibleScalarMotion } from './InterruptibleScalarMotion';
+import {
+  MiniPlayerTrackPagerPolicy,
+  MiniPlayerTrackPageTarget,
+  MiniPlayerTrackWindow
+} from './MiniPlayerTrackPagerPolicy';
 
 const PLAYER_SYSTEM_BAR_OWNER = 'full_player';
 
@@ -103,6 +108,8 @@ export class PlayerMorphController {
   frozenMiniPlayerForeground: string = '#FFFFFFFF';
   private returnToExpandedMiniBar: boolean = false;
   private miniPlayerGestureStartExpandProgress: number = 0;
+  private miniPlayerGestureStartOffsetX: number = 0;
+  private miniPlayerTrackPagerEpoch: number = 0;
   private fullPlayerGestureStartPosition: number = FullPlayerPage.COVER;
   private fullPlayerGestureStartExpandProgress: number = 1;
   private fullPlayerGestureFallbackTarget: number = 1;
@@ -116,6 +123,8 @@ export class PlayerMorphController {
     new InterruptibleScalarMotion(0);
   private readonly fullPlayerPageMotion: InterruptibleScalarMotion =
     new InterruptibleScalarMotion(FullPlayerPage.COVER);
+  private readonly miniPlayerTrackPageMotion: InterruptibleScalarMotion =
+    new InterruptibleScalarMotion(0);
   private readonly fullPlayerPagerMemory: FullPlayerPagerMemory =
     new FullPlayerPagerMemory();
   private readonly playerStore: PlayerStore;
@@ -200,8 +209,10 @@ export class PlayerMorphController {
     this.setPlayerMorphPhase(PlayerMorphPhase.IDLE);
     this.playerMorphMotion.dispose();
     this.fullPlayerPageMotion.dispose();
+    this.miniPlayerTrackPageMotion.dispose();
     this.transitionCoordinator.dispose();
     this.fullPlayerPagerEpoch += 1;
+    this.miniPlayerTrackPagerEpoch += 1;
     this.fullPlayerPagerPhase = FullPlayerPagerPhase.SETTLED;
     this.fullPlayerSideContentReady = false;
     this.playerExpandProgress = 0;
@@ -210,6 +221,7 @@ export class PlayerMorphController {
     this.dynamicBackgroundBinding.active = false;
     this.miniPlayerBinding.sourceVisible = true;
     this.miniPlayerBinding.sourceMarqueeActive = true;
+    this.clearMiniPlayerTrackPager();
     this.releaseMorphArtworkSource();
     this.setFullPlayerVisibilityListener(undefined);
   }
@@ -699,10 +711,6 @@ export class PlayerMorphController {
     return this.transitionCoordinator.isCurrentTransition(epoch);
   }
 
-  private isCurrentLifecycle(epoch: number): boolean {
-    return this.transitionCoordinator.isCurrentLifecycle(epoch);
-  }
-
   private morphVerticalTravelDistance(): number {
     return PlayerMorphGeometry.verticalTravelDistance(
       this.frozenMiniPlayerFrame,
@@ -767,9 +775,69 @@ export class PlayerMorphController {
     );
   }
 
+  private activateMiniPlayerTrackPager(): boolean {
+    if (this.miniPlayerBinding.trackPagerActive) {
+      return true;
+    }
+    const window = MiniPlayerTrackPagerPolicy.window(
+      this.playerStore.queueDataSource.snapshot(),
+      this.playerStore.queueCurrentIndex,
+      this.playerStore.repeatMode
+    );
+    if (window.current === undefined) {
+      return false;
+    }
+    this.miniPlayerBinding.trackPagerPrevious = window.previous;
+    this.miniPlayerBinding.trackPagerCurrent = window.current;
+    this.miniPlayerBinding.trackPagerNext = window.next;
+    this.miniPlayerBinding.trackPagerActive = true;
+    return true;
+  }
+
+  private clearMiniPlayerTrackPager(): void {
+    this.miniPlayerBinding.offsetX = 0;
+    this.miniPlayerBinding.trackPagerActive = false;
+    this.miniPlayerBinding.trackPagerPrevious = undefined;
+    this.miniPlayerBinding.trackPagerCurrent = undefined;
+    this.miniPlayerBinding.trackPagerNext = undefined;
+    this.miniPlayerTrackPageMotion.setValue(0);
+  }
+
+  private cancelMiniPlayerTrackPager(): void {
+    this.miniPlayerTrackPagerEpoch += 1;
+    this.miniPlayerTrackPageMotion.cancel();
+    this.context().animateToImmediately({ duration: 0 }, () => {
+      this.clearMiniPlayerTrackPager();
+    });
+  }
+
+  private takeOverMiniPlayerTrackPagerPresentation(): void {
+    if (!this.miniPlayerBinding.trackPagerActive ||
+      !this.miniPlayerTrackPageMotion.isActive()) {
+      this.miniPlayerTrackPageMotion.setValue(this.miniPlayerOffsetX);
+      return;
+    }
+    const presentationOffset = this.miniPlayerTrackPageMotion.value();
+    this.miniPlayerTrackPagerEpoch += 1;
+    this.miniPlayerTrackPageMotion.cancel();
+    this.context().animateToImmediately({ duration: 0 }, () => {
+      this.miniPlayerOffsetX = presentationOffset;
+    });
+  }
+
+  private miniPlayerTrackWindow(): MiniPlayerTrackWindow {
+    return {
+      previous: this.miniPlayerBinding.trackPagerPrevious,
+      current: this.miniPlayerBinding.trackPagerCurrent,
+      next: this.miniPlayerBinding.trackPagerNext
+    };
+  }
+
   beginMiniPlayerGesture(): void {
+    this.takeOverMiniPlayerTrackPagerPresentation();
     this.playerGestureAxis = PlayerGestureAxis.UNDECIDED;
     this.miniPlayerHorizontalGestureOffset = 0;
+    this.miniPlayerGestureStartOffsetX = this.miniPlayerOffsetX;
     this.miniPlayerGestureStartExpandProgress = this.playerExpandProgress;
   }
 
@@ -790,10 +858,22 @@ export class PlayerMorphController {
         }
         return;
       }
-      this.miniPlayerOffsetX =
-        PlayerMorphGesturePolicy.resistedHorizontalOffset(horizontalOffset);
-      const reachedActionPoint = Math.abs(this.miniPlayerOffsetX) >=
-        PlayerMotionSpec.HORIZONTAL_HAPTIC_THRESHOLD;
+      if (!this.activateMiniPlayerTrackPager()) {
+        return;
+      }
+      const window = this.miniPlayerTrackWindow();
+      this.miniPlayerOffsetX = MiniPlayerTrackPagerPolicy.dragOffset(
+        this.miniPlayerGestureStartOffsetX + horizontalOffset,
+        this.miniPlayerBinding.trackPagerViewportWidth,
+        window.previous !== undefined,
+        window.next !== undefined
+      );
+      this.miniPlayerTrackPageMotion.setValue(this.miniPlayerOffsetX);
+      const reachedActionPoint = MiniPlayerTrackPagerPolicy.target(
+        this.miniPlayerOffsetX,
+        window.previous !== undefined,
+        window.next !== undefined
+      ) !== MiniPlayerTrackPageTarget.CURRENT;
       if (reachedActionPoint && !this.swipeHapticTriggered) {
         this.swipeHapticTriggered = true;
         this.triggerSwipeHaptic();
@@ -801,6 +881,9 @@ export class PlayerMorphController {
       return;
     }
     if (this.playerGestureAxis === PlayerGestureAxis.VERTICAL) {
+      if (this.miniPlayerBinding.trackPagerActive) {
+        this.cancelMiniPlayerTrackPager();
+      }
       if (!this.isMorphActive()) {
         this.freezeMiniPlayerGeometry();
         this.freezeMorphArtworkSource();
@@ -823,7 +906,6 @@ export class PlayerMorphController {
   finishMiniPlayerGesture(): void {
     const wasVerticalGesture = this.playerGestureAxis === PlayerGestureAxis.VERTICAL;
     const wasHorizontalGesture = this.playerGestureAxis === PlayerGestureAxis.HORIZONTAL;
-    const swipeOffset = this.miniPlayerOffsetX;
     this.playerGestureAxis = PlayerGestureAxis.UNDECIDED;
     this.swipeHapticTriggered = false;
     if (wasHorizontalGesture) {
@@ -835,27 +917,8 @@ export class PlayerMorphController {
         this.miniPlayerGestureRegion = MiniPlayerGestureRegion.OTHER;
         return;
       }
-      const shouldChangeTrack = Math.abs(swipeOffset) >=
-        PlayerMotionSpec.HORIZONTAL_HAPTIC_THRESHOLD;
-      const lifecycleEpoch = this.transitionCoordinator.currentLifecycle();
       this.miniPlayerGestureRegion = MiniPlayerGestureRegion.OTHER;
-      this.context().animateTo({
-        duration: PlayerMotionSpec.CANCEL_DURATION,
-        curve: Curve.EaseOut,
-        onFinish: () => {
-          if (!this.isCurrentLifecycle(lifecycleEpoch) || !shouldChangeTrack) {
-            return;
-          }
-          if (swipeOffset < 0) {
-            playbackRuntime.next();
-          } else {
-            playbackRuntime.previous();
-          }
-        }
-      }, () => {
-        this.miniPlayerOffsetX = 0;
-        this.miniPlayerHorizontalGestureOffset = 0;
-      });
+      this.settleMiniPlayerTrackPager();
       return;
     }
     this.miniPlayerGestureRegion = MiniPlayerGestureRegion.OTHER;
@@ -892,6 +955,65 @@ export class PlayerMorphController {
       }
     );
     this.miniPlayerOffsetX = 0;
+  }
+
+  private settleMiniPlayerTrackPager(): void {
+    if (!this.miniPlayerBinding.trackPagerActive) {
+      this.miniPlayerOffsetX = 0;
+      this.miniPlayerHorizontalGestureOffset = 0;
+      return;
+    }
+    const window = this.miniPlayerTrackWindow();
+    const target = MiniPlayerTrackPagerPolicy.target(
+      this.miniPlayerOffsetX,
+      window.previous !== undefined,
+      window.next !== undefined
+    );
+    const targetOffset = MiniPlayerTrackPagerPolicy.targetOffset(
+      target,
+      this.miniPlayerBinding.trackPagerViewportWidth
+    );
+    const epoch = ++this.miniPlayerTrackPagerEpoch;
+    const startOffset = this.miniPlayerOffsetX;
+    const easing = PlayerMotionSpec.interpolatingSpringEasing(
+      MiniPlayerTrackPagerPolicy.SETTLE_SPRING_RESPONSE,
+      MiniPlayerTrackPagerPolicy.SETTLE_SPRING_DAMPING
+    );
+    this.miniPlayerTrackPageMotion.animate(
+      this.context(),
+      startOffset,
+      targetOffset,
+      MiniPlayerTrackPagerPolicy.SETTLE_DURATION,
+      easing
+    );
+    this.context().animateToImmediately({
+      duration: MiniPlayerTrackPagerPolicy.SETTLE_DURATION,
+      curve: easing,
+      onFinish: (): void => {
+        if (epoch !== this.miniPlayerTrackPagerEpoch) {
+          return;
+        }
+        this.miniPlayerTrackPageMotion.complete(targetOffset);
+        const activeIndex = this.playerStore.queueDataSource.projectionState.activeIndex();
+        const activeEntryId = this.playerStore.queueDataSource.projectionState
+          .entryAt(activeIndex)?.queueEntryId ?? -1;
+        const targetEntry = MiniPlayerTrackPagerPolicy.commitEntry(
+          window,
+          target,
+          activeEntryId
+        );
+        if (targetEntry !== undefined) {
+          playbackRuntime.playQueueEntry(targetEntry.queueEntryId);
+        }
+        this.context().animateToImmediately({ duration: 0 }, () => {
+          this.clearMiniPlayerTrackPager();
+          this.miniPlayerHorizontalGestureOffset = 0;
+        });
+      }
+    }, () => {
+      this.miniPlayerOffsetX = targetOffset;
+      this.miniPlayerHorizontalGestureOffset = 0;
+    });
   }
 
   private isMiniBarResizeGesture(): boolean {

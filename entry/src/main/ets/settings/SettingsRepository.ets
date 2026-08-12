@@ -38,6 +38,9 @@ const PLAYER_PAGE_KEEP_SCREEN_ON_KEY: string = 'player_page.keep_screen_on';
 const PLAYER_PAGE_SHOW_FLOATING_WINDOW_BUTTON_KEY: string =
   'player_page.show_floating_window_button';
 const PLAYER_PAGE_LYRIC_BLUR_EFFECT_KEY: string = 'player_page.lyric_blur_effect';
+const PLAYER_PAGE_IMMERSIVE_MODE_KEY: string = 'player_page.immersive_mode';
+const PLAYER_PAGE_IMMERSIVE_WIDE_LYRICS_KEY: string =
+  'player_page.immersive_wide_lyrics';
 const COMPLETED_COLLECTION_MODE_KEY: string = 'playback.completed_collection.mode';
 const COMPLETED_COLLECTION_CURRENT_KEY: string = 'playback.completed_collection.current_enabled';
 const RECENT_PLAYLIST_TARGET_IDS_KEY: string = 'playlist.recent_target_ids';
@@ -320,6 +323,22 @@ export class SettingsRepository {
 
   setPlayerPageLyricBlurEffectEnabled(value: boolean): void {
     this.setValue(PLAYER_PAGE_LYRIC_BLUR_EFFECT_KEY, value);
+  }
+
+  getPlayerPageImmersiveModeEnabled(defaultValue: boolean = true): boolean {
+    return this.getBoolean(PLAYER_PAGE_IMMERSIVE_MODE_KEY, defaultValue);
+  }
+
+  setPlayerPageImmersiveModeEnabled(value: boolean): void {
+    this.setValue(PLAYER_PAGE_IMMERSIVE_MODE_KEY, value);
+  }
+
+  getPlayerPageImmersiveWideLyricsEnabled(defaultValue: boolean = true): boolean {
+    return this.getBoolean(PLAYER_PAGE_IMMERSIVE_WIDE_LYRICS_KEY, defaultValue);
+  }
+
+  setPlayerPageImmersiveWideLyricsEnabled(value: boolean): void {
+    this.setValue(PLAYER_PAGE_IMMERSIVE_WIDE_LYRICS_KEY, value);
   }
 
   clearLegacyPlaybackQueue(): void {

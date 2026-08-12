@@ -25,6 +25,7 @@ import { PlayerTrackMarquee } from './PlayerTrackMarquee';
 import { TrackListItem } from '../../library/model/LibraryModels';
 import { PlayerProgressControl } from './FullPlayerSharedControls';
 import { queueTrackListItem } from './FullPlayerQueuePage';
+import { FullPlayerArtworkStagePolicy } from './FullPlayerArtworkStagePolicy';
 
 @Component
 export struct FullPlayerCoverPage {
@@ -39,6 +40,7 @@ export struct FullPlayerCoverPage {
   @Prop rootFrame: PlayerFrame = { x: 0, y: 0, width: 0, height: 0 };
   @Prop pagePosition: number = FullPlayerPage.COVER;
   @Prop paneCount: number = 1;
+  @Prop immersiveProgress: number = 0;
   @Prop primaryContentColor: string = '#FFFFFFFF';
   @Prop showFloatingWindowButton: boolean = true;
   @Prop artworkSourceWidth: number = 0;
@@ -72,6 +74,7 @@ export struct FullPlayerCoverPage {
   @State private artworkAvailableHeight: number = 0;
   onArtworkTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
   onCenteredArtworkTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
+  onArtworkViewportTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
   onPlaybackButtonTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
 
   @Builder
@@ -144,6 +147,21 @@ export struct FullPlayerCoverPage {
     if (height > 0 && Math.abs(height - this.artworkAvailableHeight) >= 0.5) {
       this.artworkAvailableHeight = height;
     }
+    if (this.measuresArtworkTarget && width > 0 && height > 0) {
+      this.onArtworkViewportTarget({
+        x: LayoutLength.toNumber(newValue.globalPosition.x, this.rootFrame.x) - this.rootFrame.x,
+        y: LayoutLength.toNumber(newValue.globalPosition.y, this.rootFrame.y) - this.rootFrame.y,
+        width: width,
+        height: height
+      });
+    }
+  }
+
+  private chromeTranslation(): number {
+    return FullPlayerArtworkStagePolicy.chromeTranslation(
+      this.rootFrame.height,
+      this.immersiveProgress
+    );
   }
 
   private recordArtworkTarget(newValue: Area): void {
@@ -396,6 +414,7 @@ export struct FullPlayerCoverPage {
       .alignItems(HorizontalAlign.Start)
       .width('100%')
       .margin({ top: PlayerLayoutSpec.FULL_PLAYER_ARTWORK_METADATA_GAP })
+      .translate({ y: this.chromeTranslation() })
 
       PlayerProgressControl({
         playerStore: this.playerStore,
@@ -404,6 +423,7 @@ export struct FullPlayerCoverPage {
         secondaryContentColor: this.secondaryContentColor(),
         onSeek: (positionMs: number): void => this.onSeek(positionMs)
       })
+        .translate({ y: this.chromeTranslation() })
 
       Stack() {
         Row() {
@@ -450,6 +470,7 @@ export struct FullPlayerCoverPage {
       .height(PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE)
       .width('100%')
       .margin({ top: 18, bottom: 12 })
+      .translate({ y: this.chromeTranslation() })
     }
     .width(this.pageWidth())
     .height('100%')
@@ -509,6 +530,7 @@ export struct FullPlayerCoverPage {
     .width('100%')
     .height(PlayerLayoutSpec.ULTRA_COMPACT_TEXT_HEIGHT)
     .padding({ right: PlayerLayoutSpec.ULTRA_COMPACT_CONTROL_RAIL_WIDTH })
+    .translate({ y: this.chromeTranslation() })
   }
 
   @Builder
@@ -547,6 +569,7 @@ export struct FullPlayerCoverPage {
     .alignItems(HorizontalAlign.Center)
     .justifyContent(FlexAlign.Center)
     .width(PlayerLayoutSpec.ULTRA_COMPACT_CONTROL_RAIL_WIDTH)
+    .translate({ y: this.chromeTranslation() })
   }
 
   @Builder

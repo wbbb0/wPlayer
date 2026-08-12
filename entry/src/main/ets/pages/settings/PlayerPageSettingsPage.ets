@@ -57,6 +57,24 @@ export struct PlayerPageSettingsPage {
           })
           this.ItemDivider()
           SettingsToggleItem({
+            symbol: $r('sys.symbol.rectangle_on_rectangle'),
+            title: '沉浸模式',
+            description: '点击播放封面时隐藏控制并让封面居中显示',
+            isOn: this.settingsStore.playerPageImmersiveMode,
+            onChange: (value: boolean): void =>
+              this.settingsStore.setPlayerPageImmersiveMode(value)
+          })
+          this.ItemDivider()
+          SettingsToggleItem({
+            symbol: $r('sys.symbol.lyrics_square'),
+            title: '宽屏沉浸时显示歌词',
+            description: '歌词可用时，以封面与歌词双栏显示；关闭后始终全屏显示封面',
+            isOn: this.settingsStore.playerPageImmersiveWideLyrics,
+            onChange: (value: boolean): void =>
+              this.settingsStore.setPlayerPageImmersiveWideLyrics(value)
+          })
+          this.ItemDivider()
+          SettingsToggleItem({
             symbol: $r('sys.symbol.lyrics_square'),
             title: '歌词模糊效果',
             description: '自动跟随歌词时，模糊非当前歌词',

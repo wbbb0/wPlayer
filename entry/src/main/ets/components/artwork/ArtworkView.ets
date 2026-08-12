@@ -31,6 +31,8 @@ export struct ArtworkView {
   @Prop shadowSpringResponse: number = 0.36;
   @Prop shadowSpringDamping: number = 0.72;
   @Prop interpolation: ImageInterpolation = ImageInterpolation.Medium;
+  onImageComplete: () => void = (): void => {};
+  onImageError: () => void = (): void => {};
 
   private containedImageWidth(): Length {
     if (this.fitMode !== ArtworkFitMode.CONTAIN || this.sourceWidth <= 0 || this.sourceHeight <= 0 ||
@@ -131,6 +133,8 @@ export struct ArtworkView {
       .interpolation(this.interpolation)
       .borderRadius(this.effectiveCornerRadius())
       .clip(true)
+      .onComplete((): void => this.onImageComplete())
+      .onError((): void => this.onImageError())
   }
 
   @Builder

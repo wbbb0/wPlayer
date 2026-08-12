@@ -88,6 +88,11 @@ internals. Do not perform a repository-wide dependency-injection rewrite solely 
   Queue entry identity is resolved inside each instantiated slot leaf so order revisions do not dirty the page root.
   Navigation containers do not receive PlayerStore; leaf playback surfaces reference the application PlayerStore
   directly and own the deep observation boundary.
+- FullPlayerArtworkPagerCoordinator owns only the stable full-player artwork Swiper presentation: user-settle,
+  programmatic-scroll, hidden reanchor and readiness generations. It resolves every callback through queue-entry
+  identity and issues playback selection as user intent; it does not own queue or playback state. The artwork pager
+  owns a count-only position-slot data source so current-row `CHANGE` notifications cannot rebuild artwork pages;
+  each slot still resolves its queue entry through PlayerStore's authoritative projection.
 - PlaybackQueue owns stable base-entry identity, the active playback permutation, shuffle and exact-entry cursor
   invariants. The UI projects playback order while persistence records both base and playback positions. Insert,
   append and removal operations update both orders without collapsing shuffled order into the natural base order.

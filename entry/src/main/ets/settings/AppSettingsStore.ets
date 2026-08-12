@@ -26,6 +26,8 @@ export class AppSettingsStore {
   playerPageKeepScreenOn: boolean = false;
   playerPageShowFloatingWindowButton: boolean = true;
   playerPageLyricBlurEffect: boolean = true;
+  playerPageImmersiveMode: boolean = true;
+  playerPageImmersiveWideLyrics: boolean = true;
   completedCollectionMode: CompletedCollectionMode = CompletedCollectionMode.SMART;
   demoLibraryEnabled: boolean = false;
 
@@ -61,6 +63,9 @@ export class AppSettingsStore {
     this.playerPageShowFloatingWindowButton =
       repository.getPlayerPageShowFloatingWindowButtonEnabled(true);
     this.playerPageLyricBlurEffect = repository.getPlayerPageLyricBlurEffectEnabled(true);
+    this.playerPageImmersiveMode = repository.getPlayerPageImmersiveModeEnabled(true);
+    this.playerPageImmersiveWideLyrics =
+      repository.getPlayerPageImmersiveWideLyricsEnabled(true);
     this.completedCollectionMode = CompletedCollectionSettingPolicy.normalize(
       repository.getCompletedCollectionMode(CompletedCollectionMode.SMART)
     );
@@ -142,6 +147,16 @@ export class AppSettingsStore {
   setPlayerPageLyricBlurEffect(value: boolean): void {
     this.playerPageLyricBlurEffect = value;
     this.repository?.setPlayerPageLyricBlurEffectEnabled(value);
+  }
+
+  setPlayerPageImmersiveMode(value: boolean): void {
+    this.playerPageImmersiveMode = value;
+    this.repository?.setPlayerPageImmersiveModeEnabled(value);
+  }
+
+  setPlayerPageImmersiveWideLyrics(value: boolean): void {
+    this.playerPageImmersiveWideLyrics = value;
+    this.repository?.setPlayerPageImmersiveWideLyricsEnabled(value);
   }
 
   setCompletedCollectionMode(value: CompletedCollectionMode): void {

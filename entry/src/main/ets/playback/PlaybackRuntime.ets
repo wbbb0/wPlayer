@@ -20,6 +20,7 @@ import {
 } from './engine/PlaybackEngine';
 import {
   CompletedCollectionMode,
+  LyricsAvailability,
   PlaybackOriginKind,
   PlaybackTrack,
   PlayerState,
@@ -389,6 +390,20 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.syncQueueCursor();
   }
 
+  selectQueueEntryPreservingPlaybackIntent(queueEntryId: number): void {
+    if (this.playerStore.queuePhase !== QueueBuildPhase.READY ||
+      this.queue.currentEntryId() === queueEntryId) {
+      return;
+    }
+    const playWhenReady = this.playerStore.playWhenReady;
+    const selected = this.queue.selectEntry(queueEntryId);
+    if (selected !== undefined) {
+      this.clearAutomaticResumeIntents();
+      this.beginTrack(selected, playWhenReady);
+    }
+    this.syncQueueCursor();
+  }
+
   seek(positionMs: number): void {
     const targetPositionMs = Math.max(0, Math.min(positionMs, this.playerStore.progress.durationMs));
     if (DemoLibraryMode.isEnabled()) {
@@ -689,6 +704,9 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   private commitLyrics(track: PlaybackTrack, lyrics: string): void {
     this.playerStore.lyrics = lyrics;
     this.playerStore.setTimedLyrics(LyricsParser.parse(lyrics).lines);
+    this.playerStore.setLyricsAvailability(lyrics.trim().length > 0 ?
+      LyricsAvailability.AVAILABLE : LyricsAvailability.UNAVAILABLE
+    );
     this.updateActiveLyricIndex(this.playerStore.progress.positionMs);
     this.session?.updateMetadata(track, this.sessionArtworkUri(track), lyrics);
   }
@@ -697,6 +715,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.lyrics = '';
     this.playerStore.setTimedLyrics([]);
     this.playerStore.setActiveLyricIndex(-1);
+    this.playerStore.setLyricsAvailability(LyricsAvailability.UNAVAILABLE);
   }
 
   private commitRefreshedPalette(track: QueueTrack): void {
@@ -876,6 +895,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.currentPlaybackTrack = undefined;
     this.lastPositionWriteAt = Date.now();
     this.playerStore.currentTrack = track;
+    this.playerStore.setLyricsAvailability(LyricsAvailability.LOADING);
     this.playerStore.lyrics = '';
     this.playerStore.setTimedLyrics([]);
     this.playerStore.setActiveLyricIndex(-1);
@@ -1371,6 +1391,9 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     const lyrics = DemoMusicLibrary.lyrics(track.id);
     this.playerStore.lyrics = lyrics;
     this.playerStore.setTimedLyrics(LyricsParser.parse(lyrics).lines);
+    this.playerStore.setLyricsAvailability(lyrics.trim().length > 0 ?
+      LyricsAvailability.AVAILABLE : LyricsAvailability.UNAVAILABLE
+    );
     this.playerStore.progress.positionMs = Math.max(0, Math.min(initialPositionMs, track.durationMs));
     this.playerStore.progress.durationMs = track.durationMs;
     this.playerStore.palettePrimary = track.palettePrimary;
@@ -1442,6 +1465,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.heroArtworkPreferPixelMap = false;
     this.playerStore.heroArtworkRevision += 1;
     this.playerStore.lyrics = '';
+    this.playerStore.setLyricsAvailability(LyricsAvailability.UNAVAILABLE);
     this.playerStore.setTimedLyrics([]);
     this.playerStore.setActiveLyricIndex(-1);
     this.playerStore.progress.positionMs = 0;

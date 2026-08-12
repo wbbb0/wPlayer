@@ -1,49 +1,38 @@
-import { curves } from '@kit.ArkUI';
 import { image } from '@kit.ImageKit';
-import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { BundledArtworkCatalog } from '../../library/artwork/BundledArtworkCatalog';
 import { ArtworkFitMode, ArtworkView } from '../artwork/ArtworkView';
 import { ContextPreviewGeometry } from '../library/ContextPreviewGeometry';
 import { LibraryContextInteraction } from '../library/LibraryContextInteraction';
+import {
+  PlayerArtworkVisualBinding
+} from './PlayerArtworkPlaybackVisualState';
 import {
   CurrentTrackActionMenu,
   CurrentTrackActionMenuParams
 } from './PlayerActionMenus';
 import {
   PlayerFrame,
+  FULL_PLAYER_HORIZONTAL_GESTURE_HOST_ID,
   PlayerLayoutSpec,
-  PlayerMorphPhase,
   PlayerMotionSpec
 } from './PlayerMotion';
-import {
-  PlayerArtworkPlaybackVisualAction,
-  PlayerArtworkPlaybackVisualState
-} from './PlayerArtworkPlaybackVisualState';
 
 @Component
 export struct PlayerMorphArtwork {
-  @ObjectLink @Watch('onPlayerStoreChanged') playerStore: PlayerStore;
+  @ObjectLink playbackVisual: PlayerArtworkVisualBinding;
   @State contextMenuShown: boolean = false;
-  @State playbackVisualProgress: number = 1;
   private contextPreviewWidth: number = 0;
   private contextPreviewHeight: number = 0;
   private contextPreviewRestScale: number = 1;
-  private readonly playbackVisualState: PlayerArtworkPlaybackVisualState =
-    new PlayerArtworkPlaybackVisualState();
-  private mounted: boolean = false;
   @Prop geometryProgress: number = 0;
   @Prop positionProgress: number = 0;
   @Prop elementOpacity: number = 1;
-  @Prop @Watch('onMorphPhaseChanged') morphPhase: PlayerMorphPhase = PlayerMorphPhase.IDLE;
-  @Prop topInset: number = 0;
-  @Prop bottomInset: number = 0;
   @Prop frozenMiniPlayerFrame: PlayerFrame = {
     x: 0,
     y: 0,
     width: PlayerLayoutSpec.DEFAULT_MINI_PLAYER_SIZE,
     height: PlayerLayoutSpec.DEFAULT_MINI_PLAYER_SIZE
   };
-  @Prop fullPlayerFrame: PlayerFrame = { x: 0, y: 0, width: 0, height: 0 };
   @Prop fullPlayerArtworkTarget: PlayerFrame = {
     x: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_X,
     y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y,
@@ -52,6 +41,7 @@ export struct PlayerMorphArtwork {
   };
   @Prop sourceWidth: number = 0;
   @Prop sourceHeight: number = 0;
+  @Prop artworkSourceRevision: number = 0;
   sourceProvider: () => image.PixelMap | ResourceStr =
     (): ResourceStr => BundledArtworkCatalog.resolve(BundledArtworkCatalog.DEFAULT_FULL);
   onInsertNext: () => void = (): void => {};
@@ -61,58 +51,12 @@ export struct PlayerMorphArtwork {
   onShareTrackFile: () => void = (): void => {};
   onCompletedCollectionChange: (enabled: boolean) => void =
     (_enabled: boolean): void => {};
-
-  aboutToAppear(): void {
-    this.mounted = true;
-    this.playbackVisualState.reset(this.currentPlaybackVisualTarget());
-    this.playbackVisualProgress = this.playbackVisualState.value();
-  }
-
-  aboutToDisappear(): void {
-    this.mounted = false;
-  }
-
-  private currentPlaybackVisualTarget(): number {
-    return PlayerMotionSpec.artworkPlaybackVisualTarget(
-      this.playerStore.keepsActivePlaybackVisual()
-    );
-  }
-
-  private onPlayerStoreChanged(): void {
-    const target = this.currentPlaybackVisualTarget();
-    if (!this.mounted) {
-      this.playbackVisualState.reset(target);
-      this.playbackVisualProgress = this.playbackVisualState.value();
-      return;
-    }
-    this.applyPlaybackVisualAction(
-      this.playbackVisualState.updateTarget(target, this.morphPhase)
-    );
-  }
-
-  private onMorphPhaseChanged(): void {
-    if (!this.mounted) {
-      return;
-    }
-    this.applyPlaybackVisualAction(
-      this.playbackVisualState.updatePhase(this.morphPhase)
-    );
-  }
-
-  private applyPlaybackVisualAction(action: PlayerArtworkPlaybackVisualAction): void {
-    if (action !== PlayerArtworkPlaybackVisualAction.ANIMATE_TO_TARGET) {
-      return;
-    }
-    const target = this.playbackVisualState.value();
-    this.getUIContext().animateTo({
-      curve: curves.springMotion(
-        PlayerMotionSpec.ARTWORK_STATE_SPRING_RESPONSE,
-        PlayerMotionSpec.ARTWORK_STATE_SPRING_DAMPING
-      )
-    }, () => {
-      this.playbackVisualProgress = target;
-    });
-  }
+  isTrackAvailable: () => boolean = (): boolean => false;
+  isCompletedCollectionEnabled: () => boolean = (): boolean => false;
+  onTap: () => void = (): void => {};
+  onArtworkReady: (actorGeneration: number) => void = (_actorGeneration: number): void => {};
+  onArtworkError: (actorGeneration: number) => void = (_actorGeneration: number): void => {};
+  @Prop artworkActorGeneration: number = 0;
 
   private clamp(value: number, minimum: number, maximum: number): number {
     return Math.max(minimum, Math.min(maximum, value));
@@ -130,6 +74,10 @@ export struct PlayerMorphArtwork {
 
   private source(): image.PixelMap | ResourceStr {
     return this.sourceProvider();
+  }
+
+  private sourceRevision(): number {
+    return this.artworkSourceRevision;
   }
 
   private targetArtworkWidth(): number {
@@ -165,7 +113,7 @@ export struct PlayerMorphArtwork {
     const fullPlayerScale = PlayerMotionSpec.artworkPlaybackVisualValue(
       PlayerMotionSpec.PAUSED_ARTWORK_SCALE,
       1,
-      this.playbackVisualProgress
+      this.playbackVisual.progress
     );
     return 1 - (1 - fullPlayerScale) * this.clamp(this.geometryProgress, 0, 1);
   }
@@ -174,15 +122,27 @@ export struct PlayerMorphArtwork {
     return PlayerMotionSpec.artworkPlaybackVisualValue(
       PlayerMotionSpec.PAUSED_ARTWORK_SCALE,
       1,
-      this.playbackVisualProgress
+      this.playbackVisual.progress
     );
+  }
+
+  private interactionFrame(): PlayerFrame {
+    const scale = this.playbackScale();
+    const width = this.artworkWidth() * scale;
+    const height = this.artworkHeight() * scale;
+    return {
+      x: (this.artworkWidth() - width) / 2,
+      y: (this.artworkHeight() - height) / 2,
+      width: width,
+      height: height
+    };
   }
 
   private playbackShadowRadius(): number {
     return PlayerMotionSpec.artworkPlaybackVisualValue(
       PlayerMotionSpec.PAUSED_ARTWORK_SHADOW_RADIUS,
       PlayerMotionSpec.FULL_ARTWORK_SHADOW_RADIUS,
-      this.playbackVisualProgress
+      this.playbackVisual.progress
     ) * this.clamp(this.geometryProgress, 0, 1);
   }
 
@@ -190,7 +150,7 @@ export struct PlayerMorphArtwork {
     return PlayerMotionSpec.artworkPlaybackVisualValue(
       PlayerMotionSpec.PAUSED_ARTWORK_SHADOW_OFFSET_Y,
       PlayerMotionSpec.FULL_ARTWORK_SHADOW_OFFSET_Y,
-      this.playbackVisualProgress
+      this.playbackVisual.progress
     ) * this.clamp(this.geometryProgress, 0, 1);
   }
 
@@ -225,11 +185,23 @@ export struct PlayerMorphArtwork {
     this.contextMenuShown = true;
   }
 
+  private blockOuterHorizontalPager(recognizers: Array<GestureRecognizer>): void {
+    recognizers.forEach((recognizer: GestureRecognizer): void => {
+      if (recognizer.getEventTargetInfo().getId() === FULL_PLAYER_HORIZONTAL_GESTURE_HOST_ID) {
+        recognizer.preventBegin();
+      }
+    });
+  }
+
+  private requestTap(): void {
+    this.onTap();
+  }
+
   @Builder
   private CurrentTrackMenu() {
     CurrentTrackActionMenu(new CurrentTrackActionMenuParams({
-      trackAvailable: this.playerStore.currentTrack !== undefined,
-      completedCollectionEnabled: this.playerStore.completedCollectionEnabled,
+      trackAvailable: this.isTrackAvailable(),
+      completedCollectionEnabled: this.isCompletedCollectionEnabled(),
       onInsertNext: this.onInsertNext,
       onAppendToQueue: this.onAppendToQueue,
       onAddToPlaylist: this.onAddToPlaylist,
@@ -244,7 +216,7 @@ export struct PlayerMorphArtwork {
     Stack() {
       ArtworkView({
         sourceProvider: (): image.PixelMap | ResourceStr => this.source(),
-        sourceRevision: this.playerStore.heroArtworkRevision,
+        sourceRevision: this.sourceRevision(),
         sourceWidth: this.sourceWidth,
         sourceHeight: this.sourceHeight,
         slotWidth: this.contextPreviewWidth * this.contextPreviewRestScale,
@@ -260,26 +232,46 @@ export struct PlayerMorphArtwork {
     .height(this.contextPreviewHeight * this.contextPreviewRestScale)
   }
 
+  @Builder
+  private OuterPagerBlocker() {
+    Stack()
+      .width('100%')
+      .height('100%')
+      .responseRegion(this.interactionFrame())
+      .hitTestBehavior(HitTestMode.Transparent)
+      .onTouchTestDone((_event: BaseGestureEvent, recognizers: Array<GestureRecognizer>) =>
+        this.blockOuterHorizontalPager(recognizers))
+  }
+
+  @Builder
+  private ArtworkSurface() {
+    ArtworkView({
+      sourceProvider: (): image.PixelMap | ResourceStr => this.source(),
+      sourceRevision: this.sourceRevision(),
+      sourceWidth: this.sourceWidth,
+      sourceHeight: this.sourceHeight,
+      slotWidth: this.artworkWidth(),
+      slotAspectRatio: this.artworkAspectRatio(),
+      fitMode: ArtworkFitMode.COVER,
+      resolvedCornerRadius: this.sourceRadius(),
+      shadowEnabled: true,
+      shadowRadius: this.playbackShadowRadius(),
+      shadowOffsetY: this.playbackShadowOffsetY(),
+      interpolation: ImageInterpolation.Medium,
+      onImageComplete: (): void => this.onArtworkReady(this.artworkActorGeneration),
+      onImageError: (): void => this.onArtworkError(this.artworkActorGeneration)
+    })
+      .scale({
+        x: this.playbackScale(),
+        y: this.playbackScale()
+      })
+  }
+
   build() {
     Stack() {
-      ArtworkView({
-        sourceProvider: (): image.PixelMap | ResourceStr => this.source(),
-        sourceRevision: this.playerStore.heroArtworkRevision,
-        sourceWidth: this.sourceWidth,
-        sourceHeight: this.sourceHeight,
-        slotWidth: this.artworkWidth(),
-        slotAspectRatio: this.artworkAspectRatio(),
-        fitMode: ArtworkFitMode.COVER,
-        resolvedCornerRadius: this.sourceRadius(),
-        shadowEnabled: true,
-        shadowRadius: this.playbackShadowRadius(),
-        shadowOffsetY: this.playbackShadowOffsetY(),
-        interpolation: ImageInterpolation.Medium
-      })
-        .scale({
-          x: this.playbackScale(),
-          y: this.playbackScale()
-        })
+      ForEach([this.sourceRevision()], (_sourceRevision: number): void => {
+        this.ArtworkSurface()
+      }, (sourceRevision: number): string => `${sourceRevision}`)
     }
     .width(this.artworkWidth())
     .height(this.artworkHeight())
@@ -288,6 +280,7 @@ export struct PlayerMorphArtwork {
     .position({ x: 0, y: 0 })
     .translate({ x: this.artworkX(), y: this.artworkY() })
     .accessibilityText('歌曲封面，长按打开更多操作')
+    .onClick((): void => this.requestTap())
     .bindContextMenu(
       this.contextMenuShown,
       this.CurrentTrackMenu(),
@@ -316,5 +309,6 @@ export struct PlayerMorphArtwork {
         duration: LibraryContextInteraction.LONG_PRESS_DURATION
       }).onAction((event: GestureEvent): void => this.showContextMenu(event))
     )
+    .overlay(this.OuterPagerBlocker(), { align: Alignment.Center })
   }
 }

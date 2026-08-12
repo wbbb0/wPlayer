@@ -640,6 +640,9 @@ struct Index {
       onCenteredArtworkTarget: (target: PlayerFrame): void => {
         this.playerMorphController.centeredArtworkTarget = target;
       },
+      onArtworkViewportTarget: (target: PlayerFrame): void => {
+        this.playerMorphController.artworkViewportTarget = target;
+      },
       onPlaybackButtonTarget: (target: PlayerFrame): void => {
         this.playerMorphController.playbackButtonTarget = target;
       }

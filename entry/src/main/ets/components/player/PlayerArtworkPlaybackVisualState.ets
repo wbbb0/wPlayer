@@ -5,6 +5,11 @@ export enum PlayerArtworkPlaybackVisualAction {
   ANIMATE_TO_TARGET = 1
 }
 
+@Observed
+export class PlayerArtworkVisualBinding {
+  progress: number = 1;
+}
+
 export class PlayerArtworkPlaybackVisualState {
   private appliedProgress: number = 1;
   private targetProgress: number = 1;

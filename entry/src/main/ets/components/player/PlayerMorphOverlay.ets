@@ -4,7 +4,7 @@ import { PlayerStore, QueueTrack } from '../../playback/model/PlaybackModels';
 import { FullPlayerContent } from './FullPlayerContent';
 import { MiniPlayerContent } from './MiniPlayerSurface';
 import { PlayerPlaybackButton } from './PlayerControls';
-import { PlayerMorphArtwork } from './PlayerMorphArtwork';
+import { FullPlayerArtworkStage } from './FullPlayerArtworkStage';
 import { PlayerMorphController } from './PlayerMorphController';
 import { AppSettingsStore } from '../../settings/AppSettingsStore';
 import { LibraryStore } from '../../library/store/LibraryStore';
@@ -94,6 +94,8 @@ export struct PlayerMorphOverlay {
             pagePosition: this.controller.fullPlayerPagePosition,
             paneCount: this.controller.renderedFullPlayerPaneCount(),
             activePage: this.controller.fullPlayerPage,
+            immersiveProgress: this.controller.effectiveFullPlayerImmersiveProgress(),
+            immersiveSplitMotion: this.controller.fullPlayerImmersiveSplitMotion,
             sideContentReady: this.controller.shouldRenderFullPlayerSideContent(),
             pageScrollingEnabled: this.controller.playerMorphPhase === PlayerMorphPhase.OPEN,
             primaryContentColor: this.primaryContentColor,
@@ -178,20 +180,24 @@ export struct PlayerMorphOverlay {
 
   @Builder
   private MorphArtwork() {
-    PlayerMorphArtwork({
+    FullPlayerArtworkStage({
+      controller: this.controller,
       playerStore: this.playerStore,
+      immersiveSplitMotion: this.controller.fullPlayerImmersiveSplitMotion,
+      morphPhase: this.controller.playerMorphPhase,
       geometryProgress: this.controller.morphGeometryProgress(),
       positionProgress: this.controller.morphPositionProgress(),
       elementOpacity: this.controller.morphElementOpacity(),
-      morphPhase: this.controller.playerMorphPhase,
       topInset: this.topInset,
       bottomInset: this.bottomInset,
       frozenMiniPlayerFrame: this.controller.frozenMiniPlayerFrame,
-      fullPlayerFrame: this.controller.fullPlayerFrame(),
-      fullPlayerArtworkTarget: this.controller.fullPlayerArtworkTarget(),
-      sourceWidth: this.controller.morphArtworkSourceWidth(),
-      sourceHeight: this.controller.morphArtworkSourceHeight(),
       sourceProvider: (): image.PixelMap | ResourceStr => this.controller.morphArtworkSource(),
+      onResolveArtwork: (relativePath: string): string =>
+        playbackRuntime.queueArtworkUri(relativePath),
+      onToggleImmersive: (): void => this.controller.toggleFullPlayerImmersive(
+        this.settingsStore.playerPageImmersiveMode,
+        this.settingsStore.playerPageImmersiveWideLyrics
+      ),
       onInsertNext: (): void => playbackRuntime.insertCurrentNext(),
       onAppendToQueue: (): void => playbackRuntime.appendCurrentToQueue(),
       onAddToPlaylist: (): void => this.addCurrentTrackToPlaylist(),

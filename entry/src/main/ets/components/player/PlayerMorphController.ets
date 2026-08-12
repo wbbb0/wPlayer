@@ -9,7 +9,11 @@ import {
 } from '../../appearance/SystemBarStyleController';
 import { DynamicColor, DynamicContainerRole } from '../../appearance/DynamicColor';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
-import { PlayerStore } from '../../playback/model/PlaybackModels';
+import {
+  LyricsAvailability,
+  LyricsAvailabilityListener,
+  PlayerStore
+} from '../../playback/model/PlaybackModels';
 import { AppShellLayoutSpec } from '../layout/AppShellLayoutSpec';
 import { LayoutLength } from '../layout/LayoutLength';
 import {
@@ -33,12 +37,22 @@ import {
   PlayerMorphGesturePolicy
 } from './PlayerMorphGesturePolicy';
 import { PlayerMorphTransitionCoordinator } from './PlayerMorphTransitionCoordinator';
+import { PlayerGestureCadenceProbe } from './PlayerGestureCadenceProbe';
 import { InterruptibleScalarMotion } from './InterruptibleScalarMotion';
+import {
+  FullPlayerImmersiveSplitMotion,
+  HarmonyFullPlayerImmersiveSplitFrameHost
+} from './FullPlayerImmersiveSplitMotion';
 import {
   MiniPlayerTrackPagerPolicy,
   MiniPlayerTrackPageTarget,
   MiniPlayerTrackWindow
 } from './MiniPlayerTrackPagerPolicy';
+import {
+  FullPlayerArtworkStagePolicy,
+  FullPlayerImmersiveLayoutPolicy,
+  FullPlayerImmersivePhase
+} from './FullPlayerArtworkStagePolicy';
 
 const PLAYER_SYSTEM_BAR_OWNER = 'full_player';
 
@@ -61,6 +75,8 @@ export class PlayerMorphController {
   fullPlayerPage: FullPlayerPage = FullPlayerPage.COVER;
   fullPlayerPagePosition: number = FullPlayerPage.COVER;
   fullPlayerPagerPhase: FullPlayerPagerPhase = FullPlayerPagerPhase.SETTLED;
+  fullPlayerImmersivePhase: FullPlayerImmersivePhase = FullPlayerImmersivePhase.NORMAL;
+  fullPlayerImmersiveProgress: number = 0;
   frozenMorphArtwork: image.PixelMap | undefined = undefined;
   frozenMorphArtworkUri: string = '';
   frozenMorphArtworkPreferPixelMap: boolean = false;
@@ -84,6 +100,12 @@ export class PlayerMorphController {
   centeredArtworkTarget: PlayerFrame = {
     x: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_X,
     y: PlayerLayoutSpec.DEFAULT_ARTWORK_TARGET_Y,
+    width: PlayerLayoutSpec.FULL_ARTWORK_SIZE,
+    height: PlayerLayoutSpec.FULL_ARTWORK_SIZE
+  };
+  artworkViewportTarget: PlayerFrame = {
+    x: 0,
+    y: 0,
     width: PlayerLayoutSpec.FULL_ARTWORK_SIZE,
     height: PlayerLayoutSpec.FULL_ARTWORK_SIZE
   };
@@ -114,15 +136,23 @@ export class PlayerMorphController {
   private fullPlayerGestureStartExpandProgress: number = 1;
   private fullPlayerGestureFallbackTarget: number = 1;
   private fullPlayerPagerEpoch: number = 0;
+  private fullPlayerImmersiveEpoch: number = 0;
+  private fullPlayerImmersiveWideLyricsEnabled: boolean = true;
   private morphUsesSharedGeometry: boolean = true;
   private miniPlayerGestureRegion: MiniPlayerGestureRegion = MiniPlayerGestureRegion.OTHER;
   private miniPlayerHorizontalGestureOffset: number = 0;
   private readonly transitionCoordinator: PlayerMorphTransitionCoordinator =
     new PlayerMorphTransitionCoordinator();
+  private readonly miniPlayerGestureCadenceProbe: PlayerGestureCadenceProbe =
+    new PlayerGestureCadenceProbe();
   private readonly playerMorphMotion: InterruptibleScalarMotion =
     new InterruptibleScalarMotion(0);
   private readonly fullPlayerPageMotion: InterruptibleScalarMotion =
     new InterruptibleScalarMotion(FullPlayerPage.COVER);
+  private readonly fullPlayerImmersiveMotion: InterruptibleScalarMotion =
+    new InterruptibleScalarMotion(0);
+  readonly fullPlayerImmersiveSplitMotion: FullPlayerImmersiveSplitMotion =
+    new FullPlayerImmersiveSplitMotion(0);
   private readonly miniPlayerTrackPageMotion: InterruptibleScalarMotion =
     new InterruptibleScalarMotion(0);
   private readonly fullPlayerPagerMemory: FullPlayerPagerMemory =
@@ -132,12 +162,16 @@ export class PlayerMorphController {
   private readonly condensedCompactTabsController: HdsTabsController;
   private fullPlayerVisibilityListener?: (visible: boolean) => void;
   private fullPlayerVisible: boolean = false;
+  private readonly lyricsAvailabilityListener: LyricsAvailabilityListener =
+    (_availability: LyricsAvailability): void => this.reconcileFullPlayerImmersiveLayout();
 
   constructor(playerStore: PlayerStore, compactTabsController: HdsTabsController,
     condensedCompactTabsController: HdsTabsController) {
     this.playerStore = playerStore;
     this.compactTabsController = compactTabsController;
     this.condensedCompactTabsController = condensedCompactTabsController;
+    this.playerStore.addLyricsAvailabilityListener(this.lyricsAvailabilityListener);
+    this.reconcileFullPlayerImmersiveLayout();
   }
 
   syncSystemBarContentColor(): void {
@@ -206,12 +240,17 @@ export class PlayerMorphController {
   }
 
   dispose(): void {
+    this.playerStore.removeLyricsAvailabilityListener(this.lyricsAvailabilityListener);
+    this.miniPlayerGestureCadenceProbe.cancel();
     this.setPlayerMorphPhase(PlayerMorphPhase.IDLE);
     this.playerMorphMotion.dispose();
     this.fullPlayerPageMotion.dispose();
+    this.fullPlayerImmersiveMotion.dispose();
+    this.fullPlayerImmersiveSplitMotion.dispose();
     this.miniPlayerTrackPageMotion.dispose();
     this.transitionCoordinator.dispose();
     this.fullPlayerPagerEpoch += 1;
+    this.fullPlayerImmersiveEpoch += 1;
     this.miniPlayerTrackPagerEpoch += 1;
     this.fullPlayerPagerPhase = FullPlayerPagerPhase.SETTLED;
     this.fullPlayerSideContentReady = false;
@@ -222,6 +261,7 @@ export class PlayerMorphController {
     this.miniPlayerBinding.sourceVisible = true;
     this.miniPlayerBinding.sourceMarqueeActive = true;
     this.clearMiniPlayerTrackPager();
+    this.resetFullPlayerImmersiveStage();
     this.releaseMorphArtworkSource();
     this.setFullPlayerVisibilityListener(undefined);
   }
@@ -264,6 +304,7 @@ export class PlayerMorphController {
       );
     });
     this.fullPlayerPagerPhase = FullPlayerPagerPhase.SETTLED;
+    this.reconcileFullPlayerImmersiveLayout();
   }
 
   updateRootFrame(newValue: Area): ResponsiveLayoutChange {
@@ -586,7 +627,156 @@ export class PlayerMorphController {
     if (!PlayerMorphInteractionSpec.shouldConsumeBackPress(this.playerMorphPhase)) {
       return false;
     }
+    if (this.fullPlayerImmersiveProgress > 0 && this.fullPlayerPaneCount() === 1 &&
+      this.fullPlayerPagePosition > FullPlayerPage.COVER + 0.0001) {
+      this.navigateFullPlayerPage(FullPlayerPage.COVER);
+      return true;
+    }
+    if (this.exitFullPlayerImmersive()) {
+      return true;
+    }
     this.hideFullPlayer();
+    return true;
+  }
+
+  private resetFullPlayerImmersiveStage(): void {
+    this.fullPlayerImmersiveEpoch += 1;
+    this.fullPlayerImmersiveMotion.complete(0);
+    this.fullPlayerImmersiveSplitMotion.complete(0);
+    this.fullPlayerImmersivePhase = FullPlayerImmersivePhase.NORMAL;
+    this.fullPlayerImmersiveProgress = 0;
+  }
+
+  private takeOverFullPlayerImmersivePresentation(): void {
+    if (!this.fullPlayerImmersiveMotion.isActive()) {
+      this.fullPlayerImmersiveMotion.setValue(this.fullPlayerImmersiveProgress);
+      return;
+    }
+    const presentation = this.clamp(this.fullPlayerImmersiveMotion.value(), 0, 1);
+    this.fullPlayerImmersiveEpoch += 1;
+    this.fullPlayerImmersiveMotion.cancel();
+    this.context().animateToImmediately({ duration: 0 }, () => {
+      this.fullPlayerImmersiveProgress = presentation;
+    });
+  }
+
+  private animateFullPlayerImmersive(target: number): void {
+    this.takeOverFullPlayerImmersivePresentation();
+    const normalizedTarget = this.clamp(target, 0, 1);
+    const start = this.fullPlayerImmersiveProgress;
+    const epoch = ++this.fullPlayerImmersiveEpoch;
+    this.fullPlayerImmersivePhase = normalizedTarget === 1 ?
+      FullPlayerImmersivePhase.ENTERING : FullPlayerImmersivePhase.EXITING;
+    const easing = PlayerMotionSpec.interpolatingSpringEasing(
+      FullPlayerArtworkStagePolicy.IMMERSIVE_SPRING_RESPONSE,
+      FullPlayerArtworkStagePolicy.IMMERSIVE_SPRING_DAMPING
+    );
+    this.fullPlayerImmersiveMotion.animate(
+      this.context(),
+      start,
+      normalizedTarget,
+      FullPlayerArtworkStagePolicy.IMMERSIVE_DURATION,
+      easing
+    );
+    this.context().animateToImmediately({
+      duration: FullPlayerArtworkStagePolicy.IMMERSIVE_DURATION,
+      curve: easing,
+      onFinish: (): void => {
+        if (epoch !== this.fullPlayerImmersiveEpoch) {
+          return;
+        }
+        this.fullPlayerImmersiveMotion.complete(normalizedTarget);
+        this.fullPlayerImmersiveProgress = normalizedTarget;
+        this.fullPlayerImmersivePhase = normalizedTarget === 1 ?
+          FullPlayerImmersivePhase.IMMERSIVE : FullPlayerImmersivePhase.NORMAL;
+      }
+    }, () => {
+      this.fullPlayerImmersiveProgress = normalizedTarget;
+    });
+  }
+
+  toggleFullPlayerImmersive(enabled: boolean, wideLyricsEnabled: boolean = true): void {
+    if (!enabled || this.playerMorphPhase !== PlayerMorphPhase.OPEN ||
+      FullPlayerPagerSpec.pageViewportVisibility(
+        FullPlayerPage.COVER,
+        this.fullPlayerPagePosition,
+        this.fullPlayerPaneCount()
+      ) < 0.5) {
+      return;
+    }
+    const entering = this.fullPlayerImmersivePhase === FullPlayerImmersivePhase.NORMAL ||
+      this.fullPlayerImmersivePhase === FullPlayerImmersivePhase.EXITING;
+    this.fullPlayerImmersiveWideLyricsEnabled = wideLyricsEnabled;
+    this.reconcileFullPlayerImmersiveLayout();
+    const paneCount = this.fullPlayerPaneCount();
+    const resolvedSplitTarget = this.fullPlayerImmersiveSplitMotion.resolvedTarget();
+    const immersivePagePosition = FullPlayerImmersiveLayoutPolicy.entryPagePosition(
+      this.fullPlayerPagePosition,
+      paneCount,
+      this.playerStore.lyricsAvailability,
+      resolvedSplitTarget,
+      this.fullPlayerImmersiveWideLyricsEnabled
+    );
+    if (entering && Math.abs(immersivePagePosition - this.fullPlayerPagePosition) > 0.0001) {
+      this.settleFullPlayerPage(immersivePagePosition, paneCount);
+    }
+    this.animateFullPlayerImmersive(entering ? 1 : 0);
+  }
+
+  effectiveFullPlayerImmersiveProgress(): number {
+    return this.fullPlayerImmersiveProgress * FullPlayerPagerSpec.pageViewportVisibility(
+      FullPlayerPage.COVER,
+      this.fullPlayerPagePosition,
+      this.fullPlayerPaneCount()
+    );
+  }
+
+  reconcileFullPlayerImmersiveLayout(): void {
+    const paneCount = this.fullPlayerPaneCount();
+    const resolvedSplitTarget = this.fullPlayerImmersiveSplitMotion.resolvedTarget();
+    const target = FullPlayerImmersiveLayoutPolicy.splitTarget(
+      paneCount,
+      this.playerStore.lyricsAvailability,
+      resolvedSplitTarget,
+      this.fullPlayerImmersiveWideLyricsEnabled
+    );
+    if (this.fullPlayerImmersiveProgress > 0) {
+      const immersivePagePosition = FullPlayerImmersiveLayoutPolicy.entryPagePosition(
+        this.fullPlayerPagePosition,
+        paneCount,
+        this.playerStore.lyricsAvailability,
+        resolvedSplitTarget,
+        this.fullPlayerImmersiveWideLyricsEnabled
+      );
+      if (Math.abs(immersivePagePosition - this.fullPlayerPagePosition) > 0.0001) {
+        this.settleFullPlayerPage(immersivePagePosition, paneCount);
+      }
+    }
+    if (this.fullPlayerImmersiveSplitMotion.isActive() &&
+      this.fullPlayerImmersiveSplitMotion.targets(target)) {
+      return;
+    }
+    if (!this.fullPlayerImmersiveSplitMotion.isActive() &&
+      Math.abs(target - this.fullPlayerImmersiveSplitMotion.progress) < 0.0001) {
+      return;
+    }
+    if (this.fullPlayerImmersiveProgress <= 0) {
+      this.fullPlayerImmersiveSplitMotion.complete(target);
+      return;
+    }
+    this.fullPlayerImmersiveSplitMotion.animate(
+      new HarmonyFullPlayerImmersiveSplitFrameHost(this.context()),
+      target,
+      FullPlayerArtworkStagePolicy.IMMERSIVE_DURATION
+    );
+  }
+
+  exitFullPlayerImmersive(): boolean {
+    if (this.fullPlayerImmersivePhase === FullPlayerImmersivePhase.NORMAL &&
+      this.fullPlayerImmersiveProgress <= 0) {
+      return false;
+    }
+    this.animateFullPlayerImmersive(0);
     return true;
   }
 
@@ -884,6 +1074,7 @@ export class PlayerMorphController {
       if (this.miniPlayerBinding.trackPagerActive) {
         this.cancelMiniPlayerTrackPager();
       }
+      this.miniPlayerGestureCadenceProbe.startIfNeeded(this.playerExpandProgress);
       if (!this.isMorphActive()) {
         this.freezeMiniPlayerGeometry();
         this.freezeMorphArtworkSource();
@@ -900,12 +1091,18 @@ export class PlayerMorphController {
         1
       );
       this.playerMorphMotion.setValue(this.playerExpandProgress);
+      this.miniPlayerGestureCadenceProbe.recordGestureUpdate();
     }
   }
 
   finishMiniPlayerGesture(): void {
     const wasVerticalGesture = this.playerGestureAxis === PlayerGestureAxis.VERTICAL;
     const wasHorizontalGesture = this.playerGestureAxis === PlayerGestureAxis.HORIZONTAL;
+    if (wasVerticalGesture) {
+      this.miniPlayerGestureCadenceProbe.finish(this.playerExpandProgress);
+    } else {
+      this.miniPlayerGestureCadenceProbe.cancel();
+    }
     this.playerGestureAxis = PlayerGestureAxis.UNDECIDED;
     this.swipeHapticTriggered = false;
     if (wasHorizontalGesture) {
@@ -1003,7 +1200,7 @@ export class PlayerMorphController {
           activeEntryId
         );
         if (targetEntry !== undefined) {
-          playbackRuntime.playQueueEntry(targetEntry.queueEntryId);
+          playbackRuntime.selectQueueEntryPreservingPlaybackIntent(targetEntry.queueEntryId);
         }
         this.context().animateToImmediately({ duration: 0 }, () => {
           this.clearMiniPlayerTrackPager();
@@ -1073,6 +1270,7 @@ export class PlayerMorphController {
       this.playerMorphPhase === PlayerMorphPhase.BACKGROUND_HANDOFF) {
       return;
     }
+    this.resetFullPlayerImmersiveStage();
     const stableOpen = this.playerMorphPhase === PlayerMorphPhase.OPEN;
     this.restoreReturnMiniBarStyle();
     this.freezeFullPlayerCloseGeometry();
@@ -1105,6 +1303,9 @@ export class PlayerMorphController {
   }
 
   beginFullPlayerHorizontalGesture(): void {
+    if (this.fullPlayerImmersiveProgress > 0 && this.fullPlayerPaneCount() > 1) {
+      return;
+    }
     if (FullPlayerPagerSpec.canBeginGesture(
       this.playerMorphPhase,
       this.fullPlayerPagerPhase
@@ -1123,10 +1324,10 @@ export class PlayerMorphController {
     }
     const pageSpan = Math.max(1, this.fullPlayerPageSpan());
     const horizontalOffset = PlayerMotionSpec.distanceFromRecognitionOrigin(event.offsetX);
-    this.fullPlayerPagePosition = FullPlayerPagerSpec.clampPosition(
-      this.fullPlayerGestureStartPosition - horizontalOffset / pageSpan,
-      this.fullPlayerPaneCount()
-    );
+    const candidate = this.fullPlayerGestureStartPosition - horizontalOffset / pageSpan;
+    this.fullPlayerPagePosition = this.fullPlayerImmersiveProgress > 0 ?
+      Math.max(FullPlayerPage.COVER, Math.min(FullPlayerPage.LYRICS, candidate)) :
+      FullPlayerPagerSpec.clampPosition(candidate, this.fullPlayerPaneCount());
     this.fullPlayerPageMotion.setValue(this.fullPlayerPagePosition);
   }
 
@@ -1138,6 +1339,9 @@ export class PlayerMorphController {
   }
 
   beginFullPlayerVerticalGesture(): void {
+    if (this.fullPlayerImmersivePhase !== FullPlayerImmersivePhase.NORMAL) {
+      return;
+    }
     if (!PlayerMorphInteractionSpec.canBeginFullPlayerVerticalGesture(
       this.playerMorphPhase
     )) {

@@ -23,11 +23,13 @@ import {
 } from './FullPlayerQueuePage';
 import { AppShellLayoutSpec } from '../layout/AppShellLayoutSpec';
 import { FullPlayerQueueRefreshState } from './FullPlayerQueueRefreshState';
+import { FullPlayerImmersiveSplitMotion } from './FullPlayerImmersiveSplitMotion';
 
 @Component
 export struct FullPlayerContent {
   @ObjectLink playerStore: PlayerStore;
   @ObjectLink libraryStore: LibraryStore;
+  @ObjectLink immersiveSplitMotion: FullPlayerImmersiveSplitMotion;
   @Prop marqueeActive: boolean = true;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
@@ -38,6 +40,7 @@ export struct FullPlayerContent {
   @Prop pagePosition: number = FullPlayerPage.COVER;
   @Prop paneCount: number = 1;
   @Prop activePage: FullPlayerPage = FullPlayerPage.COVER;
+  @Prop immersiveProgress: number = 0;
   @Prop sideContentReady: boolean = true;
   @Prop pageScrollingEnabled: boolean = true;
   @Prop primaryContentColor: string = '#FFFFFFFF';
@@ -76,6 +79,7 @@ export struct FullPlayerContent {
   onOpenPlayerPageSettings: () => void = (): void => {};
   onArtworkTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
   onCenteredArtworkTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
+  onArtworkViewportTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
   onPlaybackButtonTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
   @State private queueSelectionStore: FullPlayerQueueSelectionStore =
     new FullPlayerQueueSelectionStore();
@@ -122,6 +126,8 @@ export struct FullPlayerContent {
 
   private pageInteractionActive(page: FullPlayerPage): boolean {
     return !this.measuresArtworkTarget &&
+      (this.immersiveProgress <= 0 ||
+        (page === FullPlayerPage.LYRICS && this.immersiveSplitMotion.progress >= 1)) &&
       this.pageScrollingEnabled && this.isPageInActiveViewport(page);
   }
 
@@ -131,6 +137,52 @@ export struct FullPlayerContent {
       this.pagePosition,
       this.paneCount
     ) > 0;
+  }
+
+  private sidePageExitX(page: FullPlayerPage): number {
+    const direction = page === FullPlayerPage.QUEUE ? -1 : 1;
+    return direction * this.rootFrame.width * this.sidePageExitProgress(page);
+  }
+
+  private sidePageExitProgress(page: FullPlayerPage): number {
+    if (page === FullPlayerPage.LYRICS) {
+      return this.immersiveProgress * (1 - this.immersiveSplitMotion.progress);
+    }
+    return this.immersiveProgress;
+  }
+
+  @Builder
+  private QueuePagePresentation() {
+    Stack() {
+      if (this.isUltraCompact()) {
+        this.UltraCompactQueuePage()
+      } else {
+        this.QueuePage()
+      }
+    }
+    .width(this.pageWidth())
+    .height('100%')
+    .opacity(1 - this.sidePageExitProgress(FullPlayerPage.QUEUE))
+    .translate({ x: this.sidePageExitX(FullPlayerPage.QUEUE) })
+    .hitTestBehavior(this.sidePageExitProgress(FullPlayerPage.QUEUE) > 0 ?
+      HitTestMode.None : HitTestMode.Default)
+  }
+
+  @Builder
+  private LyricsPagePresentation() {
+    Stack() {
+      if (this.isUltraCompact()) {
+        this.UltraCompactLyricsPage()
+      } else {
+        this.LyricsPage()
+      }
+    }
+    .width(this.pageWidth())
+    .height('100%')
+    .opacity(1 - this.sidePageExitProgress(FullPlayerPage.LYRICS))
+    .translate({ x: this.sidePageExitX(FullPlayerPage.LYRICS) })
+    .hitTestBehavior(this.sidePageExitProgress(FullPlayerPage.LYRICS) > 0 ?
+      HitTestMode.None : HitTestMode.Default)
   }
 
   private headerTextInset(page: FullPlayerPage): number {
@@ -193,6 +245,7 @@ export struct FullPlayerContent {
     .width('100%')
     .height(PlayerLayoutSpec.FULL_PLAYER_CLOSE_BUTTON_SIZE)
     .clip(true)
+    .translate({ y: -this.rootFrame.height * this.immersiveProgress })
   }
 
   @Builder
@@ -274,6 +327,7 @@ export struct FullPlayerContent {
       rootFrame: this.rootFrame,
       pagePosition: this.pagePosition,
       paneCount: this.paneCount,
+      immersiveProgress: this.immersiveProgress,
       primaryContentColor: this.contentColor(),
       showFloatingWindowButton: this.showFloatingWindowButton,
       artworkSourceWidth: this.artworkSourceWidth,
@@ -291,6 +345,7 @@ export struct FullPlayerContent {
       onOpenPlayerPageSettings: this.onOpenPlayerPageSettings,
       onArtworkTarget: this.onArtworkTarget,
       onCenteredArtworkTarget: this.onCenteredArtworkTarget,
+      onArtworkViewportTarget: this.onArtworkViewportTarget,
       onPlaybackButtonTarget: this.onPlaybackButtonTarget
     })
   }
@@ -329,6 +384,7 @@ export struct FullPlayerContent {
       rootFrame: this.rootFrame,
       pagePosition: this.pagePosition,
       paneCount: this.paneCount,
+      immersiveProgress: this.immersiveProgress,
       primaryContentColor: this.contentColor(),
       showFloatingWindowButton: this.showFloatingWindowButton,
       artworkSourceWidth: this.artworkSourceWidth,
@@ -346,6 +402,7 @@ export struct FullPlayerContent {
       onOpenPlayerPageSettings: this.onOpenPlayerPageSettings,
       onArtworkTarget: this.onArtworkTarget,
       onCenteredArtworkTarget: this.onCenteredArtworkTarget,
+      onArtworkViewportTarget: this.onArtworkViewportTarget,
       onPlaybackButtonTarget: this.onPlaybackButtonTarget
     })
   }
@@ -411,11 +468,7 @@ export struct FullPlayerContent {
     Stack({ alignContent: Alignment.TopStart }) {
       Row({ space: 0 }) {
         if (this.shouldRenderPage(FullPlayerPage.QUEUE)) {
-          if (this.isUltraCompact()) {
-            this.UltraCompactQueuePage()
-          } else {
-            this.QueuePage()
-          }
+          this.QueuePagePresentation()
         } else {
           Stack().width(this.pageWidth()).height('100%')
         }
@@ -425,11 +478,7 @@ export struct FullPlayerContent {
           this.CoverPage()
         }
         if (this.shouldRenderPage(FullPlayerPage.LYRICS)) {
-          if (this.isUltraCompact()) {
-            this.UltraCompactLyricsPage()
-          } else {
-            this.LyricsPage()
-          }
+          this.LyricsPagePresentation()
         } else {
           Stack().width(this.pageWidth()).height('100%')
         }

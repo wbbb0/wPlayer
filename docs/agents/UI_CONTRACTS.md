@@ -171,6 +171,24 @@ suppressing another.
 
 ## Full-player shared-element morph
 
+- “沉浸模式”默认开启。开启时，点击稳定显示的播放封面进入沉浸展示；顶部返回区域向上退出，
+  标题、进度与播放控制向下退出，封面舞台扩展到整个播放页。再次点击封面或按返回键先退出
+  沉浸展示，不直接关闭播放页。关闭该设置后，点击封面不进入沉浸展示。
+- 播放封面使用连续的队列分页容器，内部横向拖动可按当前播放顺序移动到任意相邻歌曲；通过播放控制、
+  队列或自然结束切歌时，分页容器自动滚动到新的当前歌曲。分页以唯一队列项身份校验落页和异步回调，
+  队列重排后无动画重新定位当前项；每张图片保留普通与沉浸可用矩形中的自适应宽高比。mini-player 与
+  播放页封面横滑均保持切歌前的播放或暂停意图。关闭循环及单曲循环在队列边界停住；全部循环允许首尾
+  封面连续互相切换。
+- 播放页封面分页裁剪在当前封面 viewport 内；双栏横滑期间，左右边缘使用与页面水平内边距等宽的
+  alpha 渐变遮罩并透出其下的动态背景，邻页封面不得覆盖队列或歌词。分页裁剪为封面阴影保留纵向
+  绘制空间；横滑命中区保持在封面本体，不通过改变封面的上下内外边距来调整手势范围。
+- 沉浸进入、退出和封面分页均可由新输入从当前呈现位置接管。沉浸期间禁用下拉关闭。单栏允许从
+  封面页向右移动到歌词页，但不允许向左进入队列；封面内横滑仍优先切歌。返回键在歌词页先回到
+  沉浸封面，再退出沉浸，之后才关闭播放器。
+- “宽屏沉浸时显示歌词”默认开启。开启时，双栏沉浸以歌词加载状态决定布局：歌词加载中保持上一次
+  已解析布局；有歌词时封面占左半屏且歌词保留在右半屏，无歌词时歌词侧退出、封面动画扩展到整个
+  播放页。切歌不得因加载中的空歌词产生一次全屏再回半屏的中间动画。关闭后，宽屏沉浸固定使用
+  封面全屏布局，不以歌词是否可用改变布局或显示歌词。
 - “保持屏幕常亮” defaults to disabled. When enabled, the foreground main window remains awake from the start of
   full-player opening until closing or cancellation reaches the idle phase; backgrounding or destroying the window
   releases the request.
@@ -199,7 +217,9 @@ suppressing another.
 - Full-player lyrics and queue scroll viewports extend to the physical bottom edge. Apply the system bottom avoid
   inset as scroll-content end spacing so the final item remains reachable above system UI.
 - Freeze source and destination geometry when a transition begins.
-- Use one overlay artwork instance.
+- Use one artwork actor for the mini/full shared-element morph. Stable full-player queue pages are separate from
+  that morph actor and hand off only after the selected page is ready. When closing from a stable player, keep the
+  selected pager page behind the closing actor until that actor's image is ready, then remove the pager in one frame.
 - Drive position, scale, corner radius and shadow from one progress value.
 - Keep the final full-player canvas at final layout size.
 - Animate the clipping shell rather than relaying out the full content tree every frame.

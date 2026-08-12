@@ -1,3 +1,4 @@
+import { FrameCallback } from '@kit.ArkUI';
 import { describe, expect, it } from '@ohos/hypium';
 import {
   DynamicBackgroundArtworkUploadState
@@ -6,6 +7,11 @@ import {
   InterruptibleScalarMotion
 } from '../main/ets/components/player/InterruptibleScalarMotion';
 import {
+  FrameScalarMotionTimeline,
+  FullPlayerImmersiveSplitFrameHost,
+  FullPlayerImmersiveSplitMotion
+} from '../main/ets/components/player/FullPlayerImmersiveSplitMotion';
+import {
   PresentationMotionState
 } from '../main/ets/components/player/PresentationMotionState';
 import {
@@ -13,6 +19,25 @@ import {
   PlayerArtworkPlaybackVisualState
 } from '../main/ets/components/player/PlayerArtworkPlaybackVisualState';
 import { PlayerMorphGeometry } from '../main/ets/components/player/PlayerMorphGeometry';
+import {
+  LyricsAvailability,
+  PlayerStore,
+  QueueEntry
+} from '../main/ets/playback/model/PlaybackModels';
+import {
+  FullPlayerArtworkStagePolicy,
+  FullPlayerImmersiveLayoutPolicy
+} from '../main/ets/components/player/FullPlayerArtworkStagePolicy';
+import {
+  FullPlayerArtworkPagerCommandKind,
+  FullPlayerArtworkPagerCoordinator,
+  FullPlayerArtworkGestureSequence,
+  FullPlayerArtworkPagerPhase,
+  FullPlayerArtworkPagerScrollMode
+} from '../main/ets/components/player/FullPlayerArtworkPagerCoordinator';
+import {
+  FullPlayerArtworkSlotDataSource
+} from '../main/ets/components/player/FullPlayerArtworkSlotDataSource';
 import {
   MiniBarResizeAction,
   PlayerMorphGesturePolicy
@@ -33,6 +58,61 @@ import {
   PlayerMorphInteractionSpec,
   PlayerMorphVisualSpec
 } from '../main/ets/components/player/PlayerMotion';
+
+function artworkQueueEntry(id: number): QueueEntry {
+  return {
+    queueEntryId: id,
+    track: {
+      id: id,
+      title: `Track ${id}`,
+      artistDisplay: 'Artist',
+      albumDisplay: 'Album',
+      durationMs: 1000,
+      smallArtworkHash: '',
+      smallArtworkPath: '',
+      largeArtworkHash: '',
+      largeArtworkPath: '',
+      artworkWidth: 600,
+      artworkHeight: 600,
+      palettePrimary: '#FF000000',
+      paletteSecondary: '#FF000000',
+      paletteAccent: '#FFFFFFFF'
+    }
+  };
+}
+
+class ArtworkSlotDataListener implements DataChangeListener {
+  batches: Array<Array<DataOperation>> = [];
+
+  onDataReloaded(): void {}
+  onDataAdded(_index: number): void {}
+  onDataAdd(_index: number): void {}
+  onDataMoved(_from: number, _to: number): void {}
+  onDataMove(_from: number, _to: number): void {}
+  onDataDeleted(_index: number): void {}
+  onDataDelete(_index: number): void {}
+  onDataChanged(_index: number): void {}
+  onDataChange(_index: number): void {}
+  onDatasetChange(dataOperations: Array<DataOperation>): void {
+    this.batches.push(dataOperations);
+  }
+}
+
+class FakeImmersiveSplitFrameHost extends FullPlayerImmersiveSplitFrameHost {
+  readonly callbacks: Array<FrameCallback> = [];
+
+  constructor() {
+    super();
+  }
+
+  postFrameCallback(callback: FrameCallback): void {
+    this.callbacks.push(callback);
+  }
+
+  runFrame(index: number, frameTimeInNano: number): void {
+    this.callbacks[index].onFrame(frameTimeInNano);
+  }
+}
 
 export default function playerMorphPolicyTest() {
   describe('Player morph policies', () => {
@@ -403,6 +483,39 @@ export default function playerMorphPolicyTest() {
       expect(motion.value()).assertEqual(0.65);
     });
 
+    it('starts frame-driven split motion at the exact presentation value', 0, () => {
+      const timeline = new FrameScalarMotionTimeline(
+        0.25,
+        1,
+        400,
+        (fraction: number): number => fraction
+      );
+      const first = timeline.sample(1_000_000_000);
+      const middle = timeline.sample(1_200_000_000);
+      const last = timeline.sample(1_400_000_000);
+      expect(first.value).assertEqual(0.25);
+      expect(first.finished).assertFalse();
+      expect(middle.value).assertEqual(0.625);
+      expect(middle.finished).assertFalse();
+      expect(last.value).assertEqual(1);
+      expect(last.finished).assertTrue();
+    });
+
+    it('keeps the resolved split target while presentation is mid-motion', 0, () => {
+      const frameHost = new FakeImmersiveSplitFrameHost();
+      const motion = new FullPlayerImmersiveSplitMotion(0);
+      motion.animate(frameHost, 1, 400);
+      frameHost.runFrame(0, 1_000_000_000);
+      frameHost.runFrame(1, 1_200_000_000);
+      expect(motion.progress > 0 && motion.progress < 1).assertTrue();
+      expect(motion.resolvedTarget()).assertEqual(1);
+      expect(FullPlayerImmersiveLayoutPolicy.splitTarget(
+        2,
+        LyricsAvailability.LOADING,
+        motion.resolvedTarget()
+      )).assertEqual(1);
+    });
+
     it('keeps takeover active until render settling completes', 0, () => {
       const state = new PresentationMotionState(0.2);
       state.begin(0.2);
@@ -469,6 +582,306 @@ export default function playerMorphPolicyTest() {
         .assertEqual(282);
       expect(PlayerLayoutSpec.targetPlaybackIconSize(64)).assertEqual(40);
       expect(PlayerLayoutSpec.targetPlaybackIconSize(72)).assertEqual(50);
+    });
+
+    it('keeps immersive artwork adaptive inside the full-player safe rectangle', 0, () => {
+      const landscape = FullPlayerArtworkStagePolicy.immersiveFrame(
+        { x: 0, y: 0, width: 360, height: 720 }, 24, 20, 800, 400
+      );
+      const portrait = FullPlayerArtworkStagePolicy.immersiveFrame(
+        { x: 0, y: 0, width: 360, height: 720 }, 24, 20, 400, 800
+      );
+      expect(landscape.width / landscape.height).assertEqual(2);
+      expect(portrait.width / portrait.height).assertEqual(0.5);
+      expect(landscape.x >= 20).assertTrue();
+      expect(portrait.y >= 44).assertTrue();
+    });
+
+    it('limits artwork paging input to the scaled visible artwork frame', 0, () => {
+      const frame = FullPlayerArtworkStagePolicy.scaledFrame(
+        { x: 10, y: 20, width: 200, height: 100 },
+        0.8
+      );
+      expect(frame.x).assertEqual(30);
+      expect(frame.y).assertEqual(30);
+      expect(frame.width).assertEqual(160);
+      expect(frame.height).assertEqual(80);
+    });
+
+    it('keeps artwork pager slots stable when only queue selection changes', 0, () => {
+      const source = new FullPlayerArtworkSlotDataSource();
+      const listener = new ArtworkSlotDataListener();
+      source.registerDataChangeListener(listener);
+      source.syncCount(3);
+      const firstSlot = source.getData(0);
+      const currentSlot = source.getData(1);
+      expect(listener.batches.length).assertEqual(1);
+      expect(listener.batches[0][0].type).assertEqual(DataOperationType.RELOAD);
+
+      source.syncCount(3);
+      expect(listener.batches.length).assertEqual(1);
+      expect(source.getData(0)).assertEqual(firstSlot);
+      expect(source.getData(1)).assertEqual(currentSlot);
+    });
+
+    it('keeps the ready pager behind the closing morph actor until its image is ready', 0, () => {
+      expect(FullPlayerArtworkStagePolicy.shouldShowPager(
+        PlayerMorphPhase.OPEN, true, false, false
+      )).assertTrue();
+      expect(FullPlayerArtworkStagePolicy.shouldShowPager(
+        PlayerMorphPhase.CLOSE_DRAGGING, true, true, false
+      )).assertTrue();
+      expect(FullPlayerArtworkStagePolicy.shouldShowPager(
+        PlayerMorphPhase.CLOSING, true, true, true
+      )).assertFalse();
+      expect(FullPlayerArtworkStagePolicy.shouldShowPager(
+        PlayerMorphPhase.OPENING, false, false, false
+      )).assertFalse();
+    });
+
+    it('reveals only the current artwork page from the active readiness generation', 0, () => {
+      const first = artworkQueueEntry(101);
+      const second = artworkQueueEntry(102);
+      const third = artworkQueueEntry(103);
+      const coordinator = new FullPlayerArtworkPagerCoordinator();
+      coordinator.initialize([first, second, third], 1);
+      const generation = coordinator.readyGeneration;
+      expect(coordinator.pagerVisible).assertFalse();
+      expect(coordinator.onPageReady(second.queueEntryId, generation - 1)).assertFalse();
+      expect(coordinator.onPageReady(first.queueEntryId, generation)).assertFalse();
+      expect(coordinator.onPageReady(second.queueEntryId, generation)).assertTrue();
+      expect(coordinator.phase).assertEqual(FullPlayerArtworkPagerPhase.IDLE);
+      expect(coordinator.pagerVisible).assertTrue();
+    });
+
+    it('selects a user-settled page once and treats the synchronous queue callback as ack', 0, () => {
+      const first = artworkQueueEntry(101);
+      const second = artworkQueueEntry(102);
+      const entries = [first, second];
+      const coordinator = new FullPlayerArtworkPagerCoordinator();
+      coordinator.initialize(entries, 0);
+      coordinator.onPageReady(first.queueEntryId, coordinator.readyGeneration);
+      coordinator.onAnimationStart(entries, 1);
+      const selection = coordinator.onAnimationEnd(entries, 1);
+      expect(selection.kind).assertEqual(FullPlayerArtworkPagerCommandKind.SELECT_ENTRY);
+      expect(selection.queueEntryId).assertEqual(second.queueEntryId);
+      const ack = coordinator.onQueueIndexChanged(entries, 1);
+      expect(ack.kind).assertEqual(FullPlayerArtworkPagerCommandKind.NONE);
+      expect(coordinator.phase).assertEqual(FullPlayerArtworkPagerPhase.IDLE);
+    });
+
+    it('animates adjacent external changes normally and distant changes quickly', 0, () => {
+      const entries = [
+        artworkQueueEntry(101), artworkQueueEntry(102),
+        artworkQueueEntry(103), artworkQueueEntry(104)
+      ];
+      const coordinator = new FullPlayerArtworkPagerCoordinator();
+      coordinator.initialize(entries, 0);
+      coordinator.onPageReady(entries[0].queueEntryId, coordinator.readyGeneration);
+      const adjacent = coordinator.onQueueIndexChanged(entries, 1);
+      expect(adjacent.kind).assertEqual(FullPlayerArtworkPagerCommandKind.CHANGE_INDEX);
+      expect(adjacent.scrollMode).assertEqual(FullPlayerArtworkPagerScrollMode.DEFAULT);
+      coordinator.onAnimationEnd(entries, 1);
+      const distant = coordinator.onQueueIndexChanged(entries, 3);
+      expect(distant.kind).assertEqual(FullPlayerArtworkPagerCommandKind.CHANGE_INDEX);
+      expect(distant.scrollMode).assertEqual(FullPlayerArtworkPagerScrollMode.FAST);
+    });
+
+    it('treats the repeat-all queue boundary as an adjacent programmatic page', 0, () => {
+      const entries = [
+        artworkQueueEntry(101), artworkQueueEntry(102), artworkQueueEntry(103)
+      ];
+      const coordinator = new FullPlayerArtworkPagerCoordinator();
+      coordinator.initialize(entries, 2);
+      coordinator.onPageReady(entries[2].queueEntryId, coordinator.readyGeneration);
+      const wrapped = coordinator.onQueueIndexChanged(entries, 0, true);
+      expect(wrapped.kind).assertEqual(FullPlayerArtworkPagerCommandKind.CHANGE_INDEX);
+      expect(wrapped.scrollMode).assertEqual(FullPlayerArtworkPagerScrollMode.DEFAULT);
+    });
+
+    it('ignores an obsolete programmatic completion after a newer external target', 0, () => {
+      const entries = [artworkQueueEntry(101), artworkQueueEntry(102), artworkQueueEntry(103)];
+      const coordinator = new FullPlayerArtworkPagerCoordinator();
+      coordinator.initialize(entries, 0);
+      coordinator.onPageReady(entries[0].queueEntryId, coordinator.readyGeneration);
+      coordinator.onQueueIndexChanged(entries, 1);
+      const latest = coordinator.onQueueIndexChanged(entries, 2);
+      expect(latest.queueEntryId).assertEqual(entries[2].queueEntryId);
+      expect(coordinator.onAnimationEnd(entries, 1).kind)
+        .assertEqual(FullPlayerArtworkPagerCommandKind.NONE);
+      expect(coordinator.phase).assertEqual(FullPlayerArtworkPagerPhase.PROGRAMMATIC);
+      expect(coordinator.onAnimationEnd(entries, 2).kind)
+        .assertEqual(FullPlayerArtworkPagerCommandKind.NONE);
+      expect(coordinator.phase).assertEqual(FullPlayerArtworkPagerPhase.IDLE);
+    });
+
+    it('lets a user gesture take over a running programmatic scroll', 0, () => {
+      const entries = [artworkQueueEntry(101), artworkQueueEntry(102), artworkQueueEntry(103)];
+      const coordinator = new FullPlayerArtworkPagerCoordinator();
+      coordinator.initialize(entries, 0);
+      coordinator.onPageReady(entries[0].queueEntryId, coordinator.readyGeneration);
+      coordinator.onQueueIndexChanged(entries, 2);
+      expect(coordinator.allowsUserSwipe()).assertTrue();
+      coordinator.onUserGesture();
+      expect(coordinator.acceptsAnimationEnd(entries, 2)).assertFalse();
+      expect(coordinator.onAnimationEnd(entries, 2).kind)
+        .assertEqual(FullPlayerArtworkPagerCommandKind.NONE);
+      coordinator.onAnimationStart(entries, 1);
+      expect(coordinator.acceptsAnimationEnd(entries, 1)).assertTrue();
+      const selection = coordinator.onAnimationEnd(entries, 1);
+      expect(selection.kind).assertEqual(FullPlayerArtworkPagerCommandKind.SELECT_ENTRY);
+      expect(selection.queueEntryId).assertEqual(entries[1].queueEntryId);
+    });
+
+    it('samples only one swipe callback from each touch sequence', 0, () => {
+      const sequence = new FullPlayerArtworkGestureSequence();
+      sequence.onTouchDown();
+      expect(sequence.consumeSwipeFrame()).assertTrue();
+      expect(sequence.consumeSwipeFrame()).assertFalse();
+      sequence.onAnimationEnd();
+      expect(sequence.consumeSwipeFrame()).assertFalse();
+      sequence.onTouchDown();
+      expect(sequence.consumeSwipeFrame()).assertTrue();
+      sequence.onTouchEnd();
+      sequence.onAnimationEnd();
+      expect(sequence.consumeSwipeFrame()).assertTrue();
+    });
+
+    it('lets a completed user page win over an external change during settling', 0, () => {
+      const entries = [artworkQueueEntry(101), artworkQueueEntry(102), artworkQueueEntry(103)];
+      const coordinator = new FullPlayerArtworkPagerCoordinator();
+      coordinator.initialize(entries, 0);
+      coordinator.onPageReady(entries[0].queueEntryId, coordinator.readyGeneration);
+      coordinator.onAnimationStart(entries, 1);
+      expect(coordinator.onQueueIndexChanged(entries, 2).kind)
+        .assertEqual(FullPlayerArtworkPagerCommandKind.NONE);
+      const selection = coordinator.onAnimationEnd(entries, 1);
+      expect(selection.kind).assertEqual(FullPlayerArtworkPagerCommandKind.SELECT_ENTRY);
+      expect(selection.queueEntryId).assertEqual(entries[1].queueEntryId);
+    });
+
+    it('does not reselect when playback already reached the user-settled page', 0, () => {
+      const entries = [artworkQueueEntry(101), artworkQueueEntry(102)];
+      const coordinator = new FullPlayerArtworkPagerCoordinator();
+      coordinator.initialize(entries, 0);
+      coordinator.onPageReady(entries[0].queueEntryId, coordinator.readyGeneration);
+      coordinator.onAnimationStart(entries, 1);
+      coordinator.onQueueIndexChanged(entries, 1);
+      expect(coordinator.onAnimationEnd(entries, 1).kind)
+        .assertEqual(FullPlayerArtworkPagerCommandKind.NONE);
+      expect(coordinator.phase).assertEqual(FullPlayerArtworkPagerPhase.IDLE);
+    });
+
+    it('consumes the latest external change when a user gesture returns to its original page', 0, () => {
+      const entries = [artworkQueueEntry(101), artworkQueueEntry(102), artworkQueueEntry(103)];
+      const coordinator = new FullPlayerArtworkPagerCoordinator();
+      coordinator.initialize(entries, 0);
+      coordinator.onPageReady(entries[0].queueEntryId, coordinator.readyGeneration);
+      coordinator.onAnimationStart(entries, 1);
+      coordinator.onQueueIndexChanged(entries, 2);
+      const command = coordinator.onAnimationEnd(entries, 0);
+      expect(command.kind).assertEqual(FullPlayerArtworkPagerCommandKind.CHANGE_INDEX);
+      expect(command.queueEntryId).assertEqual(entries[2].queueEntryId);
+      expect(command.scrollMode).assertEqual(FullPlayerArtworkPagerScrollMode.FAST);
+    });
+
+    it('invalidates stale settle and ready callbacks when the queue projection changes', 0, () => {
+      const first = artworkQueueEntry(101);
+      const second = artworkQueueEntry(102);
+      const third = artworkQueueEntry(103);
+      const coordinator = new FullPlayerArtworkPagerCoordinator();
+      coordinator.initialize([first, second, third], 0);
+      coordinator.onPageReady(first.queueEntryId, coordinator.readyGeneration);
+      coordinator.onAnimationStart([first, second, third], 1);
+      const previousGeneration = coordinator.readyGeneration;
+      const reordered = [second, first, third];
+      const reanchor = coordinator.onProjectionChanged(reordered, 1);
+      expect(reanchor.kind).assertEqual(FullPlayerArtworkPagerCommandKind.CHANGE_INDEX);
+      expect(reanchor.scrollMode).assertEqual(FullPlayerArtworkPagerScrollMode.NONE);
+      expect(coordinator.onAnimationEnd(reordered, 0).kind)
+        .assertEqual(FullPlayerArtworkPagerCommandKind.NONE);
+      expect(coordinator.onPageReady(first.queueEntryId, previousGeneration)).assertFalse();
+      expect(coordinator.onPageReady(first.queueEntryId, coordinator.readyGeneration)).assertFalse();
+      expect(coordinator.onReanchorApplied(
+        first.queueEntryId, coordinator.readyGeneration
+      )).assertTrue();
+    });
+
+    it('keeps vertical shadow overflow outside the horizontal pager clip', 0, () => {
+      const viewport: PlayerFrame = { x: 20, y: 40, width: 320, height: 400 };
+      const clip = FullPlayerArtworkStagePolicy.shadowSafePagerFrame(
+        viewport, 52, 28
+      );
+      expect(clip.x).assertEqual(viewport.x);
+      expect(clip.width).assertEqual(viewport.width);
+      expect(clip.y).assertEqual(-12);
+      expect(clip.height).assertEqual(532);
+    });
+
+    it('fits immersive artwork inside a selected pane viewport', 0, () => {
+      const full = FullPlayerArtworkStagePolicy.immersiveFrameInViewport(
+        { x: 0, y: 0, width: 800, height: 600 }, 24, 20, 800, 800
+      );
+      const split = FullPlayerArtworkStagePolicy.immersiveFrameInViewport(
+        { x: 0, y: 0, width: 400, height: 600 }, 24, 20, 800, 800
+      );
+      expect(split.width < full.width).assertTrue();
+      expect(split.x + split.width <= 400).assertTrue();
+      expect(split.y >= 44).assertTrue();
+    });
+
+    it('freezes the resolved immersive split while lyrics are loading', 0, () => {
+      expect(FullPlayerImmersiveLayoutPolicy.splitTarget(
+        2, LyricsAvailability.LOADING, 1
+      )).assertEqual(1);
+      expect(FullPlayerImmersiveLayoutPolicy.splitTarget(
+        2, LyricsAvailability.UNAVAILABLE, 1
+      )).assertEqual(0);
+      expect(FullPlayerImmersiveLayoutPolicy.splitTarget(
+        2, LyricsAvailability.AVAILABLE, 0
+      )).assertEqual(1);
+      expect(FullPlayerImmersiveLayoutPolicy.splitTarget(
+        1, LyricsAvailability.AVAILABLE, 1
+      )).assertEqual(0);
+      expect(FullPlayerImmersiveLayoutPolicy.splitTarget(
+        2, LyricsAvailability.AVAILABLE, 1, false
+      )).assertEqual(0);
+      expect(FullPlayerImmersiveLayoutPolicy.splitTarget(
+        2, LyricsAvailability.LOADING, 1, false
+      )).assertEqual(0);
+    });
+
+    it('moves a dual-pane immersive entry from queue-cover to cover-lyrics', 0, () => {
+      expect(FullPlayerImmersiveLayoutPolicy.entryPagePosition(
+        0, 2, LyricsAvailability.AVAILABLE, 0
+      )).assertEqual(1);
+      expect(FullPlayerImmersiveLayoutPolicy.entryPagePosition(
+        0, 2, LyricsAvailability.UNAVAILABLE, 1
+      )).assertEqual(0);
+      expect(FullPlayerImmersiveLayoutPolicy.entryPagePosition(
+        1, 1, LyricsAvailability.AVAILABLE, 1
+      )).assertEqual(1);
+      expect(FullPlayerImmersiveLayoutPolicy.entryPagePosition(
+        0, 2, LyricsAvailability.LOADING, 1
+      )).assertEqual(1);
+      expect(FullPlayerImmersiveLayoutPolicy.entryPagePosition(
+        0, 2, LyricsAvailability.LOADING, 0
+      )).assertEqual(0);
+      expect(FullPlayerImmersiveLayoutPolicy.entryPagePosition(
+        0, 2, LyricsAvailability.AVAILABLE, 1, false
+      )).assertEqual(0);
+    });
+
+    it('publishes lyrics availability only when the resolved state changes', 0, () => {
+      const store = new PlayerStore();
+      let notifications = 0;
+      store.addLyricsAvailabilityListener((_availability: LyricsAvailability): void => {
+        notifications += 1;
+      });
+      store.setLyricsAvailability(LyricsAvailability.LOADING);
+      store.setLyricsAvailability(LyricsAvailability.LOADING);
+      store.setLyricsAvailability(LyricsAvailability.UNAVAILABLE);
+      expect(notifications).assertEqual(2);
     });
 
     it('grades lyric blur symmetrically and suspends it during manual scrolling', 0, () => {

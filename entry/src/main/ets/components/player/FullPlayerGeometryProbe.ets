@@ -5,11 +5,14 @@ import {
   FullPlayerPage,
   PlayerFrame
 } from './PlayerMotion';
+import { FullPlayerImmersiveSplitMotion } from './FullPlayerImmersiveSplitMotion';
 
 @Component
 export struct PlayerGeometryProbe {
   @ObjectLink playerStore: PlayerStore;
   @ObjectLink libraryStore: LibraryStore;
+  @State private immersiveSplitMotion: FullPlayerImmersiveSplitMotion =
+    new FullPlayerImmersiveSplitMotion(0);
   @Prop showFloatingWindowButton: boolean = true;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
@@ -22,6 +25,7 @@ export struct PlayerGeometryProbe {
   @Prop previousCenteredArtworkFrame: PlayerFrame = { x: 0, y: 0, width: 0, height: 0 };
   onArtworkTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
   onCenteredArtworkTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
+  onArtworkViewportTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
   onPlaybackButtonTarget: (target: PlayerFrame) => void = (_target: PlayerFrame): void => {};
 
   build() {
@@ -29,6 +33,7 @@ export struct PlayerGeometryProbe {
       FullPlayerContent({
         playerStore: this.playerStore,
         libraryStore: this.libraryStore,
+        immersiveSplitMotion: this.immersiveSplitMotion,
         topInset: this.topInset,
         bottomInset: this.bottomInset,
         showArtwork: false,
@@ -48,6 +53,9 @@ export struct PlayerGeometryProbe {
         },
         onCenteredArtworkTarget: (target: PlayerFrame): void => {
           this.onCenteredArtworkTarget(target);
+        },
+        onArtworkViewportTarget: (target: PlayerFrame): void => {
+          this.onArtworkViewportTarget(target);
         },
         onPlaybackButtonTarget: (target: PlayerFrame): void => {
           this.onPlaybackButtonTarget(target);

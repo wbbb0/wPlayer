@@ -324,6 +324,7 @@ export enum PlaybackOriginKind {
 
 export type LyricIndexListener = (index: number) => void;
 export type QueueIndexListener = (index: number) => void;
+export type LyricsAvailabilityListener = (availability: LyricsAvailability) => void;
 
 export class LyricLineDataSource implements IDataSource {
   private items: Array<TimedLyricLine> = [];
@@ -362,6 +363,12 @@ export class PlaybackProgressStore {
   durationMs: number = 0;
 }
 
+export enum LyricsAvailability {
+  LOADING,
+  AVAILABLE,
+  UNAVAILABLE
+}
+
 @Observed
 export class PlayerStore {
   state: PlayerState = PlayerState.IDLE;
@@ -378,11 +385,13 @@ export class PlayerStore {
   heroArtworkRevision: number = 0;
   errorMessage: string = '';
   lyrics: string = '';
+  lyricsAvailability: LyricsAvailability = LyricsAvailability.UNAVAILABLE;
   timedLyrics: Array<TimedLyricLine> = [];
   readonly lyricDataSource: LyricLineDataSource = new LyricLineDataSource();
   lyricDocumentRevision: number = 0;
   activeLyricIndex: number = -1;
   private readonly lyricIndexListeners: Array<LyricIndexListener> = [];
+  private readonly lyricsAvailabilityListeners: Array<LyricsAvailabilityListener> = [];
   shuffleEnabled: boolean = false;
   repeatMode: RepeatMode = RepeatMode.ALL;
   queuePhase: QueueBuildPhase = QueueBuildPhase.EMPTY;
@@ -441,6 +450,29 @@ export class PlayerStore {
     this.timedLyrics = lines;
     this.lyricDataSource.replace(lines);
     this.lyricDocumentRevision += 1;
+  }
+
+  addLyricsAvailabilityListener(listener: LyricsAvailabilityListener): void {
+    if (this.lyricsAvailabilityListeners.indexOf(listener) < 0) {
+      this.lyricsAvailabilityListeners.push(listener);
+    }
+  }
+
+  removeLyricsAvailabilityListener(listener: LyricsAvailabilityListener): void {
+    const index = this.lyricsAvailabilityListeners.indexOf(listener);
+    if (index >= 0) {
+      this.lyricsAvailabilityListeners.splice(index, 1);
+    }
+  }
+
+  setLyricsAvailability(availability: LyricsAvailability): void {
+    if (this.lyricsAvailability === availability) {
+      return;
+    }
+    this.lyricsAvailability = availability;
+    this.lyricsAvailabilityListeners.slice().forEach(
+      (listener: LyricsAvailabilityListener): void => listener(availability)
+    );
   }
 
   addQueueIndexListener(listener: QueueIndexListener): void {

@@ -1,6 +1,9 @@
 import { FrameCallback } from '@kit.ArkUI';
 import { image } from '@kit.ImageKit';
-import { playbackRuntime } from '../../playback/PlaybackRuntime';
+import {
+  PlaybackArtworkLease,
+  playbackRuntime
+} from '../../playback/PlaybackRuntime';
 import { LayoutLength } from '../layout/LayoutLength';
 import {
   PlayerStore,
@@ -12,8 +15,11 @@ import {
   RepeatMode
 } from '../../playback/model/PlaybackModels';
 import { PlayerMorphArtwork } from './PlayerMorphArtwork';
-import { PlayerMorphController } from './PlayerMorphController';
-import { PlayerArtworkVisualBinding } from './PlayerArtworkPlaybackVisualState';
+import {
+  PlayerArtworkImmersiveVisualBinding,
+  PlayerArtworkSourceBinding,
+  PlayerArtworkVisualBinding
+} from './PlayerArtworkPlaybackVisualState';
 import { FullPlayerArtworkSlotDataSource } from './FullPlayerArtworkSlotDataSource';
 import {
   FullPlayerArtworkPagerCommand,
@@ -30,6 +36,7 @@ import {
 import { FullPlayerImmersiveSplitMotion } from './FullPlayerImmersiveSplitMotion';
 import {
   PlayerFrame,
+  PlayerLayoutSpec,
   PlayerMorphPhase,
   PlayerMotionSpec
 } from './PlayerMotion';
@@ -37,10 +44,17 @@ import {
 @Component
 struct FullPlayerArtworkPage {
   @ObjectLink slot: QueuePositionSlot;
-  @ObjectLink projection: QueueProjectionState;
+  @ObjectLink @Watch('onProjectionChanged') projection: QueueProjectionState;
   @ObjectLink playbackVisual: PlayerArtworkVisualBinding;
-  @ObjectLink controller: PlayerMorphController;
+  @ObjectLink immersiveVisual: PlayerArtworkImmersiveVisualBinding;
+  @ObjectLink currentArtworkSource: PlayerArtworkSourceBinding;
   @ObjectLink immersiveSplitMotion: FullPlayerImmersiveSplitMotion;
+  @Prop fullPlayerWidth: number = 0;
+  @Prop fullPlayerHeight: number = 0;
+  @Prop normalViewportX: number = 0;
+  @Prop normalViewportY: number = 0;
+  @Prop normalViewportWidth: number = 0;
+  @Prop normalViewportHeight: number = 0;
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @ObjectLink coordinator: FullPlayerArtworkPagerCoordinator;
@@ -57,18 +71,89 @@ struct FullPlayerArtworkPage {
     (_enabled: boolean): void => {};
   isTrackAvailable: () => boolean = (): boolean => false;
   isCompletedCollectionEnabled: () => boolean = (): boolean => false;
+  currentArtworkSourceProvider: () => image.PixelMap | ResourceStr =
+    (): ResourceStr => $r('app.media.bundled_artwork_default_full');
+  private artworkLease?: PlaybackArtworkLease;
+  private artworkLeaseEntryId: number = -1;
+
+  aboutToAppear(): void {
+    this.reconcileArtworkLease();
+  }
+
+  aboutToDisappear(): void {
+    this.releaseArtworkLease();
+  }
+
+  private onProjectionChanged(): void {
+    this.reconcileArtworkLease();
+  }
 
   private entry(): QueueEntry | undefined {
     return this.projection.entryAt(this.slot.index);
   }
 
-  private artworkSource(entry: QueueEntry): ResourceStr {
+  private fallbackArtworkSource(entry: QueueEntry): image.PixelMap | ResourceStr {
+    if (this.artworkLeaseEntryId === entry.queueEntryId && this.artworkLease !== undefined) {
+      return this.artworkLease.pixelMap;
+    }
     const uri = this.onResolveArtwork(entry.track.largeArtworkPath);
     return uri.length > 0 ? uri : $r('app.media.bundled_artwork_default_full');
   }
 
+  private artworkSource(entry: QueueEntry): image.PixelMap | ResourceStr {
+    const fallback = this.fallbackArtworkSource(entry);
+    if (!this.currentArtworkSource.matches(
+      entry.track.largeArtworkHash,
+      entry.track.largeArtworkPath
+    )) {
+      return fallback;
+    }
+    const current = this.currentArtworkSourceProvider();
+    return current === fallback ? fallback : current;
+  }
+
+  private artworkSourceRevision(entry: QueueEntry): number {
+    const usesCurrentSource = this.currentArtworkSource.matches(
+      entry.track.largeArtworkHash,
+      entry.track.largeArtworkPath
+    ) && this.currentArtworkSourceProvider() !== this.fallbackArtworkSource(entry);
+    return this.currentArtworkSource.actorRevision(
+      entry.queueEntryId,
+      entry.track.largeArtworkHash,
+      entry.track.largeArtworkPath,
+      usesCurrentSource
+    );
+  }
+
+  private reconcileArtworkLease(): void {
+    const entry = this.entry();
+    if (entry !== undefined && entry.queueEntryId === this.artworkLeaseEntryId) {
+      return;
+    }
+    this.releaseArtworkLease();
+    if (entry === undefined) {
+      return;
+    }
+    const lease = playbackRuntime.acquireCachedQueueArtwork(entry.track);
+    if (lease !== undefined) {
+      this.artworkLease = lease;
+      this.artworkLeaseEntryId = entry.queueEntryId;
+    }
+  }
+
+  private releaseArtworkLease(): void {
+    this.artworkLease?.release();
+    this.artworkLease = undefined;
+    this.artworkLeaseEntryId = -1;
+  }
+
   private immersiveFrame(entry: QueueEntry): PlayerFrame {
-    const rootFrame = this.controller.fullPlayerFrame();
+    const rootFrame: PlayerFrame = {
+      x: 0,
+      y: 0,
+      width: this.fullPlayerWidth,
+      height: this.fullPlayerHeight
+    };
     const full = FullPlayerArtworkStagePolicy.immersiveFrame(
       rootFrame,
       this.topInset,
@@ -88,29 +173,26 @@ struct FullPlayerArtworkPage {
   }
 
   private normalViewportFrame(): PlayerFrame {
-    const outerOffset = this.controller.fullPlayerArtworkTarget().x -
-      this.controller.centeredArtworkTarget.x;
     return {
-      x: this.controller.artworkViewportTarget.x + outerOffset,
-      y: this.controller.artworkViewportTarget.y,
-      width: this.controller.artworkViewportTarget.width,
-      height: this.controller.artworkViewportTarget.height
+      x: this.normalViewportX,
+      y: this.normalViewportY,
+      width: this.normalViewportWidth,
+      height: this.normalViewportHeight
     };
   }
 
   private immersiveViewportFrame(): PlayerFrame {
-    const root = this.controller.fullPlayerFrame();
     const full: PlayerFrame = {
-      x: root.x,
-      y: root.y + this.topInset,
-      width: root.width,
-      height: Math.max(1, root.height - this.topInset - this.bottomInset)
+      x: 0,
+      y: this.topInset,
+      width: this.fullPlayerWidth,
+      height: Math.max(1, this.fullPlayerHeight - this.topInset - this.bottomInset)
     };
     const split: PlayerFrame = {
-      x: root.x,
-      y: root.y + this.topInset,
-      width: root.width / 2,
-      height: Math.max(1, root.height - this.topInset - this.bottomInset)
+      x: 0,
+      y: this.topInset,
+      width: this.fullPlayerWidth / 2,
+      height: Math.max(1, this.fullPlayerHeight - this.topInset - this.bottomInset)
     };
     return FullPlayerArtworkStagePolicy.interpolateFrame(
       full, split, this.immersiveSplitMotion.progress
@@ -121,7 +203,7 @@ struct FullPlayerArtworkPage {
     const viewport = FullPlayerArtworkStagePolicy.interpolateFrame(
       this.normalViewportFrame(),
       this.immersiveViewportFrame(),
-      this.controller.effectiveFullPlayerImmersiveProgress()
+      this.immersiveVisual.progress
     );
     return FullPlayerArtworkStagePolicy.shadowSafePagerFrame(
       viewport,
@@ -139,7 +221,7 @@ struct FullPlayerArtworkPage {
     const target = FullPlayerArtworkStagePolicy.interpolateFrame(
       normal,
       this.immersiveFrame(entry),
-      this.controller.effectiveFullPlayerImmersiveProgress()
+      this.immersiveVisual.progress
     );
     return {
       x: target.x - this.pagerClipFrame().x,
@@ -165,7 +247,7 @@ struct FullPlayerArtworkPage {
       fullPlayerArtworkTarget: this.artworkFrame(entry),
       sourceWidth: entry.track.artworkWidth,
       sourceHeight: entry.track.artworkHeight,
-      artworkSourceRevision: entry.queueEntryId,
+      artworkSourceRevision: this.artworkSourceRevision(entry),
       sourceProvider: (): image.PixelMap | ResourceStr => this.artworkSource(entry),
       artworkActorGeneration: generation,
       onArtworkReady: (actorGeneration: number): void =>
@@ -205,9 +287,17 @@ export struct FullPlayerArtworkPager {
   @ObjectLink playerStore: PlayerStore;
   @ObjectLink coordinator: FullPlayerArtworkPagerCoordinator;
   @ObjectLink playbackVisual: PlayerArtworkVisualBinding;
-  @ObjectLink controller: PlayerMorphController;
+  @ObjectLink immersiveVisual: PlayerArtworkImmersiveVisualBinding;
+  @ObjectLink currentArtworkSource: PlayerArtworkSourceBinding;
   @ObjectLink @Watch('onSplitMotionChanged') immersiveSplitMotion: FullPlayerImmersiveSplitMotion;
-  @Prop playerMorphPhase: PlayerMorphPhase = PlayerMorphPhase.IDLE;
+  @Prop fullPlayerWidth: number = 0;
+  @Prop fullPlayerHeight: number = 0;
+  @Prop normalViewportX: number = 0;
+  @Prop normalViewportY: number = 0;
+  @Prop normalViewportWidth: number = 0;
+  @Prop normalViewportHeight: number = 0;
+  @Prop @Watch('onPlayerMorphPhaseChanged') playerMorphPhase: PlayerMorphPhase =
+    PlayerMorphPhase.IDLE;
   @Prop @Watch('onImmersivePhaseChanged') immersivePhase: FullPlayerImmersivePhase =
     FullPlayerImmersivePhase.NORMAL;
   @Prop topInset: number = 0;
@@ -220,9 +310,12 @@ export struct FullPlayerArtworkPager {
     new FullPlayerArtworkSlotDataSource();
   private mounted: boolean = false;
   private reanchorEpoch: number = 0;
+  private adjacentPreloadEpoch: number = 0;
   private measuredWidth: number = 0;
   private measuredHeight: number = 0;
   private splitMotionActive: boolean = false;
+  private visualScrolling: boolean = false;
+  @State adjacentPreloadEnabled: boolean = false;
   private readonly gestureSequence: FullPlayerArtworkGestureSequence =
     new FullPlayerArtworkGestureSequence();
   private readonly projectionListener: QueueProjectionListener = (): void =>
@@ -230,6 +323,8 @@ export struct FullPlayerArtworkPager {
   private readonly queueIndexListener: QueueIndexListener = (index: number): void =>
     this.handleQueueIndexChanged(index);
   onResolveArtwork: (relativePath: string) => string = (_relativePath: string): string => '';
+  currentArtworkSourceProvider: () => image.PixelMap | ResourceStr =
+    (): ResourceStr => $r('app.media.bundled_artwork_default_full');
   onToggleImmersive: () => void = (): void => {};
   onInsertNext: () => void = (): void => {};
   onAppendToQueue: () => void = (): void => {};
@@ -238,6 +333,7 @@ export struct FullPlayerArtworkPager {
   onShareTrackFile: () => void = (): void => {};
   onCompletedCollectionChange: (enabled: boolean) => void =
     (_enabled: boolean): void => {};
+  onScrollingChange: (active: boolean) => void = (_active: boolean): void => {};
 
   aboutToAppear(): void {
     this.mounted = true;
@@ -247,13 +343,17 @@ export struct FullPlayerArtworkPager {
     this.coordinator.initialize(entries, currentIndex);
     this.pagerIndex = this.coordinator.initialIndex(entries, currentIndex);
     this.splitMotionActive = this.immersiveSplitMotion.isActive();
+    this.adjacentPreloadEnabled = false;
     this.playerStore.queueDataSource.addProjectionListener(this.projectionListener);
     this.playerStore.addQueueIndexListener(this.queueIndexListener);
   }
 
   aboutToDisappear(): void {
+    this.setVisualScrolling(false);
     this.mounted = false;
     this.reanchorEpoch += 1;
+    this.adjacentPreloadEpoch += 1;
+    this.adjacentPreloadEnabled = false;
     this.playerStore.queueDataSource.removeProjectionListener(this.projectionListener);
     this.playerStore.removeQueueIndexListener(this.queueIndexListener);
     this.coordinator.dispose();
@@ -267,6 +367,7 @@ export struct FullPlayerArtworkPager {
     if (!this.mounted) {
       return;
     }
+    this.disableAdjacentPreload();
     const command = this.coordinator.onProjectionChanged(
       this.entries(),
       this.playerStore.queueDataSource.projectionState.activeIndex()
@@ -293,10 +394,13 @@ export struct FullPlayerArtworkPager {
     if (command.scrollMode === FullPlayerArtworkPagerScrollMode.NONE) {
       this.pagerIndex = command.index;
       this.swiperController.changeIndex(command.index, SwiperAnimationMode.NO_ANIMATION);
-      this.coordinator.onReanchorApplied(
+      const revealed = this.coordinator.onReanchorApplied(
         command.queueEntryId,
         this.coordinator.readyGeneration
       );
+      if (revealed) {
+        this.scheduleAdjacentPreload();
+      }
     } else if (command.scrollMode === FullPlayerArtworkPagerScrollMode.FAST) {
       this.pagerIndex = command.index;
       this.swiperController.changeIndex(command.index, SwiperAnimationMode.FAST_ANIMATION);
@@ -326,16 +430,21 @@ export struct FullPlayerArtworkPager {
   }
 
   private handleAnimationStart(targetIndex: number): void {
-    this.pagerIndex = targetIndex;
+    // Keep the bound index at the last settled page while native Swiper owns
+    // the release animation. Publishing the target here turns the rerender
+    // caused by coordinator state into an immediate external index change.
     this.coordinator.onAnimationStart(this.entries(), targetIndex);
+    this.setVisualScrolling(true);
   }
 
   private handleAnimationEnd(index: number): void {
-    if (this.coordinator.acceptsAnimationEnd(this.entries(), index)) {
+    const accepted = this.coordinator.acceptsAnimationEnd(this.entries(), index);
+    if (accepted) {
       this.pagerIndex = index;
     }
     this.execute(this.coordinator.onAnimationEnd(this.entries(), index, this.looping()));
     this.gestureSequence.onAnimationEnd();
+    this.setVisualScrolling(false);
   }
 
   private handleUserGesture(): void {
@@ -343,6 +452,15 @@ export struct FullPlayerArtworkPager {
       return;
     }
     this.coordinator.onUserGesture();
+    this.setVisualScrolling(true);
+  }
+
+  private setVisualScrolling(active: boolean): void {
+    if (this.visualScrolling === active) {
+      return;
+    }
+    this.visualScrolling = active;
+    this.onScrollingChange(active);
   }
 
   private handleTouch(event: TouchEvent): void {
@@ -358,7 +476,50 @@ export struct FullPlayerArtworkPager {
   }
 
   private handleArtworkReady(queueEntryId: number, generation: number): void {
-    this.coordinator.onPageReady(queueEntryId, generation);
+    const revealed = this.coordinator.onPageReady(queueEntryId, generation);
+    if (revealed) {
+      this.scheduleAdjacentPreload();
+    }
+  }
+
+  private onPlayerMorphPhaseChanged(): void {
+    if (this.playerMorphPhase !== PlayerMorphPhase.OPEN) {
+      this.disableAdjacentPreload();
+      return;
+    }
+    this.scheduleAdjacentPreload();
+  }
+
+  private disableAdjacentPreload(): void {
+    this.adjacentPreloadEpoch += 1;
+    if (this.adjacentPreloadEnabled) {
+      this.adjacentPreloadEnabled = false;
+    }
+  }
+
+  private scheduleAdjacentPreload(): void {
+    if (!this.mounted || this.adjacentPreloadEnabled ||
+      !FullPlayerArtworkStagePolicy.shouldPreloadAdjacentArtwork(
+        this.playerMorphPhase,
+        this.coordinator.pagerVisible
+      )) {
+      return;
+    }
+    const epoch = ++this.adjacentPreloadEpoch;
+    const callback: FrameCallback = {
+      onFrame: (_frameTimeInNano: number): void => {
+        if (!this.mounted || epoch !== this.adjacentPreloadEpoch ||
+          !FullPlayerArtworkStagePolicy.shouldPreloadAdjacentArtwork(
+            this.playerMorphPhase,
+            this.coordinator.pagerVisible
+          )) {
+          return;
+        }
+        this.adjacentPreloadEnabled = true;
+      },
+      onIdle: (_timeLeftInNano: number): void => {}
+    };
+    this.getUIContext().postFrameCallback(callback);
   }
 
   private pagingDisabled(): boolean {
@@ -419,11 +580,19 @@ export struct FullPlayerArtworkPager {
           slot: slot,
           projection: this.playerStore.queueDataSource.projectionState,
           playbackVisual: this.playbackVisual,
-          controller: this.controller,
+          immersiveVisual: this.immersiveVisual,
+          currentArtworkSource: this.currentArtworkSource,
           immersiveSplitMotion: this.immersiveSplitMotion,
+          fullPlayerWidth: this.fullPlayerWidth,
+          fullPlayerHeight: this.fullPlayerHeight,
+          normalViewportX: this.normalViewportX,
+          normalViewportY: this.normalViewportY,
+          normalViewportWidth: this.normalViewportWidth,
+          normalViewportHeight: this.normalViewportHeight,
           coordinator: this.coordinator,
           topInset: this.topInset,
           bottomInset: this.bottomInset,
+          currentArtworkSourceProvider: this.currentArtworkSourceProvider,
           onResolveArtwork: this.onResolveArtwork,
           onArtworkReady: (queueEntryId: number, generation: number): void =>
             this.handleArtworkReady(queueEntryId, generation),
@@ -443,7 +612,8 @@ export struct FullPlayerArtworkPager {
     .index(this.pagerIndex)
     .indicator(false)
     .loop(this.looping())
-    .cachedCount(1, true)
+    .itemSpace(PlayerLayoutSpec.FULL_PLAYER_ARTWORK_PAGE_GAP)
+    .cachedCount(this.adjacentPreloadEnabled ? 1 : 0, this.adjacentPreloadEnabled)
     .disableSwipe(this.pagingDisabled())
     .responseRegion({
       x: this.artworkResponseFrame.x,

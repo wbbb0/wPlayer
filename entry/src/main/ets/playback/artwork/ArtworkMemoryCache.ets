@@ -18,6 +18,25 @@ export interface DecodedFullArtwork {
   byteSize: number;
 }
 
+export class ArtworkPixelMapLease {
+  readonly pixelMap: image.PixelMap;
+  private releaseAction?: () => void;
+
+  constructor(pixelMap: image.PixelMap, releaseAction: () => void) {
+    this.pixelMap = pixelMap;
+    this.releaseAction = releaseAction;
+  }
+
+  release(): void {
+    const action = this.releaseAction;
+    if (action === undefined) {
+      return;
+    }
+    this.releaseAction = undefined;
+    action();
+  }
+}
+
 enum ArtworkSizeVariant {
   SMALL = 0,
   LARGE = 1
@@ -54,6 +73,15 @@ export class ArtworkMemoryCache {
 
   getLarge(track: QueueTrack): image.PixelMap | undefined {
     return this.getVariant(track, ArtworkSizeVariant.LARGE);
+  }
+
+  acquireCachedLarge(track: QueueTrack): ArtworkPixelMapLease | undefined {
+    const pixelMap = this.getLarge(track);
+    if (pixelMap === undefined) {
+      return undefined;
+    }
+    this.leases.acquire(pixelMap);
+    return new ArtworkPixelMapLease(pixelMap, (): void => this.leases.release(pixelMap));
   }
 
   loadLarge(track: QueueTrack): Promise<image.PixelMap | undefined> {

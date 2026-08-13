@@ -181,7 +181,10 @@ suppressing another.
   封面连续互相切换。
 - 播放页封面分页裁剪在当前封面 viewport 内；双栏横滑期间，左右边缘使用与页面水平内边距等宽的
   alpha 渐变遮罩并透出其下的动态背景，邻页封面不得覆盖队列或歌词。分页裁剪为封面阴影保留纵向
-  绘制空间；横滑命中区保持在封面本体，不通过改变封面的上下内外边距来调整手势范围。
+  绘制空间；横滑命中区保持在封面本体，不通过改变封面的上下内外边距来调整手势范围。边缘遮罩只在
+  封面分页实际移动时启用，由 Swiper 的手势/动画生命周期显式控制；稳定态和播放页外层翻页不
+  保留整块封面区域的离屏合成。相邻封面页之间保留独立间距，宽封面和阴影不得在当前滚动窗口边缘
+  露出。
 - 沉浸进入、退出和封面分页均可由新输入从当前呈现位置接管。沉浸期间禁用下拉关闭。单栏允许从
   封面页向右移动到歌词页，但不允许向左进入队列；封面内横滑仍优先切歌。返回键在歌词页先回到
   沉浸封面，再退出沉浸，之后才关闭播放器。
@@ -218,8 +221,17 @@ suppressing another.
   inset as scroll-content end spacing so the final item remains reachable above system UI.
 - Freeze source and destination geometry when a transition begins.
 - Use one artwork actor for the mini/full shared-element morph. Stable full-player queue pages are separate from
-  that morph actor and hand off only after the selected page is ready. When closing from a stable player, keep the
-  selected pager page behind the closing actor until that actor's image is ready, then remove the pager in one frame.
+  that morph actor. Keep only this actor mounted and transparent while the player is idle so the current artwork is
+  prepared before opening; do not keep full-player content, the artwork pager or its gesture layer alive. Stable
+  pages hand off only after the selected page is ready. When closing from a stable player, keep the selected pager
+  page behind the closing actor until that actor's image is ready, then remove the pager in one frame.
+- During opening, prepare only the selected artwork page required for the actor handoff. Enable adjacent artwork
+  caching on the first stable frame after the pager is visible. Keep outer player-page motion as one pager-container
+  transform; do not relay out every cached artwork page for each drag frame. Keep immersive geometry reactive through
+  a narrow shared visual binding so cached pages retain the enter, exit and lyric-split size transitions. The current
+  page follows the progressively upgraded full hero artwork; neighboring pages use cached large thumbnails until
+  selected. Selecting a page must retain its actor revision when the current hero source is the same PixelMap or URI
+  it already displays; only a materially different full-artwork source may replace that surface.
 - Drive position, scale, corner radius and shadow from one progress value.
 - Keep the final full-player canvas at final layout size.
 - Animate the clipping shell rather than relaying out the full content tree every frame.

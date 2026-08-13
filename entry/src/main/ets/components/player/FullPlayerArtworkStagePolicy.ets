@@ -103,6 +103,32 @@ export class FullPlayerArtworkStagePolicy {
     return closeHandoffActive && !closeActorReady;
   }
 
+  static morphActorOpacity(phase: PlayerMorphPhase, stablePagerVisible: boolean,
+    elementOpacity: number): number {
+    if (phase === PlayerMorphPhase.IDLE || stablePagerVisible) {
+      return 0;
+    }
+    return Math.max(0, Math.min(1, elementOpacity));
+  }
+
+  static shouldMountPager(phase: PlayerMorphPhase): boolean {
+    return phase !== PlayerMorphPhase.IDLE;
+  }
+
+  static shouldEnableMorphActorInteraction(phase: PlayerMorphPhase,
+    stablePagerVisible: boolean): boolean {
+    return phase !== PlayerMorphPhase.IDLE && !stablePagerVisible;
+  }
+
+  static shouldPreloadAdjacentArtwork(phase: PlayerMorphPhase,
+    pagerVisible: boolean): boolean {
+    return phase === PlayerMorphPhase.OPEN && pagerVisible;
+  }
+
+  static shouldApplyPagerEdgeMasks(pagerMotionActive: boolean): boolean {
+    return pagerMotionActive;
+  }
+
   static shadowSafePagerFrame(viewportFrame: PlayerFrame, shadowRadius: number,
     shadowOffsetY: number): PlayerFrame {
     const radius = Math.max(0, shadowRadius);

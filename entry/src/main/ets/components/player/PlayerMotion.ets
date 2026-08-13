@@ -476,6 +476,7 @@ export class PlayerLayoutSpec {
     PlayerLayoutSpec.FULL_PLAYER_NON_ARTWORK_BASE_HEIGHT +
       PlayerLayoutSpec.FULL_PLAYBACK_BUTTON_SIZE;
   static readonly FULL_PLAYER_PAGE_HORIZONTAL_INSET: number = 20;
+  static readonly FULL_PLAYER_ARTWORK_PAGE_GAP: number = 24;
   static readonly FULL_PLAYER_LYRICS_HORIZONTAL_INSET: number = 28;
   static readonly FULL_PLAYER_LYRIC_HORIZONTAL_PADDING: number = 12;
   static readonly FULL_PLAYER_LYRICS_CONTAINER_HORIZONTAL_INSET: number =

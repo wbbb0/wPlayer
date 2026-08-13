@@ -4,7 +4,11 @@ import { ArtworkCache } from '../../library/artwork/ArtworkCache';
 import { BundledArtworkCatalog } from '../../library/artwork/BundledArtworkCatalog';
 import { MusicRepository } from '../../library/data/MusicRepository';
 import { MetadataReader } from '../../library/metadata/MetadataReader';
-import { ArtworkMemoryCache, DecodedFullArtwork } from '../artwork/ArtworkMemoryCache';
+import {
+  ArtworkMemoryCache,
+  ArtworkPixelMapLease,
+  DecodedFullArtwork
+} from '../artwork/ArtworkMemoryCache';
 import { PlaybackTrack, QueueTrack } from '../model/PlaybackModels';
 import { RequestEpoch } from '../support/RequestEpoch';
 import { ArtworkPrefetchCoordinator } from './ArtworkPrefetchCoordinator';
@@ -71,6 +75,10 @@ export class PlaybackMediaCoordinator {
 
   cachedLarge(track: QueueTrack): image.PixelMap | undefined {
     return this.artworkCache?.getLarge(track);
+  }
+
+  acquireCachedLarge(track: QueueTrack): ArtworkPixelMapLease | undefined {
+    return this.artworkCache?.acquireCachedLarge(track);
   }
 
   hasFullArtwork(): boolean {

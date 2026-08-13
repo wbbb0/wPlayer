@@ -92,7 +92,15 @@ internals. Do not perform a repository-wide dependency-injection rewrite solely 
   programmatic-scroll, hidden reanchor and readiness generations. It resolves every callback through queue-entry
   identity and issues playback selection as user intent; it does not own queue or playback state. The artwork pager
   owns a count-only position-slot data source so current-row `CHANGE` notifications cannot rebuild artwork pages;
-  each slot still resolves its queue entry through PlayerStore's authoritative projection.
+  each slot still resolves its queue entry through PlayerStore's authoritative projection. Mounted artwork pages
+  lease already-decoded large PixelMaps from PlaybackMediaCoordinator's cache and release those leases with their
+  slot lifecycle; a cache miss may fall back to the persisted artwork URI. Cached pages subscribe to narrow artwork
+  playback, immersive and current-source visual bindings rather than the complete PlayerMorphController. Only pages
+  sharing the current artwork identity consume the progressively upgraded hero source; adjacent pages retain the
+  cached large-thumbnail source.
+- The root player overlay remains mounted only to keep its transparent morph artwork actor prepared while idle.
+  Full-player content, artwork paging and full-screen hit testing remain phase-bound and are not retained by that
+  preparation lifecycle.
 - PlaybackQueue owns stable base-entry identity, the active playback permutation, shuffle and exact-entry cursor
   invariants. The UI projects playback order while persistence records both base and playback positions. Insert,
   append and removal operations update both orders without collapsing shuffled order into the natural base order.

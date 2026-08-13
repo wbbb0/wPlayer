@@ -53,6 +53,7 @@ import {
   FullPlayerImmersiveLayoutPolicy,
   FullPlayerImmersivePhase
 } from './FullPlayerArtworkStagePolicy';
+import { PlayerArtworkImmersiveVisualBinding } from './PlayerArtworkPlaybackVisualState';
 
 const PLAYER_SYSTEM_BAR_OWNER = 'full_player';
 
@@ -66,6 +67,8 @@ export class PlayerMorphController {
   readonly miniPlayerBinding: MiniPlayerBinding = new MiniPlayerBinding();
   readonly dynamicBackgroundBinding: PlayerDynamicBackgroundBinding =
     new PlayerDynamicBackgroundBinding();
+  readonly fullPlayerArtworkImmersiveVisual: PlayerArtworkImmersiveVisualBinding =
+    new PlayerArtworkImmersiveVisualBinding();
   playerExpandProgress: number = 0;
   playerGestureAxis: PlayerGestureAxis = PlayerGestureAxis.UNDECIDED;
   swipeHapticTriggered: boolean = false;
@@ -82,6 +85,7 @@ export class PlayerMorphController {
   frozenMorphArtworkPreferPixelMap: boolean = false;
   frozenMorphArtworkWidth: number = 0;
   frozenMorphArtworkHeight: number = 0;
+  frozenMorphArtworkRevision: number = 0;
   morphArtworkSourceFrozen: boolean = false;
   rootFrame: PlayerFrame = { x: 0, y: 0, width: 0, height: 0 };
   frozenMiniPlayerFrame: PlayerFrame = {
@@ -297,7 +301,7 @@ export class PlayerMorphController {
     this.context().animateToImmediately({
       duration: 0
     }, () => {
-      this.fullPlayerPagePosition = rememberedPosition;
+      this.setFullPlayerPagePosition(rememberedPosition);
       this.fullPlayerPage = FullPlayerPagerSpec.nearestPage(
         rememberedPosition,
         nextPaneCount
@@ -447,6 +451,7 @@ export class PlayerMorphController {
     this.frozenMorphArtworkPreferPixelMap = this.playerStore.heroArtworkPreferPixelMap;
     this.frozenMorphArtworkWidth = this.playerStore.currentTrack?.artworkWidth ?? 0;
     this.frozenMorphArtworkHeight = this.playerStore.currentTrack?.artworkHeight ?? 0;
+    this.frozenMorphArtworkRevision = this.playerStore.heroArtworkRevision;
     this.morphArtworkSourceFrozen = true;
   }
 
@@ -457,6 +462,7 @@ export class PlayerMorphController {
     this.frozenMorphArtworkPreferPixelMap = false;
     this.frozenMorphArtworkWidth = 0;
     this.frozenMorphArtworkHeight = 0;
+    this.frozenMorphArtworkRevision = 0;
   }
 
   morphArtworkSource(): image.PixelMap | ResourceStr {
@@ -493,6 +499,11 @@ export class PlayerMorphController {
   morphArtworkSourceHeight(): number {
     return this.morphArtworkSourceFrozen ? this.frozenMorphArtworkHeight :
       (this.playerStore.currentTrack?.artworkHeight ?? 0);
+  }
+
+  morphArtworkSourceRevision(): number {
+    return this.morphArtworkSourceFrozen ? this.frozenMorphArtworkRevision :
+      this.playerStore.heroArtworkRevision;
   }
 
   morphValue(start: number, end: number): number {
@@ -644,7 +655,22 @@ export class PlayerMorphController {
     this.fullPlayerImmersiveMotion.complete(0);
     this.fullPlayerImmersiveSplitMotion.complete(0);
     this.fullPlayerImmersivePhase = FullPlayerImmersivePhase.NORMAL;
-    this.fullPlayerImmersiveProgress = 0;
+    this.setFullPlayerImmersiveProgress(0);
+  }
+
+  private syncFullPlayerArtworkImmersiveVisual(): void {
+    this.fullPlayerArtworkImmersiveVisual.progress =
+      this.effectiveFullPlayerImmersiveProgress();
+  }
+
+  private setFullPlayerImmersiveProgress(progress: number): void {
+    this.fullPlayerImmersiveProgress = progress;
+    this.syncFullPlayerArtworkImmersiveVisual();
+  }
+
+  private setFullPlayerPagePosition(position: number): void {
+    this.fullPlayerPagePosition = position;
+    this.syncFullPlayerArtworkImmersiveVisual();
   }
 
   private takeOverFullPlayerImmersivePresentation(): void {
@@ -656,7 +682,7 @@ export class PlayerMorphController {
     this.fullPlayerImmersiveEpoch += 1;
     this.fullPlayerImmersiveMotion.cancel();
     this.context().animateToImmediately({ duration: 0 }, () => {
-      this.fullPlayerImmersiveProgress = presentation;
+      this.setFullPlayerImmersiveProgress(presentation);
     });
   }
 
@@ -686,12 +712,12 @@ export class PlayerMorphController {
           return;
         }
         this.fullPlayerImmersiveMotion.complete(normalizedTarget);
-        this.fullPlayerImmersiveProgress = normalizedTarget;
+        this.setFullPlayerImmersiveProgress(normalizedTarget);
         this.fullPlayerImmersivePhase = normalizedTarget === 1 ?
           FullPlayerImmersivePhase.IMMERSIVE : FullPlayerImmersivePhase.NORMAL;
       }
     }, () => {
-      this.fullPlayerImmersiveProgress = normalizedTarget;
+      this.setFullPlayerImmersiveProgress(normalizedTarget);
     });
   }
 
@@ -819,7 +845,7 @@ export class PlayerMorphController {
     this.context().animateToImmediately({
       duration: 0
     }, () => {
-      this.fullPlayerPagePosition = presentationPosition;
+      this.setFullPlayerPagePosition(presentationPosition);
     });
   }
 
@@ -1325,9 +1351,9 @@ export class PlayerMorphController {
     const pageSpan = Math.max(1, this.fullPlayerPageSpan());
     const horizontalOffset = PlayerMotionSpec.distanceFromRecognitionOrigin(event.offsetX);
     const candidate = this.fullPlayerGestureStartPosition - horizontalOffset / pageSpan;
-    this.fullPlayerPagePosition = this.fullPlayerImmersiveProgress > 0 ?
+    this.setFullPlayerPagePosition(this.fullPlayerImmersiveProgress > 0 ?
       Math.max(FullPlayerPage.COVER, Math.min(FullPlayerPage.LYRICS, candidate)) :
-      FullPlayerPagerSpec.clampPosition(candidate, this.fullPlayerPaneCount());
+      FullPlayerPagerSpec.clampPosition(candidate, this.fullPlayerPaneCount()));
     this.fullPlayerPageMotion.setValue(this.fullPlayerPagePosition);
   }
 
@@ -1442,13 +1468,13 @@ export class PlayerMorphController {
           return;
         }
         this.fullPlayerPageMotion.complete(targetPosition);
-        this.fullPlayerPagePosition = targetPosition;
+        this.setFullPlayerPagePosition(targetPosition);
         this.fullPlayerPage = targetPage;
         this.fullPlayerPagerMemory.commitSettled(targetPosition, paneCount);
         this.fullPlayerPagerPhase = FullPlayerPagerPhase.SETTLED;
       }
     }, () => {
-      this.fullPlayerPagePosition = targetPosition;
+      this.setFullPlayerPagePosition(targetPosition);
     });
   }
 

@@ -53,6 +53,7 @@ export struct PlayerMorphArtwork {
     (_enabled: boolean): void => {};
   isTrackAvailable: () => boolean = (): boolean => false;
   isCompletedCollectionEnabled: () => boolean = (): boolean => false;
+  @Prop interactionEnabled: boolean = true;
   onTap: () => void = (): void => {};
   onArtworkReady: (actorGeneration: number) => void = (_actorGeneration: number): void => {};
   onArtworkError: (actorGeneration: number) => void = (_actorGeneration: number): void => {};
@@ -173,6 +174,9 @@ export struct PlayerMorphArtwork {
   }
 
   private showContextMenu(event: GestureEvent): void {
+    if (!this.interactionEnabled) {
+      return;
+    }
     const frame = ContextPreviewGeometry.fromGesture(event);
     if (frame.width <= 0 || frame.height <= 0) {
       console.warn('Unable to measure player artwork context preview');
@@ -186,6 +190,9 @@ export struct PlayerMorphArtwork {
   }
 
   private blockOuterHorizontalPager(recognizers: Array<GestureRecognizer>): void {
+    if (!this.interactionEnabled) {
+      return;
+    }
     recognizers.forEach((recognizer: GestureRecognizer): void => {
       if (recognizer.getEventTargetInfo().getId() === FULL_PLAYER_HORIZONTAL_GESTURE_HOST_ID) {
         recognizer.preventBegin();
@@ -194,7 +201,9 @@ export struct PlayerMorphArtwork {
   }
 
   private requestTap(): void {
-    this.onTap();
+    if (this.interactionEnabled) {
+      this.onTap();
+    }
   }
 
   @Builder
@@ -267,11 +276,52 @@ export struct PlayerMorphArtwork {
       })
   }
 
+  @Builder
+  private ArtworkInteractionSurface() {
+    Stack()
+      .width('100%')
+      .height('100%')
+      .accessibilityText('歌曲封面，长按打开更多操作')
+      .onClick((): void => this.requestTap())
+      .bindContextMenu(
+        this.contextMenuShown,
+        this.CurrentTrackMenu(),
+        {
+          placement: Placement.BottomRight,
+          preview: this.ContextMenuPreview,
+          previewBorderRadius: 0,
+          layoutRegionMargin: ContextPreviewGeometry.layoutRegionMargin(),
+          previewAnimationOptions: {
+            scale: [
+              1,
+              PlayerMotionSpec.artworkContextPreviewAnimationEndScale(
+                this.contextPreviewRestScale
+              )
+            ]
+          },
+          previewScaleMode: PreviewScaleMode.CONSTANT,
+          onDisappear: (): void => {
+            this.contextMenuShown = false;
+          }
+        }
+      )
+      .gesture(
+        LongPressGesture({
+          repeat: false,
+          duration: LibraryContextInteraction.LONG_PRESS_DURATION
+        }).onAction((event: GestureEvent): void => this.showContextMenu(event))
+      )
+      .overlay(this.OuterPagerBlocker(), { align: Alignment.Center })
+  }
+
   build() {
     Stack() {
       ForEach([this.sourceRevision()], (_sourceRevision: number): void => {
         this.ArtworkSurface()
       }, (sourceRevision: number): string => `${sourceRevision}`)
+      if (this.interactionEnabled) {
+        this.ArtworkInteractionSurface()
+      }
     }
     .width(this.artworkWidth())
     .height(this.artworkHeight())
@@ -279,36 +329,6 @@ export struct PlayerMorphArtwork {
     .opacity(this.contextMenuShown ? 0 : this.artworkOpacity())
     .position({ x: 0, y: 0 })
     .translate({ x: this.artworkX(), y: this.artworkY() })
-    .accessibilityText('歌曲封面，长按打开更多操作')
-    .onClick((): void => this.requestTap())
-    .bindContextMenu(
-      this.contextMenuShown,
-      this.CurrentTrackMenu(),
-      {
-        placement: Placement.BottomRight,
-        preview: this.ContextMenuPreview,
-        previewBorderRadius: 0,
-        layoutRegionMargin: ContextPreviewGeometry.layoutRegionMargin(),
-        previewAnimationOptions: {
-          scale: [
-            1,
-            PlayerMotionSpec.artworkContextPreviewAnimationEndScale(
-              this.contextPreviewRestScale
-            )
-          ]
-        },
-        previewScaleMode: PreviewScaleMode.CONSTANT,
-        onDisappear: (): void => {
-          this.contextMenuShown = false;
-        }
-      }
-    )
-    .gesture(
-      LongPressGesture({
-        repeat: false,
-        duration: LibraryContextInteraction.LONG_PRESS_DURATION
-      }).onAction((event: GestureEvent): void => this.showContextMenu(event))
-    )
-    .overlay(this.OuterPagerBlocker(), { align: Alignment.Center })
+    .hitTestBehavior(this.interactionEnabled ? HitTestMode.Default : HitTestMode.Transparent)
   }
 }

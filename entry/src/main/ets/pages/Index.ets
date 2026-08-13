@@ -4,7 +4,6 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { common } from '@kit.AbilityKit';
 import {
   PlayerFrame,
-  PlayerMorphPhase,
   PlayerMotionSpec
 } from '../components/player/PlayerMotion';
 import { LibraryStore } from '../library/store/LibraryStore';
@@ -602,6 +601,7 @@ struct Index {
       topInset: this.statusBarAvoidHeight,
       bottomInset: this.navigationAvoidHeight,
       primaryContentColor: PlayerMotionSpec.FULL_PLAYER_CONTENT_COLOR,
+      morphPhase: this.playerMorphController.playerMorphPhase,
       onRequestAddToPlaylist: (trackIds: Array<number>): void =>
         this.playlistController.requestTrackIdsAddToPlaylist(trackIds),
       onOpenTrackActions: (trackId: number, anchorId: string): void =>
@@ -674,11 +674,9 @@ struct Index {
 
       this.FullPlayerDynamicBackground()
 
-      // Read the observable phase directly so ArkUI reliably removes the
-      // full-screen hit-test layer after the closing handoff completes.
-      if (this.playerMorphController.playerMorphPhase !== PlayerMorphPhase.IDLE) {
-        this.FullPlayerOverlay()
-      }
+      // The transparent artwork actor remains mounted to prewarm the current
+      // cover. The overlay disables its full-screen hit-test layer while idle.
+      this.FullPlayerOverlay()
     }
     .width('100%')
     .height('100%')

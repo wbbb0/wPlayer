@@ -64,6 +64,11 @@ import {
   PlaybackPersistencePort
 } from './coordinator/PlaybackCoordinatorPorts';
 
+export interface PlaybackArtworkLease {
+  readonly pixelMap: image.PixelMap;
+  release(): void;
+}
+
 const QUEUE_BUILD_CHUNK_SIZE = 64;
 
 class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands, LibraryPlaybackBridge,
@@ -659,6 +664,10 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     return this.media.resolveArtworkUri(relativePath);
   }
 
+  acquireCachedQueueArtwork(track: QueueTrack): PlaybackArtworkLease | undefined {
+    return this.media.acquireCachedLarge(track);
+  }
+
   setCompletedCollectionEnabled(enabled: boolean): void {
     if (this.playerStore.completedCollectionEnabled === enabled) {
       return;
@@ -690,6 +699,10 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   private commitHeroArtwork(pixelMap: image.PixelMap): void {
+    if (this.playerStore.heroArtwork === pixelMap &&
+      this.playerStore.heroArtworkPreferPixelMap) {
+      return;
+    }
     this.playerStore.heroArtwork = pixelMap;
     this.playerStore.heroArtworkPreferPixelMap = true;
     this.playerStore.heroArtworkRevision += 1;

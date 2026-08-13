@@ -16,7 +16,8 @@ import {
 } from '../main/ets/components/player/PresentationMotionState';
 import {
   PlayerArtworkPlaybackVisualAction,
-  PlayerArtworkPlaybackVisualState
+  PlayerArtworkPlaybackVisualState,
+  PlayerArtworkSourceBinding
 } from '../main/ets/components/player/PlayerArtworkPlaybackVisualState';
 import { PlayerMorphGeometry } from '../main/ets/components/player/PlayerMorphGeometry';
 import {
@@ -313,6 +314,31 @@ export default function playerMorphPolicyTest() {
       expect(state.updatePhase(PlayerMorphPhase.CLOSING)).assertEqual(
         PlayerArtworkPlaybackVisualAction.NONE
       );
+    });
+
+    it('uses hero artwork only for pages sharing the current artwork identity', 0, () => {
+      const binding = new PlayerArtworkSourceBinding();
+      binding.sync('current-hash', 'artwork/current.webp', 7);
+
+      expect(binding.matches('current-hash', 'artwork/renamed.webp')).assertTrue();
+      expect(binding.matches('other-hash', 'artwork/current.webp')).assertFalse();
+      expect(binding.actorRevision(12, 'current-hash', 'artwork/current.webp'))
+        .assertEqual(15);
+      expect(binding.actorRevision(12, 'current-hash', 'artwork/current.webp', false))
+        .assertEqual(24);
+      expect(binding.actorRevision(12, 'other-hash', 'artwork/other.webp'))
+        .assertEqual(24);
+    });
+
+    it('publishes a new current artwork source only when hero revision advances', 0, () => {
+      const binding = new PlayerArtworkSourceBinding();
+      binding.sync('first-hash', 'artwork/first.webp', 3);
+      binding.sync('second-hash', 'artwork/second.webp', 3);
+      expect(binding.matches('first-hash', 'artwork/first.webp')).assertTrue();
+      expect(binding.matches('second-hash', 'artwork/second.webp')).assertFalse();
+
+      binding.sync('second-hash', 'artwork/second.webp', 4);
+      expect(binding.matches('second-hash', 'artwork/second.webp')).assertTrue();
     });
 
     it('allows a page drag to take over the previous settle', 0, () => {
@@ -637,6 +663,46 @@ export default function playerMorphPolicyTest() {
       expect(FullPlayerArtworkStagePolicy.shouldShowPager(
         PlayerMorphPhase.OPENING, false, false, false
       )).assertFalse();
+    });
+
+    it('keeps only a transparent morph actor resident outside active transitions', 0, () => {
+      expect(FullPlayerArtworkStagePolicy.morphActorOpacity(
+        PlayerMorphPhase.IDLE, false, 1
+      )).assertEqual(0);
+      expect(FullPlayerArtworkStagePolicy.shouldMountPager(
+        PlayerMorphPhase.IDLE
+      )).assertFalse();
+      expect(FullPlayerArtworkStagePolicy.morphActorOpacity(
+        PlayerMorphPhase.OPENING, false, 0.75
+      )).assertEqual(0.75);
+      expect(FullPlayerArtworkStagePolicy.morphActorOpacity(
+        PlayerMorphPhase.OPEN, true, 1
+      )).assertEqual(0);
+      expect(FullPlayerArtworkStagePolicy.shouldMountPager(
+        PlayerMorphPhase.OPEN
+      )).assertTrue();
+      expect(FullPlayerArtworkStagePolicy.shouldEnableMorphActorInteraction(
+        PlayerMorphPhase.IDLE, false
+      )).assertFalse();
+      expect(FullPlayerArtworkStagePolicy.shouldEnableMorphActorInteraction(
+        PlayerMorphPhase.OPEN, true
+      )).assertFalse();
+      expect(FullPlayerArtworkStagePolicy.shouldEnableMorphActorInteraction(
+        PlayerMorphPhase.OPENING, false
+      )).assertTrue();
+      expect(FullPlayerArtworkStagePolicy.shouldPreloadAdjacentArtwork(
+        PlayerMorphPhase.OPENING, true
+      )).assertFalse();
+      expect(FullPlayerArtworkStagePolicy.shouldPreloadAdjacentArtwork(
+        PlayerMorphPhase.OPEN, false
+      )).assertFalse();
+      expect(FullPlayerArtworkStagePolicy.shouldPreloadAdjacentArtwork(
+        PlayerMorphPhase.OPEN, true
+      )).assertTrue();
+      expect(FullPlayerArtworkStagePolicy.shouldApplyPagerEdgeMasks(false)).assertFalse();
+      expect(FullPlayerArtworkStagePolicy.shouldApplyPagerEdgeMasks(true)).assertTrue();
+      expect(PlayerLayoutSpec.FULL_PLAYER_ARTWORK_PAGE_GAP >
+        PlayerLayoutSpec.FULL_PLAYER_PAGE_HORIZONTAL_INSET).assertTrue();
     });
 
     it('reveals only the current artwork page from the active readiness generation', 0, () => {

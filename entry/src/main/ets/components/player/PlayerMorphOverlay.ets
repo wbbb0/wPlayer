@@ -22,6 +22,78 @@ import {
   PlayerMotionSpec
 } from './PlayerMotion';
 
+@Observed
+class FullPlayerHorizontalGestureModifier implements GestureModifier {
+  enabled: boolean = false;
+  private controller?: PlayerMorphController;
+
+  bind(controller: PlayerMorphController): void {
+    this.controller = controller;
+  }
+
+  applyGesture(event: UIGestureEvent): void {
+    event.clearGestures();
+    const controller = this.controller;
+    if (!this.enabled || controller === undefined) {
+      return;
+    }
+    event.addParallelGesture(
+      new PanGestureHandler({
+        direction: PanDirection.Horizontal,
+        distance: PlayerMotionSpec.GESTURE_AXIS_LOCK_DISTANCE
+      })
+        .onActionStart(() => {
+          controller.beginFullPlayerHorizontalGesture();
+        })
+        .onActionUpdate((gestureEvent: GestureEvent) => {
+          controller.updateFullPlayerHorizontalGesture(gestureEvent);
+        })
+        .onActionEnd(() => {
+          controller.finishFullPlayerHorizontalGesture();
+        })
+        .onActionCancel(() => {
+          controller.finishFullPlayerHorizontalGesture();
+        })
+    );
+  }
+}
+
+@Observed
+class FullPlayerVerticalGestureModifier implements GestureModifier {
+  enabled: boolean = false;
+  private controller?: PlayerMorphController;
+
+  bind(controller: PlayerMorphController): void {
+    this.controller = controller;
+  }
+
+  applyGesture(event: UIGestureEvent): void {
+    event.clearGestures();
+    const controller = this.controller;
+    if (!this.enabled || controller === undefined) {
+      return;
+    }
+    event.addParallelGesture(
+      new PanGestureHandler({
+        direction: PanDirection.Vertical,
+        distance: PlayerMotionSpec.GESTURE_AXIS_LOCK_DISTANCE
+      })
+        .onActionStart(() => {
+          controller.beginFullPlayerVerticalGesture();
+        })
+        .onActionUpdate((gestureEvent: GestureEvent) => {
+          controller.updateFullPlayerVerticalGesture(gestureEvent);
+        })
+        .onActionEnd(() => {
+          controller.finishFullPlayerVerticalGesture();
+        })
+        .onActionCancel(() => {
+          controller.finishFullPlayerVerticalGesture();
+        })
+    );
+  }
+}
+
 @Component
 export struct PlayerMorphOverlay {
   @ObjectLink controller: PlayerMorphController;
@@ -31,6 +103,11 @@ export struct PlayerMorphOverlay {
   @Prop topInset: number = 0;
   @Prop bottomInset: number = 0;
   @Prop primaryContentColor: string = '';
+  @Prop @Watch('onMorphPhaseChanged') morphPhase: PlayerMorphPhase = PlayerMorphPhase.IDLE;
+  @State horizontalGestureModifier: FullPlayerHorizontalGestureModifier =
+    new FullPlayerHorizontalGestureModifier();
+  @State verticalGestureModifier: FullPlayerVerticalGestureModifier =
+    new FullPlayerVerticalGestureModifier();
   onRequestAddToPlaylist: (trackIds: Array<number>) => void =
     (_trackIds: Array<number>): void => {};
   onOpenTrackActions: (trackId: number, anchorId: string) => void =
@@ -41,6 +118,30 @@ export struct PlayerMorphOverlay {
     (_target: LibraryNavigationTarget): void => {};
   onShareTrackFile: (trackId: number) => void = (_trackId: number): void => {};
   onOpenPlayerPageSettings: () => void = (): void => {};
+
+  private active(): boolean {
+    return this.morphPhase !== PlayerMorphPhase.IDLE;
+  }
+
+  aboutToAppear(): void {
+    this.horizontalGestureModifier.bind(this.controller);
+    this.verticalGestureModifier.bind(this.controller);
+    this.syncGestureModifiers();
+  }
+
+  private onMorphPhaseChanged(): void {
+    this.syncGestureModifiers();
+  }
+
+  private syncGestureModifiers(): void {
+    const enabled = this.active();
+    if (this.horizontalGestureModifier.enabled !== enabled) {
+      this.horizontalGestureModifier.enabled = enabled;
+    }
+    if (this.verticalGestureModifier.enabled !== enabled) {
+      this.verticalGestureModifier.enabled = enabled;
+    }
+  }
 
   private currentTrackItem(track: QueueTrack): TrackListItem {
     return {
@@ -234,59 +335,36 @@ export struct PlayerMorphOverlay {
   build() {
     Stack() {
       Stack() {
-        this.MorphPlayer()
-
         Stack() {
-          this.MorphArtwork()
-          this.MorphPlaybackButton()
+          if (this.active()) {
+            this.MorphPlayer()
+          }
+
+          Stack() {
+            this.MorphArtwork()
+            if (this.active()) {
+              this.MorphPlaybackButton()
+            }
+          }
+          .width('100%')
+          .height('100%')
+          .hitTestBehavior(HitTestMode.Transparent)
         }
         .width('100%')
         .height('100%')
+        .id(FULL_PLAYER_HORIZONTAL_GESTURE_HOST_ID)
         .hitTestBehavior(HitTestMode.Transparent)
+        .gestureModifier(this.horizontalGestureModifier)
       }
       .width('100%')
       .height('100%')
-      .id(FULL_PLAYER_HORIZONTAL_GESTURE_HOST_ID)
-      .parallelGesture(
-        PanGesture({
-          direction: PanDirection.Horizontal,
-          distance: PlayerMotionSpec.GESTURE_AXIS_LOCK_DISTANCE
-        })
-          .onActionStart(() => {
-            this.controller.beginFullPlayerHorizontalGesture();
-          })
-          .onActionUpdate((event: GestureEvent) => {
-            this.controller.updateFullPlayerHorizontalGesture(event);
-          })
-          .onActionEnd(() => {
-            this.controller.finishFullPlayerHorizontalGesture();
-          })
-          .onActionCancel(() => {
-            this.controller.finishFullPlayerHorizontalGesture();
-          })
-      )
+      .id(FULL_PLAYER_VERTICAL_GESTURE_HOST_ID)
+      .hitTestBehavior(HitTestMode.Transparent)
+      .gestureModifier(this.verticalGestureModifier)
     }
     .width('100%')
     .height('100%')
-    .id(FULL_PLAYER_VERTICAL_GESTURE_HOST_ID)
     .zIndex(2)
-    .parallelGesture(
-      PanGesture({
-        direction: PanDirection.Vertical,
-        distance: PlayerMotionSpec.GESTURE_AXIS_LOCK_DISTANCE
-      })
-        .onActionStart(() => {
-          this.controller.beginFullPlayerVerticalGesture();
-        })
-        .onActionUpdate((event: GestureEvent) => {
-          this.controller.updateFullPlayerVerticalGesture(event);
-        })
-        .onActionEnd(() => {
-          this.controller.finishFullPlayerVerticalGesture();
-        })
-        .onActionCancel(() => {
-          this.controller.finishFullPlayerVerticalGesture();
-        })
-    )
+    .hitTestBehavior(HitTestMode.Transparent)
   }
 }

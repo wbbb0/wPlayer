@@ -3,15 +3,14 @@ import { image } from '@kit.ImageKit';
 import { PlayerStore } from '../../playback/model/PlaybackModels';
 import { PlayerMorphArtwork } from './PlayerMorphArtwork';
 import { FullPlayerArtworkPager } from './FullPlayerArtworkPager';
-import {
-  FullPlayerArtworkPagerCoordinator
-} from './FullPlayerArtworkPagerCoordinator';
+import { FullPlayerArtworkPagerCoordinator } from './FullPlayerArtworkPagerCoordinator';
 import { PlayerMorphController } from './PlayerMorphController';
 import { FullPlayerArtworkStagePolicy } from './FullPlayerArtworkStagePolicy';
 import { FullPlayerImmersiveSplitMotion } from './FullPlayerImmersiveSplitMotion';
 import {
   PlayerArtworkPlaybackVisualAction,
   PlayerArtworkPlaybackVisualState,
+  PlayerArtworkSourceBinding,
   PlayerArtworkVisualBinding
 } from './PlayerArtworkPlaybackVisualState';
 import {
@@ -41,9 +40,11 @@ export struct FullPlayerArtworkStage {
   @State pagerCoordinator: FullPlayerArtworkPagerCoordinator =
     new FullPlayerArtworkPagerCoordinator();
   @State playbackVisual: PlayerArtworkVisualBinding = new PlayerArtworkVisualBinding();
+  @State artworkSource: PlayerArtworkSourceBinding = new PlayerArtworkSourceBinding();
+  @State pagerScrolling: boolean = false;
   @State closeHandoffActive: boolean = false;
   @State closeActorReady: boolean = false;
-  @State closeHandoffGeneration: number = 0;
+  @State actorReadyRevision: number = -1;
   private readonly playbackVisualState: PlayerArtworkPlaybackVisualState =
     new PlayerArtworkPlaybackVisualState();
   private mounted: boolean = false;
@@ -65,6 +66,7 @@ export struct FullPlayerArtworkStage {
     this.previousMorphPhase = this.morphPhase;
     this.playbackVisualState.reset(this.currentPlaybackVisualTarget());
     this.playbackVisual.progress = this.playbackVisualState.value();
+    this.syncArtworkSource();
   }
 
   aboutToDisappear(): void {
@@ -78,6 +80,7 @@ export struct FullPlayerArtworkStage {
   }
 
   private onPlayerStoreChanged(): void {
+    this.syncArtworkSource();
     const target = this.currentPlaybackVisualTarget();
     if (!this.mounted) {
       this.playbackVisualState.reset(target);
@@ -89,17 +92,27 @@ export struct FullPlayerArtworkStage {
     );
   }
 
+  private syncArtworkSource(): void {
+    const track = this.playerStore.currentTrack;
+    this.artworkSource.sync(
+      track?.largeArtworkHash ?? '',
+      track?.largeArtworkPath ?? '',
+      this.playerStore.heroArtworkRevision
+    );
+  }
+
   private onMorphPhaseChanged(): void {
     const previous = this.previousMorphPhase;
     this.previousMorphPhase = this.morphPhase;
+    if (this.morphPhase !== PlayerMorphPhase.OPEN && this.pagerScrolling) {
+      this.pagerScrolling = false;
+    }
     if (previous === PlayerMorphPhase.OPEN && this.morphPhase !== PlayerMorphPhase.OPEN) {
-      this.closeHandoffGeneration += 1;
       this.closeHandoffActive = true;
-      this.closeActorReady = false;
+      this.closeActorReady = this.actorReadyRevision === this.actorSourceRevision();
     } else if ((this.morphPhase === PlayerMorphPhase.OPEN ||
       this.morphPhase === PlayerMorphPhase.IDLE) &&
       (this.closeHandoffActive || this.closeActorReady)) {
-      this.closeHandoffGeneration += 1;
       this.closeHandoffActive = false;
       this.closeActorReady = false;
     }
@@ -145,10 +158,8 @@ export struct FullPlayerArtworkStage {
   }
 
   private normalViewportFrame(): PlayerFrame {
-    const outerOffset = this.controller.fullPlayerArtworkTarget().x -
-      this.controller.centeredArtworkTarget.x;
     return {
-      x: this.controller.artworkViewportTarget.x + outerOffset,
+      x: this.controller.artworkViewportTarget.x,
       y: this.controller.artworkViewportTarget.y,
       width: this.controller.artworkViewportTarget.width,
       height: this.controller.artworkViewportTarget.height
@@ -192,9 +203,28 @@ export struct FullPlayerArtworkStage {
     );
   }
 
+  private pagerPageOffsetX(): number {
+    return this.controller.fullPlayerArtworkTarget().x -
+      this.controller.centeredArtworkTarget.x;
+  }
+
+  private presentedPagerClipFrame(): PlayerFrame {
+    const clip = this.pagerClipFrame();
+    return {
+      x: clip.x + this.pagerPageOffsetX(),
+      y: clip.y,
+      width: clip.width,
+      height: clip.height
+    };
+  }
+
   private actorHostFrame(): PlayerFrame {
     if (this.morphPhase === PlayerMorphPhase.OPEN) {
       return this.pagerClipFrame();
+    }
+    if (this.morphPhase === PlayerMorphPhase.IDLE) {
+      const root = this.controller.rootFrame;
+      return { x: root.x, y: root.y, width: root.width, height: root.height };
     }
     const root = this.controller.fullPlayerFrame();
     return { x: root.x, y: root.y, width: root.width, height: root.height };
@@ -231,7 +261,7 @@ export struct FullPlayerArtworkStage {
         this.playbackVisual.progress
       )
     );
-    return this.frameRelativeTo(target, this.pagerClipFrame());
+    return this.frameRelativeTo(target, this.presentedPagerClipFrame());
   }
 
   private stablePagerVisible(): boolean {
@@ -247,15 +277,37 @@ export struct FullPlayerArtworkStage {
     );
   }
 
-  private morphActorVisible(): boolean {
-    return !this.stablePagerVisible();
+  private morphActorOpacity(): number {
+    return FullPlayerArtworkStagePolicy.morphActorOpacity(
+      this.morphPhase,
+      this.stablePagerVisible(),
+      this.elementOpacity
+    );
   }
 
-  private completeCloseHandoff(generation: number): void {
-    if (!this.closeHandoffActive || generation !== this.closeHandoffGeneration) {
+  private morphActorInteractionEnabled(): boolean {
+    return FullPlayerArtworkStagePolicy.shouldEnableMorphActorInteraction(
+      this.morphPhase,
+      this.stablePagerVisible()
+    );
+  }
+
+  private actorSourceRevision(): number {
+    return this.controller.morphArtworkSourceRevision();
+  }
+
+  private pagerEdgeMasksActive(): boolean {
+    return FullPlayerArtworkStagePolicy.shouldApplyPagerEdgeMasks(this.pagerScrolling);
+  }
+
+  private completeArtworkPreparation(sourceRevision: number): void {
+    if (sourceRevision !== this.actorSourceRevision()) {
       return;
     }
-    this.closeActorReady = true;
+    this.actorReadyRevision = sourceRevision;
+    if (this.closeHandoffActive) {
+      this.closeActorReady = true;
+    }
   }
 
   @Builder
@@ -264,7 +316,7 @@ export struct FullPlayerArtworkStage {
       playbackVisual: this.playbackVisual,
       geometryProgress: this.geometryProgress,
       positionProgress: this.positionProgress,
-      elementOpacity: this.elementOpacity,
+      elementOpacity: this.morphActorOpacity(),
       frozenMiniPlayerFrame: this.frameRelativeTo(
         this.frozenMiniPlayerFrame,
         this.actorHostFrame()
@@ -275,11 +327,12 @@ export struct FullPlayerArtworkStage {
       ),
       sourceWidth: this.controller.morphArtworkSourceWidth(),
       sourceHeight: this.controller.morphArtworkSourceHeight(),
-      artworkSourceRevision: this.playerStore.heroArtworkRevision,
+      artworkSourceRevision: this.actorSourceRevision(),
       sourceProvider: this.sourceProvider,
-      artworkActorGeneration: this.closeHandoffGeneration,
-      onArtworkReady: (generation: number): void => this.completeCloseHandoff(generation),
-      onArtworkError: (_generation: number): void => {},
+      artworkActorGeneration: this.actorSourceRevision(),
+      onArtworkReady: (sourceRevision: number): void =>
+        this.completeArtworkPreparation(sourceRevision),
+      onArtworkError: (_sourceRevision: number): void => {},
       onInsertNext: this.onInsertNext,
       onAppendToQueue: this.onAppendToQueue,
       onAddToPlaylist: this.onAddToPlaylist,
@@ -289,6 +342,7 @@ export struct FullPlayerArtworkStage {
       isTrackAvailable: (): boolean => this.playerStore.currentTrack !== undefined,
       isCompletedCollectionEnabled: (): boolean =>
         this.playerStore.completedCollectionEnabled,
+      interactionEnabled: this.morphActorInteractionEnabled(),
       onTap: this.onToggleImmersive
     })
   }
@@ -326,49 +380,70 @@ export struct FullPlayerArtworkStage {
 
   build() {
     Stack() {
-      if (this.morphActorVisible()) {
-        Stack() {
-          this.MorphActor()
-        }
-        .width(this.actorHostFrame().width)
-        .height(this.actorHostFrame().height)
-        .position({ x: 0, y: 0 })
-        .translate({ x: this.actorHostFrame().x, y: this.actorHostFrame().y })
-        .clip(this.morphPhase === PlayerMorphPhase.OPEN)
-        .zIndex(1)
-      }
-
       Stack() {
-        FullPlayerArtworkPager({
-          playerStore: this.playerStore,
-          coordinator: this.pagerCoordinator,
-          playbackVisual: this.playbackVisual,
-          controller: this.controller,
-          immersiveSplitMotion: this.immersiveSplitMotion,
-          playerMorphPhase: this.morphPhase,
-          immersivePhase: this.controller.fullPlayerImmersivePhase,
-          topInset: this.topInset,
-          bottomInset: this.bottomInset,
-          artworkResponseFrame: this.artworkResponseFrame(),
-          onResolveArtwork: this.onResolveArtwork,
-          onToggleImmersive: this.onToggleImmersive,
-          onInsertNext: this.onInsertNext,
-          onAppendToQueue: this.onAppendToQueue,
-          onAddToPlaylist: this.onAddToPlaylist,
-          onOpenDetails: this.onOpenDetails,
-          onShareTrackFile: this.onShareTrackFile,
-          onCompletedCollectionChange: this.onCompletedCollectionChange
-        })
-        this.PagerAlphaEdgeMasks()
+        this.MorphActor()
       }
-      .width(this.pagerClipFrame().width)
-      .height(this.pagerClipFrame().height)
+      .width(this.actorHostFrame().width)
+      .height(this.actorHostFrame().height)
       .position({ x: 0, y: 0 })
-      .translate({ x: this.pagerClipFrame().x, y: this.pagerClipFrame().y })
-      .clip(true)
-      .visibility(this.pagerVisible() ? Visibility.Visible : Visibility.Hidden)
-      .blendMode(BlendMode.SRC_OVER, BlendApplyType.OFFSCREEN)
-      .zIndex(0)
+      .translate({ x: this.actorHostFrame().x, y: this.actorHostFrame().y })
+      .clip(this.morphPhase === PlayerMorphPhase.OPEN)
+      .hitTestBehavior(this.morphActorInteractionEnabled() ?
+        HitTestMode.Default : HitTestMode.Transparent)
+      .zIndex(1)
+
+      if (FullPlayerArtworkStagePolicy.shouldMountPager(this.morphPhase)) {
+        Stack() {
+          FullPlayerArtworkPager({
+            playerStore: this.playerStore,
+            coordinator: this.pagerCoordinator,
+            playbackVisual: this.playbackVisual,
+            immersiveVisual: this.controller.fullPlayerArtworkImmersiveVisual,
+            currentArtworkSource: this.artworkSource,
+            immersiveSplitMotion: this.immersiveSplitMotion,
+            fullPlayerWidth: this.controller.fullPlayerFrame().width,
+            fullPlayerHeight: this.controller.fullPlayerFrame().height,
+            normalViewportX: this.normalViewportFrame().x,
+            normalViewportY: this.normalViewportFrame().y,
+            normalViewportWidth: this.normalViewportFrame().width,
+            normalViewportHeight: this.normalViewportFrame().height,
+            playerMorphPhase: this.morphPhase,
+            immersivePhase: this.controller.fullPlayerImmersivePhase,
+            topInset: this.topInset,
+            bottomInset: this.bottomInset,
+            artworkResponseFrame: this.artworkResponseFrame(),
+            currentArtworkSourceProvider: this.sourceProvider,
+            onResolveArtwork: this.onResolveArtwork,
+            onToggleImmersive: this.onToggleImmersive,
+            onInsertNext: this.onInsertNext,
+            onAppendToQueue: this.onAppendToQueue,
+            onAddToPlaylist: this.onAddToPlaylist,
+            onOpenDetails: this.onOpenDetails,
+            onShareTrackFile: this.onShareTrackFile,
+            onCompletedCollectionChange: this.onCompletedCollectionChange,
+            onScrollingChange: (active: boolean): void => {
+              this.pagerScrolling = active;
+            }
+          })
+          if (this.pagerEdgeMasksActive()) {
+            this.PagerAlphaEdgeMasks()
+          }
+        }
+        .width(this.pagerClipFrame().width)
+        .height(this.pagerClipFrame().height)
+        .position({ x: 0, y: 0 })
+        .translate({
+          x: this.presentedPagerClipFrame().x,
+          y: this.presentedPagerClipFrame().y
+        })
+        .clip(true)
+        .visibility(this.pagerVisible() ? Visibility.Visible : Visibility.Hidden)
+        .blendMode(
+          BlendMode.SRC_OVER,
+          this.pagerEdgeMasksActive() ? BlendApplyType.OFFSCREEN : BlendApplyType.FAST
+        )
+        .zIndex(0)
+      }
     }
     .width('100%')
     .height('100%')

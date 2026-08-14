@@ -150,8 +150,9 @@ export class FullPlayerArtworkPagerCoordinator {
       this.pendingExternalEntryId = entryId;
       return FullPlayerArtworkPagerCoordinator.none();
     }
-    if (this.phase === FullPlayerArtworkPagerPhase.PROGRAMMATIC &&
-      this.expectedTargetEntryId === entryId) {
+    if (this.phase === FullPlayerArtworkPagerPhase.PROGRAMMATIC) {
+      this.pendingExternalEntryId = this.expectedTargetEntryId === entryId ?
+        undefined : entryId;
       return FullPlayerArtworkPagerCoordinator.none();
     }
     if (this.semanticEntryId === entryId) {
@@ -188,6 +189,11 @@ export class FullPlayerArtworkPagerCoordinator {
 
   allowsUserSwipe(): boolean {
     return this.phase !== FullPlayerArtworkPagerPhase.HIDDEN_REANCHOR;
+  }
+
+  isMotionActive(): boolean {
+    return this.phase === FullPlayerArtworkPagerPhase.USER_SETTLING ||
+      this.phase === FullPlayerArtworkPagerPhase.PROGRAMMATIC;
   }
 
   acceptsAnimationEnd(entries: Array<QueueEntry>, settledIndex: number): boolean {

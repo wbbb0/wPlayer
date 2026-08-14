@@ -1,4 +1,4 @@
-import { FrameCallback } from '@kit.ArkUI';
+import { curves, FrameCallback } from '@kit.ArkUI';
 import { image } from '@kit.ImageKit';
 import {
   PlaybackArtworkLease,
@@ -401,13 +401,11 @@ export struct FullPlayerArtworkPager {
       if (revealed) {
         this.scheduleAdjacentPreload();
       }
-    } else if (command.scrollMode === FullPlayerArtworkPagerScrollMode.FAST) {
-      this.pagerIndex = command.index;
-      this.swiperController.changeIndex(command.index, SwiperAnimationMode.FAST_ANIMATION);
-    } else {
-      this.pagerIndex = command.index;
-      this.swiperController.changeIndex(command.index, SwiperAnimationMode.DEFAULT_ANIMATION);
+      return;
     }
+    const animationMode = command.scrollMode === FullPlayerArtworkPagerScrollMode.FAST ?
+      SwiperAnimationMode.FAST_ANIMATION : SwiperAnimationMode.DEFAULT_ANIMATION;
+    this.swiperController.changeIndex(command.index, animationMode);
   }
 
   private scheduleReanchor(command: FullPlayerArtworkPagerCommand): void {
@@ -442,9 +440,10 @@ export struct FullPlayerArtworkPager {
     if (accepted) {
       this.pagerIndex = index;
     }
-    this.execute(this.coordinator.onAnimationEnd(this.entries(), index, this.looping()));
+    const continuation = this.coordinator.onAnimationEnd(this.entries(), index, this.looping());
     this.gestureSequence.onAnimationEnd();
-    this.setVisualScrolling(false);
+    this.execute(continuation);
+    this.setVisualScrolling(this.coordinator.isMotionActive());
   }
 
   private handleUserGesture(): void {
@@ -613,6 +612,10 @@ export struct FullPlayerArtworkPager {
     .indicator(false)
     .loop(this.looping())
     .itemSpace(PlayerLayoutSpec.FULL_PLAYER_ARTWORK_PAGE_GAP)
+    .curve(curves.springMotion(
+      PlayerMotionSpec.ARTWORK_PAGER_SPRING_RESPONSE,
+      PlayerMotionSpec.ARTWORK_PAGER_SPRING_DAMPING
+    ))
     .cachedCount(this.adjacentPreloadEnabled ? 1 : 0, this.adjacentPreloadEnabled)
     .disableSwipe(this.pagingDisabled())
     .responseRegion({

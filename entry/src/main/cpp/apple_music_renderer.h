@@ -47,10 +47,9 @@ private:
     void DestroyPrograms();
     void UploadPendingArtwork();
     void RestoreCachedArtwork();
-    void UploadFirstArtworkTexture(const std::vector<uint8_t> &artwork,
-        int32_t size, bool swapRedBlue);
+    void PrepareFirstArtwork();
     bool ApplyPendingConfiguration();
-    bool CopyCurrentFrameToPrevious();
+    bool CaptureCurrentFrameToPrevious();
     void DrawFullscreen();
     void RenderScene();
     GLuint RenderBlur(float actualPixelRadius, float bufferScale);
@@ -75,18 +74,19 @@ private:
 
     GLuint sceneProgram_ = 0;
     GLuint blurProgram_ = 0;
+    GLuint snapshotProgram_ = 0;
     GLuint finalProgram_ = 0;
     GLint sceneTextureLocation_ = -1;
-    GLint scenePreviousTextureLocation_ = -1;
     GLint sceneResolutionLocation_ = -1;
     GLint sceneTextureSizeLocation_ = -1;
     GLint sceneTimeLocation_ = -1;
     GLint sceneSwapRedBlueLocation_ = -1;
-    GLint scenePreviousSwapRedBlueLocation_ = -1;
-    GLint sceneArtworkTransitionLocation_ = -1;
     GLint blurInputLocation_ = -1;
     GLint blurTexelLocation_ = -1;
     GLint blurOffsetLocation_ = -1;
+    GLint snapshotInputLocation_ = -1;
+    GLint snapshotPreviousInputLocation_ = -1;
+    GLint snapshotArtworkTransitionLocation_ = -1;
     GLint finalInputLocation_ = -1;
     GLint finalPreviousInputLocation_ = -1;
     GLint finalArtworkTransitionLocation_ = -1;
@@ -94,7 +94,6 @@ private:
     GLint finalOverscanLocation_ = -1;
     GLint finalRevealLocation_ = -1;
     GLuint sourceTexture_ = 0;
-    GLuint previousSourceTexture_ = 0;
     RenderTarget targets_[2];
     RenderTarget previousFrameTarget_;
     GLuint lastBlurredTexture_ = 0;
@@ -116,7 +115,6 @@ private:
     int32_t artworkHeight_ = 1;
     int32_t workTextureSize_ = 256;
     bool swapRedBlue_ = false;
-    bool previousSwapRedBlue_ = false;
     bool hasUploadedArtwork_ = false;
     float artworkTransitionProgress_ = 1.0f;
     double artworkTransitionSeconds_ = 0.0;

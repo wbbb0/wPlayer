@@ -309,6 +309,8 @@ export class PlayerMotionSpec {
   static readonly ARTWORK_CONTEXT_PREVIEW_END_SCALE: number = 1.10;
   static readonly ARTWORK_STATE_SPRING_RESPONSE: number = 0.36;
   static readonly ARTWORK_STATE_SPRING_DAMPING: number = 0.72;
+  static readonly ARTWORK_PAGER_SPRING_RESPONSE: number = 0.42;
+  static readonly ARTWORK_PAGER_SPRING_DAMPING: number = 0.88;
   static readonly LYRIC_FOCUS_DURATION: number = 100;
 
   static interpolatingSpringEasing(response: number, dampingFraction: number): string {

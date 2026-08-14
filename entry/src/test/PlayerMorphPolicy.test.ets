@@ -765,20 +765,83 @@ export default function playerMorphPolicyTest() {
       expect(wrapped.scrollMode).assertEqual(FullPlayerArtworkPagerScrollMode.DEFAULT);
     });
 
-    it('ignores an obsolete programmatic completion after a newer external target', 0, () => {
+    it('serializes programmatic scrolls and continues to the latest external target', 0, () => {
+      const entries = [artworkQueueEntry(101), artworkQueueEntry(102), artworkQueueEntry(103)];
+      const coordinator = new FullPlayerArtworkPagerCoordinator();
+      coordinator.initialize(entries, 0);
+      coordinator.onPageReady(entries[0].queueEntryId, coordinator.readyGeneration);
+      const first = coordinator.onQueueIndexChanged(entries, 1);
+      expect(first.queueEntryId).assertEqual(entries[1].queueEntryId);
+      expect(coordinator.isMotionActive()).assertTrue();
+      const queued = coordinator.onQueueIndexChanged(entries, 2);
+      expect(queued.kind).assertEqual(FullPlayerArtworkPagerCommandKind.NONE);
+      const continuation = coordinator.onAnimationEnd(entries, 1);
+      expect(continuation.kind).assertEqual(FullPlayerArtworkPagerCommandKind.CHANGE_INDEX);
+      expect(continuation.queueEntryId).assertEqual(entries[2].queueEntryId);
+      expect(coordinator.phase).assertEqual(FullPlayerArtworkPagerPhase.PROGRAMMATIC);
+      expect(coordinator.isMotionActive()).assertTrue();
+      expect(coordinator.onAnimationEnd(entries, 2).kind)
+        .assertEqual(FullPlayerArtworkPagerCommandKind.NONE);
+      expect(coordinator.phase).assertEqual(FullPlayerArtworkPagerPhase.IDLE);
+      expect(coordinator.isMotionActive()).assertFalse();
+    });
+
+    it('collapses rapid programmatic changes to the latest target', 0, () => {
+      const entries = [
+        artworkQueueEntry(101), artworkQueueEntry(102),
+        artworkQueueEntry(103), artworkQueueEntry(104)
+      ];
+      const coordinator = new FullPlayerArtworkPagerCoordinator();
+      coordinator.initialize(entries, 0);
+      coordinator.onPageReady(entries[0].queueEntryId, coordinator.readyGeneration);
+      coordinator.onQueueIndexChanged(entries, 1);
+      expect(coordinator.onQueueIndexChanged(entries, 2).kind)
+        .assertEqual(FullPlayerArtworkPagerCommandKind.NONE);
+      expect(coordinator.onQueueIndexChanged(entries, 3).kind)
+        .assertEqual(FullPlayerArtworkPagerCommandKind.NONE);
+      const continuation = coordinator.onAnimationEnd(entries, 1);
+      expect(continuation.queueEntryId).assertEqual(entries[3].queueEntryId);
+      expect(continuation.scrollMode).assertEqual(FullPlayerArtworkPagerScrollMode.FAST);
+    });
+
+    it('clears or reverses a queued target when playback changes again', 0, () => {
       const entries = [artworkQueueEntry(101), artworkQueueEntry(102), artworkQueueEntry(103)];
       const coordinator = new FullPlayerArtworkPagerCoordinator();
       coordinator.initialize(entries, 0);
       coordinator.onPageReady(entries[0].queueEntryId, coordinator.readyGeneration);
       coordinator.onQueueIndexChanged(entries, 1);
-      const latest = coordinator.onQueueIndexChanged(entries, 2);
-      expect(latest.queueEntryId).assertEqual(entries[2].queueEntryId);
+      coordinator.onQueueIndexChanged(entries, 2);
+      coordinator.onQueueIndexChanged(entries, 1);
       expect(coordinator.onAnimationEnd(entries, 1).kind)
         .assertEqual(FullPlayerArtworkPagerCommandKind.NONE);
-      expect(coordinator.phase).assertEqual(FullPlayerArtworkPagerPhase.PROGRAMMATIC);
-      expect(coordinator.onAnimationEnd(entries, 2).kind)
-        .assertEqual(FullPlayerArtworkPagerCommandKind.NONE);
       expect(coordinator.phase).assertEqual(FullPlayerArtworkPagerPhase.IDLE);
+
+      const reverseCoordinator = new FullPlayerArtworkPagerCoordinator();
+      reverseCoordinator.initialize(entries, 0);
+      reverseCoordinator.onPageReady(entries[0].queueEntryId, reverseCoordinator.readyGeneration);
+      reverseCoordinator.onQueueIndexChanged(entries, 1);
+      reverseCoordinator.onQueueIndexChanged(entries, 0);
+      const reverse = reverseCoordinator.onAnimationEnd(entries, 1);
+      expect(reverse.kind).assertEqual(FullPlayerArtworkPagerCommandKind.CHANGE_INDEX);
+      expect(reverse.queueEntryId).assertEqual(entries[0].queueEntryId);
+      expect(reverse.scrollMode).assertEqual(FullPlayerArtworkPagerScrollMode.DEFAULT);
+    });
+
+    it('invalidates a queued programmatic target when the projection changes', 0, () => {
+      const entries = [artworkQueueEntry(101), artworkQueueEntry(102), artworkQueueEntry(103)];
+      const coordinator = new FullPlayerArtworkPagerCoordinator();
+      coordinator.initialize(entries, 0);
+      coordinator.onPageReady(entries[0].queueEntryId, coordinator.readyGeneration);
+      coordinator.onQueueIndexChanged(entries, 1);
+      coordinator.onQueueIndexChanged(entries, 2);
+      const reordered = [entries[2], entries[0], entries[1]];
+      const reanchor = coordinator.onProjectionChanged(reordered, 1);
+      expect(reanchor.kind).assertEqual(FullPlayerArtworkPagerCommandKind.CHANGE_INDEX);
+      expect(reanchor.queueEntryId).assertEqual(entries[0].queueEntryId);
+      expect(reanchor.scrollMode).assertEqual(FullPlayerArtworkPagerScrollMode.NONE);
+      expect(coordinator.onAnimationEnd(reordered, 2).kind)
+        .assertEqual(FullPlayerArtworkPagerCommandKind.NONE);
+      expect(coordinator.phase).assertEqual(FullPlayerArtworkPagerPhase.HIDDEN_REANCHOR);
     });
 
     it('lets a user gesture take over a running programmatic scroll', 0, () => {

@@ -99,13 +99,10 @@ in vec2 v_uv;
 out vec4 fragmentColor;
 
 uniform sampler2D u_texture;
-uniform sampler2D u_previousTexture;
 uniform vec2 u_resolution;
 uniform vec2 u_textureSize;
 uniform float u_time;
 uniform float u_swapRedBlue;
-uniform float u_previousSwapRedBlue;
-uniform float u_artworkTransition;
 
 mat2 rotate2d(float angle) {
     float sine = sin(angle);
@@ -127,20 +124,8 @@ vec3 sampleArtwork(vec2 uv) {
         cropped.y = 0.5 + (mirrored.y - 0.5) * textureAspect;
     }
     cropped.y = 1.0 - cropped.y;
-    if (u_artworkTransition <= 0.001) {
-        vec3 previousColor = texture(u_previousTexture, cropped).rgb;
-        return mix(previousColor, previousColor.bgr, u_previousSwapRedBlue);
-    }
     vec3 currentColor = texture(u_texture, cropped).rgb;
-    currentColor = mix(currentColor, currentColor.bgr, u_swapRedBlue);
-    if (u_artworkTransition >= 0.999) {
-        return currentColor;
-    }
-    vec3 previousColor = texture(u_previousTexture, cropped).rgb;
-    previousColor = mix(previousColor, previousColor.bgr, u_previousSwapRedBlue);
-    float transition = u_artworkTransition * u_artworkTransition *
-        (3.0 - 2.0 * u_artworkTransition);
-    return mix(previousColor, currentColor, transition);
+    return mix(currentColor, currentColor.bgr, u_swapRedBlue);
 }
 
 vec2 twistCoord(vec2 point, float layerFactor) {
@@ -203,6 +188,22 @@ void main() {
     color += texture(u_input, v_uv + vec2(delta.x, -delta.y)).rgb;
     color += texture(u_input, v_uv + vec2(-delta.x, -delta.y)).rgb;
     fragmentColor = vec4(color * 0.25, 1.0);
+}
+)";
+
+const char *SNAPSHOT_FRAGMENT_SHADER = R"(#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 fragmentColor;
+uniform sampler2D u_input;
+uniform sampler2D u_previousInput;
+uniform float u_artworkTransition;
+void main() {
+    vec3 currentColor = texture(u_input, v_uv).rgb;
+    vec3 previousColor = texture(u_previousInput, v_uv).rgb;
+    float transition = clamp(u_artworkTransition, 0.0, 1.0);
+    transition = transition * transition * (3.0 - 2.0 * transition);
+    fragmentColor = vec4(mix(previousColor, currentColor, transition), 1.0);
 }
 )";
 
@@ -557,9 +558,7 @@ void AppleMusicRenderer::UploadPendingArtwork()
     cachedArtworkSize_ = workTextureSize;
     cachedSwapRedBlue_ = swapRedBlue;
     if (hasUploadedArtwork_) {
-        previousFrameValid_ = CopyCurrentFrameToPrevious();
-        std::swap(previousSourceTexture_, sourceTexture_);
-        previousSwapRedBlue_ = swapRedBlue_;
+        previousFrameValid_ = CaptureCurrentFrameToPrevious();
         artworkTransitionSeconds_ = 0.0;
         artworkTransitionProgress_ = previousFrameValid_ ? 0.0f : 1.0f;
         artworkTransitionJustStarted_ = previousFrameValid_;
@@ -572,7 +571,7 @@ void AppleMusicRenderer::UploadPendingArtwork()
     artworkHeight_ = workTextureSize;
     swapRedBlue_ = swapRedBlue;
     if (!hasUploadedArtwork_) {
-        UploadFirstArtworkTexture(workTexture, workTextureSize, swapRedBlue);
+        PrepareFirstArtwork();
     }
     sceneDirty_ = true;
 }
@@ -586,20 +585,14 @@ void AppleMusicRenderer::RestoreCachedArtwork()
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, cachedArtworkSize_, cachedArtworkSize_, 0,
         GL_RGBA, GL_UNSIGNED_BYTE, cachedArtwork_.data());
-    UploadFirstArtworkTexture(cachedArtwork_, cachedArtworkSize_, cachedSwapRedBlue_);
+    artworkWidth_ = cachedArtworkSize_;
+    artworkHeight_ = cachedArtworkSize_;
+    swapRedBlue_ = cachedSwapRedBlue_;
+    PrepareFirstArtwork();
 }
 
-void AppleMusicRenderer::UploadFirstArtworkTexture(const std::vector<uint8_t> &artwork,
-    int32_t size, bool swapRedBlue)
+void AppleMusicRenderer::PrepareFirstArtwork()
 {
-    glBindTexture(GL_TEXTURE_2D, previousSourceTexture_);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, size, size, 0,
-        GL_RGBA, GL_UNSIGNED_BYTE, artwork.data());
-    artworkWidth_ = size;
-    artworkHeight_ = size;
-    swapRedBlue_ = swapRedBlue;
-    previousSwapRedBlue_ = swapRedBlue;
     artworkTransitionProgress_ = 1.0f;
     artworkTransitionSeconds_ = 0.0;
     initialRevealProgress_ = 0.0f;
@@ -782,9 +775,6 @@ void AppleMusicRenderer::RenderScene()
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, sourceTexture_);
     glUniform1i(sceneTextureLocation_, 0);
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, previousSourceTexture_);
-    glUniform1i(scenePreviousTextureLocation_, 1);
     glUniform2f(sceneResolutionLocation_,
         static_cast<float>(bufferWidth_), static_cast<float>(bufferHeight_));
     glUniform2f(sceneTextureSizeLocation_,
@@ -792,12 +782,6 @@ void AppleMusicRenderer::RenderScene()
     glUniform1f(sceneTimeLocation_, static_cast<float>(animationSeconds_));
     glUniform1f(sceneSwapRedBlueLocation_,
         swapRedBlue_ ? 1.0f : 0.0f);
-    glUniform1f(scenePreviousSwapRedBlueLocation_,
-        previousSwapRedBlue_ ? 1.0f : 0.0f);
-    // Artwork crossfades are composed from cached blurred frames in RenderFinal.
-    // Rendering only the current source keeps the nine-pass blur on the
-    // background cadence while the lightweight final blend can run at 60 fps.
-    glUniform1f(sceneArtworkTransitionLocation_, 1.0f);
     DrawFullscreen();
 }
 
@@ -902,23 +886,25 @@ bool AppleMusicRenderer::CreatePrograms()
 {
     sceneProgram_ = LinkProgram(VERTEX_SHADER, SCENE_FRAGMENT_SHADER);
     blurProgram_ = LinkProgram(VERTEX_SHADER, BLUR_FRAGMENT_SHADER);
+    snapshotProgram_ = LinkProgram(VERTEX_SHADER, SNAPSHOT_FRAGMENT_SHADER);
     finalProgram_ = LinkProgram(VERTEX_SHADER, FINAL_FRAGMENT_SHADER);
-    if (sceneProgram_ == 0 || blurProgram_ == 0 || finalProgram_ == 0) {
+    if (sceneProgram_ == 0 || blurProgram_ == 0 || snapshotProgram_ == 0 ||
+        finalProgram_ == 0) {
         return false;
     }
     sceneTextureLocation_ = glGetUniformLocation(sceneProgram_, "u_texture");
-    scenePreviousTextureLocation_ = glGetUniformLocation(sceneProgram_, "u_previousTexture");
     sceneResolutionLocation_ = glGetUniformLocation(sceneProgram_, "u_resolution");
     sceneTextureSizeLocation_ = glGetUniformLocation(sceneProgram_, "u_textureSize");
     sceneTimeLocation_ = glGetUniformLocation(sceneProgram_, "u_time");
     sceneSwapRedBlueLocation_ = glGetUniformLocation(sceneProgram_, "u_swapRedBlue");
-    scenePreviousSwapRedBlueLocation_ =
-        glGetUniformLocation(sceneProgram_, "u_previousSwapRedBlue");
-    sceneArtworkTransitionLocation_ =
-        glGetUniformLocation(sceneProgram_, "u_artworkTransition");
     blurInputLocation_ = glGetUniformLocation(blurProgram_, "u_input");
     blurTexelLocation_ = glGetUniformLocation(blurProgram_, "u_texel");
     blurOffsetLocation_ = glGetUniformLocation(blurProgram_, "u_offset");
+    snapshotInputLocation_ = glGetUniformLocation(snapshotProgram_, "u_input");
+    snapshotPreviousInputLocation_ =
+        glGetUniformLocation(snapshotProgram_, "u_previousInput");
+    snapshotArtworkTransitionLocation_ =
+        glGetUniformLocation(snapshotProgram_, "u_artworkTransition");
     finalInputLocation_ = glGetUniformLocation(finalProgram_, "u_input");
     finalPreviousInputLocation_ =
         glGetUniformLocation(finalProgram_, "u_previousInput");
@@ -933,19 +919,15 @@ bool AppleMusicRenderer::CreatePrograms()
 bool AppleMusicRenderer::CreateSourceTextures()
 {
     const uint8_t fallback[] = { 24, 18, 40, 255 };
-    GLuint textures[2] = {};
-    glGenTextures(2, textures);
-    sourceTexture_ = textures[0];
-    previousSourceTexture_ = textures[1];
-    for (const GLuint texture : textures) {
-        glBindTexture(GL_TEXTURE_2D, texture);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, fallback);
-    }
-    return sourceTexture_ != 0 && previousSourceTexture_ != 0;
+    glGenTextures(1, &sourceTexture_);
+    glBindTexture(GL_TEXTURE_2D, sourceTexture_);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA,
+        GL_UNSIGNED_BYTE, fallback);
+    return sourceTexture_ != 0;
 }
 
 bool AppleMusicRenderer::CreateRenderTarget(RenderTarget &target)
@@ -1009,25 +991,45 @@ void AppleMusicRenderer::DestroyRenderTargets()
     DestroyRenderTarget(previousFrameTarget_);
 }
 
-bool AppleMusicRenderer::CopyCurrentFrameToPrevious()
+bool AppleMusicRenderer::CaptureCurrentFrameToPrevious()
 {
     if (!hasRenderedFrame_ || lastBlurredTexture_ == 0 ||
-        previousFrameTarget_.framebuffer == 0) {
+        previousFrameTarget_.framebuffer == 0 || snapshotProgram_ == 0) {
         return false;
     }
-    GLuint sourceFramebuffer = 0;
-    for (const auto &target : targets_) {
-        if (target.texture == lastBlurredTexture_) {
-            sourceFramebuffer = target.framebuffer;
+    RenderTarget *snapshotTarget = nullptr;
+    for (auto &target : targets_) {
+        if (target.texture != lastBlurredTexture_) {
+            snapshotTarget = &target;
             break;
         }
     }
-    if (sourceFramebuffer == 0) {
+    if (snapshotTarget == nullptr || snapshotTarget->framebuffer == 0) {
         return false;
     }
+
     while (glGetError() != GL_NO_ERROR) {
     }
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, sourceFramebuffer);
+    glDisable(GL_BLEND);
+    glBindFramebuffer(GL_FRAMEBUFFER, snapshotTarget->framebuffer);
+    glViewport(0, 0, bufferWidth_, bufferHeight_);
+    glUseProgram(snapshotProgram_);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, lastBlurredTexture_);
+    glUniform1i(snapshotInputLocation_, 0);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, previousFrameValid_ ?
+        previousFrameTarget_.texture : lastBlurredTexture_);
+    glUniform1i(snapshotPreviousInputLocation_, 1);
+    glUniform1f(snapshotArtworkTransitionLocation_, previousFrameValid_ ?
+        artworkTransitionProgress_ : 1.0f);
+    DrawFullscreen();
+    if (glGetError() != GL_NO_ERROR) {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        return false;
+    }
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, snapshotTarget->framebuffer);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousFrameTarget_.framebuffer);
     glBlitFramebuffer(
         0, 0, bufferWidth_, bufferHeight_,
@@ -1050,18 +1052,19 @@ void AppleMusicRenderer::DestroyPrograms()
 {
     DeleteProgram(sceneProgram_);
     DeleteProgram(blurProgram_);
+    DeleteProgram(snapshotProgram_);
     DeleteProgram(finalProgram_);
     sceneTextureLocation_ = -1;
-    scenePreviousTextureLocation_ = -1;
     sceneResolutionLocation_ = -1;
     sceneTextureSizeLocation_ = -1;
     sceneTimeLocation_ = -1;
     sceneSwapRedBlueLocation_ = -1;
-    scenePreviousSwapRedBlueLocation_ = -1;
-    sceneArtworkTransitionLocation_ = -1;
     blurInputLocation_ = -1;
     blurTexelLocation_ = -1;
     blurOffsetLocation_ = -1;
+    snapshotInputLocation_ = -1;
+    snapshotPreviousInputLocation_ = -1;
+    snapshotArtworkTransitionLocation_ = -1;
     finalInputLocation_ = -1;
     finalPreviousInputLocation_ = -1;
     finalArtworkTransitionLocation_ = -1;
@@ -1077,10 +1080,8 @@ void AppleMusicRenderer::Release()
         eglMakeCurrent(eglDisplay_, eglSurface_, eglSurface_, eglContext_);
         DestroyRenderTargets();
         DestroyPrograms();
-        const GLuint sourceTextures[2] = { sourceTexture_, previousSourceTexture_ };
-        glDeleteTextures(2, sourceTextures);
+        glDeleteTextures(1, &sourceTexture_);
         sourceTexture_ = 0;
-        previousSourceTexture_ = 0;
         eglMakeCurrent(eglDisplay_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
     }
     if (eglDisplay_ != EGL_NO_DISPLAY && eglSurface_ != EGL_NO_SURFACE) {

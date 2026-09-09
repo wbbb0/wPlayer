@@ -10,6 +10,7 @@ import {
   DecodedFullArtwork
 } from '../artwork/ArtworkMemoryCache';
 import { PlaybackTrack, QueueTrack } from '../model/PlaybackModels';
+import { LyricsWindowCache } from '../lyrics/LyricsWindowCache';
 import { RequestEpoch } from '../support/RequestEpoch';
 import { ArtworkPrefetchCoordinator } from './ArtworkPrefetchCoordinator';
 
@@ -24,6 +25,7 @@ export interface PlaybackMediaHost {
 
 export class PlaybackMediaCoordinator {
   private static readonly PREFETCH_DELAY_MS: number = 1500;
+  readonly lyrics: LyricsWindowCache = new LyricsWindowCache();
   private context?: common.UIAbilityContext;
   private artworkCache?: ArtworkMemoryCache;
   private fullArtwork?: DecodedFullArtwork;
@@ -55,6 +57,7 @@ export class PlaybackMediaCoordinator {
   }
 
   reset(): void {
+    this.lyrics.reset();
     this.requestEpoch.invalidate();
     this.invalidatePrefetch();
     this.artworkCache?.releaseAll();
@@ -104,9 +107,10 @@ export class PlaybackMediaCoordinator {
 
   async loadLyrics(track: PlaybackTrack, token: number, host: PlaybackMediaHost): Promise<void> {
     try {
-      const lyrics = await MetadataReader.readLyrics(track.uri, track.fileSize, track.format);
+      const lyrics = await this.lyrics.load(track.id, (): Promise<string> =>
+        MetadataReader.readLyrics(track.uri, track.fileSize, track.format));
       if (host.isTrackRequestCurrent(token)) {
-        host.commitLyrics(track, lyrics);
+        host.commitLyrics(track, lyrics.source);
       }
     } catch (error) {
       if (host.isTrackRequestCurrent(token)) {
@@ -114,6 +118,17 @@ export class PlaybackMediaCoordinator {
       }
       console.warn(`Unable to read embedded lyrics: ${PlaybackMediaCoordinator.messageOf(error)}`);
     }
+  }
+
+  prefetchLyrics(items: Array<QueueTrack>, repository: MusicRepository): void {
+    this.lyrics.setWindow(items.map((track: QueueTrack): number => track.id));
+    this.lyrics.prefetch(async (id: number): Promise<string> => {
+      const track = await repository.getPlaybackTrack(id);
+      if (track === undefined) {
+        throw new Error('Track no longer exists');
+      }
+      return MetadataReader.readLyrics(track.uri, track.fileSize, track.format);
+    });
   }
 
   async loadFullArtwork(track: PlaybackTrack, token: number, host: PlaybackMediaHost): Promise<void> {

@@ -161,18 +161,25 @@ export class FullPlayerArtworkPagerCoordinator {
     return this.beginProgrammatic(entries, entryId, looping);
   }
 
-  onAnimationStart(entries: Array<QueueEntry>, targetIndex: number): void {
+  onAnimationStart(entries: Array<QueueEntry>, targetIndex: number): FullPlayerArtworkPagerCommand {
     if (this.phase === FullPlayerArtworkPagerPhase.PROGRAMMATIC ||
       this.phase === FullPlayerArtworkPagerPhase.HIDDEN_REANCHOR) {
-      return;
+      return FullPlayerArtworkPagerCoordinator.none();
     }
     const target = FullPlayerArtworkPagerCoordinator.entryAt(entries, targetIndex);
     if (target === undefined) {
-      return;
+      return FullPlayerArtworkPagerCoordinator.none();
     }
     this.phase = FullPlayerArtworkPagerPhase.USER_SETTLING;
     this.expectedTargetEntryId = target.queueEntryId;
     this.userSettleArmed = true;
+    if (this.semanticEntryId === target.queueEntryId) {
+      return FullPlayerArtworkPagerCoordinator.none();
+    }
+    this.semanticEntryId = target.queueEntryId;
+    this.pendingExternalEntryId = undefined;
+    this.awaitingAckEntryId = target.queueEntryId;
+    return FullPlayerArtworkPagerCoordinator.selectEntry(target.queueEntryId);
   }
 
   onUserGesture(): void {
@@ -233,24 +240,14 @@ export class FullPlayerArtworkPagerCoordinator {
     if (this.phase !== FullPlayerArtworkPagerPhase.USER_SETTLING) {
       return FullPlayerArtworkPagerCoordinator.none();
     }
-    const changedEntry = this.semanticEntryId !== settledEntryId;
+    const desiredEntryId = this.pendingExternalEntryId ?? this.expectedTargetEntryId;
     this.phase = FullPlayerArtworkPagerPhase.IDLE;
     this.userSettleArmed = false;
     this.expectedTargetEntryId = undefined;
-    if (changedEntry) {
-      this.semanticEntryId = settledEntryId;
-      if (this.pendingExternalEntryId === settledEntryId) {
-        this.pendingExternalEntryId = undefined;
-        return FullPlayerArtworkPagerCoordinator.none();
-      }
-      this.awaitingAckEntryId = settledEntryId;
-      this.pendingExternalEntryId = undefined;
-      return FullPlayerArtworkPagerCoordinator.selectEntry(settledEntryId);
-    }
-    const pending = this.pendingExternalEntryId;
     this.pendingExternalEntryId = undefined;
-    if (pending !== undefined && pending !== settledEntryId) {
-      return this.beginProgrammatic(entries, pending, looping);
+    this.semanticEntryId = settledEntryId;
+    if (desiredEntryId !== undefined && desiredEntryId !== settledEntryId) {
+      return this.beginProgrammatic(entries, desiredEntryId, looping);
     }
     return FullPlayerArtworkPagerCoordinator.none();
   }

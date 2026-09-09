@@ -76,6 +76,8 @@ internals. Do not perform a repository-wide dependency-injection rewrite solely 
   active playback permutation, cursor and shuffle mode so duplicate tracks and natural-order restoration survive
   restart.
 - PlaybackMediaCoordinator owns the single track request epoch and playback-time lyrics/artwork/palette work.
+  Its LyricsWindowCache retains parsed lyrics (including confirmed absence) for the current and adjacent queue
+  tracks and shares in-flight reads. The coordinator guards current-track publication with its request epoch.
 - PlaybackPictureInPictureCoordinator delegates snapshots and lifecycle to the existing
   PlaybackPictureInPicture implementation.
 - PlaybackAudioRecoveryCoordinator owns focus/output recovery intent and consumes each automatic resume once.
@@ -98,6 +100,10 @@ internals. Do not perform a repository-wide dependency-injection rewrite solely 
   playback, immersive and current-source visual bindings rather than the complete PlayerMorphController. Only pages
   sharing the current artwork identity consume the progressively upgraded hero source; adjacent pages retain the
   cached large-thumbnail source.
+- PlayerMorphController owns immersive intent. Its FullPlayerImmersiveIntentCoordinator defers the latest enter or
+  exit target while FullPlayerArtworkStage reports active artwork paging or playback-state visual motion, then
+  starts that target only after both artwork motions are idle. The stage reports presentation activity but does not
+  own immersive state.
 - The root player overlay remains mounted only to keep its transparent morph artwork actor prepared while idle.
   Full-player content, artwork paging and full-screen hit testing remain phase-bound and are not retained by that
   preparation lifecycle.

@@ -76,4 +76,22 @@ export class MiniPlayerTrackPagerPolicy {
     }
     return undefined;
   }
+
+  static rebaseOffset(window: MiniPlayerTrackWindow, activeEntryId: number,
+    offset: number, pageWidth: number): number {
+    if (activeEntryId === window.current?.queueEntryId) {
+      return offset;
+    }
+    // Repeat-all can expose the same entry on both sides of a two-track window.
+    if (offset > 0 && activeEntryId === window.previous?.queueEntryId) {
+      return offset - pageWidth;
+    }
+    if (activeEntryId === window.next?.queueEntryId) {
+      return offset + pageWidth;
+    }
+    if (activeEntryId === window.previous?.queueEntryId) {
+      return offset - pageWidth;
+    }
+    return 0;
+  }
 }

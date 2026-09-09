@@ -716,7 +716,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
 
   private commitLyrics(track: PlaybackTrack, lyrics: string): void {
     this.playerStore.lyrics = lyrics;
-    this.playerStore.setTimedLyrics(LyricsParser.parse(lyrics).lines);
+    this.playerStore.setTimedLyrics(this.media.lyrics.get(track.id)?.lines ?? LyricsParser.parse(lyrics).lines);
     this.playerStore.setLyricsAvailability(lyrics.trim().length > 0 ?
       LyricsAvailability.AVAILABLE : LyricsAvailability.UNAVAILABLE
     );
@@ -908,9 +908,11 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.currentPlaybackTrack = undefined;
     this.lastPositionWriteAt = Date.now();
     this.playerStore.currentTrack = track;
-    this.playerStore.setLyricsAvailability(LyricsAvailability.LOADING);
-    this.playerStore.lyrics = '';
-    this.playerStore.setTimedLyrics([]);
+    const cachedLyrics = this.media.lyrics.get(track.id);
+    this.playerStore.lyrics = cachedLyrics?.source ?? '';
+    this.playerStore.setTimedLyrics(cachedLyrics?.lines ?? []);
+    this.playerStore.setLyricsAvailability(cachedLyrics === undefined ? LyricsAvailability.LOADING :
+      (cachedLyrics.source.trim().length > 0 ? LyricsAvailability.AVAILABLE : LyricsAvailability.UNAVAILABLE));
     this.playerStore.setActiveLyricIndex(-1);
     this.playerStore.progress.positionMs = 0;
     this.playerStore.progress.durationMs = track.durationMs;
@@ -1181,6 +1183,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   private prefetchCurrentWindow(): void {
+    this.prefetchLyricsWindow();
     if (this.playerStore.currentTrack === undefined ||
       this.playerStore.queuePhase !== QueueBuildPhase.READY ||
       this.artworkPrefetchReadyEpoch !== this.media.currentRequest()) {
@@ -1191,7 +1194,23 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.media.schedulePrefetchWindow(window.items, window.currentIndex, radius);
   }
 
+  private prefetchLyricsWindow(): void {
+    if (DemoLibraryMode.isEnabled()) {
+      return;
+    }
+    const window = this.queue.playbackWindow(1, this.playerStore.repeatMode);
+    const current = window.items[window.currentIndex];
+    const ordered: Array<QueueTrack> = current === undefined ? [] : [current];
+    window.items.forEach((track: QueueTrack): void => {
+      if (track.id !== current?.id) {
+        ordered.push(track);
+      }
+    });
+    this.media.prefetchLyrics(ordered, this.repository);
+  }
+
   private syncQueueCursor(persist: boolean = true): void {
+    this.prefetchLyricsWindow();
     const current = this.queue.current();
     this.playerStore.setQueueCurrentIndex(
       this.queue.currentPlaybackPosition(),
@@ -1206,6 +1225,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
   }
 
   private syncQueueSnapshot(persist: boolean = true): void {
+    this.prefetchLyricsWindow();
     const snapshot = this.queue.playbackSnapshot();
     this.playerStore.applyQueueSnapshot(snapshot.entries, snapshot.currentIndex);
     if (persist && !DemoLibraryMode.isEnabled()) {

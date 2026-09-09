@@ -1,3 +1,4 @@
+import { PlayerArtworkTapSequence } from './PlayerArtworkTapSequence';
 import { image } from '@kit.ImageKit';
 import { BundledArtworkCatalog } from '../../library/artwork/BundledArtworkCatalog';
 import { ArtworkFitMode, ArtworkView } from '../artwork/ArtworkView';
@@ -21,6 +22,7 @@ import {
 export struct PlayerMorphArtwork {
   @ObjectLink playbackVisual: PlayerArtworkVisualBinding;
   @State contextMenuShown: boolean = false;
+  private readonly tapSequence: PlayerArtworkTapSequence = new PlayerArtworkTapSequence();
   private contextPreviewWidth: number = 0;
   private contextPreviewHeight: number = 0;
   private contextPreviewRestScale: number = 1;
@@ -200,8 +202,21 @@ export struct PlayerMorphArtwork {
     });
   }
 
+  private handleArtworkTouch(event: TouchEvent): void {
+    const point = event.changedTouches[0];
+    if (event.type === TouchType.Cancel || event.touches.length > 1 || point === undefined) {
+      this.tapSequence.cancel();
+      return;
+    }
+    if (event.type === TouchType.Down) {
+      this.tapSequence.begin(point.windowX, point.windowY);
+    } else {
+      this.tapSequence.move(point.windowX, point.windowY);
+    }
+  }
+
   private requestTap(): void {
-    if (this.interactionEnabled) {
+    if (this.interactionEnabled && this.tapSequence.allowsTap()) {
       this.onTap();
     }
   }
@@ -282,6 +297,7 @@ export struct PlayerMorphArtwork {
       .width('100%')
       .height('100%')
       .accessibilityText('歌曲封面，长按打开更多操作')
+      .onTouch((event: TouchEvent): void => this.handleArtworkTouch(event))
       .onClick((): void => this.requestTap())
       .bindContextMenu(
         this.contextMenuShown,

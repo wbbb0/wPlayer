@@ -1,3 +1,4 @@
+import playerImmediateInteractionTest from './PlayerImmediateInteraction.test';
 import localUnitTest from './LocalUnit.test';
 import riskRegressionTest from './RiskRegression.test';
 import libraryPagingTest from './LibraryPaging.test';
@@ -98,4 +99,5 @@ export default function testsuite() {
   artworkSourceIdentityPolicyTest();
   committedChangeRefreshCoordinatorTest();
   thumbnailBenchmarkPolicyTest();
+  playerImmediateInteractionTest();
 }

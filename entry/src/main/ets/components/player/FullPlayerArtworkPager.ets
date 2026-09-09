@@ -431,8 +431,8 @@ export struct FullPlayerArtworkPager {
     // Keep the bound index at the last settled page while native Swiper owns
     // the release animation. Publishing the target here turns the rerender
     // caused by coordinator state into an immediate external index change.
-    this.coordinator.onAnimationStart(this.entries(), targetIndex);
     this.setVisualScrolling(true);
+    this.execute(this.coordinator.onAnimationStart(this.entries(), targetIndex));
   }
 
   private handleAnimationEnd(index: number): void {

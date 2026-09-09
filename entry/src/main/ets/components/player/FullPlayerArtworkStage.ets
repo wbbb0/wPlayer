@@ -49,6 +49,8 @@ export struct FullPlayerArtworkStage {
     new PlayerArtworkPlaybackVisualState();
   private mounted: boolean = false;
   private previousMorphPhase: PlayerMorphPhase = PlayerMorphPhase.IDLE;
+  private playbackVisualAnimationEpoch: number = 0;
+  private playbackVisualAnimating: boolean = false;
   sourceProvider: () => image.PixelMap | ResourceStr =
     (): ResourceStr => $r('app.media.bundled_artwork_default_full');
   onResolveArtwork: (relativePath: string) => string = (_relativePath: string): string => '';
@@ -67,10 +69,14 @@ export struct FullPlayerArtworkStage {
     this.playbackVisualState.reset(this.currentPlaybackVisualTarget());
     this.playbackVisual.progress = this.playbackVisualState.value();
     this.syncArtworkSource();
+    this.syncArtworkMotionActivity();
   }
 
   aboutToDisappear(): void {
     this.mounted = false;
+    this.playbackVisualAnimationEpoch += 1;
+    this.playbackVisualAnimating = false;
+    this.pagerScrolling = false;
   }
 
   private currentPlaybackVisualTarget(): number {
@@ -107,6 +113,11 @@ export struct FullPlayerArtworkStage {
     if (this.morphPhase !== PlayerMorphPhase.OPEN && this.pagerScrolling) {
       this.pagerScrolling = false;
     }
+    if (this.morphPhase !== PlayerMorphPhase.OPEN && this.playbackVisualAnimating) {
+      this.playbackVisualAnimationEpoch += 1;
+      this.playbackVisualAnimating = false;
+    }
+    this.syncArtworkMotionActivity();
     if (previous === PlayerMorphPhase.OPEN && this.morphPhase !== PlayerMorphPhase.OPEN) {
       this.closeHandoffActive = true;
       this.closeActorReady = this.actorReadyRevision === this.actorSourceRevision();
@@ -129,14 +140,35 @@ export struct FullPlayerArtworkStage {
       return;
     }
     const target = this.playbackVisualState.value();
+    const epoch = ++this.playbackVisualAnimationEpoch;
+    this.playbackVisualAnimating = true;
+    this.syncArtworkMotionActivity();
     this.getUIContext().animateTo({
       curve: curves.springMotion(
         PlayerMotionSpec.ARTWORK_STATE_SPRING_RESPONSE,
         PlayerMotionSpec.ARTWORK_STATE_SPRING_DAMPING
-      )
+      ),
+      onFinish: (): void => {
+        if (!this.mounted || epoch !== this.playbackVisualAnimationEpoch) {
+          return;
+        }
+        this.playbackVisualAnimating = false;
+        this.syncArtworkMotionActivity();
+      }
     }, () => {
       this.playbackVisual.progress = target;
     });
+  }
+
+  private setPagerScrolling(active: boolean): void {
+    this.pagerScrolling = active;
+    this.syncArtworkMotionActivity();
+  }
+
+  private syncArtworkMotionActivity(): void {
+    this.controller.setFullPlayerArtworkMotionActive(
+      this.pagerScrolling || this.playbackVisualAnimating
+    );
   }
 
   private immersiveFrame(sourceWidth: number, sourceHeight: number): PlayerFrame {
@@ -422,7 +454,7 @@ export struct FullPlayerArtworkStage {
             onShareTrackFile: this.onShareTrackFile,
             onCompletedCollectionChange: this.onCompletedCollectionChange,
             onScrollingChange: (active: boolean): void => {
-              this.pagerScrolling = active;
+              this.setPagerScrolling(active);
             }
           })
           if (this.pagerEdgeMasksActive()) {

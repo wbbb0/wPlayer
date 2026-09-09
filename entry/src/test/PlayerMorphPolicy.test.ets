@@ -12,6 +12,9 @@ import {
   FullPlayerImmersiveSplitMotion
 } from '../main/ets/components/player/FullPlayerImmersiveSplitMotion';
 import {
+  FullPlayerImmersiveIntentCoordinator
+} from '../main/ets/components/player/FullPlayerImmersiveIntentCoordinator';
+import {
   PresentationMotionState
 } from '../main/ets/components/player/PresentationMotionState';
 import {
@@ -314,6 +317,37 @@ export default function playerMorphPolicyTest() {
       expect(state.updatePhase(PlayerMorphPhase.CLOSING)).assertEqual(
         PlayerArtworkPlaybackVisualAction.NONE
       );
+    });
+
+    it('applies immersive intent immediately while artwork is stable', 0, () => {
+      const coordinator = new FullPlayerImmersiveIntentCoordinator();
+      const intent = coordinator.request(true, false);
+      expect(intent?.immersive).assertTrue();
+      expect(intent?.wideLyricsEnabled).assertFalse();
+    });
+
+    it('releases only the latest immersive intent after artwork motion ends', 0, () => {
+      const coordinator = new FullPlayerImmersiveIntentCoordinator();
+      coordinator.updateArtworkMotion(true);
+      expect(coordinator.request(true, true)).assertUndefined();
+      expect(coordinator.intendedImmersive(false)).assertTrue();
+      expect(coordinator.request(false, false)).assertUndefined();
+      expect(coordinator.intendedImmersive(true)).assertFalse();
+      expect(coordinator.updateArtworkMotion(true)).assertUndefined();
+
+      const intent = coordinator.updateArtworkMotion(false);
+      expect(intent?.immersive).assertFalse();
+      expect(intent?.wideLyricsEnabled).assertFalse();
+      expect(coordinator.updateArtworkMotion(false)).assertUndefined();
+    });
+
+    it('discards deferred immersive intent when the player stage resets', 0, () => {
+      const coordinator = new FullPlayerImmersiveIntentCoordinator();
+      coordinator.updateArtworkMotion(true);
+      coordinator.request(true, true);
+      coordinator.reset();
+      expect(coordinator.intendedImmersive(false)).assertFalse();
+      expect(coordinator.updateArtworkMotion(false)).assertUndefined();
     });
 
     it('uses hero artwork only for pages sharing the current artwork identity', 0, () => {
@@ -720,19 +754,21 @@ export default function playerMorphPolicyTest() {
       expect(coordinator.pagerVisible).assertTrue();
     });
 
-    it('selects a user-settled page once and treats the synchronous queue callback as ack', 0, () => {
+    it('selects on release before settling and treats the synchronous queue callback as ack', 0, () => {
       const first = artworkQueueEntry(101);
       const second = artworkQueueEntry(102);
       const entries = [first, second];
       const coordinator = new FullPlayerArtworkPagerCoordinator();
       coordinator.initialize(entries, 0);
       coordinator.onPageReady(first.queueEntryId, coordinator.readyGeneration);
-      coordinator.onAnimationStart(entries, 1);
-      const selection = coordinator.onAnimationEnd(entries, 1);
+      const selection = coordinator.onAnimationStart(entries, 1);
       expect(selection.kind).assertEqual(FullPlayerArtworkPagerCommandKind.SELECT_ENTRY);
       expect(selection.queueEntryId).assertEqual(second.queueEntryId);
       const ack = coordinator.onQueueIndexChanged(entries, 1);
       expect(ack.kind).assertEqual(FullPlayerArtworkPagerCommandKind.NONE);
+      expect(coordinator.phase).assertEqual(FullPlayerArtworkPagerPhase.USER_SETTLING);
+      expect(coordinator.onAnimationEnd(entries, 1).kind)
+        .assertEqual(FullPlayerArtworkPagerCommandKind.NONE);
       expect(coordinator.phase).assertEqual(FullPlayerArtworkPagerPhase.IDLE);
     });
 
@@ -855,9 +891,10 @@ export default function playerMorphPolicyTest() {
       expect(coordinator.acceptsAnimationEnd(entries, 2)).assertFalse();
       expect(coordinator.onAnimationEnd(entries, 2).kind)
         .assertEqual(FullPlayerArtworkPagerCommandKind.NONE);
-      coordinator.onAnimationStart(entries, 1);
+      const selection = coordinator.onAnimationStart(entries, 1);
       expect(coordinator.acceptsAnimationEnd(entries, 1)).assertTrue();
-      const selection = coordinator.onAnimationEnd(entries, 1);
+      expect(coordinator.onAnimationEnd(entries, 1).kind)
+        .assertEqual(FullPlayerArtworkPagerCommandKind.NONE);
       expect(selection.kind).assertEqual(FullPlayerArtworkPagerCommandKind.SELECT_ENTRY);
       expect(selection.queueEntryId).assertEqual(entries[1].queueEntryId);
     });
@@ -876,7 +913,7 @@ export default function playerMorphPolicyTest() {
       expect(sequence.consumeSwipeFrame()).assertTrue();
     });
 
-    it('lets a completed user page win over an external change during settling', 0, () => {
+    it('preserves a newer external command after the release has committed', 0, () => {
       const entries = [artworkQueueEntry(101), artworkQueueEntry(102), artworkQueueEntry(103)];
       const coordinator = new FullPlayerArtworkPagerCoordinator();
       coordinator.initialize(entries, 0);
@@ -885,8 +922,8 @@ export default function playerMorphPolicyTest() {
       expect(coordinator.onQueueIndexChanged(entries, 2).kind)
         .assertEqual(FullPlayerArtworkPagerCommandKind.NONE);
       const selection = coordinator.onAnimationEnd(entries, 1);
-      expect(selection.kind).assertEqual(FullPlayerArtworkPagerCommandKind.SELECT_ENTRY);
-      expect(selection.queueEntryId).assertEqual(entries[1].queueEntryId);
+      expect(selection.kind).assertEqual(FullPlayerArtworkPagerCommandKind.CHANGE_INDEX);
+      expect(selection.queueEntryId).assertEqual(entries[2].queueEntryId);
     });
 
     it('does not reselect when playback already reached the user-settled page', 0, () => {

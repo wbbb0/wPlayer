@@ -53,6 +53,10 @@ import {
   FullPlayerImmersiveLayoutPolicy,
   FullPlayerImmersivePhase
 } from './FullPlayerArtworkStagePolicy';
+import {
+  FullPlayerImmersiveIntent,
+  FullPlayerImmersiveIntentCoordinator
+} from './FullPlayerImmersiveIntentCoordinator';
 import { PlayerArtworkImmersiveVisualBinding } from './PlayerArtworkPlaybackVisualState';
 
 const PLAYER_SYSTEM_BAR_OWNER = 'full_player';
@@ -155,6 +159,8 @@ export class PlayerMorphController {
     new InterruptibleScalarMotion(FullPlayerPage.COVER);
   private readonly fullPlayerImmersiveMotion: InterruptibleScalarMotion =
     new InterruptibleScalarMotion(0);
+  private readonly fullPlayerImmersiveIntentCoordinator: FullPlayerImmersiveIntentCoordinator =
+    new FullPlayerImmersiveIntentCoordinator();
   readonly fullPlayerImmersiveSplitMotion: FullPlayerImmersiveSplitMotion =
     new FullPlayerImmersiveSplitMotion(0);
   private readonly miniPlayerTrackPageMotion: InterruptibleScalarMotion =
@@ -651,6 +657,7 @@ export class PlayerMorphController {
   }
 
   private resetFullPlayerImmersiveStage(): void {
+    this.fullPlayerImmersiveIntentCoordinator.reset();
     this.fullPlayerImmersiveEpoch += 1;
     this.fullPlayerImmersiveMotion.complete(0);
     this.fullPlayerImmersiveSplitMotion.complete(0);
@@ -721,18 +728,29 @@ export class PlayerMorphController {
     });
   }
 
-  toggleFullPlayerImmersive(enabled: boolean, wideLyricsEnabled: boolean = true): void {
-    if (!enabled || this.playerMorphPhase !== PlayerMorphPhase.OPEN ||
-      FullPlayerPagerSpec.pageViewportVisibility(
-        FullPlayerPage.COVER,
-        this.fullPlayerPagePosition,
-        this.fullPlayerPaneCount()
-      ) < 0.5) {
+  private currentFullPlayerImmersiveIntent(): boolean {
+    return this.fullPlayerImmersivePhase === FullPlayerImmersivePhase.ENTERING ||
+      this.fullPlayerImmersivePhase === FullPlayerImmersivePhase.IMMERSIVE;
+  }
+
+  private applyFullPlayerImmersiveIntent(intent: FullPlayerImmersiveIntent): void {
+    if (this.playerMorphPhase !== PlayerMorphPhase.OPEN) {
       return;
     }
-    const entering = this.fullPlayerImmersivePhase === FullPlayerImmersivePhase.NORMAL ||
-      this.fullPlayerImmersivePhase === FullPlayerImmersivePhase.EXITING;
-    this.fullPlayerImmersiveWideLyricsEnabled = wideLyricsEnabled;
+    this.fullPlayerImmersiveWideLyricsEnabled = intent.wideLyricsEnabled;
+    if (!intent.immersive) {
+      if (this.fullPlayerImmersivePhase === FullPlayerImmersivePhase.EXITING ||
+        (this.fullPlayerImmersivePhase === FullPlayerImmersivePhase.NORMAL &&
+          this.fullPlayerImmersiveProgress <= 0)) {
+        return;
+      }
+      this.animateFullPlayerImmersive(0);
+      return;
+    }
+    if (this.fullPlayerImmersivePhase === FullPlayerImmersivePhase.ENTERING ||
+      this.fullPlayerImmersivePhase === FullPlayerImmersivePhase.IMMERSIVE) {
+      return;
+    }
     this.reconcileFullPlayerImmersiveLayout();
     const paneCount = this.fullPlayerPaneCount();
     const resolvedSplitTarget = this.fullPlayerImmersiveSplitMotion.resolvedTarget();
@@ -743,10 +761,46 @@ export class PlayerMorphController {
       resolvedSplitTarget,
       this.fullPlayerImmersiveWideLyricsEnabled
     );
-    if (entering && Math.abs(immersivePagePosition - this.fullPlayerPagePosition) > 0.0001) {
+    if (Math.abs(immersivePagePosition - this.fullPlayerPagePosition) > 0.0001) {
       this.settleFullPlayerPage(immersivePagePosition, paneCount);
     }
-    this.animateFullPlayerImmersive(entering ? 1 : 0);
+    this.animateFullPlayerImmersive(1);
+  }
+
+  private requestFullPlayerImmersive(immersive: boolean,
+    wideLyricsEnabled: boolean): void {
+    const intent = this.fullPlayerImmersiveIntentCoordinator.request(
+      immersive,
+      wideLyricsEnabled
+    );
+    if (intent !== undefined) {
+      this.applyFullPlayerImmersiveIntent(intent);
+    }
+  }
+
+  setFullPlayerArtworkMotionActive(active: boolean): void {
+    const intent = this.fullPlayerImmersiveIntentCoordinator.updateArtworkMotion(active);
+    if (intent !== undefined) {
+      this.applyFullPlayerImmersiveIntent(intent);
+    }
+    if (!active && this.playerMorphPhase === PlayerMorphPhase.OPEN) {
+      this.reconcileFullPlayerImmersiveLayout();
+    }
+  }
+
+  toggleFullPlayerImmersive(enabled: boolean, wideLyricsEnabled: boolean = true): void {
+    if (!enabled || this.playerMorphPhase !== PlayerMorphPhase.OPEN ||
+      FullPlayerPagerSpec.pageViewportVisibility(
+        FullPlayerPage.COVER,
+        this.fullPlayerPagePosition,
+        this.fullPlayerPaneCount()
+      ) < 0.5) {
+      return;
+    }
+    const intendedImmersive = this.fullPlayerImmersiveIntentCoordinator.intendedImmersive(
+      this.currentFullPlayerImmersiveIntent()
+    );
+    this.requestFullPlayerImmersive(!intendedImmersive, wideLyricsEnabled);
   }
 
   effectiveFullPlayerImmersiveProgress(): number {
@@ -758,6 +812,9 @@ export class PlayerMorphController {
   }
 
   reconcileFullPlayerImmersiveLayout(): void {
+    if (this.fullPlayerImmersiveIntentCoordinator.isArtworkMotionActive()) {
+      return;
+    }
     const paneCount = this.fullPlayerPaneCount();
     const resolvedSplitTarget = this.fullPlayerImmersiveSplitMotion.resolvedTarget();
     const target = FullPlayerImmersiveLayoutPolicy.splitTarget(
@@ -798,11 +855,15 @@ export class PlayerMorphController {
   }
 
   exitFullPlayerImmersive(): boolean {
-    if (this.fullPlayerImmersivePhase === FullPlayerImmersivePhase.NORMAL &&
+    const intendedImmersive = this.fullPlayerImmersiveIntentCoordinator.intendedImmersive(
+      this.currentFullPlayerImmersiveIntent()
+    );
+    if (!intendedImmersive &&
+      this.fullPlayerImmersivePhase === FullPlayerImmersivePhase.NORMAL &&
       this.fullPlayerImmersiveProgress <= 0) {
       return false;
     }
-    this.animateFullPlayerImmersive(0);
+    this.requestFullPlayerImmersive(false, this.fullPlayerImmersiveWideLyricsEnabled);
     return true;
   }
 
@@ -1033,7 +1094,17 @@ export class PlayerMorphController {
       this.miniPlayerTrackPageMotion.setValue(this.miniPlayerOffsetX);
       return;
     }
-    const presentationOffset = this.miniPlayerTrackPageMotion.value();
+    let presentationOffset = this.miniPlayerTrackPageMotion.value();
+    const projection = this.playerStore.queueDataSource.projectionState;
+    const currentId = projection.entryAt(projection.activeIndex())?.queueEntryId;
+    if (currentId !== this.miniPlayerBinding.trackPagerCurrent?.queueEntryId) {
+      presentationOffset = MiniPlayerTrackPagerPolicy.rebaseOffset(
+        this.miniPlayerTrackWindow(), currentId ?? -1, presentationOffset,
+        this.miniPlayerBinding.trackPagerViewportWidth
+      );
+      this.miniPlayerBinding.trackPagerActive = false;
+      this.activateMiniPlayerTrackPager();
+    }
     this.miniPlayerTrackPagerEpoch += 1;
     this.miniPlayerTrackPageMotion.cancel();
     this.context().animateToImmediately({ duration: 0 }, () => {
@@ -1196,6 +1267,17 @@ export class PlayerMorphController {
       target,
       this.miniPlayerBinding.trackPagerViewportWidth
     );
+    const activeIndex = this.playerStore.queueDataSource.projectionState.activeIndex();
+    const activeEntryId = this.playerStore.queueDataSource.projectionState
+      .entryAt(activeIndex)?.queueEntryId ?? -1;
+    const targetEntry = MiniPlayerTrackPagerPolicy.commitEntry(
+      window,
+      target,
+      activeEntryId
+    );
+    if (targetEntry !== undefined) {
+      playbackRuntime.selectQueueEntryPreservingPlaybackIntent(targetEntry.queueEntryId);
+    }
     const epoch = ++this.miniPlayerTrackPagerEpoch;
     const startOffset = this.miniPlayerOffsetX;
     const easing = PlayerMotionSpec.interpolatingSpringEasing(
@@ -1217,17 +1299,6 @@ export class PlayerMorphController {
           return;
         }
         this.miniPlayerTrackPageMotion.complete(targetOffset);
-        const activeIndex = this.playerStore.queueDataSource.projectionState.activeIndex();
-        const activeEntryId = this.playerStore.queueDataSource.projectionState
-          .entryAt(activeIndex)?.queueEntryId ?? -1;
-        const targetEntry = MiniPlayerTrackPagerPolicy.commitEntry(
-          window,
-          target,
-          activeEntryId
-        );
-        if (targetEntry !== undefined) {
-          playbackRuntime.selectQueueEntryPreservingPlaybackIntent(targetEntry.queueEntryId);
-        }
         this.context().animateToImmediately({ duration: 0 }, () => {
           this.clearMiniPlayerTrackPager();
           this.miniPlayerHorizontalGestureOffset = 0;

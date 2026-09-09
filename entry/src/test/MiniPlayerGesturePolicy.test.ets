@@ -82,6 +82,19 @@ export default function miniPlayerGesturePolicyTest() {
         .assertEqual(-180);
     });
 
+    it('rebases an interrupted release onto the committed entry without moving its displayed frame', 0, () => {
+      const window = MiniPlayerTrackPagerPolicy.window(
+        [queueEntry(10), queueEntry(20), queueEntry(30)], 1, RepeatMode.OFF
+      );
+      expect(MiniPlayerTrackPagerPolicy.rebaseOffset(window, 30, -120, 180)).assertEqual(60);
+      expect(MiniPlayerTrackPagerPolicy.rebaseOffset(window, 10, 120, 180)).assertEqual(-60);
+      expect(MiniPlayerTrackPagerPolicy.rebaseOffset(window, 20, 30, 180)).assertEqual(30);
+      expect(MiniPlayerTrackPagerPolicy.rebaseOffset(window, 99, 30, 180)).assertEqual(0);
+      const wrapped = MiniPlayerTrackPagerPolicy.window([queueEntry(10), queueEntry(20)], 1, RepeatMode.ALL);
+      expect(MiniPlayerTrackPagerPolicy.rebaseOffset(wrapped, 10, 120, 180)).assertEqual(-60);
+      expect(MiniPlayerTrackPagerPolicy.rebaseOffset(wrapped, 10, -120, 180)).assertEqual(60);
+    });
+
     it('rejects a settled target after playback has left the frozen source entry', 0, () => {
       const window = MiniPlayerTrackPagerPolicy.window(
         [queueEntry(10), queueEntry(20), queueEntry(30)],

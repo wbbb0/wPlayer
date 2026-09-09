@@ -171,6 +171,15 @@ suppressing another.
 
 ## Full-player shared-element morph
 
+- Mini-player commits the selected queue entry on horizontal release. The full-player artwork Swiper commits its
+  release target in `onAnimationStart`; completion only settles presentation and follows newer external commands.
+  Continued dragging does not commit before release. Rebound to the current page does not reselect it.
+- Artwork taps reject any touch sequence that moves more than 8vp from its initial window position, including
+  movement back to the origin, cancellation and multiple fingers. This applies during immersive resizing as well.
+- Lyrics prefetch retains only the current track and its immediate queue neighbors, including repeat-all wrapping.
+  A cache hit publishes lyrics and availability during source change; an unfinished read remains loading.
+  Immersive lyric split resizing waits until artwork motion settles before applying the latest availability.
+
 - “沉浸模式”默认开启。开启时，点击稳定显示的播放封面进入沉浸展示；顶部返回区域向上退出，
   标题、进度与播放控制向下退出，封面舞台扩展到整个播放页。再次点击封面或按返回键先退出
   沉浸展示，不直接关闭播放页。关闭该设置后，点击封面不进入沉浸展示。
@@ -189,9 +198,10 @@ suppressing another.
   封面分页实际移动时启用，由 Swiper 的手势/动画生命周期显式控制；稳定态和播放页外层翻页不
   保留整块封面区域的离屏合成。相邻封面页之间保留独立间距，宽封面和阴影不得在当前滚动窗口边缘
   露出。
-- 沉浸进入、退出和封面分页均可由新输入从当前呈现位置接管。沉浸期间禁用下拉关闭。单栏允许从
-  封面页向右移动到歌词页，但不允许向左进入队列；封面内横滑仍优先切歌。返回键在歌词页先回到
-  沉浸封面，再退出沉浸，之后才关闭播放器。
+- 沉浸进入、退出可由新的沉浸意图从当前呈现位置接管。封面横滑切歌或播放/暂停的封面缩放与阴影
+  动画进行时，进入或退出沉浸的意图延迟到两类封面动画都完成，并只执行期间收到的最终意图；不得
+  用沉浸布局变化打断封面分页。沉浸期间禁用下拉关闭。单栏允许从封面页向右移动到歌词页，但不允许
+  向左进入队列；封面内横滑仍优先切歌。返回键在歌词页先回到沉浸封面，再退出沉浸，之后才关闭播放器。
 - “宽屏沉浸时显示歌词”默认开启。开启时，双栏沉浸以歌词加载状态决定布局：歌词加载中保持上一次
   已解析布局；有歌词时封面占左半屏且歌词保留在右半屏，无歌词时歌词侧退出、封面动画扩展到整个
   播放页。切歌不得因加载中的空歌词产生一次全屏再回半屏的中间动画。关闭后，宽屏沉浸固定使用

@@ -1,8 +1,8 @@
 # 构建 wPlayer
 
 本文说明如何在新的 Windows 开发环境中构建 wPlayer。项目主要模块为 `entry`。当前
-`build-profile.json5` 配置的最低兼容及目标 SDK 均为 HarmonyOS 6.1.0/API 23；构建工具模型版本为
-6.1.1。修改 SDK 版本前应以项目配置和已安装 SDK 为准。
+`build-profile.json5` 配置的最低兼容 SDK 为 HarmonyOS 6.1.0/API 23，两个产品的目标 SDK 均为
+26.0.0；构建工具模型版本为 26.0.0。编译使用 DevEco Studio 26 配套的 Release SDK。
 
 ## 环境要求
 
@@ -12,6 +12,24 @@
 - Node.js 和 npm
 - DevEco CLI
 - 可选：已启用开发者模式的 HarmonyOS 设备及 HDC
+
+API 26 新接口采用 `deviceInfo.sdkApiVersion >= 24 && deviceInfo.apiAvailable('26.0.0')` 保护；
+API 23 不调用 `apiAvailable` 或新的材质、播控中心接口。HDS 导航和迷你栏继续使用 API 23 的
+`MaterialType.ADAPTIVE` 和 `MaterialLevel.ADAPTIVE`。新旧设备上的渲染、系统控制和播放验证仍需分别执行。
+
+### API 26 接入范围
+
+- 原生菜单、对话框、Toast、索引气泡、设置开关和选择器、播放进度 Slider 使用 entry 模块已有的
+  `ohos.arkui.UIMaterial.state = enable`。半模态通过 AppSystemMaterial 接入原生材质，在 API 23 或
+  不支持该材质的设备上保留原样式。原生材质档位由系统决定，不在应用内固定高级档位。
+- ArtworkView 和 QueueTrackRow 使用 AppShadowStyle，将“无阴影”转换为负半径，避免 API 26 将
+  零半径与非零偏移解释为硬阴影。封面放大查看保留原图质量，显式关闭 Image 自动缩小。
+- PlaybackSession 使用 `setMediaCenterControlType` 优先显示已注册的上一首、下一首控制。接口失败时
+  保留系统默认布局，继续激活媒体会话；旧版本不调用新接口。
+- 普通内容区域的自定义按钮、卡片不在新材质的生效范围内，保留现有视觉。新闪控窗的 FLOAT_VIEW
+  权限仅对游戏直播和金融盯盘场景开放，因此封面小窗继续使用现有 PiP，不申请该受限权限。
+- API 26 的 AVMetadataExtractor 新能力针对视频帧提取，不能替代 MP3/FLAC 标签补全或 sidecar LRC；
+  保留现有元数据和歌词边界。FAST Kit 排序不能直接替换数据库持久化排序及分页边界。
 
 将 `DEVECO_SDK_HOME` 指向 DevEco Studio 的 SDK 父目录，不要指向 `sdk\default`、`hms` 或 `openharmony` 子目录。例如：
 
@@ -142,6 +160,12 @@ MCP 不可用时，可将独立检出路径配置到 `HARMONY_AGENT_TOOLS_HOME`�
 音频格式、后台播放、系统媒体控制、文件授权以及不同设备形态仍需要在真实目标设备上验证。构建成功不能替代实际播放测试。
 
 ## 常见问题
+
+### 签名材料缺失 `00303107`
+
+如果编译和 PackageHap 已完成、SignHap 报 `Invalid storeFile value`，检查当前本地签名所引用的
+`.p12` 文件及相关证书、Profile 是否仍存在，并在 DevEco Studio 中恢复同一签名身份。不要自动重建
+签名身份或卸载已有应用；设备覆盖安装必须继续使用原应用的签名。
 
 ### SDK 配置错误 `00303217`
 

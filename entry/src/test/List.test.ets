@@ -1,4 +1,5 @@
 import playerImmediateInteractionTest from './PlayerImmediateInteraction.test';
+import appShadowStyleTest from './AppShadowStyle.test';
 import localUnitTest from './LocalUnit.test';
 import riskRegressionTest from './RiskRegression.test';
 import libraryPagingTest from './LibraryPaging.test';
@@ -50,6 +51,7 @@ import committedChangeRefreshCoordinatorTest from './CommittedChangeRefreshCoord
 import thumbnailBenchmarkPolicyTest from './ThumbnailBenchmarkPolicy.test';
 
 export default function testsuite() {
+  appShadowStyleTest();
   localUnitTest();
   riskRegressionTest();
   libraryPagingTest();

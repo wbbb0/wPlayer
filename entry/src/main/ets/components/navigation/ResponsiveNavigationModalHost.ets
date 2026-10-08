@@ -1,4 +1,5 @@
 import { LibraryStore } from '../../library/store/LibraryStore';
+import { AppSystemMaterial } from '../../appearance/AppSystemMaterial';
 import {
   TrackArtworkViewerState,
   TrackDetailState
@@ -124,7 +125,7 @@ export struct ResponsiveNavigationModalHost {
         topInset: 0,
         bottomInset: 0,
         rootWidth: this.trackDetailSheetWidth(),
-        themeBackground: this.themePageBackground,
+        themeBackground: AppSystemMaterial.sheetContentBackground(this.themePageBackground),
         reserveFloatingControls: false,
         scroller: this.trackDetailState.scroller,
         onOpenArtwork: this.onOpenArtwork
@@ -150,6 +151,7 @@ export struct ResponsiveNavigationModalHost {
         .opacity(0)
         .hitTestBehavior(HitTestMode.None)
         .bindSheet($$this.trackDetailVisible, this.TrackDetailSheet(), {
+          systemMaterial: AppSystemMaterial.dialog(),
           height: SheetSize.LARGE,
           width: this.trackDetailSheetWidth(),
           preferType: this.trackDetailSheetType(),
@@ -166,6 +168,7 @@ export struct ResponsiveNavigationModalHost {
         .opacity(0)
         .hitTestBehavior(HitTestMode.None)
         .bindSheet($$this.playlistImportVisible, this.PlaylistImportSheet(), {
+          systemMaterial: AppSystemMaterial.dialog(),
           height: this.playlistImportSheetHeight(),
           dragBar: !this.playlistImportBusy,
           showClose: !this.playlistImportBusy,

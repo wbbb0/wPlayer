@@ -47,8 +47,8 @@ wPlayer 是一款原生 HarmonyOS 本地音乐播放器，为希望获得干净�
 
 ## 支持环境
 
-- 当前最低兼容及目标 HarmonyOS SDK 6.1.0，API 23
-- 构建工具模型版本 6.1.1；实际 SDK 选择以 `build-profile.json5` 和本机 DevEco 配置为准
+- 当前最低兼容 HarmonyOS SDK 6.1.0/API 23，目标 SDK 26.0.0
+- 构建工具模型版本 26.0.0；使用 DevEco Studio 26 配套的 Release SDK，详见构建指南
 - 设备类型：手机、平板和 2in1
 - 开发环境：Windows、DevEco Studio、DevEco CLI
 

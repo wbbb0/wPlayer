@@ -44,6 +44,11 @@ Lower-level data, playback and service code must not depend on pages or UI compo
 
 ## UI boundary
 
+AppSystemMaterial owns API-version protection and native sheet material creation. HDS chrome continues to own its
+adaptive material rendering. Native menus, dialogs and form controls consume the entry module's material defaults;
+pages do not select device performance levels or persist another material preference. AppShadowStyle translates
+the application's no-shadow intent into a negative radius that remains valid across the API 26 shadow change.
+
 Pages and components may:
 
 - read observable Store state;

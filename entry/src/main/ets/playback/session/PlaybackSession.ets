@@ -1,6 +1,7 @@
 import { common, wantAgent } from '@kit.AbilityKit';
 import { avSession } from '@kit.AVSessionKit';
 import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
+import { deviceInfo } from '@kit.BasicServicesKit';
 import { PlaybackTrack, PlaybackTransportState, RepeatMode } from '../model/PlaybackModels';
 
 export interface PlaybackSessionCommands {
@@ -122,11 +123,24 @@ export class PlaybackSession {
       session.on('playNext', () => this.commands.next());
       session.on('playPrevious', () => this.commands.previous());
       session.on('seek', (time: number) => this.commands.seek(time));
+      await this.configureMediaCenterControls(session);
       await session.activate();
       this.session = session;
     } catch (error) {
       this.initializePromise = undefined;
       console.warn(`Unable to initialize AVSession: ${PlaybackSession.messageOf(error)}`);
+    }
+  }
+
+  private async configureMediaCenterControls(session: avSession.AVSession): Promise<void> {
+    if (deviceInfo.sdkApiVersion >= 24 && deviceInfo.apiAvailable('26.0.0')) {
+      try {
+        // Playback is the system's fixed center slot; prioritize the registered queue commands.
+        await session.setMediaCenterControlType(['playPrevious', 'playNext']);
+      } catch (error) {
+        // Optional layout failure must not prevent activation and background playback.
+        console.warn(`Unable to configure media center controls: ${PlaybackSession.messageOf(error)}`);
+      }
     }
   }
 

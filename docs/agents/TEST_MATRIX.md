@@ -44,6 +44,11 @@ For navigation and player UI changes, verify applicable scenarios on available t
 - rapid repeated open and close input;
 - responsive breakpoint crossing while a secondary destination is active.
 
+For API 26 appearance adaptation, also verify system light-sense settings and device material levels, settings
+Toggle/Select, the seek Slider, menu/dialog/index popups and all sheet hosts. Check that detail-sheet content leaves
+the native backing visible, artwork/active queue rows configured without shadows remain shadowless, and artwork
+zoom retains detail. Repeat fallback checks on API 23; local shadow-policy tests do not prove native rendering.
+
 Prefer the local Pura X Max emulator for repeatable wide-fold validation when a physical device is unavailable.
 
 ## Audio and file matrix

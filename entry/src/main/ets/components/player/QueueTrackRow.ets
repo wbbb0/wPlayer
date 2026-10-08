@@ -1,3 +1,4 @@
+import { AppShadowStyle } from '../../appearance/AppShadowStyle';
 import {
   LibraryNavigationTarget,
   TrackListItem
@@ -349,11 +350,11 @@ export struct QueueTrackRow {
     .borderRadius(this.rowCornerRadius)
     .backgroundColor(this.isActive() ? this.activeBackgroundColor : Color.Transparent)
     .shadow(this.isActive() ? {
-      radius: this.activeShadowRadius,
+      radius: AppShadowStyle.radius(this.activeShadowRadius),
       color: this.activeShadowColor,
       offsetY: this.activeShadowOffsetY
     } : {
-      radius: 0,
+      radius: AppShadowStyle.radius(0),
       color: Color.Transparent,
       offsetY: 0
     })

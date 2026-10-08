@@ -15,6 +15,13 @@ is requested, update this document and the corresponding tests in the same chang
 - Do not recreate project-level chrome independently inside feature pages.
 - Preserve system material effects, pressed highlights, depth changes and smooth size transitions.
 - Do not replace HDS glass with a flat translucent color.
+- HDS material type and level stay `ADAPTIVE`. API 26 native materials leave the device level and user light-sense
+  setting to the system; do not force EXQUISITE or override the system setting.
+- The entry module enables native material defaults for supported menus, dialogs, toasts, alphabet-index popups,
+  settings Toggle/Select and the player Slider. Sheets use the shared version-protected dialog material. Sheet
+  content must not cover that material with an opaque page background on supported devices.
+- Native material on arbitrary content buttons or cards is restricted to navigation title bars and bottom tab
+  bars. Full-player and artwork-viewer controls outside those scopes retain their existing presentation.
 - Prefer system Symbols when an appropriate icon exists.
 - Use SVG resources for custom icons; do not use text characters as icons.
 

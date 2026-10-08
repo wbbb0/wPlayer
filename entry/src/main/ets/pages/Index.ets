@@ -1,4 +1,5 @@
 import { ComponentContent, window } from '@kit.ArkUI';
+import { AppSystemMaterial } from '../appearance/AppSystemMaterial';
 import { HdsTabsController } from '@kit.UIDesignKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { common } from '@kit.AbilityKit';
@@ -446,6 +447,7 @@ struct Index {
       .opacity(0)
       .hitTestBehavior(HitTestMode.None)
       .bindSheet($$this.maintenanceSheetVisible, this.MaintenanceSheet(), {
+        systemMaterial: AppSystemMaterial.dialog(),
         height: SheetSize.FIT_CONTENT,
         dragBar: true,
         showClose: true
@@ -684,6 +686,7 @@ struct Index {
     .backgroundColor(this.animatedPageBackground())
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     .bindSheet($$this.playlistSheetVisible, this.PlaylistSheet(), {
+      systemMaterial: AppSystemMaterial.dialog(),
       height: this.playlistController.sheetHeight(),
       dragBar: true,
       showClose: this.playlistController.kind === IndexPlaylistSheetKind.PICKER

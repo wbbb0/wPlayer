@@ -365,6 +365,7 @@ export struct TrackArtworkViewer {
     Stack({ alignContent: Alignment.Center }) {
       if (this.state.pixelMap !== undefined) {
         Image(this.state.pixelMap)
+          .autoResize(false)
           .width('100%')
           .height('100%')
           .objectFit(ImageFit.Contain)

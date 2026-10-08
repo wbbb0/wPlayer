@@ -1,3 +1,4 @@
+import { AppSystemMaterial } from '../../appearance/AppSystemMaterial';
 import { PageLayoutSpec } from '../../components/layout/PageLayoutSpec';
 import { PageScrollBehavior, PageScrollContentBehavior } from '../../components/layout/PageScrollBehavior';
 import { ImportTreeRequestListener, LibraryStore } from '../../library/store/LibraryStore';
@@ -728,6 +729,7 @@ export struct LibraryManagementPage {
     .backgroundColor(Color.Transparent)
     .attributeModifier(this.scrollBehavior)
     .bindSheet($$this.showPageSheet, this.ActiveSheet(), {
+      systemMaterial: AppSystemMaterial.dialog(),
       height: SheetSize.LARGE,
       showClose: true,
       dragBar: true,

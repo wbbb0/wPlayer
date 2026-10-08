@@ -1,6 +1,7 @@
 import { image } from '@kit.ImageKit';
 import { curves } from '@kit.ArkUI';
 import { BundledArtworkCatalog } from '../../library/artwork/BundledArtworkCatalog';
+import { AppShadowStyle } from '../../appearance/AppShadowStyle';
 
 export enum ArtworkFitMode {
   COVER,
@@ -146,7 +147,7 @@ export struct ArtworkView {
     .height(this.imageHeight())
     .borderRadius(this.effectiveCornerRadius())
     .shadow({
-      radius: this.shadowEnabled ? this.shadowRadius : 0,
+      radius: AppShadowStyle.radius(this.shadowRadius, this.shadowEnabled),
       color: $r('app.color.artwork_shadow'),
       offsetY: this.shadowEnabled ? this.shadowOffsetY : 0
     })
@@ -161,7 +162,7 @@ export struct ArtworkView {
     .height(this.imageHeight())
     .borderRadius(this.effectiveCornerRadius())
     .shadow({
-      radius: this.shadowEnabled ? this.shadowRadius : 0,
+      radius: AppShadowStyle.radius(this.shadowRadius, this.shadowEnabled),
       color: $r('app.color.artwork_shadow'),
       offsetY: this.shadowEnabled ? this.shadowOffsetY : 0
     })

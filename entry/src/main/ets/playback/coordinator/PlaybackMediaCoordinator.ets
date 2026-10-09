@@ -4,6 +4,8 @@ import { ArtworkCache } from '../../library/artwork/ArtworkCache';
 import { BundledArtworkCatalog } from '../../library/artwork/BundledArtworkCatalog';
 import { MusicRepository } from '../../library/data/MusicRepository';
 import { MetadataReader } from '../../library/metadata/MetadataReader';
+import { ensureReadPermission } from '../../library/importer/MediaPickerService';
+import { PlaybackLyricsReader } from '../lyrics/PlaybackLyricsReader';
 import {
   ArtworkMemoryCache,
   ArtworkPixelMapLease,
@@ -26,12 +28,20 @@ export interface PlaybackMediaHost {
 export class PlaybackMediaCoordinator {
   private static readonly PREFETCH_DELAY_MS: number = 1500;
   readonly lyrics: LyricsWindowCache = new LyricsWindowCache();
+  private readonly lyricsReader: PlaybackLyricsReader;
   private context?: common.UIAbilityContext;
   private artworkCache?: ArtworkMemoryCache;
   private fullArtwork?: DecodedFullArtwork;
   private readonly requestEpoch: RequestEpoch = new RequestEpoch();
   private readonly prefetch: ArtworkPrefetchCoordinator =
     new ArtworkPrefetchCoordinator(PlaybackMediaCoordinator.PREFETCH_DELAY_MS);
+
+  constructor(lyricsReader: PlaybackLyricsReader = new PlaybackLyricsReader(
+    ensureReadPermission,
+    (track: PlaybackTrack): Promise<string> => MetadataReader.readLyrics(track.uri, track.fileSize, track.format)
+  )) {
+    this.lyricsReader = lyricsReader;
+  }
 
   beginRequest(): number {
     this.invalidatePrefetch();
@@ -108,7 +118,7 @@ export class PlaybackMediaCoordinator {
   async loadLyrics(track: PlaybackTrack, token: number, host: PlaybackMediaHost): Promise<void> {
     try {
       const lyrics = await this.lyrics.load(track.id, (): Promise<string> =>
-        MetadataReader.readLyrics(track.uri, track.fileSize, track.format));
+        this.lyricsReader.read(track));
       if (host.isTrackRequestCurrent(token)) {
         host.commitLyrics(track, lyrics.source);
       }
@@ -127,7 +137,7 @@ export class PlaybackMediaCoordinator {
       if (track === undefined) {
         throw new Error('Track no longer exists');
       }
-      return MetadataReader.readLyrics(track.uri, track.fileSize, track.format);
+      return this.lyricsReader.read(track);
     });
   }
 

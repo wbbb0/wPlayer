@@ -1,3 +1,4 @@
+import { LibraryDetailContentSource } from './LibraryDetailRefreshCoordinator';
 import { common } from '@kit.AbilityKit';
 import { MusicRepository } from '../data/MusicRepository';
 import { ImportRefreshPhase, MediaImporter } from '../importer/MediaImporter';
@@ -137,7 +138,7 @@ export type LibraryContentChangeListener = () => void;
 export type ImportTreeRequestListener = (tree: ImportUriTree) => void;
 
 @Observed
-export class LibraryStore {
+export class LibraryStore implements LibraryDetailContentSource {
   readonly trackDataSource: PagedLibraryDataSource<TrackListItem> =
     new PagedLibraryDataSource<TrackListItem>(
       LibraryPagingPolicy.TRACK_QUERY_PAGE_SIZE,
@@ -351,7 +352,7 @@ export class LibraryStore {
     try {
       this.settings = settings === undefined ? new SettingsRepository(context) : settings;
       this.restoreSortSettings();
-      this.artworkCache = new ArtworkCache(context);
+      this.artworkCache = new ArtworkCache(context.filesDir);
       const databaseRebuilt = await this.repository.initialize(context);
       if (databaseRebuilt) {
         this.artworkCache.clearAll();

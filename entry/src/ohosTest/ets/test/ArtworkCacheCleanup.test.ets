@@ -20,25 +20,34 @@ export default function artworkCacheCleanupTest() {
   describe('Artwork cache cleanup', () => {
     it('preservesReferencedFilesAndRemovesOrphansAndEmptyDirectories', 0, async () => {
       const ability = await abilityDelegatorRegistry.getAbilityDelegator().getCurrentTopAbility();
-      const cache = new ArtworkCache(ability.context);
+      const testRoot = `${ability.context.cacheDir}/artwork-cleanup-test`;
+      const cache = new ArtworkCache(`${testRoot}/subject`);
+      const sentinelCache = new ArtworkCache(`${testRoot}/outside`);
+      const sentinelPath = sentinelCache.resolvePath(REFERENCED_PATH);
       const referencedFile = cache.resolvePath(REFERENCED_PATH);
       const orphanFile = cache.resolvePath(ORPHAN_PATH);
       const emptyDirectory = cache.resolvePath(EMPTY_PATH);
-      await fs.mkdir(referencedFile.substring(0, referencedFile.lastIndexOf('/')), true);
-      await fs.mkdir(orphanFile.substring(0, orphanFile.lastIndexOf('/')), true);
-      await fs.mkdir(emptyDirectory, true);
-      await writeFixture(referencedFile);
-      await writeFixture(orphanFile);
       try {
+        await fs.mkdir(referencedFile.substring(0, referencedFile.lastIndexOf('/')), true);
+        await fs.mkdir(orphanFile.substring(0, orphanFile.lastIndexOf('/')), true);
+        await fs.mkdir(emptyDirectory, true);
+        await fs.mkdir(sentinelPath.substring(0, sentinelPath.lastIndexOf('/')), true);
+        await writeFixture(sentinelPath);
+        await writeFixture(referencedFile);
+        await writeFixture(orphanFile);
         await cache.cleanupOrphans([REFERENCED_PATH]);
         expect(await fs.access(referencedFile)).assertTrue();
         expect(await fs.access(orphanFile)).assertFalse();
         await cache.cleanupEmptyDirectories();
         expect(await fs.access(referencedFile)).assertTrue();
         expect(await fs.access(emptyDirectory)).assertFalse();
+        expect(await fs.access(sentinelPath)).assertTrue();
       } finally {
         await cache.deleteAsync(REFERENCED_PATH);
+        await cache.deleteAsync(ORPHAN_PATH);
         await cache.cleanupEmptyDirectories();
+        await sentinelCache.deleteAsync(REFERENCED_PATH);
+        await sentinelCache.cleanupEmptyDirectories();
       }
     });
   });

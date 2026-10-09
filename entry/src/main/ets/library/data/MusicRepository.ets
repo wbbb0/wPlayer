@@ -131,7 +131,7 @@ export class MusicRepository implements LibraryRemovalRepository {
 
   initialize(context: common.Context): Promise<boolean> {
     if (this.paletteCache === undefined) {
-      this.paletteCache = new ArtworkCache(context);
+      this.paletteCache = new ArtworkCache(context.filesDir);
     }
     return this.database.initialize(context);
   }
@@ -888,6 +888,14 @@ export class MusicRepository implements LibraryRemovalRepository {
 
   hasUris(uris: Array<string>): Promise<Array<string>> {
     return this.queries.hasUris(uris);
+  }
+
+  async restoreReadAuthorization(uris: Array<string>): Promise<void> {
+    if (uris.length === 0) {
+      return;
+    }
+    await this.queries.restoreReadAuthorization(uris);
+    this.publishAvailabilityChanged();
   }
 
   findDuplicateCandidates(fileSize: number, quickFingerprint: string): Promise<Array<DuplicateCandidate>> {

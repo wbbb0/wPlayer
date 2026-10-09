@@ -114,6 +114,25 @@ export class MusicLibraryMaintenanceQueries {
     }
   }
 
+  restoreReadAuthorization(uris: Array<string>): Promise<void> {
+    if (uris.length === 0) {
+      return Promise.resolve();
+    }
+    return this.database.enqueueWrite(async (transaction: relationalStore.Transaction): Promise<void> => {
+      for (let offset = 0; offset < uris.length; offset += URI_QUERY_BATCH_SIZE) {
+        const batch = uris.slice(offset, offset + URI_QUERY_BATCH_SIZE);
+        const placeholders = batch.map((): string => '?').join(', ');
+        await transaction.execute(
+          `UPDATE media_file SET authorization_persisted = 1,
+            availability_state = CASE WHEN availability_state = ${AvailabilityState.AUTHORIZATION_REVOKED}
+              THEN ${AvailabilityState.AVAILABLE} ELSE availability_state END, updated_at = ?
+           WHERE uri IN (${placeholders})`,
+          [Date.now(), ...batch]
+        );
+      }
+    });
+  }
+
   updateFullFingerprint(trackId: number, fullFingerprint: string): Promise<void> {
     if (fullFingerprint.length === 0) {
       return Promise.resolve();
@@ -208,7 +227,7 @@ export class MusicLibraryMaintenanceQueries {
 
   async getReferencedArtworkPaths(): Promise<Array<string>> {
     let resultSet: relationalStore.ResultSet | undefined;
-    const paths: Array<string> = [];
+    const paths: Set<string> = new Set<string>();
     try {
       resultSet = await this.database.getStore().querySql(
         'SELECT small_path, large_path FROM artwork_asset WHERE ref_count > 0'
@@ -216,14 +235,14 @@ export class MusicLibraryMaintenanceQueries {
       while (resultSet.goToNextRow()) {
         const smallPath = resultSet.getString(0);
         const largePath = resultSet.getString(1);
-        if (smallPath.length > 0 && paths.indexOf(smallPath) < 0) {
-          paths.push(smallPath);
+        if (smallPath.length > 0) {
+          paths.add(smallPath);
         }
-        if (largePath.length > 0 && paths.indexOf(largePath) < 0) {
-          paths.push(largePath);
+        if (largePath.length > 0) {
+          paths.add(largePath);
         }
       }
-      return paths;
+      return Array.from(paths);
     } catch (error) {
       throw RelationalStoreSafety.operationError('Unable to read referenced artwork paths', error);
     } finally {

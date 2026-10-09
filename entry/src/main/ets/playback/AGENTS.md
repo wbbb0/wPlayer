@@ -10,13 +10,16 @@ Before changing playback behavior, read:
 ## Ownership
 
 - PlaybackEngine exclusively owns AVPlayer lifecycle and raw state transitions.
+  Its PlaybackCommandQueue guards native command failures with the submitting source epoch.
 - PlaybackRuntime is the unique application command facade and owns atomic queue and PlayerStore projection.
+  PlaybackStopOperation guards explicit stop/clear/demo transition commits and errors with the Runtime media token.
 - PlaybackPersistenceCoordinator owns restore planning, playback preference writes and the ordered latest-wins
   pump for relational queue snapshots and cursor updates.
 - PlaybackMediaCoordinator owns the shared track request epoch plus lyric and playback-artwork work.
 - PlaybackPictureInPictureCoordinator owns PiP synchronization and lifecycle delegation.
 - PlaybackAudioRecoveryCoordinator owns focus/output recovery intent and single-resume decisions.
 - PlaybackSession owns AVSession and background-control integration.
+  PlaybackSessionLifecycle owns unpublished and active session resources through failure and shutdown.
 - PlaybackQueue owns stable base-entry order, the active playback permutation, exact-entry cursor identity, repeat
   and shuffle invariants.
 - PlayerStore exposes observable UI state and does not own AVPlayer operations.

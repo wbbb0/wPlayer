@@ -1,3 +1,4 @@
+import { Context } from '@kit.AbilityKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import { image } from '@kit.ImageKit';
@@ -39,11 +40,11 @@ export interface ArtworkCacheResult {
 }
 
 export class ArtworkCache {
-  private readonly context: Context;
+  private readonly rootDirectory: string;
   private maintenanceTail: Promise<void> = Promise.resolve();
 
-  constructor(context: Context) {
-    this.context = context;
+  constructor(rootDirectory: string) {
+    this.rootDirectory = rootDirectory;
   }
 
   async cache(sourceBytes: Uint8Array, knownSourceHash?: string, traceFileId: number = 0,
@@ -107,8 +108,8 @@ export class ArtworkCache {
         ImportPerformanceTrace.mark('artwork_encode_variants', encodeStartedAt, traceFileId,
           `large_bytes=${encoded.large.byteLength} small_bytes=${encoded.small.byteLength}`);
         ArtworkCache.ensureContinues(shouldContinue);
-        const finalDirectory = ArtworkCache.parentDirectory(ArtworkCache.resolveContextPath(
-          this.context,
+        const finalDirectory = ArtworkCache.parentDirectory(ArtworkCache.resolveRootPath(
+          this.rootDirectory,
           ArtworkCache.variantRelativePath(
             sourceHash, ArtworkEncodingPolicy.VERSION, 'large', ArtworkEncodingPolicy.EXTENSION
           )
@@ -174,12 +175,16 @@ export class ArtworkCache {
   }
 
   resolvePath(relativePath: string): string {
-    return ArtworkCache.resolveContextPath(this.context, relativePath);
+    return ArtworkCache.resolveRootPath(this.rootDirectory, relativePath);
   }
 
   static resolveContextPath(context: Context, relativePath: string): string {
+    return ArtworkCache.resolveRootPath(context.filesDir, relativePath);
+  }
+
+  private static resolveRootPath(rootDirectory: string, relativePath: string): string {
     const normalizedPath = ArtworkCache.validateRelativePath(relativePath);
-    return `${context.filesDir}/${normalizedPath}`;
+    return `${rootDirectory}/${normalizedPath}`;
   }
 
   delete(relativePath: string): void {
@@ -235,7 +240,7 @@ export class ArtworkCache {
   private async cleanupEntries(shouldDelete: (entry: string, isFile: boolean) => boolean,
     shouldContinue?: () => boolean): Promise<number> {
     try {
-      const artworkRoot = ArtworkCache.resolveContextPath(this.context, ARTWORK_DIRECTORY);
+      const artworkRoot = ArtworkCache.resolveRootPath(this.rootDirectory, ARTWORK_DIRECTORY);
       if (!await fs.access(artworkRoot)) {
         return 0;
       }
@@ -289,7 +294,7 @@ export class ArtworkCache {
   }
 
   private async cleanupEmptyDirectoriesNow(shouldContinue?: () => boolean): Promise<number> {
-    const artworkRoot = ArtworkCache.resolveContextPath(this.context, ARTWORK_DIRECTORY);
+    const artworkRoot = ArtworkCache.resolveRootPath(this.rootDirectory, ARTWORK_DIRECTORY);
     if (!await ArtworkCache.pathExists(artworkRoot)) {
       return 0;
     }
@@ -363,7 +368,7 @@ export class ArtworkCache {
         sourceHash, ArtworkEncodingPolicy.VERSION, variantName,
         ArtworkEncodingPolicy.EXTENSION
       );
-      const finalPath = ArtworkCache.resolveContextPath(this.context, relativePath);
+      const finalPath = ArtworkCache.resolveRootPath(this.rootDirectory, relativePath);
       temporaryPath = `${finalPath}.${ArtworkCache.nextTemporaryId()}${TEMP_FILE_SUFFIX}`;
       const temporaryFile = await fs.open(temporaryPath,
         fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);

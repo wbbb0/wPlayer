@@ -230,13 +230,11 @@ export class PlaybackPersistenceCoordinator {
       console.warn('Ignoring invalid persisted playback queue snapshot');
       return undefined;
     }
-    const uniqueTrackIds: Array<number> = [];
+    const uniqueTrackIds: Set<number> = new Set<number>();
     snapshot.items.forEach((item: PersistedPlaybackQueueItem): void => {
-      if (uniqueTrackIds.indexOf(item.trackId) < 0) {
-        uniqueTrackIds.push(item.trackId);
-      }
+      uniqueTrackIds.add(item.trackId);
     });
-    const resolvedTracks = await this.repository.getPlaybackQueueTracks(uniqueTrackIds);
+    const resolvedTracks = await this.repository.getPlaybackQueueTracks(Array.from(uniqueTrackIds));
     if (!isEpochCurrent(buildEpoch)) {
       return undefined;
     }

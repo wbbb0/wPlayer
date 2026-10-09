@@ -1,4 +1,10 @@
 import playerImmediateInteractionTest from './PlayerImmediateInteraction.test';
+import playbackCommandQueueTest from './PlaybackCommandQueue.test';
+import playbackStopOperationTest from './PlaybackStopOperation.test';
+import playbackSessionLifecycleTest from './PlaybackSessionLifecycle.test';
+import playbackLyricsReaderTest from './PlaybackLyricsReader.test';
+import importUriAuthorizationTest from './ImportUriAuthorization.test';
+import libraryDetailRefreshCoordinatorTest from './LibraryDetailRefreshCoordinator.test';
 import appShadowStyleTest from './AppShadowStyle.test';
 import localUnitTest from './LocalUnit.test';
 import riskRegressionTest from './RiskRegression.test';
@@ -51,6 +57,12 @@ import committedChangeRefreshCoordinatorTest from './CommittedChangeRefreshCoord
 import thumbnailBenchmarkPolicyTest from './ThumbnailBenchmarkPolicy.test';
 
 export default function testsuite() {
+  playbackCommandQueueTest();
+  playbackStopOperationTest();
+  playbackSessionLifecycleTest();
+  playbackLyricsReaderTest();
+  importUriAuthorizationTest();
+  libraryDetailRefreshCoordinatorTest();
   appShadowStyleTest();
   localUnitTest();
   riskRegressionTest();

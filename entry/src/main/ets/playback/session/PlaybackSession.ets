@@ -2,6 +2,7 @@ import { common, wantAgent } from '@kit.AbilityKit';
 import { avSession } from '@kit.AVSessionKit';
 import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
 import { deviceInfo } from '@kit.BasicServicesKit';
+import { PlaybackSessionLifecycle } from './PlaybackSessionLifecycle';
 import { PlaybackTrack, PlaybackTransportState, RepeatMode } from '../model/PlaybackModels';
 
 export interface PlaybackSessionCommands {
@@ -16,8 +17,10 @@ export interface PlaybackSessionCommands {
 export class PlaybackSession {
   private readonly context: common.UIAbilityContext;
   private readonly commands: PlaybackSessionCommands;
-  private session?: avSession.AVSession;
-  private initializePromise?: Promise<void>;
+  private readonly lifecycle: PlaybackSessionLifecycle<avSession.AVSession> =
+    new PlaybackSessionLifecycle<avSession.AVSession>((error: Object): void => {
+      console.warn(`Unable to dispose AVSession: ${PlaybackSession.messageOf(error)}`);
+    });
   private backgroundRunning: boolean = false;
   private backgroundDesired: boolean = false;
   private backgroundTail: Promise<void> = Promise.resolve();
@@ -33,14 +36,26 @@ export class PlaybackSession {
     this.commands = commands;
   }
 
-  initialize(): Promise<void> {
-    if (this.session !== undefined) {
-      return Promise.resolve();
+  async initialize(): Promise<void> {
+    if (this.shuttingDown) {
+      return;
     }
-    if (this.initializePromise === undefined) {
-      this.initializePromise = this.initializeInternal();
+    try {
+      await this.lifecycle.initialize(
+        (): Promise<avSession.AVSession> => avSession.createAVSession(this.context, 'wPlayer', 'audio'),
+        async (session: avSession.AVSession): Promise<void> => {
+          session.on('play', () => this.commands.play());
+          session.on('pause', () => this.commands.pause());
+          session.on('stop', () => this.commands.stop());
+          session.on('playNext', () => this.commands.next());
+          session.on('playPrevious', () => this.commands.previous());
+          session.on('seek', (time: number) => this.commands.seek(time));
+          await this.configureMediaCenterControls(session);
+        }
+      );
+    } catch (error) {
+      console.warn(`Unable to initialize AVSession: ${PlaybackSession.messageOf(error)}`);
     }
-    return this.initializePromise;
   }
 
   updateMetadata(track: PlaybackTrack, artworkUri: string = '', lyrics: string = ''): Promise<void> {
@@ -54,7 +69,8 @@ export class PlaybackSession {
     const epoch = ++this.metadataUpdateEpoch;
     return this.enqueueMetadataUpdate(async () => {
       await this.initialize();
-      if (this.session === undefined || epoch !== this.metadataUpdateEpoch) {
+      const session = this.lifecycle.current();
+      if (session === undefined || epoch !== this.metadataUpdateEpoch) {
         return;
       }
       const metadata: avSession.AVMetadata = {
@@ -76,7 +92,7 @@ export class PlaybackSession {
           metadata.singleLyricText = this.metadataLyrics;
         }
       }
-      await this.session.setAVMetadata(metadata);
+      await session.setAVMetadata(metadata);
     });
   }
 
@@ -85,8 +101,9 @@ export class PlaybackSession {
     this.setBackgroundDesired(state === PlaybackTransportState.PLAYING);
     return this.enqueuePlaybackStateUpdate(async () => {
       await this.initialize();
-      if (this.session !== undefined) {
-        await this.session.setAVPlaybackState({
+      const session = this.lifecycle.current();
+      if (session !== undefined) {
+        await session.setAVPlaybackState({
           state: PlaybackSession.sessionStateOf(state),
           // AVSession expects the configured playback rate, not zero when paused.
           speed: 1,
@@ -102,34 +119,7 @@ export class PlaybackSession {
     await Promise.all([this.metadataUpdateTail, this.playbackStateUpdateTail]);
     this.setBackgroundDesired(false);
     await this.backgroundTail;
-    if (this.session !== undefined) {
-      try {
-        await this.session.deactivate();
-        await this.session.destroy();
-      } catch (error) {
-        console.warn(`Unable to destroy AVSession: ${PlaybackSession.messageOf(error)}`);
-      }
-      this.session = undefined;
-    }
-    this.initializePromise = undefined;
-  }
-
-  private async initializeInternal(): Promise<void> {
-    try {
-      const session = await avSession.createAVSession(this.context, 'wPlayer', 'audio');
-      session.on('play', () => this.commands.play());
-      session.on('pause', () => this.commands.pause());
-      session.on('stop', () => this.commands.stop());
-      session.on('playNext', () => this.commands.next());
-      session.on('playPrevious', () => this.commands.previous());
-      session.on('seek', (time: number) => this.commands.seek(time));
-      await this.configureMediaCenterControls(session);
-      await session.activate();
-      this.session = session;
-    } catch (error) {
-      this.initializePromise = undefined;
-      console.warn(`Unable to initialize AVSession: ${PlaybackSession.messageOf(error)}`);
-    }
+    await this.lifecycle.shutdown();
   }
 
   private async configureMediaCenterControls(session: avSession.AVSession): Promise<void> {

@@ -129,15 +129,8 @@ export struct AlbumDetailPage {
   onOpenTrackDetails: (track: TrackListItem) => void =
     (_track: TrackListItem): void => {};
   onShareTrackFile: (trackId: number) => void = (_trackId: number): void => {};
-  private readonly artworkChangeListener = (): void => {
-    this.state.refresh(this.store).catch((error: Object): void => {
-      console.warn(`Unable to refresh album artwork colors: ${error}`);
-    });
-  };
-
   aboutToAppear(): void {
-    this.store.addArtworkChangeListener(this.artworkChangeListener);
-    this.state.load(this.store);
+    this.state.activate(this.store);
     this.selection.deleteEnabled = false;
     this.selection.onPlay = (): void => this.playSelection();
     this.selection.onAddToPlaylist = (): void =>
@@ -162,7 +155,7 @@ export struct AlbumDetailPage {
 
   aboutToDisappear(): void {
     this.dragSelection.end();
-    this.store.removeArtworkChangeListener(this.artworkChangeListener);
+    this.state.deactivate(this.store);
   }
 
   private detail(): AlbumDetail | undefined {

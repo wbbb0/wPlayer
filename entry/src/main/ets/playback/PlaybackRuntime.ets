@@ -56,6 +56,7 @@ import {
   PlaybackAudioRecoveryCoordinator
 } from './coordinator/PlaybackAudioRecoveryCoordinator';
 import { PlaybackPictureInPictureCoordinator } from './coordinator/PlaybackPictureInPictureCoordinator';
+import { PlaybackStopOperation } from './coordinator/PlaybackStopOperation';
 import {
   PlaybackMediaCoordinator
 } from './coordinator/PlaybackMediaCoordinator';
@@ -259,11 +260,21 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.playerStore.heroArtworkRevision += 1;
     this.notifyPaletteChange();
     this.playerStore.transportState = this.stateReducer.reset();
-    this.engine.invalidateAndStop().then((): void => {
+    this.stopPlaybackForTransition((): void => {
       this.onStateChanged(PlayerState.IDLE);
     }).catch((error: Object): void => {
       console.warn(`Unable to stop an emptied playback queue: ${PlaybackRuntime.messageOf(error)}`);
     });
+  }
+
+  private stopPlaybackForTransition(commit: () => void): Promise<void> {
+    const token = this.media.currentRequest();
+    return PlaybackStopOperation.run(
+      (): Promise<void> => this.engine.invalidateAndStop(),
+      (): boolean => this.media.isCurrent(token),
+      commit,
+      (error: Object): void => this.onStateChanged(PlayerState.ERROR, PlaybackRuntime.messageOf(error))
+    );
   }
 
   togglePlayback(): void {
@@ -324,7 +335,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     this.restartCoverageAfterInterruption();
     this.coverageTracker.recordResume(this.playerStore.progress.positionMs);
     this.engine.play().catch((error: Object) => {
-      this.onStateChanged(PlayerState.ERROR, PlaybackRuntime.messageOf(error));
+      console.warn(`Unable to resume playback: ${PlaybackRuntime.messageOf(error)}`);
     });
   }
 
@@ -347,7 +358,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       return;
     }
     this.engine.pause().catch((error: Object) => {
-      this.onStateChanged(PlayerState.ERROR, PlaybackRuntime.messageOf(error));
+      console.warn(`Unable to pause playback: ${PlaybackRuntime.messageOf(error)}`);
     });
   }
 
@@ -436,7 +447,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
         return;
       }
       this.pendingSeekPositionMs = undefined;
-      this.onStateChanged(PlayerState.ERROR, PlaybackRuntime.messageOf(error));
+      console.warn(`Unable to seek playback: ${PlaybackRuntime.messageOf(error)}`);
     });
   }
 
@@ -502,26 +513,27 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     ++this.queueBuildEpoch;
     ++this.seekEpoch;
     this.pendingSeekPositionMs = undefined;
-    await this.engine.invalidateAndStop();
-    this.media.clearArtwork();
-    this.queue.clear();
-    this.currentPlaybackTrack = undefined;
-    this.playerStore.currentTrack = undefined;
-    this.playerStore.setMiniArtwork(undefined, '');
-    this.playerStore.heroArtwork = undefined;
-    this.playerStore.heroArtworkUri = '';
-    this.playerStore.heroArtworkPreferPixelMap = false;
-    this.playerStore.heroArtworkRevision += 1;
-    this.playerStore.progress.positionMs = 0;
-    this.playerStore.progress.durationMs = 0;
-    this.playerStore.queuePhase = QueueBuildPhase.EMPTY;
-    this.playerStore.queueSize = 0;
-    this.playerStore.playWhenReady = false;
-    this.playerStore.transportState = this.stateReducer.reset();
-    this.notifyPaletteChange();
-    this.persistence.clearResumeAndQueue();
-    this.syncQueueSnapshot();
-    this.onStateChanged(PlayerState.IDLE);
+    await this.stopPlaybackForTransition((): void => {
+      this.media.clearArtwork();
+      this.queue.clear();
+      this.currentPlaybackTrack = undefined;
+      this.playerStore.currentTrack = undefined;
+      this.playerStore.setMiniArtwork(undefined, '');
+      this.playerStore.heroArtwork = undefined;
+      this.playerStore.heroArtworkUri = '';
+      this.playerStore.heroArtworkPreferPixelMap = false;
+      this.playerStore.heroArtworkRevision += 1;
+      this.playerStore.progress.positionMs = 0;
+      this.playerStore.progress.durationMs = 0;
+      this.playerStore.queuePhase = QueueBuildPhase.EMPTY;
+      this.playerStore.queueSize = 0;
+      this.playerStore.playWhenReady = false;
+      this.playerStore.transportState = this.stateReducer.reset();
+      this.notifyPaletteChange();
+      this.persistence.clearResumeAndQueue();
+      this.syncQueueSnapshot();
+      this.onStateChanged(PlayerState.IDLE);
+    });
   }
 
   async prepareForTrackRemoval(trackIds: Array<number>): Promise<void> {
@@ -758,16 +770,18 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
     if (enabled) {
       this.persistProgress(false);
       this.media.invalidate();
-      await this.engine.invalidateAndStop();
-      DemoLibraryMode.setEnabled(true);
-      this.activateDemoPlayback();
+      await this.stopPlaybackForTransition((): void => {
+        DemoLibraryMode.setEnabled(true);
+        this.activateDemoPlayback();
+      });
       return;
     }
     this.stopDemoProgress();
     this.media.invalidate();
-    await this.engine.invalidateAndStop();
-    DemoLibraryMode.setEnabled(false);
-    this.resetPlaybackPresentation();
+    await this.stopPlaybackForTransition((): void => {
+      DemoLibraryMode.setEnabled(false);
+      this.resetPlaybackPresentation();
+    });
     await this.restoreLastPlayback();
   }
 
@@ -1156,7 +1170,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       return;
     }
     this.engine.pause().catch((error: Object) => {
-      this.onStateChanged(PlayerState.ERROR, PlaybackRuntime.messageOf(error));
+      console.warn(`Unable to pause after audio interruption: ${PlaybackRuntime.messageOf(error)}`);
     });
   }
 
@@ -1174,7 +1188,7 @@ class PlaybackRuntime implements PlaybackEngineListener, PlaybackSessionCommands
       if (clearOnFailure) {
         this.clearAutomaticResumeIntents();
       }
-      this.onStateChanged(PlayerState.ERROR, PlaybackRuntime.messageOf(error));
+      console.warn(`Unable to pause for audio recovery: ${PlaybackRuntime.messageOf(error)}`);
     });
   }
 

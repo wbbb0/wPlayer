@@ -1,5 +1,24 @@
 # Test and Regression Matrix
 
+## Async ownership regressions
+
+- PlaybackCommandQueue: obsolete failures and queued commands cannot affect a newer source; active failures
+  report once and do not block subsequent commands.
+  Old-source cleanup failure during the next source's repository/authorization lookup preserves playback intent.
+- PlaybackStopOperation: current stop failure rejects and reports ERROR without committing a clear/mode transition;
+  obsolete failure and success cannot mutate a newer source, and a current success commits once.
+- PlaybackSessionLifecycle: failed registration/activation, concurrent initialization, interrupted activation,
+  failed deactivation and repeated shutdown all release owned resources.
+- PlaybackLyricsReader: activation precedes source I/O, selection joins authorized prefetch, revoked access is
+  retryable and never becomes cached absence.
+- ImportUriAuthorization: restore only successfully activated existing URIs, preserve grants on cancellation or
+  failed database updates. Device LibraryReadAuthorization verifies retained IDs, history, playlist links and
+  unrelated unavailable/corrupt states against an isolated relational store.
+- LibraryDetailRefreshCoordinator: retained-page reentry, active updates, changes during query, hidden/stale
+  completion, query failure recovery and removed entities.
+- Large queue restoration preserves duplicate occurrences and playback permutation with one lookup per unique
+  track. Artwork cleanup tests retain an outside sentinel and use only an isolated fixture directory.
+
 ## Test registration
 
 - Every local `*.test.ets` suite must be imported and invoked by `entry/src/test/List.test.ets`.

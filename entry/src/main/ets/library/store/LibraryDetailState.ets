@@ -9,6 +9,7 @@ import { EmbeddedArtworkService } from '../artwork/EmbeddedArtworkService';
 import { LibraryStore } from './LibraryStore';
 import { TrackListItem } from '../model/LibraryModels';
 import { LibraryListDataSource } from './LibraryListDataSource';
+import { LibraryDetailRefreshCoordinator } from './LibraryDetailRefreshCoordinator';
 
 @Observed
 export class AlbumDetailState {
@@ -16,59 +17,41 @@ export class AlbumDetailState {
   detail?: AlbumDetail;
   loading: boolean = false;
   error: string = '';
-  readonly trackDataSource: LibraryListDataSource<TrackListItem> =
-    new LibraryListDataSource<TrackListItem>();
-  private loadEpoch: number = 0;
-  private loaded: boolean = false;
-  private readonly onPaletteChanged: (primary: string) => void;
+  readonly trackDataSource: LibraryListDataSource<TrackListItem> = new LibraryListDataSource<TrackListItem>();
+  private readonly refreshCoordinator: LibraryDetailRefreshCoordinator<AlbumDetail | undefined>;
 
   constructor(albumId: number, onPaletteChanged: (primary: string) => void = (_primary: string): void => {}) {
     this.albumId = albumId;
-    this.onPaletteChanged = onPaletteChanged;
+    this.refreshCoordinator = new LibraryDetailRefreshCoordinator<AlbumDetail | undefined>(
+      (detail: AlbumDetail | undefined): void => {
+        this.trackDataSource.replace(detail?.tracks ?? []);
+        this.detail = detail;
+        this.error = detail === undefined ? '专辑不存在或已从音乐库移除' : '';
+        if (detail !== undefined) {
+          onPaletteChanged(detail.album.palettePrimary);
+        }
+      },
+      (loading: boolean): void => { this.loading = loading; },
+      (message: string): void => { this.error = message; }
+    );
   }
 
-  async load(store: LibraryStore): Promise<void> {
-    await this.loadInternal(store, false);
+  load(store: LibraryStore): Promise<void> {
+    return this.activate(store);
   }
 
-  async refresh(store: LibraryStore): Promise<void> {
-    await this.loadInternal(store, true);
+  activate(store: LibraryStore): Promise<void> {
+    return this.refreshCoordinator.activate(store, (): Promise<AlbumDetail | undefined> =>
+      store.getAlbumDetail(this.albumId));
   }
 
-  private async loadInternal(store: LibraryStore, force: boolean): Promise<void> {
-    if ((!force && this.loaded) || (!force && this.loading)) {
-      return;
-    }
-    const epoch = ++this.loadEpoch;
-    this.loading = true;
-    this.error = '';
-    try {
-      const detail = await store.getAlbumDetail(this.albumId);
-      if (epoch !== this.loadEpoch) {
-        return;
-      }
-      this.trackDataSource.replace(detail?.tracks ?? []);
-      this.detail = detail;
-      this.loaded = detail !== undefined;
-      if (detail !== undefined) {
-        this.onPaletteChanged(detail.album.palettePrimary);
-      }
-      if (detail === undefined) {
-        this.error = '专辑不存在或已从音乐库移除';
-      }
-    } catch (error) {
-      if (epoch === this.loadEpoch) {
-        this.error = AlbumDetailState.messageOf(error);
-      }
-    } finally {
-      if (epoch === this.loadEpoch) {
-        this.loading = false;
-      }
-    }
+  refresh(store: LibraryStore): Promise<void> {
+    return this.refreshCoordinator.refresh(store, (): Promise<AlbumDetail | undefined> =>
+      store.getAlbumDetail(this.albumId));
   }
 
-  private static messageOf(error: Object): string {
-    return error instanceof Error ? error.message : `${error}`;
+  deactivate(store: LibraryStore): void {
+    this.refreshCoordinator.deactivate(store);
   }
 }
 
@@ -78,115 +61,48 @@ export class ArtistDetailState {
   detail?: ArtistDetailOverview;
   loading: boolean = false;
   error: string = '';
-  private loadEpoch: number = 0;
-  private loaded: boolean = false;
-  private loadedContentRevision: number = -1;
-  private loadingContentRevision: number = -1;
-  private refreshPending: boolean = false;
-  private activeStore?: LibraryStore;
-  private readonly contentChangeListener: () => void = (): void => {
-    const store = this.activeStore;
-    if (store !== undefined) {
-      if (this.loading) {
-        this.refreshPending = true;
-        return;
-      }
-      this.refresh(store).catch((error: Object): void => {
-        console.warn(`Unable to refresh artist ${this.artistId}: ${ArtistDetailState.messageOf(error)}`);
-      });
-    }
-  };
+  private readonly refreshCoordinator: LibraryDetailRefreshCoordinator<ArtistDetailOverview | undefined>;
 
   constructor(artistId: number) {
     this.artistId = artistId;
+    this.refreshCoordinator = new LibraryDetailRefreshCoordinator<ArtistDetailOverview | undefined>(
+      (detail: ArtistDetailOverview | undefined): void => {
+        this.detail = detail;
+        this.error = detail === undefined ? '艺术家不存在或已从音乐库移除' : '';
+      },
+      (loading: boolean): void => { this.loading = loading; },
+      (message: string): void => { this.error = message; }
+    );
   }
 
-  async load(store: LibraryStore): Promise<void> {
-    await this.activate(store);
+  load(store: LibraryStore): Promise<void> {
+    return this.activate(store);
   }
 
-  async activate(store: LibraryStore): Promise<void> {
-    if (this.activeStore !== store) {
-      this.activeStore?.removeContentChangeListener(this.contentChangeListener);
-      this.activeStore = store;
-      store.addContentChangeListener(this.contentChangeListener);
-    }
-    if (this.loaded && this.loadedContentRevision === store.libraryContentRevision) {
-      return;
-    }
-    if (this.loading) {
-      if (this.loadingContentRevision !== store.libraryContentRevision) {
-        this.refreshPending = true;
-      }
-      return;
-    }
-    await this.loadInternal(store, this.loaded);
-  }
-
-  deactivate(store: LibraryStore): void {
-    if (this.activeStore === store) {
-      store.removeContentChangeListener(this.contentChangeListener);
-      this.activeStore = undefined;
-      this.refreshPending = false;
-    }
+  activate(store: LibraryStore): Promise<void> {
+    return this.refreshCoordinator.activate(store, (): Promise<ArtistDetailOverview | undefined> =>
+      store.getArtistOverview(this.artistId));
   }
 
   refresh(store: LibraryStore): Promise<void> {
-    return this.loadInternal(store, true);
+    return this.refreshCoordinator.refresh(store, (): Promise<ArtistDetailOverview | undefined> =>
+      store.getArtistOverview(this.artistId));
+  }
+
+  deactivate(store: LibraryStore): void {
+    this.refreshCoordinator.deactivate(store);
   }
 
   async loadTrackSnapshot(store: LibraryStore): Promise<Array<TrackListItem>> {
-    const epoch = this.loadEpoch;
+    const epoch = this.refreshCoordinator.currentEpoch();
+    const revision = store.libraryContentRevision;
     const expectedCount = this.detail?.trackCount ?? 0;
     const tracks = await store.loadArtistTrackPlaybackOrder(this.artistId, expectedCount);
-    if (epoch !== this.loadEpoch || this.activeStore !== store || this.detail === undefined) {
+    if (!this.refreshCoordinator.isCurrent(store, epoch) || revision !== store.libraryContentRevision ||
+      this.detail === undefined) {
       throw new Error('艺术家内容已更新，请重试');
     }
     return tracks;
-  }
-
-  private async loadInternal(store: LibraryStore, force: boolean): Promise<void> {
-    if ((!force && this.loaded) || this.loading) {
-      return;
-    }
-    const epoch = ++this.loadEpoch;
-    const contentRevision = store.libraryContentRevision;
-    this.loadingContentRevision = contentRevision;
-    this.loading = true;
-    this.error = '';
-    try {
-      const detail = await store.getArtistOverview(this.artistId);
-      if (epoch !== this.loadEpoch) {
-        return;
-      }
-      this.detail = detail;
-      this.loaded = detail !== undefined;
-      this.loadedContentRevision = contentRevision;
-      if (detail === undefined) {
-        this.error = '艺术家不存在或已从音乐库移除';
-        return;
-      }
-    } catch (error) {
-      if (epoch === this.loadEpoch) {
-        this.loaded = false;
-        this.error = ArtistDetailState.messageOf(error);
-      }
-    } finally {
-      if (epoch === this.loadEpoch) {
-        this.loading = false;
-        this.loadingContentRevision = -1;
-        if (this.refreshPending && this.activeStore === store) {
-          this.refreshPending = false;
-          this.refresh(store).catch((error: Object): void => {
-            console.warn(`Unable to continue artist refresh: ${ArtistDetailState.messageOf(error)}`);
-          });
-        }
-      }
-    }
-  }
-
-  private static messageOf(error: Object): string {
-    return error instanceof Error ? error.message : `${error}`;
   }
 }
 

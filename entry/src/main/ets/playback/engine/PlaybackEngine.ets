@@ -10,6 +10,7 @@ import {
   PlaybackSourceCleanupResult
 } from './PlaybackSourceCleanup';
 import { PlaybackSourcePreparation } from './PlaybackSourcePreparation';
+import { PlaybackCommandQueue } from './PlaybackCommandQueue';
 
 const STATE_WAIT_TIMEOUT_MS = 10000;
 const SEEK_WAIT_TIMEOUT_MS = 8000;
@@ -57,8 +58,13 @@ export class PlaybackEngine {
   private audioSessionStateChangedCallback?: (event: audio.AudioSessionStateChangedEvent) => void;
   private rawState: string = 'idle';
   private listener?: PlaybackEngineListener;
-  private commandTail: Promise<void> = Promise.resolve();
   private readonly requestEpoch: RequestEpoch = new RequestEpoch();
+  private readonly commands: PlaybackCommandQueue = new PlaybackCommandQueue(
+    this.requestEpoch,
+    (error: Object): void => this.listener?.onStateChanged(PlayerState.ERROR, PlaybackEngine.messageOf(error)),
+    // Stop/reset work has a current execution epoch but does not belong to an active source.
+    (epoch: number): boolean => epoch === this.activeEpoch
+  );
   private activeEpoch: number = 0;
   private pendingStateWait?: PendingStateWait;
   private pendingSeekWait?: PendingSeekWait;
@@ -104,7 +110,7 @@ export class PlaybackEngine {
         this.ensureCurrent(epoch);
         this.publishConfirmedState(epoch, PlayerState.PLAYING);
       }
-    });
+    }, epoch);
   }
 
   play(): Promise<void> {
@@ -119,7 +125,7 @@ export class PlaybackEngine {
       await this.player.play();
       this.ensureCurrent(epoch);
       this.publishConfirmedState(epoch, PlayerState.PLAYING);
-    });
+    }, epoch);
   }
 
   pause(): Promise<void> {
@@ -129,16 +135,17 @@ export class PlaybackEngine {
         await this.player.pause();
         this.publishConfirmedState(epoch, PlayerState.PAUSED);
       }
-    });
+    }, epoch);
   }
 
   seek(positionMs: number): Promise<void> {
+    const epoch = this.activeEpoch;
     return this.enqueue(async () => {
       if (this.player === undefined || !PlaybackEngine.canSeek(this.rawState)) {
         return;
       }
       await this.seekInternal(Math.max(0, positionMs));
-    });
+    }, epoch);
   }
 
   async shutdown(): Promise<void> {
@@ -146,7 +153,7 @@ export class PlaybackEngine {
     this.requestEpoch.invalidate();
     this.rejectPendingWaits(new Error('Playback engine shut down'));
     this.unsubscribeOutputDeviceChanges();
-    await this.commandTail;
+    await this.commands.flush();
     if (this.player !== undefined && this.rawState !== 'released') {
       try {
         await this.player.release();
@@ -185,7 +192,6 @@ export class PlaybackEngine {
           `无法打开音乐文件：${PlaybackEngine.messageOf(error)}`,
           AvailabilityState.UNAVAILABLE
         );
-        this.listener?.onStateChanged(PlayerState.ERROR, cause.message);
         throw cause;
       }
       this.sourceFile = sourceFile;
@@ -257,6 +263,9 @@ export class PlaybackEngine {
       throw new Error(`Unable to create AVPlayer: ${PlaybackEngine.messageOf(error)}`);
     }
     player.on('stateChange', (state: string) => {
+      if (this.player !== player) {
+        return;
+      }
       this.rawState = state;
       if (this.pendingStateWait !== undefined && this.pendingStateWait.expected === state) {
         const pending = this.pendingStateWait;
@@ -276,6 +285,9 @@ export class PlaybackEngine {
       }
     });
     player.on('error', (error: BusinessError) => {
+      if (this.player !== player) {
+        return;
+      }
       const cause = new Error(`${error.code}: ${error.message}`);
       if (this.pendingStateWait !== undefined) {
         const pending = this.pendingStateWait;
@@ -294,16 +306,19 @@ export class PlaybackEngine {
       }
     });
     player.on('timeUpdate', (time: number) => {
-      if (this.requestEpoch.isCurrent(this.activeEpoch)) {
+      if (this.player === player && this.requestEpoch.isCurrent(this.activeEpoch)) {
         this.listener?.onPositionChanged(time);
       }
     });
     player.on('durationUpdate', (duration: number) => {
-      if (this.requestEpoch.isCurrent(this.activeEpoch)) {
+      if (this.player === player && this.requestEpoch.isCurrent(this.activeEpoch)) {
         this.listener?.onDurationChanged(duration);
       }
     });
     player.on('seekDone', () => {
+      if (this.player !== player) {
+        return;
+      }
       if (this.pendingSeekWait !== undefined) {
         const pending = this.pendingSeekWait;
         this.pendingSeekWait = undefined;
@@ -389,14 +404,8 @@ export class PlaybackEngine {
     });
   }
 
-  private enqueue(operation: () => Promise<void>): Promise<void> {
-    const pending = this.commandTail.then(operation);
-    this.commandTail = pending.catch((error: Object) => {
-      if (error !== PLAYBACK_REQUEST_SUPERSEDED) {
-        this.listener?.onStateChanged(PlayerState.ERROR, PlaybackEngine.messageOf(error));
-      }
-    });
-    return pending;
+  private enqueue(operation: () => Promise<void>, epoch: number = this.requestEpoch.current()): Promise<void> {
+    return this.commands.enqueue(epoch, operation);
   }
 
   private async ensureAudioSession(): Promise<void> {

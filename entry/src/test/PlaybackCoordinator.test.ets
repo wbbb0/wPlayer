@@ -56,6 +56,7 @@ class StaticRestoreRepository implements PlaybackRestoreRepository {
   tracks: Array<QueueTrack> = [];
   queueWrites: Array<PersistedPlaybackQueueSnapshot> = [];
   cursorWrites: Array<number> = [];
+  requestedTrackIds: Array<number> = [];
 
   constructor(snapshot?: PersistedPlaybackQueueSnapshot, tracks: Array<QueueTrack> = []) {
     this.snapshot = snapshot;
@@ -63,8 +64,10 @@ class StaticRestoreRepository implements PlaybackRestoreRepository {
   }
 
   getPlaybackQueueTracks(trackIds: Array<number>): Promise<Array<QueueTrack>> {
+    this.requestedTrackIds = trackIds.slice();
+    const requested = new Set<number>(trackIds);
     return Promise.resolve(this.tracks.filter((track: QueueTrack): boolean =>
-      trackIds.indexOf(track.id) >= 0));
+      requested.has(track.id)));
   }
 
   getPersistedPlaybackQueue(): Promise<PersistedPlaybackQueueSnapshot | undefined> {
@@ -359,6 +362,31 @@ export default function playbackCoordinatorTest() {
       expect(plan?.playbackPositions.join(',')).assertEqual('1,0');
       expect(plan?.currentPosition).assertEqual(0);
       expect(plan?.shuffleEnabled).assertTrue();
+    });
+
+    it('restores a large repeated queue without losing occurrence order or permutation', 0, async () => {
+      const count = 5000;
+      const tracks: Array<QueueTrack> = [];
+      const ids: Array<number> = [];
+      const positions: Array<number> = [];
+      for (let index = 0; index < count; index += 1) {
+        tracks.push(queueTrack(index + 1));
+        ids.push(index + 1);
+      }
+      ids.push(...ids.slice());
+      for (let index = 0; index < ids.length; index += 1) {
+        positions.push(ids.length - index - 1);
+      }
+      const repository = new StaticRestoreRepository(persistedQueue(ids, positions, count, true), tracks);
+      const coordinator = new PlaybackPersistenceCoordinator();
+      coordinator.bind(new FakePlaybackSettings(), repository);
+      const plan = await coordinator.createRestorePlan(1, false, (_epoch: number): boolean => true);
+      expect(repository.requestedTrackIds.length).assertEqual(count);
+      expect(plan?.queueTracks.length).assertEqual(count * 2);
+      expect(plan?.queueTracks[count].id).assertEqual(1);
+      expect(plan?.playbackPositions[0]).assertEqual(count * 2 - 1);
+      expect(plan?.playbackPositions[count * 2 - 1]).assertEqual(0);
+      expect(plan?.currentPosition).assertEqual(count);
     });
 
     it('deduplicates resume writes and resets the cache when rebound', 0, () => {

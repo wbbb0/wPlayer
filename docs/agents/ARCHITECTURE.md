@@ -74,7 +74,17 @@ internals. Do not perform a repository-wide dependency-injection rewrite solely 
 ## Playback ownership
 
 - PlaybackEngine exclusively owns AVPlayer creation, raw state transitions and source preparation.
+  PlaybackCommandQueue serializes native commands against the submitting source epoch. Obsolete commands and
+  failures cannot publish into a newer source; Runtime does not republish transport-command failures.
+  Error publication also requires the active source epoch: transition cleanup can fail and reject its caller
+  during repository/authorization lookup without clearing the pending source's playback intent.
+  Native callbacks also check the owning AVPlayer identity before touching waits or playback state.
+  PlaybackSessionLifecycle owns AVSession resources from creation through activation and destruction, including
+  unpublished resources on initialization failure and shutdown during initialization.
 - PlaybackRuntime coordinates commands, queue behavior, engine/session integration and atomic Store projection.
+  PlaybackStopOperation guards explicit stop/clear/demo transition outcomes with the Runtime's media token,
+  commits presentation changes synchronously while current, and reports current cleanup failures without
+  permitting obsolete completion or failure to affect a newer source. Source replacement cleanup only logs failure.
 - PlaybackPersistenceCoordinator owns restore planning, an ordered latest-wins pump for relational queue snapshots
   and cursor writes, and playback preference writes. It uses the Runtime-owned queue-build epoch for stale-result
   checks and never projects queue state itself. A persisted snapshot atomically records stable base positions, the
@@ -83,6 +93,8 @@ internals. Do not perform a repository-wide dependency-injection rewrite solely 
 - PlaybackMediaCoordinator owns the single track request epoch and playback-time lyrics/artwork/palette work.
   Its LyricsWindowCache retains parsed lyrics (including confirmed absence) for the current and adjacent queue
   tracks and shares in-flight reads. The coordinator guards current-track publication with its request epoch.
+  PlaybackLyricsReader activates persisted URI authorization before both prefetch and current-track source reads;
+  denied reads remain retryable rather than becoming cached absence.
 - PlaybackPictureInPictureCoordinator delegates snapshots and lifecycle to the existing
   PlaybackPictureInPicture implementation.
 - PlaybackAudioRecoveryCoordinator owns focus/output recovery intent and consumes each automatic resume once.
@@ -153,6 +165,13 @@ not publish state, release a resource now owned by newer work, or clear a curren
   route-owned collection state backed by independently paged data sources; detail pages do not retain or preload
   those complete result sets.
 - ArtworkCache owns persistent resized artwork files; ArtworkMemoryCache owns playback-time decoded artwork.
+  ArtworkCache receives its storage root explicitly; device cleanup tests use an isolated cache directory.
+- ImportUriAuthorization distinguishes existing library URI grants from new import grants. Confirmed existing
+  URIs are persisted and activated before a transactional authorization-only update preserves their track IDs,
+  history and playlist links. Cancellation and failed updates never revoke grants owned by existing records.
+- LibraryDetailRefreshCoordinator owns retained album/artist detail revision checks, active subscriptions and
+  asynchronous publication. Changes during a query coalesce into a fresh query; page departure invalidates its
+  result, and reentry checks LibraryStore's committed content revision before reusing cached detail.
 
 Do not make URI strings, display names, quick fingerprints or metadata alone authoritative proof of physical file
 identity.

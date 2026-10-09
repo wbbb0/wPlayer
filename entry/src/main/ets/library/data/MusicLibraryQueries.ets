@@ -217,6 +217,10 @@ export class MusicLibraryQueries {
     return this.maintenance.hasUris(uris);
   }
 
+  restoreReadAuthorization(uris: Array<string>): Promise<void> {
+    return this.maintenance.restoreReadAuthorization(uris);
+  }
+
   findDuplicateCandidates(fileSize: number, quickFingerprint: string): Promise<Array<DuplicateCandidate>> {
     return this.maintenance.findDuplicateCandidates(fileSize, quickFingerprint);
   }

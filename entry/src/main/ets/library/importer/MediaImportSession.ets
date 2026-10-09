@@ -17,6 +17,7 @@ import { calculateFullFingerprint } from '../metadata/MediaFileTasks';
 import { ImportConcurrencyPolicy } from './ImportConcurrencyPolicy';
 import { BoundedAsyncWorkQueue } from './BoundedAsyncWorkQueue';
 import { MediaImportOperation } from './MediaImportOperation';
+import { ImportUriAuthorization } from './ImportUriAuthorization';
 import { BatchDuplicateMatch, BatchDuplicatePartition, MediaDuplicateProof } from './MediaDuplicateProof';
 import { MediaArtworkPipeline } from './MediaArtworkPipeline';
 import { MediaFileChecker } from './MediaFileChecker';
@@ -46,6 +47,7 @@ import {
   ParsedMetadata
 } from '../model/LibraryModels';
 import {
+  ensureReadPermissions,
   persistReadPermissions,
   revokeReadPermissions,
   selectAudioFiles
@@ -90,6 +92,7 @@ export class MediaImportSession {
   private readonly removalService: LibraryRemovalService;
   private readonly operation: MediaImportOperation;
   private readonly duplicateProof: MediaDuplicateProof;
+  private readonly authorization: ImportUriAuthorization;
   private readonly artworkPipeline: MediaArtworkPipeline;
 
   constructor(context: common.UIAbilityContext, repository: MusicRepository, artworkCache: ArtworkCache,
@@ -99,6 +102,13 @@ export class MediaImportSession {
     this.repository = repository;
     this.artworkCache = artworkCache;
     this.operation = operation;
+    this.authorization = new ImportUriAuthorization(
+      (uris: Array<string>) => ensureReadPermissions(uris, undefined, {
+        shouldContinue: (): boolean => !this.cancelRequested
+      }),
+      (uris: Array<string>): Promise<void> => repository.restoreReadAuthorization(uris),
+      (): boolean => this.cancelRequested
+    );
     this.duplicateProof = new MediaDuplicateProof(
       operation,
       (fileSize: number, quickFingerprint: string): Promise<Array<DuplicateCandidate>> =>
@@ -188,6 +198,7 @@ export class MediaImportSession {
     onLibraryChanged?: ImportLibraryChangedCallback,
     onTreeSelection?: ImportTreeSelectionCallback): Promise<ImportResult> {
     const itemResults: Array<ImportItemResult> = [];
+    let restoredAuthorizationCount = 0;
     const artworkWorks: Array<PendingArtworkWork> = [];
     const progress: ImportProgress = {
       total: uris.length,
@@ -213,7 +224,7 @@ export class MediaImportSession {
       uris, itemResults, progress, progressGate, onProgress, onItem
     );
     // Range selection happens after preflight so the tree only contains
-    // importable files, and before any permission is persisted so unselected
+    // new imports and existing-file reauthorizations, before permissions are persisted so unselected
     // URIs never gain lasting authorization.
     let selectionCancelled = false;
     let effectiveUris = pendingUris;
@@ -245,7 +256,7 @@ export class MediaImportSession {
       const permissionStartedAt = Date.now();
       const permissionResult = await persistReadPermissions(uriBatch);
       if (this.cancelRequested) {
-        await revokeReadPermissions(permissionResult.successfulUris);
+        await this.revokeUnusedPermissions(permissionResult.successfulUris);
         break;
       }
       ImportPerformanceTrace.mark('permission_persist', permissionStartedAt, 0,
@@ -263,12 +274,37 @@ export class MediaImportSession {
       });
       this.notify(onProgress, progress, progressGate, true);
 
+      const restored = await this.authorization.restoreExisting(permissionResult.successfulUris);
+      restoredAuthorizationCount += restored.successfulUris.length;
+      restored.successfulUris.forEach((uri: string): void => {
+        progress.duplicates += 1;
+        progress.processed += 1;
+        this.recordItem(itemResults, {
+          uri: uri, displayName: uri, outcome: ImportItemOutcome.DUPLICATE,
+          reason: '已恢复读取授权，保留原音乐记录',
+          detailKind: ImportItemDetailKind.URI_DUPLICATE, duplicateSourceUri: uri
+        }, onItem);
+      });
+      restored.failedUris.forEach((uri: string): void => {
+        progress.failed += 1;
+        progress.processed += 1;
+        this.recordItem(itemResults, {
+          uri: uri, displayName: uri, outcome: ImportItemOutcome.FAILED,
+          reason: restored.errorMessage, detailKind: ImportItemDetailKind.FAILED
+        }, onItem);
+      });
+      this.notify(onProgress, progress, progressGate, true);
+      if (this.cancelRequested) {
+        await this.revokeUnusedPermissions(permissionResult.successfulUris);
+        break;
+      }
+
       const preparedInputs: Array<TrackImportInput> = [];
       const revokeAfterBatch: Array<string> = [];
       const prepareStartedAt = Date.now();
-      const prepared = await this.prepareImports(permissionResult.successfulUris);
+      const prepared = await this.prepareImports(this.authorization.newUris(permissionResult.successfulUris));
       if (this.cancelRequested) {
-        await revokeReadPermissions(permissionResult.successfulUris);
+        await this.revokeUnusedPermissions(permissionResult.successfulUris);
         break;
       }
       ImportPerformanceTrace.mark('prepare_batch', prepareStartedAt, 0,
@@ -313,7 +349,7 @@ export class MediaImportSession {
       this.notify(onProgress, progress, progressGate, true);
 
       if (this.cancelRequested) {
-        await revokeReadPermissions(permissionResult.successfulUris);
+        await this.revokeUnusedPermissions(permissionResult.successfulUris);
         break;
       }
       if (preparedInputs.length > 0) {
@@ -322,14 +358,14 @@ export class MediaImportSession {
         ImportPerformanceTrace.mark('batch_duplicate_proof', batchProofStartedAt, 0,
           `count=${preparedInputs.length}`);
         if (this.cancelRequested) {
-          await revokeReadPermissions(permissionResult.successfulUris);
+          await this.revokeUnusedPermissions(permissionResult.successfulUris);
           break;
         }
         const uniqueInputs = this.removeBatchDuplicates(
           preparedInputs, itemResults, progress, revokeAfterBatch, onItem
         );
         if (this.cancelRequested) {
-          await revokeReadPermissions(permissionResult.successfulUris);
+          await this.revokeUnusedPermissions(permissionResult.successfulUris);
           break;
         }
         const databaseStartedAt = Date.now();
@@ -403,7 +439,7 @@ export class MediaImportSession {
         this.notify(onProgress, progress, progressGate, true);
       }
       const revokeStartedAt = Date.now();
-      await revokeReadPermissions(revokeAfterBatch);
+      await this.revokeUnusedPermissions(revokeAfterBatch);
       ImportPerformanceTrace.mark('permission_revoke', revokeStartedAt, 0,
         `count=${revokeAfterBatch.length}`);
     }
@@ -413,7 +449,7 @@ export class MediaImportSession {
     progress.currentName = artworkPendingAtMetadataRefresh ?
       '正在处理封面' : '';
     this.notify(onProgress, progress, progressGate, true);
-    if (progress.imported > 0) {
+    if (progress.imported > 0 || restoredAuthorizationCount > 0) {
       await this.notifyLibraryChanged(onLibraryChanged, ImportRefreshPhase.METADATA);
     }
     artworkSession.startProcessing();
@@ -520,30 +556,19 @@ export class MediaImportSession {
       this.notify(onProgress, progress, progressGate, true);
       const uriCheckStartedAt = Date.now();
       const existingUris = await this.repository.hasUris(uriBatch);
-      const existingUriSet: Set<string> = new Set(existingUris);
+      this.authorization.retainExisting(existingUris);
       ImportPerformanceTrace.mark('uri_check', uriCheckStartedAt, 0,
         `batch=${batchOffset / ImportConcurrencyPolicy.URI_PREFLIGHT_BATCH_SIZE + 1} count=${uriBatch.length}`);
-      for (let index = 0; index < uriBatch.length; index += 1) {
-        const uri = uriBatch[index];
-        if (existingUriSet.has(uri)) {
-          progress.duplicates += 1;
-          progress.processed += 1;
-          this.recordItem(itemResults, {
-            uri: uri,
-            displayName: uri,
-            outcome: ImportItemOutcome.DUPLICATE,
-            reason: '同一文件 URI 已在音乐库中',
-            detailKind: ImportItemDetailKind.URI_DUPLICATE,
-            duplicateSourceUri: uri
-          }, onItem);
-        } else {
-          pendingUris.push(uri);
-        }
-      }
+      pendingUris.push(...uriBatch);
       this.notify(onProgress, progress, progressGate, true);
       await MediaImportSession.yieldToUi();
     }
     return pendingUris;
+  }
+
+  private async revokeUnusedPermissions(uris: Array<string>): Promise<void> {
+    // Existing records retain their grant even on cancellation or a database failure.
+    await revokeReadPermissions(this.authorization.newUris(uris));
   }
 
   private async prepareImports(uris: Array<string>): Promise<Array<PreparedImport>> {

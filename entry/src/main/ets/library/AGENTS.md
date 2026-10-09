@@ -15,10 +15,12 @@ Before changing library behavior, read:
 - MediaImporter is the stable façade and owns the active MediaImportOperation. Import-session outcomes,
   file checking, duplicate proof and artwork work belong to their dedicated importer collaborators.
 - Committed library deletion and post-commit URI authorization cleanup belong to LibraryRemovalService.
+- ImportUriAuthorization protects existing library grants during reauthorization, cancellation and failed writes.
 - Metadata and embedded artwork extraction belong to MetadataReader and format-specific readers.
 - Relational lifecycle and schema belong to LibraryDatabase.
 - Queries and writes belong to their repository/data helpers.
 - Observable library state and session-only reports belong to LibraryStore.
+- Retained album/artist detail subscriptions, revision checks and stale results belong to LibraryDetailRefreshCoordinator.
 - Persistent resized artwork belongs to ArtworkCache.
 
 ## File access

@@ -9,31 +9,31 @@ import { EmbeddedArtworkService } from '../artwork/EmbeddedArtworkService';
 import { LibraryStore } from './LibraryStore';
 import { TrackListItem } from '../model/LibraryModels';
 import { LibraryListDataSource } from './LibraryListDataSource';
-import { LibraryDetailRefreshCoordinator } from './LibraryDetailRefreshCoordinator';
+import { LibraryDetailRefreshCoordinator, LibraryDetailRefreshTarget } from './LibraryDetailRefreshCoordinator';
 
 @Observed
-export class AlbumDetailState {
+export class AlbumDetailState implements LibraryDetailRefreshTarget<AlbumDetail | undefined> {
   readonly albumId: number;
   detail?: AlbumDetail;
   loading: boolean = false;
   error: string = '';
   readonly trackDataSource: LibraryListDataSource<TrackListItem> = new LibraryListDataSource<TrackListItem>();
-  private readonly refreshCoordinator: LibraryDetailRefreshCoordinator<AlbumDetail | undefined>;
+  private readonly refreshCoordinator: LibraryDetailRefreshCoordinator<AlbumDetail | undefined> =
+    new LibraryDetailRefreshCoordinator<AlbumDetail | undefined>();
+  private readonly onPaletteChanged: (primary: string) => void;
 
   constructor(albumId: number, onPaletteChanged: (primary: string) => void = (_primary: string): void => {}) {
     this.albumId = albumId;
-    this.refreshCoordinator = new LibraryDetailRefreshCoordinator<AlbumDetail | undefined>(
-      (detail: AlbumDetail | undefined): void => {
-        this.trackDataSource.replace(detail?.tracks ?? []);
-        this.detail = detail;
-        this.error = detail === undefined ? '专辑不存在或已从音乐库移除' : '';
-        if (detail !== undefined) {
-          onPaletteChanged(detail.album.palettePrimary);
-        }
-      },
-      (loading: boolean): void => { this.loading = loading; },
-      (message: string): void => { this.error = message; }
-    );
+    this.onPaletteChanged = onPaletteChanged;
+  }
+
+  commitDetail(detail: AlbumDetail | undefined): void {
+    this.trackDataSource.replace(detail?.tracks ?? []);
+    this.detail = detail;
+    this.error = detail === undefined ? '专辑不存在或已从音乐库移除' : '';
+    if (detail !== undefined) {
+      this.onPaletteChanged(detail.album.palettePrimary);
+    }
   }
 
   load(store: LibraryStore): Promise<void> {
@@ -42,12 +42,12 @@ export class AlbumDetailState {
 
   activate(store: LibraryStore): Promise<void> {
     return this.refreshCoordinator.activate(store, (): Promise<AlbumDetail | undefined> =>
-      store.getAlbumDetail(this.albumId));
+      store.getAlbumDetail(this.albumId), this);
   }
 
   refresh(store: LibraryStore): Promise<void> {
     return this.refreshCoordinator.refresh(store, (): Promise<AlbumDetail | undefined> =>
-      store.getAlbumDetail(this.albumId));
+      store.getAlbumDetail(this.albumId), this);
   }
 
   deactivate(store: LibraryStore): void {
@@ -56,23 +56,21 @@ export class AlbumDetailState {
 }
 
 @Observed
-export class ArtistDetailState {
+export class ArtistDetailState implements LibraryDetailRefreshTarget<ArtistDetailOverview | undefined> {
   readonly artistId: number;
   detail?: ArtistDetailOverview;
   loading: boolean = false;
   error: string = '';
-  private readonly refreshCoordinator: LibraryDetailRefreshCoordinator<ArtistDetailOverview | undefined>;
+  private readonly refreshCoordinator: LibraryDetailRefreshCoordinator<ArtistDetailOverview | undefined> =
+    new LibraryDetailRefreshCoordinator<ArtistDetailOverview | undefined>();
 
   constructor(artistId: number) {
     this.artistId = artistId;
-    this.refreshCoordinator = new LibraryDetailRefreshCoordinator<ArtistDetailOverview | undefined>(
-      (detail: ArtistDetailOverview | undefined): void => {
-        this.detail = detail;
-        this.error = detail === undefined ? '艺术家不存在或已从音乐库移除' : '';
-      },
-      (loading: boolean): void => { this.loading = loading; },
-      (message: string): void => { this.error = message; }
-    );
+  }
+
+  commitDetail(detail: ArtistDetailOverview | undefined): void {
+    this.detail = detail;
+    this.error = detail === undefined ? '艺术家不存在或已从音乐库移除' : '';
   }
 
   load(store: LibraryStore): Promise<void> {
@@ -81,12 +79,12 @@ export class ArtistDetailState {
 
   activate(store: LibraryStore): Promise<void> {
     return this.refreshCoordinator.activate(store, (): Promise<ArtistDetailOverview | undefined> =>
-      store.getArtistOverview(this.artistId));
+      store.getArtistOverview(this.artistId), this);
   }
 
   refresh(store: LibraryStore): Promise<void> {
     return this.refreshCoordinator.refresh(store, (): Promise<ArtistDetailOverview | undefined> =>
-      store.getArtistOverview(this.artistId));
+      store.getArtistOverview(this.artistId), this);
   }
 
   deactivate(store: LibraryStore): void {

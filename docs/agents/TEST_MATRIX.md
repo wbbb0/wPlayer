@@ -15,7 +15,9 @@
   failed database updates. Device LibraryReadAuthorization verifies retained IDs, history, playlist links and
   unrelated unavailable/corrupt states against an isolated relational store.
 - LibraryDetailRefreshCoordinator: retained-page reentry, active updates, changes during query, hidden/stale
-  completion, query failure recovery and removed entities.
+  completion, query failure recovery, removed entities and replacement of the observable publication target.
+  Device checks must verify that successful album/artist reads actually replace the loading UI, including reentry
+  and compact/unfolded layouts; loading and error placeholders share a full-width centered presentation.
 - Large queue restoration preserves duplicate occurrences and playback permutation with one lookup per unique
   track. Artwork cleanup tests retain an outside sentinel and use only an isolated fixture directory.
 

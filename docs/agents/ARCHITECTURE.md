@@ -172,6 +172,8 @@ not publish state, release a resource now owned by newer work, or clear a curren
 - LibraryDetailRefreshCoordinator owns retained album/artist detail revision checks, active subscriptions and
   asynchronous publication. Changes during a query coalesce into a fresh query; page departure invalidates its
   result, and reentry checks LibraryStore's committed content revision before reusing cached detail.
+  Activation supplies the observable detail state as its publication target. The coordinator writes loading,
+  error and detail through that target; constructors must not capture raw state receivers in mutation callbacks.
 
 Do not make URI strings, display names, quick fingerprints or metadata alone authoritative proof of physical file
 identity.

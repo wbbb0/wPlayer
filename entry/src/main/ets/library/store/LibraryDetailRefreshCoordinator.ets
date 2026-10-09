@@ -4,45 +4,49 @@ export interface LibraryDetailContentSource {
   removeContentChangeListener(listener: () => void): void;
 }
 
+export interface LibraryDetailRefreshTarget<T> {
+  loading: boolean;
+  error: string;
+  commitDetail(value: T): void;
+}
+
 /** Keeps retained detail pages coherent with committed library revisions. */
 export class LibraryDetailRefreshCoordinator<T> {
   private activeSource?: LibraryDetailContentSource;
+  private activeTarget?: LibraryDetailRefreshTarget<T>;
   private cachedSource?: LibraryDetailContentSource;
+  private cachedTarget?: LibraryDetailRefreshTarget<T>;
   private cachedRevision: number = -1;
   private epoch: number = 0;
   private pending?: Promise<void>;
   private dirty: boolean = false;
   private read?: () => Promise<T>;
-  private readonly commit: (value: T) => void;
-  private readonly setLoading: (loading: boolean) => void;
-  private readonly setError: (message: string) => void;
   private readonly listener: () => void = (): void => {
     this.dirty = true;
     this.request();
   };
 
-  constructor(commit: (value: T) => void, setLoading: (loading: boolean) => void,
-    setError: (message: string) => void) {
-    this.commit = commit;
-    this.setLoading = setLoading;
-    this.setError = setError;
-  }
-
-  activate(source: LibraryDetailContentSource, read: () => Promise<T>): Promise<void> {
-    if (this.activeSource !== source) {
+  activate(source: LibraryDetailContentSource, read: () => Promise<T>,
+    target: LibraryDetailRefreshTarget<T>): Promise<void> {
+    if (this.activeSource !== source || this.activeTarget !== target) {
       this.activeSource?.removeContentChangeListener(this.listener);
+      if (this.activeTarget !== undefined) {
+        this.activeTarget.loading = false;
+      }
       this.epoch += 1;
       this.pending = undefined;
       this.activeSource = source;
+      this.activeTarget = target;
       source.addContentChangeListener(this.listener);
     }
     this.read = read;
     return this.request();
   }
 
-  refresh(source: LibraryDetailContentSource, read: () => Promise<T>): Promise<void> {
+  refresh(source: LibraryDetailContentSource, read: () => Promise<T>,
+    target: LibraryDetailRefreshTarget<T>): Promise<void> {
     this.dirty = true;
-    return this.activate(source, read);
+    return this.activate(source, read, target);
   }
 
   deactivate(source: LibraryDetailContentSource): void {
@@ -53,7 +57,10 @@ export class LibraryDetailRefreshCoordinator<T> {
       this.epoch += 1;
       this.pending = undefined;
       this.dirty = false;
-      this.setLoading(false);
+      if (this.activeTarget !== undefined) {
+        this.activeTarget.loading = false;
+      }
+      this.activeTarget = undefined;
     }
   }
 
@@ -68,20 +75,22 @@ export class LibraryDetailRefreshCoordinator<T> {
   private request(): Promise<void> {
     const source = this.activeSource;
     const read = this.read;
-    if (source === undefined || read === undefined) {
+    const target = this.activeTarget;
+    if (source === undefined || read === undefined || target === undefined) {
       return Promise.resolve();
     }
     if (this.pending !== undefined) {
       return this.pending;
     }
-    if (!this.dirty && this.cachedSource === source && this.cachedRevision === source.libraryContentRevision) {
+    if (!this.dirty && this.cachedSource === source && this.cachedTarget === target &&
+      this.cachedRevision === source.libraryContentRevision) {
       return Promise.resolve();
     }
     const epoch = ++this.epoch;
-    this.pending = this.load(source, read, epoch).finally((): void => {
+    this.pending = this.load(source, read, target, epoch).finally((): void => {
       if (this.isCurrent(source, epoch)) {
         this.pending = undefined;
-        this.setLoading(false);
+        target.loading = false;
         if (this.dirty) {
           this.request();
         }
@@ -90,9 +99,10 @@ export class LibraryDetailRefreshCoordinator<T> {
     return this.pending;
   }
 
-  private async load(source: LibraryDetailContentSource, read: () => Promise<T>, epoch: number): Promise<void> {
-    this.setLoading(true);
-    this.setError('');
+  private async load(source: LibraryDetailContentSource, read: () => Promise<T>,
+    target: LibraryDetailRefreshTarget<T>, epoch: number): Promise<void> {
+    target.loading = true;
+    target.error = '';
     while (this.isCurrent(source, epoch)) {
       const revision = source.libraryContentRevision;
       this.dirty = false;
@@ -104,8 +114,9 @@ export class LibraryDetailRefreshCoordinator<T> {
         if (this.dirty || revision !== source.libraryContentRevision) {
           continue;
         }
-        this.commit(value);
+        target.commitDetail(value);
         this.cachedSource = source;
+        this.cachedTarget = target;
         this.cachedRevision = revision;
         return;
       } catch (error) {
@@ -116,7 +127,7 @@ export class LibraryDetailRefreshCoordinator<T> {
           continue;
         }
         this.cachedRevision = -1;
-        this.setError(error instanceof Error ? error.message : `${error}`);
+        target.error = error instanceof Error ? error.message : `${error}`;
         return;
       }
     }

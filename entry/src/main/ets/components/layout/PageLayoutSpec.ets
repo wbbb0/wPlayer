@@ -15,6 +15,9 @@ export class PageLayoutSpec {
   static readonly DETAIL_WIDE_ARTWORK_MAX_HEIGHT: number = 184;
   static readonly DETAIL_WIDE_HEADER_GAP: number = 28;
   static readonly DETAIL_WIDE_TEXT_MIN_WIDTH: number = 280;
+  static readonly DETAIL_STATUS_MIN_HEIGHT: number = 184;
+  static readonly DETAIL_STATUS_ICON_SIZE: number = 40;
+  static readonly DETAIL_STATUS_GAP: number = 12;
 
   static primaryContentStart(_topInset: number): number {
     // HdsNavigation owns the title bar safe area and its layout height.

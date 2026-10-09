@@ -17,6 +17,7 @@ import { ArtistDetailState } from '../../library/store/LibraryDetailState';
 import { LibraryStore } from '../../library/store/LibraryStore';
 import { playbackRuntime } from '../../playback/PlaybackRuntime';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
+import { LibraryDetailStatus } from '../../components/library/LibraryDetailStatus';
 
 @Component
 export struct ArtistDetailPage {
@@ -249,22 +250,14 @@ export struct ArtistDetailPage {
               }
           }, (track: TrackListItem) => `${track.id}`)
         }
-      } else if (this.state.loading) {
-        ListItem() {
-          LoadingProgress()
-            .width(40)
-            .height(40)
-            .margin({ top: 72 })
-        }
       } else {
         ListItem() {
-          Text(this.state.error.length > 0 ? this.state.error : '正在载入艺术家…')
-            .fontSize(15)
-            .fontColor($r('app.color.text_secondary'))
-            .width('100%')
-            .textAlign(TextAlign.Center)
-            .margin({ top: 72 })
+          LibraryDetailStatus({
+            loading: this.state.loading,
+            message: this.state.error.length > 0 ? this.state.error : '正在载入艺术家…'
+          })
         }
+        .width('100%')
       }
     }
     .width('100%')

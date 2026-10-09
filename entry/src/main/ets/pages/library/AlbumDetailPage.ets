@@ -25,6 +25,7 @@ import {
 } from '../../appearance/DynamicColor';
 import { AlbumAction } from '../../components/library/AlbumGridItem';
 import { AlbumPreviewGrid } from '../../components/library/AlbumPreviewGrid';
+import { LibraryDetailStatus } from '../../components/library/LibraryDetailStatus';
 import { MultiSelectController } from '../../components/library/MultiSelectController';
 import { ArtworkSize } from '../../components/artwork/ArtworkLayout';
 import {
@@ -602,23 +603,16 @@ export struct AlbumDetailPage {
             this.RelatedAlbums(this.state.detail)
           }
         }
-      } else if (this.state.loading) {
-        ListItem() {
-          LoadingProgress()
-            .width(40)
-            .height(40)
-            .color(this.primaryContentColor())
-            .margin({ top: 72 })
-        }
       } else {
         ListItem() {
-          Text(this.state.error.length > 0 ? this.state.error : '正在载入专辑…')
-            .fontSize(15)
-            .fontColor(this.secondaryContentColor())
-            .width('100%')
-            .textAlign(TextAlign.Center)
-            .margin({ top: 72 })
+          LibraryDetailStatus({
+            loading: this.state.loading,
+            message: this.state.error.length > 0 ? this.state.error : '正在载入专辑…',
+            primaryColor: this.primaryContentColor(),
+            secondaryColor: this.secondaryContentColor()
+          })
         }
+        .width('100%')
       }
     }
     .width('100%')

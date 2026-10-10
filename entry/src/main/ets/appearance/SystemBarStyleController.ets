@@ -103,6 +103,7 @@ export class SystemBarStyleController {
   private fullscreenOverlayStatusBarVisible: boolean = true;
   private appliedContentColor: string | undefined = undefined;
   private appliedStatusBarVisible: boolean | undefined = undefined;
+  private animationConfiguredWindow?: SystemBarWindow;
   private requestEpoch: number = 0;
   private failedRequestEpoch: number = -1;
   private applying: boolean = false;
@@ -119,6 +120,7 @@ export class SystemBarStyleController {
     this.mainWindow = mainWindow;
     this.appliedContentColor = undefined;
     this.appliedStatusBarVisible = undefined;
+    this.animationConfiguredWindow = undefined;
     this.failedRequestEpoch = -1;
     this.requestApply();
   }
@@ -131,6 +133,7 @@ export class SystemBarStyleController {
     this.mainWindow = undefined;
     this.appliedContentColor = undefined;
     this.appliedStatusBarVisible = undefined;
+    this.animationConfiguredWindow = undefined;
     this.failedRequestEpoch = -1;
   }
 
@@ -300,6 +303,16 @@ export class SystemBarStyleController {
       const targetWindow = this.mainWindow;
       const targetEpoch = this.requestEpoch;
       try {
+        if (this.animationConfiguredWindow !== targetWindow) {
+          await targetWindow.setSystemBarProperties({
+            enableStatusBarAnimation: true,
+            enableNavigationBarAnimation: true
+          });
+          if (this.mainWindow === targetWindow) {
+            this.animationConfiguredWindow = targetWindow;
+          }
+          continue;
+        }
         await targetWindow.setSystemBarEnable(
           desiredStatusBarVisible ? ['status', 'navigation'] : ['navigation']
         );
@@ -307,9 +320,7 @@ export class SystemBarStyleController {
           statusBarColor: '#00000000',
           statusBarContentColor: desiredContentColor,
           navigationBarColor: '#00000000',
-          navigationBarContentColor: desiredContentColor,
-          enableStatusBarAnimation: true,
-          enableNavigationBarAnimation: true
+          navigationBarContentColor: desiredContentColor
         });
         if (this.mainWindow === targetWindow) {
           if (this.requestEpoch === targetEpoch) {

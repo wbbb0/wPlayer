@@ -9,6 +9,7 @@ import {
 class FakeSystemBarWindow extends SystemBarWindow {
   enableApplyCount: number = 0;
   propertyApplyCount: number = 0;
+  readonly propertyHistory: Array<window.SystemBarProperties> = [];
   lastProperties?: window.SystemBarProperties;
   private blockNextPropertyApply: boolean = false;
   private propertyApplyResolver?: () => void;
@@ -22,6 +23,7 @@ class FakeSystemBarWindow extends SystemBarWindow {
   ): Promise<void> {
     this.propertyApplyCount += 1;
     this.lastProperties = systemBarProperties;
+    this.propertyHistory.push(systemBarProperties);
     if (this.blockNextPropertyApply) {
       this.blockNextPropertyApply = false;
       await new Promise<void>((resolve: () => void) => {
@@ -64,18 +66,34 @@ async function flushSystemBarApply(): Promise<void> {
 
 export default function systemBarStyleControllerTest() {
   describe('System bar style controller', () => {
+    it('configures animation before applying colors to a bound window', 0, async () => {
+      const controller = new SystemBarStyleController();
+      const targetWindow = new FakeSystemBarWindow();
+
+      controller.bindWindow(targetWindow);
+      await flushSystemBarApply();
+
+      expect(targetWindow.propertyApplyCount).assertEqual(2);
+      expect(targetWindow.propertyHistory[0].enableStatusBarAnimation).assertTrue();
+      expect(targetWindow.propertyHistory[0].enableNavigationBarAnimation).assertTrue();
+      expect(targetWindow.propertyHistory[0].statusBarContentColor).assertUndefined();
+      expect(targetWindow.propertyHistory[1].statusBarContentColor).assertEqual('#FF202020');
+      expect(targetWindow.propertyHistory[1].enableStatusBarAnimation).assertUndefined();
+      expect(targetWindow.propertyHistory[1].enableNavigationBarAnimation).assertUndefined();
+    });
+
     it('reapplies the current style after the window returns to foreground', 0, async () => {
       const controller = new SystemBarStyleController();
       const targetWindow = new FakeSystemBarWindow();
       controller.bindWindow(targetWindow);
       await flushSystemBarApply();
-      expect(targetWindow.propertyApplyCount).assertEqual(1);
+      expect(targetWindow.propertyApplyCount).assertEqual(2);
 
       controller.reapplyCurrentStyle();
       await flushSystemBarApply();
 
       expect(targetWindow.enableApplyCount).assertEqual(2);
-      expect(targetWindow.propertyApplyCount).assertEqual(2);
+      expect(targetWindow.propertyApplyCount).assertEqual(3);
     });
 
     it('keeps the top overlay owner when foreground style is replayed', 0, async () => {
@@ -98,16 +116,19 @@ export default function systemBarStyleControllerTest() {
     it('does not let an in-flight apply swallow a same-style replay', 0, async () => {
       const controller = new SystemBarStyleController();
       const targetWindow = new FakeSystemBarWindow();
-      targetWindow.blockNextProperties();
       controller.bindWindow(targetWindow);
       await flushSystemBarApply();
-      expect(targetWindow.propertyApplyCount).assertEqual(1);
+      expect(targetWindow.propertyApplyCount).assertEqual(2);
 
+      targetWindow.blockNextProperties();
+      controller.reapplyCurrentStyle();
+      await flushSystemBarApply();
+      expect(targetWindow.propertyApplyCount).assertEqual(3);
       controller.reapplyCurrentStyle();
       targetWindow.releaseProperties();
       await flushSystemBarApply();
 
-      expect(targetWindow.propertyApplyCount).assertEqual(2);
+      expect(targetWindow.propertyApplyCount).assertEqual(4);
     });
 
     it('rewrites the latest style after an in-flight request becomes stale', 0, async () => {
@@ -119,12 +140,12 @@ export default function systemBarStyleControllerTest() {
 
       controller.submitContentColor('full_player', '#FFFFFFFF');
       await flushSystemBarApply();
-      expect(targetWindow.propertyApplyCount).assertEqual(2);
+      expect(targetWindow.propertyApplyCount).assertEqual(3);
       controller.removeContentColor('full_player');
       targetWindow.releaseProperties();
       await flushSystemBarApply();
 
-      expect(targetWindow.propertyApplyCount).assertEqual(3);
+      expect(targetWindow.propertyApplyCount).assertEqual(4);
       expect(targetWindow.lastProperties?.statusBarContentColor).assertEqual('#FF202020');
     });
 
@@ -150,7 +171,7 @@ export default function systemBarStyleControllerTest() {
 
       frameHost.runIdle(1);
       await flushSystemBarApply();
-      expect(targetWindow.propertyApplyCount).assertEqual(2);
+      expect(targetWindow.propertyApplyCount).assertEqual(3);
     });
 
     it('replays across two layout frames without duplicating the first callback', 0, async () => {
@@ -170,7 +191,7 @@ export default function systemBarStyleControllerTest() {
       frameHost.runIdle(1);
       await flushSystemBarApply();
 
-      expect(targetWindow.propertyApplyCount).assertEqual(3);
+      expect(targetWindow.propertyApplyCount).assertEqual(4);
     });
 
     it('invalidates a queued layout follow-up before a new generation', 0, () => {

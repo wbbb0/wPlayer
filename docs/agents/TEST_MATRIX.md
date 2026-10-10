@@ -58,6 +58,10 @@ For navigation and player UI changes, verify applicable scenarios on available t
 - mini-player artwork and track-text taps;
 - playback-control taps;
 - horizontal dragging in both directions and elastic return;
+- mini-player consecutive track swipes before the previous settle completes: all three title/artist pages
+  follow each replacement window, including reversal and an unavailable neighbor; after settling, text and
+  artwork agree with the latest selected entry. Repeat in compact and unfolded hosts. Local gesture-policy
+  tests cannot prove ArkUI Builder subscriptions; verify this rendering behavior on a device;
 - upward drag following the finger;
 - below-threshold cancellation without overshoot;
 - above-threshold expansion;

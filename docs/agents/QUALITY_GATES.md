@@ -74,6 +74,18 @@ uninstall an application to resolve signing mismatch without approval.
 When a focused suite cannot be invoked independently with available tooling, run its registered parent target and
 state that limitation.
 
+For mini-player title/artist rendering, after the default debug build, replay the SDK-generated callbacks:
+
+```powershell
+node tools/verify-mini-player-rendering.cjs `
+  entry/build/default/cache/default/default@CompileArkTS/esmodule/debug/entry/src/main/ets/components/player/MiniPlayerTrackPager.ts `
+  'C:/Program Files/Huawei/DevEco Studio/tools/hvigor/hvigor-ohos-plugin/node_modules/typescript'
+```
+
+Adjust the TypeScript module path for the installed DevEco Studio. This bounded callback harness checks rapid
+window replacement, reversal and disappearing/reappearing neighbors without remounting the pager. It does not
+implement native ArkUI subscription or animation scheduling; the corresponding device checks remain required.
+
 ## Defect gate
 
 A defect is complete only when:

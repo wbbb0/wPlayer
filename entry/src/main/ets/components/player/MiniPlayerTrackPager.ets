@@ -2,6 +2,7 @@ import { PlayerStore, QueueEntry } from '../../playback/model/PlaybackModels';
 import { LayoutLength } from '../layout/LayoutLength';
 import { MiniPlayerBinding } from './MiniPlayerBinding';
 import { PlayerTrackMarquee } from './PlayerTrackMarquee';
+import { MiniPlayerTrackPageTarget } from './MiniPlayerTrackPagerPolicy';
 
 @Component
 export struct MiniPlayerTrackPager {
@@ -47,17 +48,28 @@ export struct MiniPlayerTrackPager {
     .height('100%')
   }
 
+  private frozenEntry(page: MiniPlayerTrackPageTarget): QueueEntry | undefined {
+    if (page === MiniPlayerTrackPageTarget.PREVIOUS) {
+      return this.binding.trackPagerPrevious;
+    }
+    if (page === MiniPlayerTrackPageTarget.NEXT) {
+      return this.binding.trackPagerNext;
+    }
+    return this.binding.trackPagerCurrent;
+  }
+
   @Builder
-  private FrozenTrack(entry: QueueEntry | undefined) {
+  private FrozenTrack(page: MiniPlayerTrackPageTarget) {
     Column({ space: 2 }) {
-      if (entry !== undefined) {
-        Text(entry.track.title)
+      // Only the page position is captured; interrupted swipes replace the observable entry.
+      if (this.frozenEntry(page) !== undefined) {
+        Text(this.frozenEntry(page)?.track.title ?? '')
           .fontSize(15)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_primary'))
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
-        Text(entry.track.artistDisplay || '未知艺术家')
+        Text(this.frozenEntry(page)?.track.artistDisplay || '未知艺术家')
           .fontSize(11)
           .fontColor($r('app.color.text_secondary'))
           .maxLines(1)
@@ -73,9 +85,9 @@ export struct MiniPlayerTrackPager {
   @Builder
   private FrozenPages() {
     Row({ space: 0 }) {
-      this.FrozenTrack(this.binding.trackPagerPrevious)
-      this.FrozenTrack(this.binding.trackPagerCurrent)
-      this.FrozenTrack(this.binding.trackPagerNext)
+      this.FrozenTrack(MiniPlayerTrackPageTarget.PREVIOUS)
+      this.FrozenTrack(MiniPlayerTrackPageTarget.CURRENT)
+      this.FrozenTrack(MiniPlayerTrackPageTarget.NEXT)
     }
     .width(this.pageWidth() * 3)
     .height('100%')

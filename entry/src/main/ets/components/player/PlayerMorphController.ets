@@ -753,13 +753,9 @@ export class PlayerMorphController {
     }
     this.reconcileFullPlayerImmersiveLayout();
     const paneCount = this.fullPlayerPaneCount();
-    const resolvedSplitTarget = this.fullPlayerImmersiveSplitMotion.resolvedTarget();
     const immersivePagePosition = FullPlayerImmersiveLayoutPolicy.entryPagePosition(
       this.fullPlayerPagePosition,
-      paneCount,
-      this.playerStore.lyricsAvailability,
-      resolvedSplitTarget,
-      this.fullPlayerImmersiveWideLyricsEnabled
+      paneCount
     );
     if (Math.abs(immersivePagePosition - this.fullPlayerPagePosition) > 0.0001) {
       this.settleFullPlayerPage(immersivePagePosition, paneCount);
@@ -826,10 +822,7 @@ export class PlayerMorphController {
     if (this.fullPlayerImmersiveProgress > 0) {
       const immersivePagePosition = FullPlayerImmersiveLayoutPolicy.entryPagePosition(
         this.fullPlayerPagePosition,
-        paneCount,
-        this.playerStore.lyricsAvailability,
-        resolvedSplitTarget,
-        this.fullPlayerImmersiveWideLyricsEnabled
+        paneCount
       );
       if (Math.abs(immersivePagePosition - this.fullPlayerPagePosition) > 0.0001) {
         this.settleFullPlayerPage(immersivePagePosition, paneCount);

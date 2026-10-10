@@ -159,18 +159,8 @@ export class FullPlayerImmersiveLayoutPolicy {
     return paneCount > 1 && availability === LyricsAvailability.AVAILABLE ? 1 : 0;
   }
 
-  static entryPagePosition(currentPosition: number, paneCount: number,
-    availability: LyricsAvailability, resolvedSplitProgress: number,
-    wideLyricsEnabled: boolean = true): number {
-    if (!wideLyricsEnabled) {
-      return currentPosition;
-    }
-    const preservesResolvedLyrics = availability === LyricsAvailability.LOADING &&
-      resolvedSplitProgress >= 0.5;
-    if (paneCount > 1 &&
-      (availability === LyricsAvailability.AVAILABLE || preservesResolvedLyrics)) {
-      return FullPlayerPagerSpec.positionForPage(FullPlayerPage.LYRICS, paneCount);
-    }
-    return currentPosition;
+  static entryPagePosition(currentPosition: number, paneCount: number): number {
+    return paneCount > 1 ?
+      FullPlayerPagerSpec.positionForPage(FullPlayerPage.COVER, paneCount) : currentPosition;
   }
 }

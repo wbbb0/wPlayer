@@ -1017,24 +1017,36 @@ export default function playerMorphPolicyTest() {
       )).assertEqual(0);
     });
 
-    it('moves a dual-pane immersive entry from queue-cover to cover-lyrics', 0, () => {
+    it('anchors dual-pane immersive artwork independently of the lyric split', 0, () => {
       expect(FullPlayerImmersiveLayoutPolicy.entryPagePosition(
-        0, 2, LyricsAvailability.AVAILABLE, 0
+        0, 2
       )).assertEqual(1);
       expect(FullPlayerImmersiveLayoutPolicy.entryPagePosition(
-        0, 2, LyricsAvailability.UNAVAILABLE, 1
+        0.4, 2
+      )).assertEqual(1);
+      expect(FullPlayerImmersiveLayoutPolicy.entryPagePosition(
+        1, 2
+      )).assertEqual(1);
+    });
+
+    it('preserves single-pane navigation during immersive lyric reconciliation', 0, () => {
+      expect(FullPlayerImmersiveLayoutPolicy.entryPagePosition(
+        FullPlayerPage.COVER, 1
+      )).assertEqual(1);
+      expect(FullPlayerImmersiveLayoutPolicy.entryPagePosition(
+        FullPlayerPage.LYRICS, 1
+      )).assertEqual(FullPlayerPage.LYRICS);
+    });
+
+    it('removes the queue and its artwork offset on immersive entry without lyrics', 0, () => {
+      const position = FullPlayerImmersiveLayoutPolicy.entryPagePosition(
+        0, 2
+      );
+      expect(FullPlayerPagerSpec.pageViewportVisibility(
+        FullPlayerPage.QUEUE, position, 2
       )).assertEqual(0);
-      expect(FullPlayerImmersiveLayoutPolicy.entryPagePosition(
-        1, 1, LyricsAvailability.AVAILABLE, 1
-      )).assertEqual(1);
-      expect(FullPlayerImmersiveLayoutPolicy.entryPagePosition(
-        0, 2, LyricsAvailability.LOADING, 1
-      )).assertEqual(1);
-      expect(FullPlayerImmersiveLayoutPolicy.entryPagePosition(
-        0, 2, LyricsAvailability.LOADING, 0
-      )).assertEqual(0);
-      expect(FullPlayerImmersiveLayoutPolicy.entryPagePosition(
-        0, 2, LyricsAvailability.AVAILABLE, 1, false
+      expect(FullPlayerPagerSpec.pagerArtworkTargetX(
+        0, position, FullPlayerPagerSpec.pageSpan(1000, 2)
       )).assertEqual(0);
     });
 
